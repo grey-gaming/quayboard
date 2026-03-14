@@ -69,11 +69,22 @@ After editing:
 - LLM integrations must be mockable; tests must not depend on live model access.
 - Do not create hidden tool-owned state inside managed repositories.
 
+## Naming Rules
+
+- Do not put milestone labels such as `m0`, `m1`, or `m14` in filenames or directory names.
+- Milestone labels are allowed in branch names, planning text, PR text, and commit messages, but not in persistent repo filenames.
+- Name files for their function or content, not for the milestone that introduced them.
+- Use lowercase kebab-case for new directories and for new non-component filenames unless a tool or framework requires a different convention.
+- Keep special root docs and platform-required names exactly as required, such as `README.md`, `AGENTS.md`, and files under `.github/`.
+- When frontend component files are introduced, use PascalCase for files that export a primary React component and kebab-case for non-component modules.
+- Test files should mirror the target file name and use the repo's chosen test suffix once the toolchain exists.
+
 ## Delivery Guardrails
 
 - README must describe current reality, not aspirational commands or setup that do not exist yet.
 - Do a documentation trigger check at the end of every cycle, but do not rewrite governing docs unless their content is actually outdated.
 - Do not work directly on `main`; use one branch per milestone and keep that branch updated with commits and pushes.
+- Apply the repo naming rules to all new files and directories; do not encode milestone numbers into persistent paths.
 - Do not introduce future-milestone tables, routes, hooks, or components "for convenience."
 - Prefer explicit TODOs in planning docs over speculative production code.
 - Record meaningful architecture, workflow, or design-system deviations as ADRs.

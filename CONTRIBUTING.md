@@ -36,6 +36,14 @@ A change is done when all of the following are true:
 - Record the milestone, scope, verification, documentation impact, and ADR decision in the PR.
 - If no runnable verification exists yet, state that explicitly instead of leaving the section blank.
 
+## Naming Conventions
+
+- Do not use milestone labels such as `m0` or `m1` in filenames or directory names.
+- Use descriptive names based on function or content, not delivery phase.
+- Use lowercase kebab-case for new directories and for non-component files unless a tool requires another convention.
+- Keep required special names unchanged, such as `README.md`, `AGENTS.md`, and GitHub metadata files.
+- When React component files are introduced, use PascalCase for files whose primary export is a component.
+
 ## Documentation Expectations
 
 Update documentation when you:
