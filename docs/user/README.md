@@ -2,7 +2,6 @@
 
 This directory will hold user-facing documentation once product flows exist.
 
-Initial expectation for M0:
+Current guides:
 
-- keep the directory in place as part of the repo scaffold
-- add guides only when corresponding product behavior exists
+- [authentication.md](authentication.md) for the local account and session-cookie flow added in M1

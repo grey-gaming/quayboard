@@ -4,15 +4,16 @@ Quayboard is a web control plane for managing software projects and orchestratin
 
 ## Status
 
-The repository now contains the M0 foundation scaffold:
+The repository now contains the M1 authenticated foundation:
 
-- pnpm workspace for `apps/api`, `apps/web`, `apps/mcp`, and `packages/shared`
-- Fastify API with a `GET /healthz` endpoint
-- Vite + React web app with Tailwind Harbor Night design tokens
-- Drizzle/Postgres migration wiring for the local development database
-- Vitest, Playwright, and GitHub Actions baseline verification
+- Fastify API with:
+  `GET /healthz`, cookie-session auth, protected `/api/*`, authenticated SSE, and project-scoped secrets
+- Drizzle/Postgres foundation schema and initial SQL migration
+- Minimal Vite + React auth UI at `/login`, `/register`, and an authenticated placeholder at `/`
+- Shared schemas for auth, users, sessions, projects, secrets, settings, and SSE events
+- Typed `501` route scaffolds for later milestone API areas
 
-The active implementation target remains M0: Repository and Toolchain Foundations. No product features are implemented yet.
+The active implementation target is now M1: Database, API Skeleton, and Auth Foundation. M2 product workflows are not implemented yet.
 
 ## Prerequisites
 
@@ -34,6 +35,8 @@ The active implementation target remains M0: Repository and Toolchain Foundation
    cp .env.example .env
    ```
 
+   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. The example value is a local placeholder and should be replaced for real use.
+
 3. Start Postgres:
 
    ```bash
@@ -53,6 +56,7 @@ The active implementation target remains M0: Repository and Toolchain Foundation
    ```
 
 The web app runs on `http://localhost:3000` and the API runs on `http://localhost:3001`. The health check is available at `http://localhost:3001/healthz`.
+The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie auth works during local development.
 
 ## Workspace Commands
 
@@ -71,24 +75,25 @@ The web app runs on `http://localhost:3000` and the API runs on `http://localhos
 
 Documented runtime variables live in `.env.example`:
 
-- `DATABASE_URL` for Drizzle migrations and Postgres-backed integration tests
+- `DATABASE_URL` for Drizzle migrations, API runtime, and Postgres-backed integration tests
 - `API_PORT` for the Fastify server port
 - `CORS_ORIGIN` for the allowed frontend origin
+- `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
 
 ## Repository Layout
 
 ```text
 apps/
-  api/      Fastify service, health route, migration harness, API tests
-  web/      Vite + React app, Tailwind tokens, Playwright smoke test
+  api/      Fastify service, auth/session middleware, SSE, secrets, migrations, API tests
+  web/      Vite + React auth shell, DS primitives, Playwright smoke test
   mcp/      Buildable placeholder package for the future MCP server
 packages/
   shared/   Shared schemas and types used across the workspace
 docs/
   adr/            Architecture decisions
-  architecture/   Monorepo, toolchain, and CI/local-dev documentation
+  architecture/   Monorepo, toolchain, API foundation, and local-dev documentation
   planning/       Active milestone and long-range project outline
-  user/           User-facing docs scaffold
+  user/           User-facing auth and future product documentation
 ```
 
 ## Source Of Truth

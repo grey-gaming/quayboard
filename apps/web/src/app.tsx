@@ -1,36 +1,73 @@
-const foundationItems = [
-  "pnpm workspace scaffold for API, web, MCP, and shared packages",
-  "Fastify health endpoint and Drizzle migration harness",
-  "Tailwind Harbor Night tokens without premature design-system components",
-];
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import {
+  Navigate,
+  Outlet,
+  RouterProvider,
+  createBrowserRouter,
+  useLocation,
+} from "react-router-dom";
 
-export const App = () => {
-  return (
-    <main className="min-h-screen bg-background px-6 py-16 text-foreground">
-      <section className="mx-auto flex max-w-4xl flex-col gap-10 rounded-[calc(var(--radius)+8px)] border border-border/70 bg-card/95 p-8 shadow-harbor backdrop-blur">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">
-            Quayboard
-          </p>
-          <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
-            Repository and Toolchain Foundations
-          </h1>
-          <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-            M0 establishes the runnable monorepo, local development baseline, and
-            verification wiring without pulling product features forward.
-          </p>
-        </div>
-        <ul className="grid gap-4 sm:grid-cols-3">
-          {foundationItems.map((item) => (
-            <li
-              key={item}
-              className="rounded-lg border border-border/70 bg-background/60 p-4 text-sm leading-6 text-card-foreground"
-            >
-              {item}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
-  );
+import { Spinner } from "./components/ui/Spinner.js";
+import { useCurrentUserQuery } from "./hooks/use-auth.js";
+import { LoginPage } from "./pages/LoginPage.js";
+import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
+import { RegisterPage } from "./pages/RegisterPage.js";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      staleTime: 30_000,
+    },
+  },
+});
+
+const RequireAuth = () => {
+  const location = useLocation();
+  const currentUserQuery = useCurrentUserQuery();
+
+  if (currentUserQuery.isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (!currentUserQuery.data?.user) {
+    return <Navigate replace state={{ from: location.pathname }} to="/login" />;
+  }
+
+  return <Outlet />;
 };
+
+export const appRouter = createBrowserRouter([
+  {
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
+    path: "/register",
+    element: <RegisterPage />,
+  },
+  {
+    element: <RequireAuth />,
+    children: [
+      {
+        path: "/",
+        element: <ProtectedHomePage />,
+      },
+    ],
+  },
+]);
+
+export const AppProviders = ({ children }: { children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
+
+export const App = () => (
+  <AppProviders>
+    <RouterProvider router={appRouter} />
+  </AppProviders>
+);
