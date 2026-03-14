@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import { readHttpConfig } from "./config.js";
 import { buildServer } from "./server.js";
 

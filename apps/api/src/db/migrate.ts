@@ -1,5 +1,3 @@
-import "dotenv/config";
-
 import { fileURLToPath } from "node:url";
 
 import { drizzle } from "drizzle-orm/postgres-js";

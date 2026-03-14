@@ -1,3 +1,7 @@
+import { loadEnv } from "./load-env.js";
+
+loadEnv();
+
 import { z } from "zod";
 
 const runtimeEnvSchema = z.object({
