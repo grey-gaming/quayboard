@@ -126,6 +126,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | Route | Screen | Purpose |
 |---|---|---|
 | `/` | **Home** | Project list with status badges, filter bar, empty state, error state |
+| `/setup/instance` | **Instance Readiness** | First-run deployment checks: database, encryption key, Docker, artifact storage, enabled provider adapters |
 | `/projects/new` | **New Project** | Create from scratch or import chooser |
 | `/projects/:id` | **Mission Control** | Project landing page: stage map, next actions, auto-advance controls, timeline/evidence feed, phase summary |
 | `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, tool policy (tool group toggles, budget caps), evidence policy, readiness checklist |
@@ -140,7 +141,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/projects/:id/develop` | **Develop** | Sandbox run launcher, artifact viewer, container management |
 | `/projects/:id/develop/debug` | **Develop Debug** | Developer-only context-pack inspection, staleness checks, and regeneration controls |
 | `/projects/:id/analytics` | **Project Analytics** | Per-project LLM usage, velocity, and quality metrics |
-| `/settings/models` | **Model Settings** | Per-activity LLM model selection |
+| `/settings/models` | **Model Settings** | Optional defaults and diagnostics after M2; active model selection for MVP lives in Project Setup |
 | `/settings/workflow` | **Workflow Settings** | Review-loop and auto-advance controls |
 | `/settings/execution` | **Execution Settings** | Sandbox runner configuration |
 | `/settings/templates` | **Template Settings** | Create, edit, and manage reusable project templates |
@@ -151,19 +152,31 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 ### 2.4 Key user flows
 
+#### Flow -1: Instance readiness and first run
+
+1. User registers or logs in.
+2. On the first run, Quayboard opens **Instance Readiness** and checks deployment prerequisites that exist outside any project:
+   a. Database connectivity.
+   b. `SECRETS_ENCRYPTION_KEY` presence.
+   c. Docker daemon reachability.
+   d. Artifact storage path writability.
+   e. Enabled LLM provider adapters.
+3. Any failing check shows a concrete remediation message and blocks only the setup-dependent onboarding steps.
+4. The screen does not collect project credentials. Repo PATs and LLM API keys are configured only later in **Project Setup**.
+
 #### Flow 0: Project setup and guided onboarding
 
 1. User creates a project (name + optional description).
 2. User enters the **Project Setup** page and completes the readiness checklist:
    a. **Connect repository** — provide a GitHub PAT or initiate OAuth, select a repo. Quayboard verifies access.
-   b. **Configure LLM provider** — select provider (Ollama, OpenAI-compatible, Anthropic), enter API key or endpoint, verify connectivity.
+   b. **Configure LLM provider** — select one of the enabled provider adapters for this project, enter the project-scoped API key or endpoint override when required, choose models for activity types, and verify connectivity.
    c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted).
    d. **Configure tool policy** (optional) — toggle tool groups on/off (planning, review, execution, assets, integrations) and set budget caps for LLM token spend and asset generation. Sensible defaults are pre-applied; most users skip this step entirely.
    e. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
    f. **Readiness checklist** — all items above show green/red status. Setup is complete when all items pass.
 3. On first project, a guided **"Hello World" onboarding** path walks the user through the full pipeline:
-   - Create project → connect repo → verify LLM → verify sandbox → generate one small feature → run sandbox → produce PR → show evidence bundle.
-   - This single guided path demonstrates the complete loop from idea to deliverable.
+   - Register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
+   - The full pipeline demo continues in M8, where sandbox execution, PR creation, and evidence bundles are implemented.
 
 #### Flow 1: New project — scratch to overview document
 
@@ -482,7 +495,7 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 | `jobs` | Async work items with type, status, inputs, outputs, parent/dependency tracking |
 | `llm_runs` | LLM execution history: template ID, model, parameters, token counts |
 | `questions` | LLM-generated questions with category, priority, status, placement hints |
-| `settings` | Scoped key-value settings (`system / user / org / project`) |
+| `settings` | Scoped key-value settings (`system / user / org / project`). `system` stores deployment and execution defaults, `user` stores account preferences, `project` stores setup and policy configuration, and `org` is reserved for later multi-tenant use. |
 
 #### Tool system tables
 
@@ -606,6 +619,7 @@ The `:type` parameter covers all reviewable artifact types: `one_pager`, `bluepr
 
 #### Infrastructure
 - `GET /healthz` — health check
+- `GET /api/system/readiness` — authenticated first-run deployment readiness status with remediation messages
 - `GET /api/events` — SSE stream for live updates
 - `GET /debug/*` — context packs (listing, detail, staleness), logbook, memory, scheduler status, SSE status
 
@@ -646,7 +660,7 @@ The **JobScheduler** (`apps/api/src/services/job-scheduler.ts`) runs a 5-second 
 
 ### 3.6 LLM integration
 
-**Provider abstraction**: LLM calls go through a provider abstraction layer that supports multiple backends. Each provider implements a common interface (chat completion with streaming, model listing, and health check). The active provider is configured via environment variables.
+**Provider abstraction**: LLM calls go through a provider abstraction layer that supports multiple backends. Each provider implements a common interface (chat completion with streaming, model listing, and health check). Quayboard enables provider adapters at the deployment level, while each project selects one enabled provider and supplies its own credentials or endpoint override when required.
 
 | Provider | Configuration | Use case |
 |---|---|---|
@@ -658,7 +672,7 @@ The provider abstraction is defined in `apps/api/src/services/llm-provider.ts`. 
 
 **Prompt management**: LLM prompts are versioned markdown templates stored in `apps/api/src/prompts/`. Each job type has its own prompt directory. Template IDs are recorded in `llm_runs` for full traceability.
 
-**Model selection**: Users choose different models per **activity type** (research, coding, reviewing) via Settings. Stored in the `settings` table and applied at job dispatch time. The available model list is fetched from the active provider.
+**Model selection**: Each project chooses different models per **activity type** (research, coding, reviewing) during Project Setup. Stored in project-scoped settings and applied at job dispatch time. A later global settings page may expose defaults or diagnostics, but the active model profile in MVP is project-scoped. The available model list is fetched from the provider selected for that project.
 
 **Creativity mode**: A configurable policy (`off / scoped / balanced / high`) is applied to generation prompts via `apps/api/src/services/job-executors/creativity-policy.ts`. Set when starting an auto-advance session.
 
@@ -987,6 +1001,8 @@ The system must handle failures gracefully at every layer. The following policie
 - The API requires a PostgreSQL 15+ instance, a configured LLM provider, and (for sandbox execution) access to a Docker daemon.
 - Environment configuration is via environment variables (documented in `.env.example`). No configuration files are checked into the repository.
 
+**First-run readiness boundary**: Deployment prerequisites are checked at the instance level before project onboarding. Repo access, project PATs, project LLM credentials, and project policy remain inside Project Setup and are never promoted to user-level or system-level secrets in the MVP.
+
 #### Artifact storage
 - Sandbox run artifacts (logs, diffs, test reports) are stored on the local filesystem in a configurable directory (`ARTIFACT_STORAGE_PATH`). For production, this should be a persistent volume or object storage mount.
 - Artifacts are served via the API (`GET /sandbox/runs/:id/artifacts/:name`) — the frontend never accesses storage directly.
@@ -1118,7 +1134,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 ### M2 — Project Creation, Setup, Overview Document, and User Flows
 
-**Goal**: A user can create a project, complete project setup (repo, LLM, sandbox configuration), complete the 14-question questionnaire, trigger LLM-assisted generation of a project description and overview document, review/approve the result, and then generate and approve a user-flow set that becomes the planning contract for later stages. Mission Control becomes the project landing page. A guided onboarding flow demonstrates the full pipeline end-to-end.
+**Goal**: A user can clear first-run instance readiness, create a project, complete project setup (repo, LLM, sandbox configuration), complete the 14-question questionnaire, trigger LLM-assisted generation of a project description and overview document, review/approve the result, and then generate and approve a user-flow set that becomes the planning contract for later stages. Mission Control becomes the project landing page. A guided onboarding flow introduces the full pipeline, with the execution portion completed later when sandbox runs exist.
 
 **Deliverables**:
 
@@ -1127,6 +1143,8 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - project user-flow approval metadata (`user_flows_approved_at`, `user_flows_approval_snapshot`)
 
 **Backend**:
+- Instance readiness route:
+  - `GET /api/system/readiness` — deployment prerequisite status (database, encryption key, Docker, artifact storage, enabled provider adapters) with remediation messages
 - Project CRUD routes (`POST/GET /projects`, `GET/PATCH /projects/:id`) — all auth-protected, projects scoped to the creating user
 - Project Setup routes:
   - `POST /projects/:id/secrets` — store repo PAT or LLM API key (write-only, uses `encrypted_secrets` from M1)
@@ -1143,22 +1161,23 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 **Frontend**:
 - `HomePage` — project list, empty state, error state, filter bar, status badges
+- `InstanceReadinessPage` (`/setup/instance`) — first-run deployment checks with remediation guidance for missing prerequisites
 - `NewProjectPage` — create from scratch / import chooser
-- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), LLM provider config and verification, sandbox defaults (timeouts, CPU/mem, egress policy), evidence/docs policy, readiness checklist with green/red status indicators
+- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), evidence/docs policy, readiness checklist with green/red status indicators
 - `MissionControlPage` (`/projects/:id`) — project landing page absorbing the old `ProjectDetailPage` phase summary. Shows stage map, next actions, and activity timeline (auto-advance controls added in M7)
 - `ProjectContextHeader` — persistent sticky header on all project-scoped pages (project state, repo, model profile, sandbox policy, setup readiness)
 - `OnePagerIntakePage` — questionnaire phase, naming phase, overview document phase
 - `UserFlowsPage` (`/projects/:id/user-flows`) — generation, manual editing, coverage summary, dedupe, and approval
-- Guided onboarding flow — step-by-step walkthrough: create project → connect repo → verify LLM → verify sandbox → generate one small feature → run sandbox → produce PR → show evidence bundle
+- Guided onboarding flow — step-by-step walkthrough: register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document
 - DS primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Spinner`, `Skeleton`, `Alert`, `Toast`
 - DS composites: `CenteredState`, `PageIntro`, `WorkspaceTopBar`
 - DS layout: `Layout`, `PrimaryBar`, `AppFrame`, `ProjectContextHeader`
-- `ModelSettingsPage` (`/settings/models`) — per-activity LLM model selection (needed from M2 to configure the provider before generation jobs run)
 - `useJobPoller` hook for live job status
 - `useSSEEvent` hook for real-time updates
 - `api.ts` API client module — no inline `fetch()` in page components
 
 **Acceptance criteria**:
+- Authenticated user can load the instance readiness screen and see pass/fail status plus remediation guidance for deployment prerequisites
 - User can create a project, connect a repo, verify LLM connectivity, and verify sandbox startup from the Project Setup page
 - Setup readiness checklist shows green/red status for each item; all items green before proceeding
 - Mission Control (`/projects/:id`) serves as the project landing page and shows phase status summary
@@ -1169,7 +1188,8 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - User flows can be generated from the approved overview document, edited manually, deduplicated, and approved only when coverage requirements are satisfied
 - Blueprint generation remains locked until user flows are approved
 - SSE events cause the frontend to update job status in real time without polling
-- A guided onboarding scaffold exists introducing the workspace: project creation, repository connection, LLM verification, and questionnaire completion. The full pipeline demo (sandbox run → PR → evidence bundle) is scoped to M8 once sandbox execution is available.
+- A guided onboarding scaffold exists introducing the workspace: account creation, instance readiness, project creation, repository connection, LLM verification, sandbox verification, and questionnaire completion. The full pipeline demo (sandbox run → PR → evidence bundle) is scoped to M8 once sandbox execution is available.
+- Repo PATs and LLM API keys are project-scoped only; no user-level or system-level secret defaults are introduced
 - All new routes and executors have unit or integration tests
 - No raw `<button>/<input>` in page files; DS primitives used throughout
 - User-facing documentation exists for all new screens and flows introduced in this milestone
@@ -1590,6 +1610,8 @@ The M2 `NewProjectPage` "import chooser" option is present but routes to a stub 
 
 > **Prerequisite**: M1 provides the `users` table, session middleware, and basic email/password login. All routes from M2–M11 are already auth-protected. This milestone adds multi-user collaboration, roles, and external access.
 
+Before M12, project access is single-owner: the authenticated creating user is the only actor authorised for that project's routes. Collaboration, membership, and project-level roles do not exist before this milestone.
+
 **Deliverables**:
 
 **Schema additions** (new migrations):
@@ -1866,6 +1888,7 @@ The M2 `NewProjectPage` "import chooser" option is present but routes to a stub 
 | **Mission Control** | The orchestration dashboard: stage map, next-actions panel, auto-advance controls, activity timeline. |
 | **Phase gate** | A structured checklist of conditions that must be met before progressing from one phase to the next. |
 | **Creativity mode** | A per-session policy (`off / scoped / balanced / high`) applied to LLM generation prompts. |
+| **Instance Readiness** | The first-run deployment check shown before project onboarding. Verifies instance-level prerequisites such as database access, encryption key presence, Docker availability, artifact storage, and enabled provider adapters. |
 | **Project Setup** | The readiness phase where a user connects a repository, configures the LLM provider, sets sandbox defaults, configures tool policy (optional), and establishes evidence/docs policy before proceeding to the questionnaire. |
 | **Project Context Header** | A persistent, sticky header strip shown on every project-scoped page displaying project state, connected repo, model profile, sandbox policy, tool policy summary, and setup readiness. |
 | **User documentation** | User-facing documentation generated from the product specification — guides, help text, API docs. A workstream track within the Feature Editor. |
