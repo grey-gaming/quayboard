@@ -42,6 +42,10 @@ The milestone is complete when the repo can support the following:
 - `pnpm typecheck && pnpm test && pnpm build` pass in CI
 - architecture documentation exists for monorepo structure, toolchain choices, and CI configuration
 
+## Relevant ADRs
+
+- [ADR 001: Branch and Verification Policy](../adr/001-branch-and-verification-policy.md)
+
 ## Working Rules
 
 - Prefer the smallest scaffold that satisfies the acceptance criteria.
