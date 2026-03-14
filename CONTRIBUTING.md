@@ -30,6 +30,12 @@ A change is done when all of the following are true:
 - Push the milestone branch to `origin` so it stays current.
 - If push is blocked by environment, credentials, or policy, state that explicitly in the handoff.
 
+## Pull Requests
+
+- Use `.github/pull_request_template.md` for every PR.
+- Record the milestone, scope, verification, documentation impact, and ADR decision in the PR.
+- If no runnable verification exists yet, state that explicitly instead of leaving the section blank.
+
 ## Documentation Expectations
 
 Update documentation when you:
