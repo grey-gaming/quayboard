@@ -24,7 +24,8 @@ If these sources conflict, the more specific and newer document wins. If the con
 - Work one milestone at a time.
 - Do not scaffold future milestones unless the user explicitly requests it.
 - Keep changes small, reviewable, and directly tied to milestone deliverables or acceptance criteria.
-- Every cycle must be done on a dedicated git branch, not directly on `main`.
+- Use one dedicated git branch per milestone; do not work directly on `main`.
+- Keep bug fixes for a milestone on that same milestone branch unless explicitly directed otherwise.
 
 ## Required Workflow
 
@@ -34,7 +35,7 @@ Before editing:
 2. Inspect the repo for existing patterns before proposing new structure.
 3. Confirm whether the requested change belongs to the current milestone.
 4. State assumptions if repo truth is missing.
-5. Create or switch to a dedicated branch for the cycle before making changes.
+5. Create or switch to the dedicated branch for the active milestone before making changes.
 
 While editing:
 
@@ -52,8 +53,8 @@ After editing:
 5. `README.md` if current repo state, setup, structure, or contributor workflow changed.
 6. `docs/planning/current-milestone.md` if the active milestone, scope boundaries, or acceptance criteria changed.
 7. Leave these files untouched if the cycle did not change their truth.
-8. Commit the cycle's changes with a clear message.
-9. Push the branch to `origin` at the end of the cycle.
+8. Commit the cycle's changes with a clear message to the milestone branch.
+9. Push the milestone branch to `origin` so it stays current.
 10. If branch creation, commit, or push is blocked, say so explicitly in the handoff.
 11. Report what changed, what was verified, and what remains unverified.
 12. Call out any assumptions, risks, or follow-up work explicitly.
@@ -72,7 +73,7 @@ After editing:
 
 - README must describe current reality, not aspirational commands or setup that do not exist yet.
 - Do a documentation trigger check at the end of every cycle, but do not rewrite governing docs unless their content is actually outdated.
-- Do not work directly on `main`; use a dedicated branch per cycle and push it when the cycle is complete.
+- Do not work directly on `main`; use one branch per milestone and keep that branch updated with commits and pushes.
 - Do not introduce future-milestone tables, routes, hooks, or components "for convenience."
 - Prefer explicit TODOs in planning docs over speculative production code.
 - Record meaningful architecture, workflow, or design-system deviations as ADRs.

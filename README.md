@@ -63,7 +63,7 @@ Development in this repo is milestone-gated:
 - Build only the active milestone unless the request explicitly expands scope.
 - Prefer the smallest vertical slice that satisfies milestone acceptance criteria.
 - Do not add future-milestone routes, tables, components, or abstractions "for later."
-- Do work on a dedicated git branch per cycle and push that branch at cycle end.
+- Do work on a dedicated git branch for the active milestone and keep that branch current with commits and pushes.
 - Record meaningful architectural deviations as ADRs before implementing them.
 
 ## Documentation Map

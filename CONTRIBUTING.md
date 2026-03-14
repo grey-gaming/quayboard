@@ -8,7 +8,8 @@ This repository is still in the planning and foundation stage. Contribution qual
 - Keep `README.md` truthful about current repo state.
 - Prefer small, reviewable changes over broad scaffolding.
 - Do not implement future roadmap items unless explicitly requested.
-- Do all work on a dedicated branch, not directly on `main`.
+- Do all work on a dedicated branch for the active milestone, not directly on `main`.
+- Keep bug fixes for that milestone on the same branch unless explicitly directed otherwise.
 
 ## Definition Of Done
 
@@ -23,10 +24,10 @@ A change is done when all of the following are true:
 
 ## Branch Workflow
 
-- Start each cycle by creating or switching to a dedicated branch.
-- Keep branch scope tight to one cycle's work.
-- Commit with a clear message before handoff.
-- Push the branch to `origin` at the end of the cycle.
+- Start each milestone by creating or switching to its dedicated branch.
+- Keep all work for that milestone, including bug fixes, on the same branch.
+- Commit with a clear message as work progresses.
+- Push the milestone branch to `origin` so it stays current.
 - If push is blocked by environment, credentials, or policy, state that explicitly in the handoff.
 
 ## Documentation Expectations
