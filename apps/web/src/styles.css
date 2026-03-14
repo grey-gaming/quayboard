@@ -29,4 +29,8 @@
       linear-gradient(180deg, hsl(220 42% 10%), hsl(222 37% 7%));
     min-height: 100vh;
   }
+
+  a {
+    @apply transition;
+  }
 }

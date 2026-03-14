@@ -1,5 +1,20 @@
 {
   "version": "7",
   "dialect": "postgresql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1760000000000,
+      "tag": "0000_core-auth-foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760000001000,
+      "tag": "0001_secret-type-unique",
+      "breakpoints": true
+    }
+  ]
 }

@@ -1,22 +1,63 @@
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 
+import type { AppServices } from "./app-services.js";
+import { authRoutes } from "./routes/auth.js";
+import { artifactRoutes } from "./routes/api/artifacts.js";
+import { autoAdvanceRoutes } from "./routes/api/auto-advance.js";
+import { blueprintRoutes } from "./routes/api/blueprints.js";
+import { bugRoutes } from "./routes/api/bugs.js";
+import { debugRoutes } from "./routes/api/debug.js";
+import { documentationRoutes } from "./routes/api/documentation.js";
+import { eventsRoutes } from "./routes/api/events.js";
+import { featureRoutes } from "./routes/api/features.js";
 import { healthRoute } from "./routes/health.js";
+import { milestoneRoutes } from "./routes/api/milestones.js";
+import { onePagerRoutes } from "./routes/api/one-pager.js";
+import { projectsRoutes } from "./routes/api/projects.js";
+import { sandboxRoutes } from "./routes/api/sandbox.js";
+import { secretRoutes } from "./routes/api/secrets.js";
+import { toolSystemRoutes } from "./routes/api/tool-system.js";
+import { userFlowRoutes } from "./routes/api/user-flows.js";
+import { requireAuthenticatedUser } from "./routes/route-helpers.js";
 
 export type ServerOptions = {
   corsOrigin: string;
+  services: AppServices;
 };
 
-export const buildServer = async ({ corsOrigin }: ServerOptions) => {
+export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
   const app = Fastify({
     logger: false,
   });
 
+  await app.register(cookie);
   await app.register(cors, {
     origin: corsOrigin,
+    credentials: true,
   });
 
   await app.register(healthRoute);
+  await app.register(authRoutes(services));
+  await app.register(async (apiApp) => {
+    apiApp.addHook("preHandler", requireAuthenticatedUser(services));
+    await apiApp.register(eventsRoutes(services));
+    await apiApp.register(projectsRoutes(services));
+    await apiApp.register(secretRoutes(services));
+    await apiApp.register(onePagerRoutes);
+    await apiApp.register(userFlowRoutes);
+    await apiApp.register(blueprintRoutes);
+    await apiApp.register(milestoneRoutes);
+    await apiApp.register(featureRoutes);
+    await apiApp.register(documentationRoutes);
+    await apiApp.register(bugRoutes);
+    await apiApp.register(artifactRoutes);
+    await apiApp.register(autoAdvanceRoutes);
+    await apiApp.register(sandboxRoutes);
+    await apiApp.register(toolSystemRoutes);
+    await apiApp.register(debugRoutes);
+  }, { prefix: "/api" });
 
   return app;
 };

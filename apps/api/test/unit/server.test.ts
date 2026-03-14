@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../../src/server.js";
+import { createStubServices } from "../helpers/test-services.js";
 
 describe("GET /healthz", () => {
   it("returns the expected payload", async () => {
-    const server = await buildServer({ corsOrigin: "http://localhost:3000" });
+    const server = await buildServer({
+      corsOrigin: "http://localhost:3000",
+      services: createStubServices(),
+    });
 
     try {
       const response = await server.inject({
