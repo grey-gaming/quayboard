@@ -79,6 +79,21 @@ After editing:
 - When frontend component files are introduced, use PascalCase for files that export a primary React component and kebab-case for non-component modules.
 - Test files should mirror the target file name and use the repo's chosen test suffix once the toolchain exists.
 
+## File Quality Rules
+
+- Prefer small files with a single clear responsibility.
+- Treat roughly 300-500 lines as a soft warning range for most code files, not a hard limit.
+- If a file is becoming difficult to understand, split or extract before adding more complexity when that cleanup is low-risk and in scope.
+- Larger files are acceptable only when the content is still cohesive and splitting would make the code harder to follow.
+
+## Refactoring And Deletion Rules
+
+- Apply the boy scout rule: when touching an area, leave it cleaner if the improvement is low-risk and stays within milestone scope.
+- Refactoring that reduces complexity, removes duplication, shrinks files, or improves clarity is a positive change when behavior is preserved.
+- Delete dead code, unused files, obsolete flags, and stale documentation when they are clearly no longer needed.
+- Do not keep code, files, or configuration "just in case"; version control is the backup.
+- Prefer deletion over leaving internal dead paths behind when a feature or implementation path has been removed.
+
 ## Delivery Guardrails
 
 - README must describe current reality, not aspirational commands or setup that do not exist yet.
@@ -87,6 +102,7 @@ After editing:
 - Before pushing, run the required verification for the change and do not push known-red work unless explicitly instructed.
 - Treat full CI green status as the merge requirement, not necessarily the push requirement.
 - Apply the repo naming rules to all new files and directories; do not encode milestone numbers into persistent paths.
+- Favor low-risk refactoring and deletion of dead code over preserving unnecessary complexity.
 - Do not introduce future-milestone tables, routes, hooks, or components "for convenience."
 - Prefer explicit TODOs in planning docs over speculative production code.
 - Record meaningful architecture, workflow, or design-system deviations as ADRs.

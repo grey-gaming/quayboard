@@ -45,6 +45,15 @@ A change is done when all of the following are true:
 - Keep required special names unchanged, such as `README.md`, `AGENTS.md`, and GitHub metadata files.
 - When React component files are introduced, use PascalCase for files whose primary export is a component.
 
+## File Size And Refactoring
+
+- Prefer small files with a single clear responsibility.
+- Treat roughly 300-500 lines as a soft warning range for most code files, not a hard limit.
+- If a touched file is getting hard to understand, do low-risk cleanup or extraction when it stays in scope.
+- Refactoring that reduces complexity, duplication, or file size while preserving behavior is encouraged.
+- Delete dead code, unused files, obsolete flags, and stale docs when they are clearly no longer needed.
+- Do not keep internal code or files "just in case"; rely on version control instead.
+
 ## Documentation Expectations
 
 Update documentation when you:
