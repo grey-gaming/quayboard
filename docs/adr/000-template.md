@@ -1,4 +1,4 @@
-# ADR 0000: Title
+# ADR 000: Title
 
 - Status: proposed
 - Date: YYYY-MM-DD

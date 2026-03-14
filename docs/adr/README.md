@@ -15,7 +15,7 @@ Add an ADR when a change affects:
 
 ## How To Use This Directory
 
-- Copy `0000-template.md` to the next available number.
+- Copy `000-template.md` to the next available three-digit number.
 - Use a short, stable slug in the filename.
 - Link relevant ADRs from `README.md`, milestone docs, or implementation docs when they affect active work.
 - Update or supersede prior ADRs instead of leaving contradictions unresolved.
