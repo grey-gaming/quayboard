@@ -1799,6 +1799,25 @@ The M2 `NewProjectPage` "import chooser" option is present but routes to a stub 
 
 ---
 
+### M17 — Canonicalization and Planning Document Removal
+
+**Goal**: Promote any remaining durable project truth out of this planning document so the repository can remain understandable and governable after the roadmap is complete and this document is deleted.
+
+**Deliverables**:
+- Full review of this planning document against the implemented repository
+- ADRs added for any still-relevant architectural or workflow decisions that are not already captured elsewhere
+- `README.md`, contributor docs, and architecture docs updated so they describe the current system without depending on milestone-planning text for canonical truth
+- Obsolete roadmap-only statements removed or replaced with final-state documentation
+- Explicit deletion of `docs/planning/quayboard-project-outline.md` once the canonicalization pass is complete
+
+**Acceptance criteria**:
+- Removing `docs/planning/quayboard-project-outline.md` does not leave any implemented subsystem, workflow rule, or architectural decision without a canonical home in the repository
+- Durable decisions live in ADRs when they are normative, and in architecture or contributor docs when they are descriptive
+- `README.md` and relevant docs describe the final repository state without referring readers back to the deleted planning document for essential understanding
+- The planning document is deleted in the same milestone that completes the canonicalization pass
+
+---
+
 ## 5. Glossary
 
 > **Code identifiers vs document terminology**: This document uses user-facing names (e.g., "overview document", "feature specification"). The codebase retains shorter internal identifiers in table names, route paths, component names, and job type enums. The mapping is:
