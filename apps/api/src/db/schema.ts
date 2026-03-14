@@ -242,6 +242,10 @@ export const encryptedSecretsTable = pgTable(
   },
   (table) => ({
     projectIndex: index("encrypted_secrets_project_id_idx").on(table.projectId),
+    projectTypeUnique: uniqueIndex("encrypted_secrets_project_id_type_key").on(
+      table.projectId,
+      table.type,
+    ),
     typeCheck: check(
       "encrypted_secrets_type_check",
       sql`${table.type} in (${sql.join(secretTypeValues.map((value) => sql`${value}`), sql`, `)})`,

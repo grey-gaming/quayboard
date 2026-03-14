@@ -9,6 +9,7 @@ import type {
 
 import type { AppDatabase } from "../db/client.js";
 import { encryptedSecretsTable, projectsTable } from "../db/schema.js";
+import { isUniqueViolationError } from "./db-errors.js";
 import type { SecretsCrypto } from "./secrets-crypto.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
@@ -67,18 +68,31 @@ export const createSecretService = (
       );
     }
 
-    const [secret] = await db
-      .insert(encryptedSecretsTable)
-      .values({
-        id: generateId(),
-        projectId,
-        type: input.type,
-        maskedIdentifier: maskSecret(input.value),
-        encryptedValue: crypto.encrypt(input.value),
-        createdAt: now,
-        rotatedAt: null,
-      })
-      .returning();
+    let secret;
+    try {
+      [secret] = await db
+        .insert(encryptedSecretsTable)
+        .values({
+          id: generateId(),
+          projectId,
+          type: input.type,
+          maskedIdentifier: maskSecret(input.value),
+          encryptedValue: crypto.encrypt(input.value),
+          createdAt: now,
+          rotatedAt: null,
+        })
+        .returning();
+    } catch (error) {
+      if (isUniqueViolationError(error)) {
+        throw new HttpError(
+          409,
+          "secret_exists",
+          "A secret of this type already exists for the project.",
+        );
+      }
+
+      throw error;
+    }
 
     return toSecretMetadata(secret);
   },

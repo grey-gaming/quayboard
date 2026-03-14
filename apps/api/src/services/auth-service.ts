@@ -3,6 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import type { AppDatabase } from "../db/client.js";
 import { sessionsTable, usersTable } from "../db/schema.js";
 import { generateId } from "./ids.js";
+import { isUniqueViolationError } from "./db-errors.js";
 import { HttpError } from "./http-error.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import {
@@ -37,18 +38,31 @@ export const createAuthService = (db: AppDatabase) => ({
 
     const passwordHash = await hashPassword(input.password);
     const now = new Date();
-    const [user] = await db
-      .insert(usersTable)
-      .values({
-        id: generateId(),
-        email: input.email.toLowerCase(),
-        passwordHash,
-        displayName: input.displayName.trim(),
-        avatarUrl: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
+    let user;
+    try {
+      [user] = await db
+        .insert(usersTable)
+        .values({
+          id: generateId(),
+          email: input.email.toLowerCase(),
+          passwordHash,
+          displayName: input.displayName.trim(),
+          avatarUrl: null,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+    } catch (error) {
+      if (isUniqueViolationError(error)) {
+        throw new HttpError(
+          409,
+          "email_taken",
+          "An account already exists for this email.",
+        );
+      }
+
+      throw error;
+    }
 
     const session = await this.createSession(user.id);
 
