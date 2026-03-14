@@ -1,9 +1,9 @@
 # Architecture Documentation
 
-This directory will hold internal architecture and engineering documentation.
+This directory holds internal architecture and engineering documentation for the repository as it exists today.
 
-Initial expectation for M0:
+Current M0 documents:
 
-- document monorepo structure once scaffolded
-- document toolchain choices once selected in code
-- document CI and local development architecture once implemented
+- [monorepo-structure.md](monorepo-structure.md) for the workspace layout and package boundaries
+- [toolchain.md](toolchain.md) for the selected frameworks and baseline commands
+- [ci-and-local-development.md](ci-and-local-development.md) for local Postgres, migration flow, and CI verification
