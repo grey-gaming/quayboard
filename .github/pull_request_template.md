@@ -19,6 +19,8 @@ Describe the change in 2-5 sentences. State what changed and why.
 - Commands run:
 - Manual checks performed:
 - Result:
+- Required verification for this change completed before push: yes / no
+- Any known failing checks remaining: yes / no
 
 If no runnable verification exists yet, state that explicitly.
 
@@ -45,5 +47,6 @@ If no runnable verification exists yet, state that explicitly.
 - [ ] Change is in scope for the active milestone
 - [ ] Work was done on the milestone branch, not `main`
 - [ ] Verification is recorded above, or lack of runnable verification is stated
+- [ ] No known failing required checks were pushed unless explicitly approved
 - [ ] Documentation updates were made where needed
 - [ ] ADR impact was considered

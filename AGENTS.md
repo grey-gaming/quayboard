@@ -46,7 +46,7 @@ While editing:
 
 After editing:
 
-1. Run relevant verification that exists in the repo.
+1. Run all required verification for the change that exists in the repo before pushing.
 2. Check whether the cycle changed repo-wide agent rules, contributor-facing repo reality, or active milestone scope.
 3. Update only the relevant governing docs when needed:
 4. `AGENTS.md` if repo-level agent behavior or mandatory workflow changed.
@@ -84,6 +84,8 @@ After editing:
 - README must describe current reality, not aspirational commands or setup that do not exist yet.
 - Do a documentation trigger check at the end of every cycle, but do not rewrite governing docs unless their content is actually outdated.
 - Do not work directly on `main`; use one branch per milestone and keep that branch updated with commits and pushes.
+- Before pushing, run the required verification for the change and do not push known-red work unless explicitly instructed.
+- Treat full CI green status as the merge requirement, not necessarily the push requirement.
 - Apply the repo naming rules to all new files and directories; do not encode milestone numbers into persistent paths.
 - Do not introduce future-milestone tables, routes, hooks, or components "for convenience."
 - Prefer explicit TODOs in planning docs over speculative production code.
@@ -96,6 +98,7 @@ After editing:
 - Never weaken governance or evidence requirements without explicit instruction.
 - Never use destructive git or filesystem commands unless explicitly requested.
 - Never claim a command, test, route, or file exists unless you verified it locally.
+- Never claim tests or checks passed unless you actually ran them.
 
 ## Expected Handoff Format
 

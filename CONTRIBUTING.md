@@ -17,7 +17,7 @@ A change is done when all of the following are true:
 
 - it is in scope for the active milestone
 - documentation reflects the new reality
-- relevant verification has been run, if executable behavior exists
+- required verification for the change has been run, if executable behavior exists
 - the work is committed on its branch and pushed to `origin`
 - assumptions and unverified areas are called out in the handoff
 - any architectural deviation from the outline is captured in an ADR
@@ -27,6 +27,7 @@ A change is done when all of the following are true:
 - Start each milestone by creating or switching to its dedicated branch.
 - Keep all work for that milestone, including bug fixes, on the same branch.
 - Commit with a clear message as work progresses.
+- Before pushing, run the required verification for the change.
 - Push the milestone branch to `origin` so it stays current.
 - If push is blocked by environment, credentials, or policy, state that explicitly in the handoff.
 
@@ -62,9 +63,12 @@ Use these files for the right purpose:
 
 ## Verification Expectations
 
+- Before pushing, run the required verification for the change and do not push known-broken work unless explicitly requested.
+- Full CI should be green before merge; it does not have to be the local push gate in every case.
 - Do not claim tests passed unless you ran them.
 - If no runnable verification exists yet, say that directly.
 - When executable behavior is added, include the narrowest relevant verification with the change.
+- Once the toolchain exists, required verification should usually mean changed-area tests plus standard fast repo checks such as lint and typecheck.
 
 ## ADR Rule
 
