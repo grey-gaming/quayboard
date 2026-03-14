@@ -1,3 +1,22 @@
+import type {
+  CreateProjectRequest,
+  Job,
+  JobListResponse,
+  NextActionsResponse,
+  OnePager,
+  PhaseGatesResponse,
+  Project,
+  ProjectListResponse,
+  ProjectSetupStatus,
+  QuestionnaireAnswers,
+  SecretMetadata,
+  SystemReadiness,
+  UpdateQuestionnaireAnswersRequest,
+  UpsertUseCaseRequest,
+  UseCase,
+  UseCaseListResponse,
+} from "@quayboard/shared";
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -44,4 +63,170 @@ export const apiRequest = async <T>(path: string, init?: RequestInit) => {
   });
 
   return parseResponse<T>(response);
+};
+
+export const api = {
+  approveOnePager(projectId: string) {
+    return apiRequest<Project>(`/api/projects/${projectId}/complete-one-pager-onboarding`, {
+      method: "POST",
+    });
+  },
+  approveUserFlows(projectId: string, acceptedWarnings: string[]) {
+    return apiRequest<UseCaseListResponse>(`/api/projects/${projectId}/user-flows/approve`, {
+      method: "POST",
+      body: JSON.stringify({ acceptedWarnings }),
+    });
+  },
+  createProject(payload: CreateProjectRequest) {
+    return apiRequest<Project>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createSecret(projectId: string, payload: { type: string; value: string }) {
+    return apiRequest<SecretMetadata>(`/api/projects/${projectId}/secrets`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  createUserFlow(projectId: string, payload: UpsertUseCaseRequest) {
+    return apiRequest<UseCase>(`/api/projects/${projectId}/user-flows`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  deleteUserFlow(userFlowId: string) {
+    return apiRequest<void>(`/api/user-flows/${userFlowId}`, {
+      method: "DELETE",
+    });
+  },
+  generateDescription(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/generate-description`, {
+      method: "POST",
+    });
+  },
+  generateOnePager(projectId: string, mode: "generate" | "regenerate" | "improve") {
+    return apiRequest<Job>(`/api/projects/${projectId}/one-pager`, {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
+  },
+  generateUserFlows(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/user-flows/generate`, {
+      method: "POST",
+    });
+  },
+  getJobs(projectId?: string) {
+    return apiRequest<JobListResponse>(
+      projectId ? `/api/projects/${projectId}/jobs` : "/api/jobs",
+    );
+  },
+  getNextActions(projectId: string) {
+    return apiRequest<NextActionsResponse>(`/api/projects/${projectId}/next-actions`);
+  },
+  getOnePager(projectId: string) {
+    return apiRequest<{ onePager: OnePager | null }>(`/api/projects/${projectId}/one-pager`);
+  },
+  getOnePagerVersions(projectId: string) {
+    return apiRequest<{ versions: OnePager[] }>(
+      `/api/projects/${projectId}/one-pager/versions`,
+    );
+  },
+  getPhaseGates(projectId: string) {
+    return apiRequest<PhaseGatesResponse>(`/api/projects/${projectId}/phase-gates`);
+  },
+  getProject(projectId: string) {
+    return apiRequest<Project>(`/api/projects/${projectId}`);
+  },
+  getQuestionnaireAnswers(projectId: string) {
+    return apiRequest<QuestionnaireAnswers>(
+      `/api/projects/${projectId}/questionnaire-answers`,
+    );
+  },
+  getSetupStatus(projectId: string) {
+    return apiRequest<ProjectSetupStatus>(`/api/projects/${projectId}/setup-status`);
+  },
+  getSystemReadiness() {
+    return apiRequest<SystemReadiness>("/api/system/readiness");
+  },
+  getUserFlows(projectId: string) {
+    return apiRequest<UseCaseListResponse>(`/api/projects/${projectId}/user-flows`);
+  },
+  listProjects() {
+    return apiRequest<ProjectListResponse>("/api/projects");
+  },
+  patchQuestionnaireAnswers(
+    projectId: string,
+    payload: UpdateQuestionnaireAnswersRequest,
+  ) {
+    return apiRequest<QuestionnaireAnswers>(
+      `/api/projects/${projectId}/questionnaire-answers`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+  restoreOnePagerVersion(projectId: string, version: number) {
+    return apiRequest<OnePager>(`/api/projects/${projectId}/one-pager/versions/${version}/restore`, {
+      method: "POST",
+    });
+  },
+  runUserFlowDeduplication(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/user-flows/deduplicate`, {
+      method: "POST",
+    });
+  },
+  updateProject(
+    projectId: string,
+    payload: {
+      description?: string | null;
+      evidencePolicy?: {
+        requireArchitectureDocs: boolean;
+        requireUserDocs: boolean;
+      };
+      llmConfig?: {
+        model: string;
+        provider: "ollama" | "openai";
+      };
+      name?: string;
+      repoConfig?: {
+        owner: string;
+        provider: "github";
+        repo: string;
+      };
+      sandboxConfig?: {
+        allowlist: string[];
+        cpuLimit: number;
+        egressPolicy: "allowlisted" | "locked";
+        memoryMb: number;
+        timeoutSeconds: number;
+      };
+      toolPolicyPreview?: {
+        budgetCapUsd: number | null;
+        enabledGroups: string[];
+      };
+    },
+  ) {
+    return apiRequest<Project>(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateUserFlow(userFlowId: string, payload: UpsertUseCaseRequest) {
+    return apiRequest<UseCase>(`/api/user-flows/${userFlowId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  verifyLlm(projectId: string) {
+    return apiRequest<ProjectSetupStatus>(`/api/projects/${projectId}/verify-llm`, {
+      method: "POST",
+    });
+  },
+  verifySandbox(projectId: string) {
+    return apiRequest<ProjectSetupStatus>(`/api/projects/${projectId}/verify-sandbox`, {
+      method: "POST",
+    });
+  },
 };

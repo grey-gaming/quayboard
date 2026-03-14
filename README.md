@@ -4,16 +4,14 @@ Quayboard is a web control plane for managing software projects and orchestratin
 
 ## Status
 
-The repository now contains the M1 authenticated foundation:
+The repository now contains the M2 scratch-path planning workflow:
 
-- Fastify API with:
-  `GET /healthz`, cookie-session auth, protected `/api/*`, authenticated SSE, and project-scoped secrets
-- Drizzle/Postgres foundation schema and initial SQL migration
-- Minimal Vite + React auth UI at `/login`, `/register`, and an authenticated placeholder at `/`
-- Shared schemas for auth, users, sessions, projects, secrets, settings, and SSE events
-- Typed `501` route scaffolds for later milestone API areas
+- Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, user-flow APIs, and project/job status endpoints
+- Drizzle/Postgres schema and migrations covering the M1 foundation plus M2 planning tables
+- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, and user flows
+- Shared schemas for planning-phase resources across API and web
 
-The active implementation target is now M1: Database, API Skeleton, and Auth Foundation. M2 product workflows are not implemented yet.
+The active implementation target is now M2: Project Creation, Setup, Overview Document, and User Flows.
 
 ## Prerequisites
 
@@ -36,6 +34,7 @@ The active implementation target is now M1: Database, API Skeleton, and Auth Fou
    ```
 
    `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. The example value is a local placeholder and should be replaced for real use.
+   `ARTIFACT_STORAGE_PATH` should point to a writable directory.
 
 3. Start Postgres:
 
@@ -49,7 +48,13 @@ The active implementation target is now M1: Database, API Skeleton, and Auth Fou
    pnpm db:migrate
    ```
 
-5. Start the API and web apps:
+5. Ensure the artifact storage directory exists:
+
+   ```bash
+   mkdir -p /tmp/quayboard-artifacts
+   ```
+
+6. Start the API and web apps:
 
    ```bash
    pnpm dev
@@ -79,13 +84,17 @@ Documented runtime variables live in `.env.example`:
 - `API_PORT` for the Fastify server port
 - `CORS_ORIGIN` for the allowed frontend origin
 - `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
+- `ARTIFACT_STORAGE_PATH` for readiness checks and future artifact persistence
+- `DOCKER_HOST` to target a non-default Docker daemon for sandbox verification
+- `OLLAMA_HOST` for the Ollama adapter base URL
+- `OPENAI_BASE_URL` for the OpenAI-compatible adapter base URL; the API key itself is stored per project through the UI
 
 ## Repository Layout
 
 ```text
 apps/
-  api/      Fastify service, auth/session middleware, SSE, secrets, migrations, API tests
-  web/      Vite + React auth shell, DS primitives, Playwright smoke test
+  api/      Fastify service, auth/session middleware, SSE, setup/planning APIs, migrations, API tests
+  web/      Vite + React planning UI, DS primitives, Playwright smoke test
   mcp/      Buildable placeholder package for the future MCP server
 packages/
   shared/   Shared schemas and types used across the workspace

@@ -10,9 +10,16 @@ import {
 
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
+import { ImportStubPage } from "./pages/ImportStubPage.js";
+import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
+import { MissionControlPage } from "./pages/MissionControlPage.js";
+import { NewProjectPage } from "./pages/NewProjectPage.js";
+import { OnePagerIntakePage } from "./pages/OnePagerIntakePage.js";
+import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
+import { UserFlowsPage } from "./pages/UserFlowsPage.js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,6 +64,34 @@ export const appRouter = createBrowserRouter([
       {
         path: "/",
         element: <ProtectedHomePage />,
+      },
+      {
+        path: "/setup/instance",
+        element: <InstanceReadinessPage />,
+      },
+      {
+        path: "/projects/new",
+        element: <NewProjectPage />,
+      },
+      {
+        path: "/projects/:id",
+        element: <MissionControlPage />,
+      },
+      {
+        path: "/projects/:id/setup",
+        element: <ProjectSetupPage />,
+      },
+      {
+        path: "/projects/:id/one-pager",
+        element: <OnePagerIntakePage />,
+      },
+      {
+        path: "/projects/:id/user-flows",
+        element: <UserFlowsPage />,
+      },
+      {
+        path: "/projects/:id/import",
+        element: <ImportStubPage />,
       },
     ],
   },

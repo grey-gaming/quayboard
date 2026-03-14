@@ -9,7 +9,7 @@ import { buildServer } from "../../src/server.js";
 const databaseUrl = readDatabaseUrl();
 const secretsKey = Buffer.alloc(32, 3).toString("base64url");
 
-describe("M1 API integration", () => {
+describe("API integration", () => {
   const sql = postgres(databaseUrl, { max: 1 });
   const appServices = createAppServices(databaseUrl, secretsKey);
   let server: Awaited<ReturnType<typeof buildServer>>;
@@ -35,7 +35,7 @@ describe("M1 API integration", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      'TRUNCATE TABLE "encrypted_secrets", "llm_runs", "jobs", "repos", "project_counters", "projects", "sessions", "settings", "users" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "encrypted_secrets", "llm_runs", "jobs", "use_cases", "questions", "one_pagers", "questionnaire_answers", "repos", "project_counters", "projects", "sessions", "settings", "users" RESTART IDENTITY CASCADE',
     );
   });
 
@@ -97,7 +97,7 @@ describe("M1 API integration", () => {
     expect(afterLogoutResponse.statusCode).toBe(401);
   });
 
-  it("protects /api routes, supports project creation, secrets metadata, and typed stubs", async () => {
+  it("supports the M2 scratch-path foundations", async () => {
     const unauthorizedResponse = await server.inject({
       method: "GET",
       url: "/api/events",
@@ -200,19 +200,31 @@ describe("M1 API integration", () => {
       "event: connected",
     );
 
-    const stubResponse = await server.inject({
+    const questionnaireResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/questionnaire-answers`,
+      cookies: { qb_session: cookie!.value },
+      payload: {
+        answers: {
+          q1_name_and_description: "A planning control plane for software projects.",
+          q2_who_is_it_for: "Engineering leads and delivery managers.",
+        },
+      },
+    });
+
+    expect(questionnaireResponse.statusCode).toBe(200);
+    expect(questionnaireResponse.json().answers.q1_name_and_description).toContain(
+      "planning control plane",
+    );
+
+    const emptyOnePagerResponse = await server.inject({
       method: "GET",
       url: `/api/projects/${projectId}/one-pager`,
       cookies: { qb_session: cookie!.value },
     });
 
-    expect(stubResponse.statusCode).toBe(501);
-    expect(stubResponse.json()).toEqual({
-      error: {
-        code: "not_implemented",
-        message: "This endpoint belongs to a later milestone.",
-      },
-    });
+    expect(emptyOnePagerResponse.statusCode).toBe(200);
+    expect(emptyOnePagerResponse.json()).toEqual({ onePager: null });
   });
 
   it("rejects whitespace-only display names and project names before persistence", async () => {

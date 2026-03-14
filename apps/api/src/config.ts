@@ -9,6 +9,10 @@ const runtimeEnvSchema = z.object({
   CORS_ORIGIN: z.string().url().default("http://localhost:3000"),
   DATABASE_URL: z.string().url().optional(),
   SECRETS_ENCRYPTION_KEY: z.string().optional(),
+  ARTIFACT_STORAGE_PATH: z.string().default("/tmp/quayboard-artifacts"),
+  DOCKER_HOST: z.string().optional(),
+  OLLAMA_HOST: z.string().url().default("http://127.0.0.1:11434"),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
 });
 
 type RuntimeEnv = z.infer<typeof runtimeEnvSchema>;
@@ -48,4 +52,15 @@ export const readSecretsEncryptionKey = () => {
     env.SECRETS_ENCRYPTION_KEY,
     "SECRETS_ENCRYPTION_KEY is required for secrets access.",
   );
+};
+
+export const readAppConfig = () => {
+  const env = parseEnv();
+
+  return {
+    artifactStoragePath: env.ARTIFACT_STORAGE_PATH,
+    dockerHost: env.DOCKER_HOST ?? null,
+    ollamaHost: env.OLLAMA_HOST,
+    openAiBaseUrl: env.OPENAI_BASE_URL,
+  };
 };

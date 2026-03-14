@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
-import type { CreateProjectRequest, Project } from "@quayboard/shared";
+import type { CreateProjectRequest, Project, ProjectState } from "@quayboard/shared";
 
 import type { AppDatabase } from "../db/client.js";
 import { projectCountersTable, projectsTable } from "../db/schema.js";
@@ -16,6 +16,15 @@ const toProject = (record: typeof projectsTable.$inferSelect): Project => ({
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
 });
+
+type ProjectPatch = {
+  description?: string | null;
+  name?: string;
+  onePagerApprovedAt?: Date | null;
+  state?: ProjectState;
+  userFlowsApprovalSnapshot?: unknown;
+  userFlowsApprovedAt?: Date | null;
+};
 
 export const createProjectService = (db: AppDatabase) => ({
   async createProject(ownerUserId: string, input: CreateProjectRequest) {
@@ -65,6 +74,35 @@ export const createProjectService = (db: AppDatabase) => ({
     }
 
     return toProject(project);
+  },
+
+  async updateOwnedProject(ownerUserId: string, projectId: string, patch: ProjectPatch) {
+    await this.getOwnedProject(ownerUserId, projectId);
+    const [project] = await db
+      .update(projectsTable)
+      .set({
+        ...patch,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, projectId))
+      .returning();
+
+    return toProject(project);
+  },
+
+  async getOwnedProjectRecord(ownerUserId: string, projectId: string) {
+    const project = await db.query.projectsTable.findFirst({
+      where: and(
+        eq(projectsTable.ownerUserId, ownerUserId),
+        eq(projectsTable.id, projectId),
+      ),
+    });
+
+    if (!project) {
+      throw new HttpError(404, "project_not_found", "Project not found.");
+    }
+
+    return project;
   },
 });
 

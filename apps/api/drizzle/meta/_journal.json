@@ -15,6 +15,13 @@
       "when": 1760000001000,
       "tag": "0001_secret-type-unique",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1760000002000,
+      "tag": "0002_m2_project-setup-and-planning",
+      "breakpoints": true
     }
   ]
 }
