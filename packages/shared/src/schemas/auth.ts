@@ -10,7 +10,7 @@ export const authCredentialsSchema = z.object({
 export type AuthCredentials = z.infer<typeof authCredentialsSchema>;
 
 export const registerRequestSchema = authCredentialsSchema.extend({
-  displayName: z.string().min(1).max(120),
+  displayName: z.string().trim().min(1).max(120),
 });
 
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;

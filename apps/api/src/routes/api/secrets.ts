@@ -65,6 +65,7 @@ const updateSecretBodyJsonSchema = {
     value: { type: "string", minLength: 1 },
     revoke: { type: "boolean" },
   },
+  anyOf: [{ required: ["value"] }, { properties: { revoke: { const: true } } }],
   additionalProperties: false,
 } as const;
 

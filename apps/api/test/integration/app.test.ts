@@ -145,6 +145,19 @@ describe("M1 API integration", () => {
     expect(secretResponse.statusCode).toBe(200);
     expect(secretResponse.json().maskedIdentifier).not.toContain("ghp_1234567890abcdef");
 
+    const shortSecretResponse = await server.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/secrets`,
+      cookies: { qb_session: cookie!.value },
+      payload: {
+        type: "llm_api_key",
+        value: "abc",
+      },
+    });
+
+    expect(shortSecretResponse.statusCode).toBe(200);
+    expect(shortSecretResponse.json().maskedIdentifier).not.toContain("abc");
+
     const secretListResponse = await server.inject({
       method: "GET",
       url: `/api/projects/${projectId}/secrets`,
@@ -152,8 +165,19 @@ describe("M1 API integration", () => {
     });
 
     expect(secretListResponse.statusCode).toBe(200);
-    expect(secretListResponse.json().secrets).toHaveLength(1);
+    expect(secretListResponse.json().secrets).toHaveLength(2);
     expect(JSON.stringify(secretListResponse.json())).not.toContain("ghp_1234567890abcdef");
+    expect(JSON.stringify(secretListResponse.json())).not.toContain('"abc"');
+
+    const firstSecretId = secretListResponse.json().secrets[0].id as string;
+    const invalidSecretUpdateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/secrets/${firstSecretId}`,
+      cookies: { qb_session: cookie!.value },
+      payload: {},
+    });
+
+    expect(invalidSecretUpdateResponse.statusCode).toBe(400);
 
     const controller = new AbortController();
     const eventStreamResponse = await fetch(`${baseUrl}/api/events`, {
@@ -189,5 +213,52 @@ describe("M1 API integration", () => {
         message: "This endpoint belongs to a later milestone.",
       },
     });
+  });
+
+  it("rejects whitespace-only display names and project names before persistence", async () => {
+    const invalidRegisterResponse = await server.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        displayName: "   ",
+        email: "trim-test@example.com",
+        password: "correct-horse-battery",
+      },
+    });
+
+    expect(invalidRegisterResponse.statusCode).toBe(400);
+
+    const validRegisterResponse = await server.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        displayName: "Valid User",
+        email: "trim-test@example.com",
+        password: "correct-horse-battery",
+      },
+    });
+
+    expect(validRegisterResponse.statusCode).toBe(200);
+    const cookie = validRegisterResponse.cookies.find(({ name }) => name === "qb_session");
+
+    const invalidProjectResponse = await server.inject({
+      method: "POST",
+      url: "/api/projects",
+      cookies: { qb_session: cookie!.value },
+      payload: {
+        name: "   ",
+      },
+    });
+
+    expect(invalidProjectResponse.statusCode).toBe(400);
+
+    const listProjectsResponse = await server.inject({
+      method: "GET",
+      url: "/api/projects",
+      cookies: { qb_session: cookie!.value },
+    });
+
+    expect(listProjectsResponse.statusCode).toBe(200);
+    expect(listProjectsResponse.json().projects).toHaveLength(0);
   });
 });

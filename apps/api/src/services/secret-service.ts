@@ -13,8 +13,12 @@ import type { SecretsCrypto } from "./secrets-crypto.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
 
-const maskSecret = (value: string) =>
-  `${"*".repeat(Math.max(4, value.length - 4))}${value.slice(-4)}`;
+const maskSecret = (value: string) => {
+  const visibleChars = value.length <= 4 ? 0 : 4;
+  const suffix = visibleChars === 0 ? "" : value.slice(-visibleChars);
+
+  return `${"*".repeat(Math.max(8, value.length))}${suffix}`;
+};
 
 const toSecretMetadata = (
   secret: typeof encryptedSecretsTable.$inferSelect,

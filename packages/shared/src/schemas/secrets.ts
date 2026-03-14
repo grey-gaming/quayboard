@@ -33,7 +33,7 @@ export const updateSecretRequestSchema = z
   })
   .refine((value) => value.value !== undefined || value.revoke === true, {
     message: "Either value or revoke=true is required.",
-    path: ["value"],
+    path: ["revoke"],
   });
 
 export type UpdateSecretRequest = z.infer<typeof updateSecretRequestSchema>;

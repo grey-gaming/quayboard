@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, RouteShorthandOptions } from "fastify";
+import { ZodError } from "zod";
 
 import { apiErrorResponseSchema } from "@quayboard/shared";
 
@@ -42,6 +43,15 @@ export const sendApiError = (
   );
 
 export const handleRouteError = (reply: FastifyReply, error: unknown) => {
+  if (error instanceof ZodError) {
+    return sendApiError(
+      reply,
+      400,
+      "invalid_request",
+      error.issues[0]?.message ?? "Request validation failed.",
+    );
+  }
+
   if (isHttpError(error)) {
     return sendApiError(reply, error.statusCode, error.code, error.message);
   }
