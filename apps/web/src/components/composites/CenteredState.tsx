@@ -12,8 +12,11 @@ export const CenteredState = ({
   title: string;
 }) => (
   <div className="flex min-h-[50vh] items-center justify-center">
-    <Card className="max-w-lg text-center">
-      <h2 className="font-display text-2xl">{title}</h2>
+    <Card className="max-w-xl text-center" surface="rail">
+      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+        Status
+      </p>
+      <h2 className="mt-2 font-display text-2xl tracking-tight">{title}</h2>
       <p className="mt-3 text-sm text-muted-foreground">{body}</p>
       {action ? <div className="mt-6">{action}</div> : null}
     </Card>

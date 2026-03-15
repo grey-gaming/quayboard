@@ -6,6 +6,7 @@ import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { Alert } from "../components/ui/Alert.js";
+import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Label } from "../components/ui/Label.js";
@@ -58,104 +59,146 @@ export const OnePagerIntakePage = () => {
         eyebrow="Overview"
         title="Questionnaire And Overview Document"
         summary="Capture project intent, then queue description and overview generation jobs against the configured provider."
+        meta={
+          <>
+            <Badge tone="info">14-question intake</Badge>
+            <Badge tone={onePagerQuery.data?.onePager ? "success" : "warning"}>
+              {onePagerQuery.data?.onePager ? "overview present" : "overview pending"}
+            </Badge>
+          </>
+        }
       />
-      <Card>
-        <form
-          className="grid gap-5"
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
+        <div className="grid gap-5">
+          <Card surface="rail">
+            <form
+              className="grid gap-5"
           onSubmit={handleSubmit(async (values) => {
             await updateQuestionnaireMutation.mutateAsync(values);
           })}
-        >
-          {questionnaireDefinition.map((question) => (
-            <div key={question.key} className="space-y-2">
-              <Label htmlFor={question.key}>{question.title}</Label>
-              <Textarea
-                id={question.key}
-                placeholder={question.prompt}
-                {...register(question.key)}
-              />
-              {question.helpText ? (
-                <p className="text-xs text-muted-foreground">{question.helpText}</p>
-              ) : null}
-            </div>
-          ))}
-          {updateQuestionnaireMutation.error ? (
-            <Alert tone="error">{updateQuestionnaireMutation.error.message}</Alert>
-          ) : null}
-          <div className="flex flex-wrap gap-3">
-            <Button disabled={updateQuestionnaireMutation.isPending} type="submit">
-              Save Answers
-            </Button>
-            <Button
-              disabled={generateDescriptionMutation.isPending}
-              onClick={() => {
-                void generateDescriptionMutation.mutateAsync();
-              }}
-              variant="secondary"
             >
-              Generate Description
-            </Button>
-            <Button
-              disabled={generateOnePagerMutation.isPending}
-              onClick={() => {
-                void generateOnePagerMutation.mutateAsync();
-              }}
-              variant="secondary"
-            >
-              Generate Overview
-            </Button>
-            <Button
-              disabled={!onePagerQuery.data?.onePager || approveOnePagerMutation.isPending}
-              onClick={() => {
-                void approveOnePagerMutation.mutateAsync();
-              }}
-              variant="secondary"
-            >
-              Approve Overview
-            </Button>
-          </div>
-        </form>
-      </Card>
-      <Card>
-        <p className="font-semibold">Current Overview</p>
-        <pre className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">
-          {onePagerQuery.data?.onePager?.markdown ?? "No overview generated yet."}
-        </pre>
-      </Card>
-      <Card>
-        <p className="font-semibold">Overview Versions</p>
-        <div className="mt-4 grid gap-3">
-          {versionsQuery.data?.versions.map((version) => (
-            <div key={version.id} className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium">
-                  Version {version.version} {version.isCanonical ? "(canonical)" : ""}
+              <div className="grid gap-2 border-b border-border/70 pb-4">
+                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Intake Questionnaire
                 </p>
-                <p className="text-xs text-muted-foreground">{version.createdAt}</p>
+                <p className="text-sm text-muted-foreground">
+                  Capture product intent before generating the canonical overview document.
+                </p>
               </div>
-              <Button
-                disabled={restoreOnePagerMutation.isPending}
-                onClick={() => {
-                  void restoreOnePagerMutation.mutateAsync(version.version);
-                }}
-                variant="secondary"
-              >
-                Restore
-              </Button>
+              {questionnaireDefinition.map((question) => (
+                <div key={question.key} className="space-y-2">
+                  <Label htmlFor={question.key}>{question.title}</Label>
+                  <Textarea
+                    id={question.key}
+                    placeholder={question.prompt}
+                    {...register(question.key)}
+                  />
+                  {question.helpText ? (
+                    <p className="text-xs text-muted-foreground">{question.helpText}</p>
+                  ) : null}
+                </div>
+              ))}
+              {updateQuestionnaireMutation.error ? (
+                <Alert tone="error">{updateQuestionnaireMutation.error.message}</Alert>
+              ) : null}
+              <div className="flex flex-wrap gap-3 border-t border-border/70 pt-4">
+                <Button disabled={updateQuestionnaireMutation.isPending} type="submit">
+                  Save Answers
+                </Button>
+                <Button
+                  disabled={generateDescriptionMutation.isPending}
+                  onClick={() => {
+                    void generateDescriptionMutation.mutateAsync();
+                  }}
+                  variant="secondary"
+                >
+                  Generate Description
+                </Button>
+                <Button
+                  disabled={generateOnePagerMutation.isPending}
+                  onClick={() => {
+                    void generateOnePagerMutation.mutateAsync();
+                  }}
+                  variant="secondary"
+                >
+                  Generate Overview
+                </Button>
+                <Button
+                  disabled={!onePagerQuery.data?.onePager || approveOnePagerMutation.isPending}
+                  onClick={() => {
+                    void approveOnePagerMutation.mutateAsync();
+                  }}
+                  variant="secondary"
+                >
+                  Approve Overview
+                </Button>
+              </div>
+            </form>
+          </Card>
+          <Card surface="panel">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold tracking-tight">Current Overview</p>
+              <Badge tone={onePagerQuery.data?.onePager ? "success" : "warning"}>
+                {onePagerQuery.data?.onePager ? "generated" : "empty"}
+              </Badge>
             </div>
-          ))}
+            <pre className="mt-4 whitespace-pre-wrap rounded-md border border-border/80 bg-panel/76 p-4 text-sm text-muted-foreground">
+              {onePagerQuery.data?.onePager?.markdown ?? "No overview generated yet."}
+            </pre>
+          </Card>
         </div>
-      </Card>
-      <Card>
-        <p className="font-semibold">Background Jobs</p>
-        <div className="mt-4 grid gap-2">
-          {jobsQuery.data?.jobs.slice(0, 6).map((job) => (
-            <div key={job.id} className="text-sm text-muted-foreground">
-              {job.type}: {job.status}
+        <div className="grid gap-5">
+          <Card surface="rail">
+            <p className="font-semibold tracking-tight">Overview Versions</p>
+            <div className="mt-4 grid gap-3">
+              {versionsQuery.data?.versions.map((version) => (
+                <div key={version.id} className="rounded-md border border-border/80 bg-panel/76 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Version {version.version} {version.isCanonical ? "(canonical)" : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{version.createdAt}</p>
+                    </div>
+                    <Button
+                      disabled={restoreOnePagerMutation.isPending}
+                      onClick={() => {
+                        void restoreOnePagerMutation.mutateAsync(version.version);
+                      }}
+                      variant="ghost"
+                    >
+                      Restore
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </Card>
+          <Card surface="panel">
+            <p className="font-semibold tracking-tight">Background Jobs</p>
+            <div className="mt-4 grid gap-3">
+              {jobsQuery.data?.jobs.slice(0, 6).map((job) => (
+                <div key={job.id} className="rounded-md border border-border/80 bg-panel/76 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium">{job.type}</p>
+                    <Badge
+                      tone={
+                        job.status === "succeeded"
+                          ? "success"
+                          : job.status === "failed" || job.status === "cancelled"
+                            ? "danger"
+                            : "info"
+                      }
+                    >
+                      {job.status}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
-      </Card>
+      </div>
     </AppFrame>
   );
 };

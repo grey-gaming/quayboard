@@ -4,7 +4,10 @@ type LabelProps = PropsWithChildren<LabelHTMLAttributes<HTMLLabelElement>>;
 
 export const Label = ({ children, className = "", ...props }: LabelProps) => (
   <label
-    className={["text-sm font-medium text-foreground", className].join(" ")}
+    className={[
+      "font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground",
+      className,
+    ].join(" ")}
     {...props}
   >
     {children}

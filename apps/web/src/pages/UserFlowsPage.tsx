@@ -6,6 +6,7 @@ import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { Alert } from "../components/ui/Alert.js";
+import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Input } from "../components/ui/Input.js";
@@ -70,68 +71,56 @@ export const UserFlowsPage = () => {
         eyebrow="User Flows"
         title="User Flows"
         summary="Generate, edit, and approve the user-facing journeys that become the planning contract for later stages."
+        meta={
+          <>
+            <Badge tone="info">planning contract</Badge>
+            <Badge tone="neutral">
+              {userFlowsQuery.data?.userFlows.length ?? 0} flows
+            </Badge>
+          </>
+        }
       />
-      <Card>
-        <div className="flex flex-wrap gap-3">
-          <Button
-            disabled={generateUserFlowsMutation.isPending}
-            onClick={() => {
-              void generateUserFlowsMutation.mutateAsync();
-            }}
-          >
-            Generate Flows
-          </Button>
-          <Button
-            disabled={dedupeUserFlowsMutation.isPending}
-            onClick={() => {
-              void dedupeUserFlowsMutation.mutateAsync();
-            }}
-            variant="secondary"
-          >
-            Deduplicate
-          </Button>
-          <Button
-            disabled={approveUserFlowsMutation.isPending}
-            onClick={() => {
-              void approveUserFlowsMutation.mutateAsync(acceptedWarnings);
-            }}
-            variant="secondary"
-          >
-            Approve User Flows
-          </Button>
-        </div>
-        {approveUserFlowsMutation.error ? (
-          <Alert tone="error" className="mt-4">
-            {approveUserFlowsMutation.error.message}
-          </Alert>
-        ) : null}
-      </Card>
-      <Card>
-        <p className="font-semibold">Coverage Warnings</p>
-        <div className="mt-4 grid gap-2">
-          {userFlowsQuery.data?.coverage.warnings.map((warning) => (
-            <div key={warning} className="flex items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">{warning}</p>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
+        <div className="grid gap-5">
+          <Card surface="rail">
+            <div className="flex flex-wrap gap-3">
               <Button
+                disabled={generateUserFlowsMutation.isPending}
                 onClick={() => {
-                  setAcceptedWarnings((current) =>
-                    current.includes(warning)
-                      ? current.filter((item) => item !== warning)
-                      : [...current, warning],
-                  );
+                  void generateUserFlowsMutation.mutateAsync();
+                }}
+              >
+                Generate Flows
+              </Button>
+              <Button
+                disabled={dedupeUserFlowsMutation.isPending}
+                onClick={() => {
+                  void dedupeUserFlowsMutation.mutateAsync();
                 }}
                 variant="secondary"
               >
-                {acceptedWarnings.includes(warning) ? "Accepted" : "Accept Warning"}
+                Deduplicate
+              </Button>
+              <Button
+                disabled={approveUserFlowsMutation.isPending}
+                onClick={() => {
+                  void approveUserFlowsMutation.mutateAsync(acceptedWarnings);
+                }}
+                variant="secondary"
+              >
+                Approve User Flows
               </Button>
             </div>
-          ))}
-        </div>
-      </Card>
-      <Card>
-        <p className="font-semibold">Add User Flow</p>
-        <form
-          className="mt-4 grid gap-4"
+            {approveUserFlowsMutation.error ? (
+              <Alert tone="error" className="mt-4">
+                {approveUserFlowsMutation.error.message}
+              </Alert>
+            ) : null}
+          </Card>
+          <Card surface="panel">
+            <p className="font-semibold tracking-tight">Add User Flow</p>
+            <form
+              className="mt-4 grid gap-4"
           onSubmit={handleSubmit(async (values) => {
             await createUserFlowMutation.mutateAsync({
               acceptanceCriteria: values.acceptanceCriteria
@@ -155,16 +144,16 @@ export const UserFlowsPage = () => {
             });
             reset();
           })}
-        >
-          <div className="space-y-2">
+            >
+              <div className="space-y-2">
             <Label htmlFor="flow-title">Title</Label>
             <Input id="flow-title" {...register("title")} />
-          </div>
-          <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
             <Label htmlFor="flow-story">User story</Label>
             <Textarea id="flow-story" {...register("userStory")} />
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="flow-entry">Entry point</Label>
               <Input id="flow-entry" {...register("entryPoint")} />
@@ -173,47 +162,72 @@ export const UserFlowsPage = () => {
               <Label htmlFor="flow-end">End state</Label>
               <Input id="flow-end" {...register("endState")} />
             </div>
-          </div>
-          <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
             <Label htmlFor="flow-steps">Flow steps</Label>
             <Textarea id="flow-steps" {...register("flowSteps")} />
-          </div>
-          <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
             <Label htmlFor="coverage-tags">Coverage tags</Label>
             <Input id="coverage-tags" {...register("coverageTags")} />
-          </div>
-          <div className="space-y-2">
+              </div>
+              <div className="space-y-2">
             <Label htmlFor="acceptance-criteria">Acceptance criteria</Label>
             <Textarea id="acceptance-criteria" {...register("acceptanceCriteria")} />
-          </div>
-          {createUserFlowMutation.error ? (
-            <Alert tone="error">{createUserFlowMutation.error.message}</Alert>
-          ) : null}
-          <Button disabled={createUserFlowMutation.isPending} type="submit">
-            Save User Flow
-          </Button>
-        </form>
-      </Card>
-      <div className="grid gap-4">
-        {userFlowsQuery.data?.userFlows.map((flow) => (
-          <Card key={flow.id}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-semibold">{flow.title}</p>
-                <p className="mt-2 text-sm text-muted-foreground">{flow.userStory}</p>
               </div>
-              <Button
-                disabled={deleteUserFlowMutation.isPending}
-                onClick={() => {
-                  void deleteUserFlowMutation.mutateAsync(flow.id);
-                }}
-                variant="secondary"
-              >
-                Archive
+              {createUserFlowMutation.error ? (
+                <Alert tone="error">{createUserFlowMutation.error.message}</Alert>
+              ) : null}
+              <Button disabled={createUserFlowMutation.isPending} type="submit">
+                Save User Flow
               </Button>
-            </div>
+            </form>
           </Card>
-        ))}
+          <div className="grid gap-4">
+            {userFlowsQuery.data?.userFlows.map((flow) => (
+              <Card key={flow.id} surface="panel">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold tracking-tight">{flow.title}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{flow.userStory}</p>
+                  </div>
+                  <Button
+                    disabled={deleteUserFlowMutation.isPending}
+                    onClick={() => {
+                      void deleteUserFlowMutation.mutateAsync(flow.id);
+                    }}
+                    variant="ghost"
+                  >
+                    Archive
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+        <Card surface="rail" className="h-fit">
+          <p className="font-semibold tracking-tight">Coverage Warnings</p>
+          <div className="mt-4 grid gap-3">
+            {userFlowsQuery.data?.coverage.warnings.map((warning) => (
+              <div key={warning} className="rounded-md border border-border/80 bg-panel/76 p-3">
+                <p className="text-sm text-muted-foreground">{warning}</p>
+                <Button
+                  className="mt-3 w-full"
+                  onClick={() => {
+                    setAcceptedWarnings((current) =>
+                      current.includes(warning)
+                        ? current.filter((item) => item !== warning)
+                        : [...current, warning],
+                    );
+                  }}
+                  variant={acceptedWarnings.includes(warning) ? "primary" : "ghost"}
+                >
+                  {acceptedWarnings.includes(warning) ? "Accepted" : "Accept Warning"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </AppFrame>
   );

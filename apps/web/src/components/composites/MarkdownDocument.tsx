@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 const inlineCodeClassName =
-  "rounded bg-muted px-1.5 py-0.5 font-mono text-[0.92em] text-foreground";
+  "rounded-md border border-border/70 bg-panel/80 px-1.5 py-0.5 font-mono text-[0.92em] text-foreground";
 
 const toDocsHref = (href: string) => {
   if (href === "README.md") {
@@ -27,7 +27,10 @@ export const MarkdownDocument = ({ markdown }: { markdown: string }) => (
 
         if (isInternal) {
           return (
-            <Link className="text-accent hover:underline" to={target}>
+            <Link
+              className="text-foreground underline decoration-accent/60 underline-offset-4 hover:decoration-accent"
+              to={target}
+            >
               {children}
             </Link>
           );
@@ -35,7 +38,7 @@ export const MarkdownDocument = ({ markdown }: { markdown: string }) => (
 
         return (
           <a
-            className="text-accent hover:underline"
+            className="text-foreground underline decoration-accent/60 underline-offset-4 hover:decoration-accent"
             href={target}
             rel="noreferrer"
             target="_blank"
@@ -52,7 +55,7 @@ export const MarkdownDocument = ({ markdown }: { markdown: string }) => (
       code: ({ children, className }) => {
         if (className) {
           return (
-            <code className="block overflow-x-auto rounded-xl bg-background/70 p-4 font-mono text-sm">
+            <code className="block overflow-x-auto rounded-[calc(var(--radius)+1px)] border border-border/80 bg-panel/78 p-4 font-mono text-sm">
               {children}
             </code>
           );

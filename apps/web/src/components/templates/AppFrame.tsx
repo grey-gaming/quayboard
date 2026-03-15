@@ -8,8 +8,8 @@ export const AppFrame = ({ children }: { children: ReactNode }) => {
   const logoutMutation = useLogoutMutation();
 
   return (
-    <div className="min-h-screen px-4 py-4 md:px-6">
-      <div className="mx-auto max-w-7xl space-y-4">
+    <div className="min-h-screen px-4 py-5 md:px-6 md:py-6">
+      <div className="mx-auto max-w-screen-2xl space-y-5">
         <GlobalHeader
           isSigningOut={logoutMutation.isPending}
           onSignOut={() => {
@@ -18,7 +18,7 @@ export const AppFrame = ({ children }: { children: ReactNode }) => {
           projectsHref="/"
           user={currentUserQuery.data?.user ?? null}
         />
-        <main className="space-y-4 rounded-[calc(var(--radius)+10px)] border border-border/60 bg-card/60 p-4 shadow-harbor backdrop-blur md:p-6">
+        <main className="space-y-5 rounded-[calc(var(--radius)+4px)] border border-border/90 bg-card/92 p-5 shadow-harbor md:p-6">
           {children}
         </main>
       </div>

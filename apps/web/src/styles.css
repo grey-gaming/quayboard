@@ -3,18 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 42% 9%;
-  --foreground: 210 33% 96%;
-  --card: 218 34% 13%;
-  --card-foreground: 210 33% 96%;
-  --muted: 217 24% 18%;
-  --muted-foreground: 215 18% 72%;
-  --border: 217 22% 24%;
-  --input: 217 22% 24%;
-  --ring: 188 72% 58%;
-  --accent: 188 72% 58%;
-  --accent-foreground: 220 42% 9%;
-  --radius: 1rem;
+  --background: 206 33% 6%;
+  --foreground: 210 21% 93%;
+  --card: 212 30% 11%;
+  --card-foreground: 210 21% 93%;
+  --panel: 211 28% 15%;
+  --surface: 211 26% 13%;
+  --muted: 212 25% 16%;
+  --muted-foreground: 213 15% 67%;
+  --border: 210 24% 23%;
+  --input: 210 24% 23%;
+  --ring: 211 33% 62%;
+  --accent: 211 33% 62%;
+  --accent-foreground: 210 21% 93%;
+  --success: 164 27% 42%;
+  --warning: 36 57% 49%;
+  --danger: 0 37% 55%;
+  --info: 211 33% 62%;
+  --radius: 0.75rem;
 }
 
 @layer base {
@@ -22,15 +28,33 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-background font-sans text-foreground antialiased;
     background-image:
-      radial-gradient(circle at top left, hsl(var(--ring) / 0.18), transparent 26%),
-      linear-gradient(180deg, hsl(220 42% 10%), hsl(222 37% 7%));
+      linear-gradient(hsl(var(--border) / 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.12) 1px, transparent 1px),
+      linear-gradient(
+        180deg,
+        hsl(var(--background)),
+        hsl(210 31% 7%) 38%,
+        hsl(208 32% 8%) 100%
+      );
+    background-size:
+      48px 48px,
+      48px 48px,
+      auto;
     min-height: 100vh;
   }
 
   a {
     @apply transition;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.28);
   }
 }

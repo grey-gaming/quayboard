@@ -13,8 +13,8 @@ export const DocsHomePage = () => (
       <div className="grid gap-4 md:grid-cols-2">
         {docsGuideEntries.map((guide) => (
           <Link key={guide.slug} to={`/docs/${guide.slug}`}>
-            <Card className="h-full border border-border/60 bg-background/30 hover:bg-muted/40">
-              <p className="font-semibold">{guide.title}</p>
+            <Card className="h-full hover:border-accent/35 hover:bg-panel/88" surface="panel">
+              <p className="font-semibold tracking-tight">{guide.title}</p>
               <p className="mt-2 text-sm text-muted-foreground">
                 {guide.summary ?? "Open this guide to read the full walkthrough."}
               </p>

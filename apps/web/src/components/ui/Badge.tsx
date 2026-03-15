@@ -2,24 +2,28 @@ import type { HTMLAttributes, PropsWithChildren } from "react";
 
 type BadgeProps = PropsWithChildren<
   HTMLAttributes<HTMLSpanElement> & {
-    tone?: "default" | "success" | "warning";
+    tone?: "neutral" | "info" | "success" | "warning" | "danger";
   }
 >;
 
 export const Badge = ({
   children,
   className = "",
-  tone = "default",
+  tone = "neutral",
   ...props
 }: BadgeProps) => (
   <span
     className={[
-      "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+      "inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.18em]",
       tone === "success"
-        ? "bg-emerald-500/20 text-emerald-200"
+        ? "border-success/50 bg-success/12 text-success"
         : tone === "warning"
-          ? "bg-amber-500/20 text-amber-200"
-          : "bg-muted text-foreground",
+          ? "border-warning/50 bg-warning/10 text-warning"
+          : tone === "danger"
+            ? "border-danger/50 bg-danger/10 text-danger"
+            : tone === "info"
+              ? "border-info/45 bg-info/12 text-foreground"
+              : "border-border bg-panel/80 text-muted-foreground",
       className,
     ].join(" ")}
     {...props}
