@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, RouterProvider, createMemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../src/app.js";
 import { DocsArticlePage } from "../src/pages/DocsArticlePage.js";
@@ -15,6 +15,26 @@ const assertNoRoadmapLabels = (text: string) => {
 };
 
 describe("docs pages", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: {
+            code: "unauthorized",
+            message: "Authentication is required.",
+          },
+        }),
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders the docs landing guide without authentication", () => {
     render(
       <AppProviders>
@@ -26,6 +46,8 @@ describe("docs pages", () => {
 
     expect(screen.getByRole("heading", { name: "User Documentation" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Available Guides" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/login");
+    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Authentication" })).toHaveLength(2);
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });

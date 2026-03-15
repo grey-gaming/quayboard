@@ -21,6 +21,7 @@ import { OnePagerIntakePage } from "./pages/OnePagerIntakePage.js";
 import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 import { UserFlowsPage } from "./pages/UserFlowsPage.js";
 
 const queryClient = new QueryClient({
@@ -82,6 +83,10 @@ export const appRouter = createBrowserRouter([
       {
         path: "/projects/new",
         element: <NewProjectPage />,
+      },
+      {
+        path: "/settings",
+        element: <SettingsPage />,
       },
       {
         path: "/projects/:id",
