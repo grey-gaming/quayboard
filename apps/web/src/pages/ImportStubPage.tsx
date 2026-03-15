@@ -5,7 +5,7 @@ export const ImportStubPage = () => (
   <AppFrame>
     <CenteredState
       title="Import Path Not Yet Available"
-      body="The import chooser is visible in M2, but repository import execution lands in a later milestone."
+      body="Repository import is not available yet. Start from scratch to continue with the current workflow."
     />
   </AppFrame>
 );

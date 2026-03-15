@@ -44,7 +44,7 @@ export const RegisterPage = () => {
           </p>
           <h1 className="font-display text-3xl tracking-tight">Register</h1>
           <p className="text-sm text-muted-foreground">
-            Create the local account used by the M1 auth foundation.
+            Create a local account for this Quayboard instance.
           </p>
         </div>
         <form className="space-y-4" onSubmit={onSubmit}>

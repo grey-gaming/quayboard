@@ -43,7 +43,7 @@ export const LoginPage = () => {
           </p>
           <h1 className="font-display text-3xl tracking-tight">Sign in</h1>
           <p className="text-sm text-muted-foreground">
-            Authenticate with your M1 local account to access the protected API shell.
+            Sign in with your local account to access your Quayboard workspace.
           </p>
         </div>
         <form className="space-y-4" onSubmit={onSubmit}>

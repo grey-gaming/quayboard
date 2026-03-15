@@ -1,6 +1,6 @@
 # Authentication
 
-Quayboard M1 includes a minimal local authentication flow.
+Quayboard currently supports local email/password authentication.
 
 ## Register
 
@@ -24,6 +24,6 @@ Use the `Sign out` button on the protected page. This clears the session cookie 
 
 ## Notes
 
-- M1 supports only local email/password accounts
+- Quayboard currently supports only local email/password accounts
 - OAuth, RBAC, and API keys are not available yet
-- the current protected page is intentionally minimal; later milestones add the rest of the product UI
+- the current protected page is intentionally minimal while the rest of the product UI is still being built

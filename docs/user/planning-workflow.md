@@ -18,4 +18,4 @@ Quayboard's current UI supports the scratch-path planning workflow:
 8. Approve the current overview document.
 9. Generate, edit, deduplicate, and approve user flows.
 
-The import path remains a stub in this milestone, and Quayboard does not yet execute sandbox implementation runs or create pull requests.
+The import path remains a stub for now, and Quayboard does not yet execute sandbox implementation runs or create pull requests.
