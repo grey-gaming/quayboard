@@ -227,6 +227,107 @@ describe("API integration", () => {
     expect(emptyOnePagerResponse.json()).toEqual({ onePager: null });
   });
 
+  it("reports missing secrets encryption via readiness without crashing startup", async () => {
+    const degradedServices = createAppServices(databaseUrl, null);
+    const degradedServer = await buildServer({
+      corsOrigin: "http://localhost:3000",
+      services: degradedServices.services,
+    });
+
+    try {
+      const registerResponse = await degradedServer.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Readiness User",
+          email: "readiness@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const readinessResponse = await degradedServer.inject({
+        method: "GET",
+        url: "/api/system/readiness",
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(readinessResponse.statusCode).toBe(200);
+      expect(readinessResponse.json().checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: "encryption_key",
+            status: "fail",
+            message: "Set SECRETS_ENCRYPTION_KEY before continuing.",
+          }),
+        ]),
+      );
+    } finally {
+      await degradedServer.close();
+      await degradedServices.close();
+    }
+  });
+
+  it("fails secret-backed routes explicitly when the encryption key is missing", async () => {
+    const degradedServices = createAppServices(databaseUrl, null);
+    const degradedServer = await buildServer({
+      corsOrigin: "http://localhost:3000",
+      services: degradedServices.services,
+    });
+
+    try {
+      const registerResponse = await degradedServer.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Secrets User",
+          email: "secrets@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const projectResponse = await degradedServer.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "No Key Project",
+          description: "Verifies degraded secret handling",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      const secretResponse = await degradedServer.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/secrets`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          type: "github_pat",
+          value: "ghp_1234567890abcdef",
+        },
+      });
+
+      expect(secretResponse.statusCode).toBe(503);
+      expect(secretResponse.json()).toEqual({
+        error: {
+          code: "secrets_encryption_unavailable",
+          message:
+            "Secrets encryption is unavailable. Set SECRETS_ENCRYPTION_KEY and restart the API.",
+        },
+      });
+    } finally {
+      await degradedServer.close();
+      await degradedServices.close();
+    }
+  });
+
   it("rejects whitespace-only display names and project names before persistence", async () => {
     const invalidRegisterResponse = await server.inject({
       method: "POST",

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createSecretsCrypto } from "../../src/services/secrets-crypto.js";
+import {
+  createSecretsCrypto,
+  createUnavailableSecretsCrypto,
+} from "../../src/services/secrets-crypto.js";
 
 describe("createSecretsCrypto", () => {
   it("encrypts and decrypts values", () => {
@@ -9,5 +12,16 @@ describe("createSecretsCrypto", () => {
 
     expect(encrypted).not.toContain("super-secret-value");
     expect(crypto.decrypt(encrypted)).toBe("super-secret-value");
+  });
+
+  it("fails explicitly when the encryption key is unavailable", () => {
+    const crypto = createUnavailableSecretsCrypto();
+
+    expect(() => crypto.encrypt("super-secret-value")).toThrowError(
+      /SECRETS_ENCRYPTION_KEY/,
+    );
+    expect(() => crypto.decrypt("iv.payload.tag")).toThrowError(
+      /SECRETS_ENCRYPTION_KEY/,
+    );
   });
 });

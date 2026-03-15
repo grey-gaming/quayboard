@@ -33,7 +33,7 @@ The active implementation target is now M2: Project Creation, Setup, Overview Do
    cp .env.example .env
    ```
 
-   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. The example value is a local placeholder and should be replaced for real use.
+   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. If it is missing, the API still boots so `/setup/instance` can report the failing readiness check, but secret-backed setup actions stay unavailable until the key is configured and the API is restarted.
    `ARTIFACT_STORAGE_PATH` should point to a writable directory.
 
 3. Start Postgres:

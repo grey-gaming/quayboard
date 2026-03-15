@@ -51,6 +51,7 @@ import {
   type SecretService,
 } from "./services/secret-service.js";
 import {
+  createUnavailableSecretsCrypto,
   createSecretsCrypto,
   type SecretsCrypto,
 } from "./services/secrets-crypto.js";
@@ -93,11 +94,13 @@ export type AppServices = {
 
 export const createAppServices = (
   databaseUrl: string,
-  secretsEncryptionKey: string,
+  secretsEncryptionKey: string | null,
 ) => {
   const appConfig = readAppConfig();
   const { client, db } = createPostgresDatabase(databaseUrl);
-  const secretsCrypto = createSecretsCrypto(secretsEncryptionKey);
+  const secretsCrypto = secretsEncryptionKey
+    ? createSecretsCrypto(secretsEncryptionKey)
+    : createUnavailableSecretsCrypto();
   const projectService = createProjectService(db);
   const authService = createAuthService(db);
   const secretService = createSecretService(db, secretsCrypto, projectService);

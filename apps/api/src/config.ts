@@ -48,10 +48,7 @@ export const readDatabaseUrl = () => {
 export const readSecretsEncryptionKey = () => {
   const env = parseEnv();
 
-  return requireValue(
-    env.SECRETS_ENCRYPTION_KEY,
-    "SECRETS_ENCRYPTION_KEY is required for secrets access.",
-  );
+  return env.SECRETS_ENCRYPTION_KEY ?? null;
 };
 
 export const readAppConfig = () => {

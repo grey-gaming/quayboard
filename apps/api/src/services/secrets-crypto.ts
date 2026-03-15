@@ -1,6 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
+import { HttpError } from "./http-error.js";
+
 const AES_ALGORITHM = "aes-256-gcm";
+const MISSING_KEY_MESSAGE =
+  "Secrets encryption is unavailable. Set SECRETS_ENCRYPTION_KEY and restart the API.";
 
 const decodeKey = (rawKey: string) => {
   const key = Buffer.from(rawKey, "base64url");
@@ -48,5 +52,14 @@ export const createSecretsCrypto = (rawKey: string) => {
     },
   };
 };
+
+export const createUnavailableSecretsCrypto = () => ({
+  encrypt(_value: string) {
+    throw new HttpError(503, "secrets_encryption_unavailable", MISSING_KEY_MESSAGE);
+  },
+  decrypt(_value: string) {
+    throw new HttpError(503, "secrets_encryption_unavailable", MISSING_KEY_MESSAGE);
+  },
+});
 
 export type SecretsCrypto = ReturnType<typeof createSecretsCrypto>;
