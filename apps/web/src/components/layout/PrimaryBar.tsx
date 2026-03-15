@@ -24,6 +24,9 @@ export const PrimaryBar = () => (
       <NavLink className={linkClassName} to="/projects/new">
         New Project
       </NavLink>
+      <NavLink className={linkClassName} to="/docs">
+        Docs
+      </NavLink>
     </nav>
   </aside>
 );

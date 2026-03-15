@@ -9,6 +9,11 @@ import type { ProjectService } from "../project-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
+import {
+  buildProjectDescriptionPrompt,
+  buildProjectOverviewPrompt,
+  buildUserFlowPrompt,
+} from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
 
 const parseJson = <T>(value: string): T | null => {
@@ -46,7 +51,7 @@ export const createJobRunnerService = (input: {
     switch (rawJob.type) {
       case "GenerateProjectDescription": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
-        const prompt = `Summarize this project in one concise paragraph.\n\n${JSON.stringify(questionnaire.answers, null, 2)}`;
+        const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
@@ -73,7 +78,10 @@ export const createJobRunnerService = (input: {
       case "RegenerateProjectOverview":
       case "GenerateOverviewImprovements": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
-        const prompt = `Write a project overview as JSON with keys "title" and "markdown". Project: ${project.name}\n\n${JSON.stringify(questionnaire.answers, null, 2)}`;
+        const prompt = buildProjectOverviewPrompt({
+          projectName: project.name,
+          answers: questionnaire.answers,
+        });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
@@ -110,7 +118,10 @@ export const createJobRunnerService = (input: {
 
       case "GenerateUseCases": {
         const onePager = await input.onePagerService.getCanonical(ownerUserId, rawJob.projectId);
-        const prompt = `Return a JSON array of user flows with title, userStory, entryPoint, endState, flowSteps, coverageTags, acceptanceCriteria, and doneCriteriaRefs.\n\n${onePager?.markdown ?? project.description ?? project.name}`;
+        const prompt = buildUserFlowPrompt({
+          projectName: project.name,
+          sourceMaterial: onePager?.markdown ?? project.description ?? project.name,
+        });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
           id: generateId(),

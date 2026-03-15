@@ -87,6 +87,12 @@ export const LoginPage = () => {
             Register
           </Link>
         </p>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Prefer the product guide first?{" "}
+          <Link className="text-accent hover:underline" to="/docs">
+            Browse docs
+          </Link>
+        </p>
       </Card>
     </main>
   );

@@ -99,6 +99,12 @@ export const RegisterPage = () => {
             Sign in
           </Link>
         </p>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Need a quick overview first?{" "}
+          <Link className="text-accent hover:underline" to="/docs">
+            Browse docs
+          </Link>
+        </p>
       </Card>
     </main>
   );

@@ -8,7 +8,7 @@ The repository now contains the M2 scratch-path planning workflow:
 
 - Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, user-flow APIs, and project/job status endpoints
 - Drizzle/Postgres schema and migrations covering the M1 foundation plus M2 planning tables
-- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, and user flows
+- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, user flows, and a public `/docs` guide sourced from `docs/user`
 - Shared schemas for planning-phase resources across API and web
 
 The active implementation target is now M2: Project Creation, Setup, Overview Document, and User Flows.
@@ -102,7 +102,7 @@ docs/
   adr/            Architecture decisions
   architecture/   Monorepo, toolchain, API foundation, and local-dev documentation
   planning/       Active milestone and long-range project outline
-  user/           User-facing auth and future product documentation
+  user/           User-facing guides rendered by the public `/docs` experience
 ```
 
 ## Source Of Truth
@@ -121,5 +121,5 @@ Use these documents in this order:
 - [Project outline](docs/planning/quayboard-project-outline.md)
 - [ADR guide](docs/adr/README.md)
 - [Architecture docs](docs/architecture/README.md)
-- [User docs scaffold](docs/user/README.md)
+- [User docs guide source](docs/user/README.md)
 - [Contributor guide](CONTRIBUTING.md)

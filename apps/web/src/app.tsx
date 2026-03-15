@@ -10,6 +10,8 @@ import {
 
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
+import { DocsArticlePage } from "./pages/DocsArticlePage.js";
+import { DocsHomePage } from "./pages/DocsHomePage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
 import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
@@ -50,6 +52,14 @@ const RequireAuth = () => {
 };
 
 export const appRouter = createBrowserRouter([
+  {
+    path: "/docs",
+    element: <DocsHomePage />,
+  },
+  {
+    path: "/docs/:slug",
+    element: <DocsArticlePage />,
+  },
   {
     path: "/login",
     element: <LoginPage />,

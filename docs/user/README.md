@@ -1,8 +1,8 @@
 # User Documentation
 
-This directory will hold user-facing documentation once product flows exist.
+The public docs experience at `/docs` is sourced from the markdown files in this directory.
 
 Current guides:
 
-- [authentication.md](authentication.md) for the local account and session-cookie flow added in M1
-- [planning-workflow.md](planning-workflow.md) for the M2 scratch-path onboarding flow
+- [Authentication](/docs/authentication) for the local account and session-cookie flow added in M1
+- [Planning Workflow](/docs/planning-workflow) for the M2 scratch-path onboarding flow
