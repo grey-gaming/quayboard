@@ -19,30 +19,6 @@ const parseJson = <T>(value: string): T | null => {
   }
 };
 
-const buildOverviewFallback = (answers: Record<string, string>, projectName: string) => ({
-  markdown: `# ${projectName}\n\n## Purpose\n${answers.q1_name_and_description ?? ""}\n\n## Audience\n${answers.q2_who_is_it_for ?? ""}\n\n## Problem\n${answers.q3_problem_solved ?? ""}\n\n## Success\n${answers.q4_success_looks_like ?? ""}\n\n## Core Capabilities\n${answers.q6_main_capabilities ?? ""}\n\n## Product Feel\n${answers.q14_product_feel ?? ""}`,
-  title: projectName,
-});
-
-const buildUseCaseFallback = (projectName: string) => [
-  {
-    title: `${projectName} primary flow`,
-    userStory: `As a user, I want to achieve the main outcome of ${projectName}.`,
-    entryPoint: "Landing page",
-    endState: "Primary goal completed",
-    flowSteps: [
-      "Open the product",
-      "Provide the required input",
-      "Review the suggested result",
-      "Complete the primary action",
-    ],
-    coverageTags: ["happy-path", "onboarding"],
-    acceptanceCriteria: ["The primary user journey can be completed end to end."],
-    doneCriteriaRefs: ["overview-document"],
-    source: "generated",
-  },
-];
-
 export const createJobRunnerService = (input: {
   db: AppDatabase;
   jobService: JobService;
@@ -114,16 +90,19 @@ export const createJobRunnerService = (input: {
           createdAt: new Date(),
         });
         const parsed = parseJson<{ markdown?: string; title?: string }>(generated.content);
-        const fallback = buildOverviewFallback(
-          questionnaire.answers as Record<string, string>,
-          project.name,
-        );
+
+        if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+          throw new Error(
+            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+          );
+        }
+
         const onePager = await input.onePagerService.createVersion({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
           source: rawJob.type,
-          title: parsed?.title?.trim() || fallback.title,
-          markdown: parsed?.markdown?.trim() || fallback.markdown,
+          title: parsed.title.trim(),
+          markdown: parsed.markdown.trim(),
         });
 
         return input.jobService.markSucceeded(rawJob.id, { onePagerId: onePager.id });
@@ -160,27 +139,42 @@ export const createJobRunnerService = (input: {
             userStory?: string;
           }>
         >(generated.content);
-        const flows = parsed && parsed.length > 0 ? parsed : buildUseCaseFallback(project.name);
 
-        for (const flow of flows) {
+        if (!parsed || parsed.length === 0) {
+          throw new Error(
+            "GenerateUseCases returned invalid content. Expected a non-empty JSON array of user flows.",
+          );
+        }
+
+        for (const flow of parsed) {
+          if (
+            !flow.title?.trim() ||
+            !flow.userStory?.trim() ||
+            !flow.entryPoint?.trim() ||
+            !flow.endState?.trim() ||
+            !flow.flowSteps?.length
+          ) {
+            throw new Error(
+              "GenerateUseCases returned an incomplete user flow. Each flow must include title, userStory, entryPoint, endState, and at least one flow step.",
+            );
+          }
+
           await input.userFlowService.create(ownerUserId, rawJob.projectId, {
             acceptanceCriteria: flow.acceptanceCriteria ?? [
               "The described flow can be completed.",
             ],
             coverageTags: flow.coverageTags ?? ["happy-path"],
             doneCriteriaRefs: flow.doneCriteriaRefs ?? ["overview-document"],
-            endState: flow.endState ?? "Goal completed",
-            entryPoint: flow.entryPoint ?? "Landing page",
-            flowSteps: flow.flowSteps ?? ["Open the product", "Complete the key task"],
+            endState: flow.endState,
+            entryPoint: flow.entryPoint,
+            flowSteps: flow.flowSteps,
             source: flow.source ?? "generated",
-            title: flow.title ?? `${project.name} flow`,
-            userStory:
-              flow.userStory ??
-              `As a user, I want to complete the main flow in ${project.name}.`,
+            title: flow.title,
+            userStory: flow.userStory,
           });
         }
 
-        return input.jobService.markSucceeded(rawJob.id, { createdCount: flows.length });
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: parsed.length });
       }
 
       case "DeduplicateUseCases": {

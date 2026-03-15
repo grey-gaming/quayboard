@@ -67,6 +67,7 @@ After editing:
 - Do not use inline `fetch()` in page components; use API client modules.
 - Backend routes must use schema-validated request and response contracts.
 - LLM integrations must be mockable; tests must not depend on live model access.
+- LLM failures or malformed LLM outputs must fail explicitly; do not add deterministic fallback builders that silently synthesize substitute production content.
 - Do not create hidden tool-owned state inside managed repositories.
 
 ## Naming Rules
