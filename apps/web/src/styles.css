@@ -3,22 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 16.7% 7.1%;
+  --background: 220 18% 6.5%;
   --foreground: 220 31.6% 92.5%;
-  --card: 222 23.6% 10.8%;
+  --card: 223 24% 18%;
   --card-foreground: 220 31.6% 92.5%;
-  --overlay: 222 28.9% 8.8%;
-  --panel: 222 23.6% 10.8%;
-  --panel-raised: 222 24.6% 13.5%;
-  --panel-inset: 221 30.8% 10.2%;
-  --panel-active: 223 24.7% 16.7%;
-  --surface: 221 30.8% 10.2%;
-  --muted: 223 24.7% 16.7%;
+  --overlay: 222 32% 5.5%;
+  --panel: 222 24% 14%;
+  --panel-raised: 223 24% 18%;
+  --panel-inset: 221 28% 11%;
+  --panel-active: 224 24% 24%;
+  --surface: 221 28% 11%;
+  --muted: 224 18% 28%;
   --secondary: 220 16% 70.6%;
   --muted-foreground: 221 11.9% 53.7%;
-  --border: 222 22.2% 21.2%;
-  --border-strong: 222 20.5% 28.6%;
-  --input: 222 22.2% 21.2%;
+  --border: 223 20% 31%;
+  --border-strong: 224 18% 39%;
+  --input: 223 20% 31%;
   --ring: 228 100% 74%;
   --accent: 228 100% 74%;
   --accent-hover: 230 100% 78%;
