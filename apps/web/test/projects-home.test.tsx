@@ -83,11 +83,11 @@ describe("project entry surfaces", () => {
     renderWithProviders(<ProtectedHomePage />);
 
     expect(await screen.findByRole("heading", { name: "Projects", level: 1 })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Projects", level: 2 })).toBeTruthy();
     expect(await screen.findByText("Harbor Console")).toBeTruthy();
     expect(screen.getByText("Governed delivery control plane.")).toBeTruthy();
     expect(screen.getByText("Open Mission Control")).toBeTruthy();
     expect(screen.getByTestId("projects-list-card").className).toContain("bg-panel-raised");
+    expect(screen.getByRole("link", { name: /Harbor Console/i }).className).toContain("border border-border/80");
     expect(screen.queryByText("Workspace Queue")).toBeNull();
     expect(screen.queryByText("Project Queue")).toBeNull();
     expect(screen.queryByText("Active workspaces")).toBeNull();

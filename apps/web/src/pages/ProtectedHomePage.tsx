@@ -28,14 +28,11 @@ export const ProtectedHomePage = () => {
       />
       <section>
         <Card data-testid="projects-list-card" surface="panel">
-          <div className="border-b border-border/80 pb-3">
-            <h2 className="text-lg font-semibold tracking-[-0.02em]">Projects</h2>
-          </div>
-          <div className="mt-4 grid gap-0 border border-border/80">
+          <div className="grid gap-3">
             {projectsQuery.data?.projects.map((project) => (
               <Link
                 key={project.id}
-                className="group grid gap-3 border-t border-border/80 bg-panel-inset px-4 py-4 transition-colors duration-150 first:border-t-0 hover:bg-panel-active"
+                className="group grid gap-3 border border-border/80 bg-panel-inset px-4 py-4 transition-colors duration-150 hover:bg-panel-active"
                 to={`/projects/${project.id}`}
               >
                 <div className="flex items-start justify-between gap-3">
