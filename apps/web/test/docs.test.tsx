@@ -127,7 +127,7 @@ describe("docs pages", () => {
     expect(await screen.findByText("All instance checks are green. You can sign in from this page.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Browse docs" })).toBeTruthy();
     expect(screen.queryByText("deployment checks")).toBeNull();
-    expect(screen.getByText(/access your quayboard workspace/i)).toBeTruthy();
+    expect(screen.getByText(/access your projects and planning tools/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 

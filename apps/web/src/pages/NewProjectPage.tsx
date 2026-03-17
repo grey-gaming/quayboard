@@ -32,10 +32,9 @@ export const NewProjectPage = () => {
       <PageIntro
         eyebrow="Projects"
         title="Create Project"
-        summary="Start the scratch-path workflow that leads through setup, questionnaire, overview, and user flows."
+        summary="Create a project and move through setup, questionnaire, overview, and user flows."
         meta={
           <>
-            <Badge tone="neutral">scratch path only</Badge>
             <Badge tone="warning">import deferred</Badge>
           </>
         }

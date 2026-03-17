@@ -79,6 +79,10 @@ describe("LoginPage", () => {
     expect(screen.getByText(/SECRETS_ENCRYPTION_KEY is missing/i)).toBeTruthy();
     expect(screen.queryByText("deployment checks")).toBeNull();
     expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
+    expect(
+      screen.getByText("Sign in with your local account to access your projects and planning tools."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Quayboard workspace/i)).toBeNull();
     expect(screen.getByLabelText("Email")).toBeTruthy();
     expect(screen.getByLabelText("Password")).toBeTruthy();
   });

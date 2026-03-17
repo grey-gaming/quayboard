@@ -11,9 +11,9 @@ const primaryLinkClassName =
 export const SettingsPage = () => (
   <AppFrame>
     <PageIntro
-      eyebrow="Workspace"
+      eyebrow="Instance"
       title="Settings"
-      summary="Manage instance-level controls that affect the current Quayboard workspace."
+      summary="Manage instance-level controls for the current Quayboard instance."
       meta={
         <>
           <Badge tone="neutral">instance controls</Badge>

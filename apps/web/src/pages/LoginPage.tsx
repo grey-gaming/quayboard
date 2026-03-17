@@ -110,7 +110,7 @@ export const LoginPage = () => {
             </p>
             <h2 className="font-display text-[1.7rem] font-semibold tracking-[-0.02em]">Sign in</h2>
             <p className="text-sm text-secondary">
-              Sign in with your local account to access your Quayboard workspace.
+              Sign in with your local account to access your projects and planning tools.
             </p>
           </div>
           <form className="space-y-4" onSubmit={onSubmit}>

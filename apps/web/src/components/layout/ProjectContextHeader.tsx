@@ -38,7 +38,7 @@ export const ProjectContextHeader = ({
             <p className="text-[1.4rem] font-semibold tracking-[-0.02em]">{project.name}</p>
             <p className="max-w-3xl text-sm text-secondary">
               {project.description ??
-                "Project-scoped planning and setup workspace for the current delivery surface."}
+                "Project setup and planning for the current delivery phase."}
             </p>
           </div>
         </div>
