@@ -2,7 +2,7 @@
 
 Quayboard currently supports local email/password authentication.
 
-Before registering or signing in, the instance readiness checks must all pass. The auth pages show the live deployment blockers and their remediation text.
+Before registering or signing in, the instance readiness checks must all pass. If any check is failing, start with the [First Install](/docs/first-install) guide.
 
 ## Register
 

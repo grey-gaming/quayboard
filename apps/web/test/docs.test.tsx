@@ -78,6 +78,7 @@ describe("docs pages", () => {
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/login");
     expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Authentication" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "First Install" }).length).toBeGreaterThan(0);
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 
@@ -123,8 +124,9 @@ describe("docs pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByText("Ready for sign-in")).toBeTruthy();
+    expect(await screen.findByText("All instance checks are green. You can sign in from this page.")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Browse docs" })).toBeTruthy();
+    expect(screen.queryByText("deployment checks")).toBeNull();
     expect(screen.getByText(/access your quayboard workspace/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
@@ -138,9 +140,26 @@ describe("docs pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByText("Ready for account creation")).toBeTruthy();
+    expect(await screen.findByText("All instance checks are green. You can create an account from this page.")).toBeTruthy();
+    expect(screen.queryByText("deployment checks")).toBeNull();
     expect(screen.getByText(/create a local account for this quayboard instance/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
+  });
+
+  it("renders the first install guide", () => {
+    const router = createMemoryRouter(
+      [{ path: "/docs/:slug", element: <DocsArticlePage /> }],
+      { initialEntries: ["/docs/first-install"] },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(screen.getByRole("heading", { name: "First Install" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Required Setup" })).toBeTruthy();
   });
 
   it("renders the import stub without roadmap labels", () => {

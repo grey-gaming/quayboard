@@ -3,7 +3,6 @@ import { useForm } from "react-hook-form";
 
 import { ReadinessChecksList } from "../components/workflow/ReadinessChecksList.js";
 import { Alert } from "../components/ui/Alert.js";
-import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Input } from "../components/ui/Input.js";
@@ -26,9 +25,6 @@ export const RegisterPage = () => {
   const readinessQuery = useSystemReadinessQuery();
   const navigate = useNavigate();
   const isReady = isSystemReadinessReady(readinessQuery.data);
-  const passCount =
-    readinessQuery.data?.checks.filter((check) => check.status === "pass").length ?? 0;
-  const totalCount = readinessQuery.data?.checks.length ?? 0;
   const authBlocked = readinessQuery.isLoading || readinessQuery.isError || !isReady;
   const {
     formState: { errors },
@@ -50,7 +46,7 @@ export const RegisterPage = () => {
   return (
     <main className="min-h-screen px-4 py-4 md:px-5 md:py-5">
       <div className="mx-auto grid max-w-screen-xl gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-        <Card className="flex flex-col justify-between" surface="rail">
+        <Card className="flex flex-col justify-between" surface="panel">
           <div>
             <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
               Quayboard
@@ -59,33 +55,50 @@ export const RegisterPage = () => {
               Instance Readiness
             </h1>
             <p className="mt-4 max-w-md text-sm leading-6 text-secondary">
-              Clear the current environment checks before creating an operator account
-              for this instance.
+              Review the instance checks on this page. Account creation unlocks here
+              once every check passes.
             </p>
           </div>
           <div className="grid gap-4 pt-8">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={isReady ? "success" : "warning"}>
-                {readinessQuery.isLoading ? "checking" : `${passCount}/${totalCount || 0} passing`}
-              </Badge>
-              <Badge tone="neutral">deployment checks</Badge>
-            </div>
             {readinessQuery.isLoading ? (
               <div className="flex min-h-32 items-center justify-center">
                 <Spinner />
               </div>
             ) : readinessQuery.error ? (
-              <Alert tone="error">{readinessQuery.error.message}</Alert>
+              <Alert tone="error">
+                {readinessQuery.error.message} Check the API logs, then review the{" "}
+                <Link
+                  className="underline decoration-accent/60 underline-offset-4 hover:decoration-accent"
+                  to="/docs/first-install"
+                >
+                  first install guide
+                </Link>
+                .
+              </Alert>
             ) : readinessQuery.data ? (
               <>
                 <div className="qb-data-row">
                   <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                    Blocking posture
+                    Page status
                   </p>
                   <p className="mt-2 text-sm text-foreground">
-                    {isReady ? "Ready for account creation" : "Resolve all failing checks first."}
+                    {isReady
+                      ? "All instance checks are green. You can create an account from this page."
+                      : "Account creation stays locked until every failed check below is fixed."}
                   </p>
                 </div>
+                {!isReady ? (
+                  <Alert>
+                    Review the failed checks below. If this is a first-time setup, open the{" "}
+                    <Link
+                      className="underline decoration-accent/60 underline-offset-4 hover:decoration-accent"
+                      to="/docs/first-install"
+                    >
+                      first install guide
+                    </Link>
+                    .
+                  </Alert>
+                ) : null}
                 <ReadinessChecksList checks={readinessQuery.data.checks} />
               </>
             ) : null}
@@ -145,7 +158,7 @@ export const RegisterPage = () => {
           ) : null}
           {authBlocked ? (
             <Alert>
-              Resolve every instance readiness check before creating an account.
+              Account creation is unavailable until the failed readiness checks are resolved.
             </Alert>
           ) : null}
           <Button className="w-full" disabled={registerMutation.isPending || authBlocked} type="submit">

@@ -27,7 +27,7 @@ export const createSystemReadinessService = (input: {
           status: databaseReady ? "pass" : "fail",
           message: databaseReady
             ? "Database connection succeeded."
-            : "Database connection failed.",
+            : "Database connection failed. Check DATABASE_URL, confirm Postgres is running, then reload this page.",
         },
         {
           key: "encryption_key",
@@ -35,13 +35,15 @@ export const createSystemReadinessService = (input: {
           status: input.secretsKeyPresent ? "pass" : "fail",
           message: input.secretsKeyPresent
             ? "Secrets encryption key is configured."
-            : "Set SECRETS_ENCRYPTION_KEY before continuing.",
+            : "SECRETS_ENCRYPTION_KEY is missing. Add it to .env, restart the API, then reload this page.",
         },
         {
           key: "docker",
           label: "Docker",
           status: dockerReady.ok ? "pass" : "fail",
-          message: dockerReady.message,
+          message: dockerReady.ok
+            ? dockerReady.message
+            : "Docker daemon is unavailable. Start Docker and confirm the docker CLI can reach the configured daemon, then reload this page.",
         },
         {
           key: "artifact_storage",
@@ -49,7 +51,7 @@ export const createSystemReadinessService = (input: {
           status: artifactWritable ? "pass" : "fail",
           message: artifactWritable
             ? "Artifact storage path is writable."
-            : "Artifact storage path is not writable.",
+            : "Artifact storage path is not writable. Check ARTIFACT_STORAGE_PATH and directory permissions, then reload this page.",
         },
         {
           key: "providers",
@@ -58,7 +60,7 @@ export const createSystemReadinessService = (input: {
           message:
             input.providers.length > 0
               ? `Enabled providers: ${input.providers.join(", ")}.`
-              : "No provider adapters are enabled.",
+              : "No provider adapters are enabled. Review the first-install guide, enable at least one provider, then reload this page.",
         },
       ],
     };

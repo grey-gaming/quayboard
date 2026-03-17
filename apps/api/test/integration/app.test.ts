@@ -316,7 +316,8 @@ describe("API integration", () => {
           expect.objectContaining({
             key: "encryption_key",
             status: "fail",
-            message: "Set SECRETS_ENCRYPTION_KEY before continuing.",
+            message:
+              "SECRETS_ENCRYPTION_KEY is missing. Add it to .env, restart the API, then reload this page.",
           }),
         ]),
       );
