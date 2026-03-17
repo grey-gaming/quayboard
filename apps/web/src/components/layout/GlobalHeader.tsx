@@ -30,17 +30,12 @@ export const GlobalHeader = ({
 }) => (
   <header className="border border-border/90 bg-panel px-4 py-4 md:px-5">
     <div className="flex flex-wrap items-start gap-4">
-      <Link className="group flex min-w-[15rem] flex-none items-start gap-3" to={projectsHref}>
+      <Link aria-label="Quayboard" className="group flex flex-none items-center gap-3" to={projectsHref}>
         <span className="inline-flex h-10 w-10 items-center justify-center border border-accent/55 bg-panel-inset font-mono text-sm font-semibold tracking-[0.18em] text-foreground">
           QB
         </span>
-        <span className="grid gap-1">
-          <span className="block font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Control Plane
-          </span>
-          <span className="block font-display text-[1.25rem] font-semibold tracking-[-0.02em] text-foreground group-hover:text-white">
-            Quayboard
-          </span>
+        <span className="block font-display text-[1.25rem] font-semibold tracking-[-0.02em] text-foreground group-hover:text-white">
+          Quayboard
         </span>
       </Link>
       <div className="flex min-w-[16rem] flex-1 flex-wrap items-center gap-2">
@@ -59,10 +54,7 @@ export const GlobalHeader = ({
       <div className="flex flex-wrap items-center justify-end gap-2">
         {user ? (
           <>
-            <div className="grid min-w-[12rem] gap-1 border border-border/90 bg-panel-inset px-3 py-2">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Operator
-              </p>
+            <div className="border border-border/90 bg-panel-inset px-3 py-2">
               <p className="text-sm font-semibold text-foreground">{user.displayName}</p>
             </div>
             <Button disabled={isSigningOut} onClick={onSignOut} variant="ghost">

@@ -33,7 +33,10 @@ describe("global navigation", () => {
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/");
     expect(screen.getByRole("link", { name: "Docs" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Quayboard" })).toBeTruthy();
     expect(screen.getByText("Harbor Admin")).toBeTruthy();
+    expect(screen.queryByText("Control Plane")).toBeNull();
+    expect(screen.queryByText("Operator")).toBeNull();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
   });
 
