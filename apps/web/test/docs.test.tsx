@@ -16,17 +16,46 @@ const assertNoRoadmapLabels = (text: string) => {
 
 describe("docs pages", () => {
   beforeEach(() => {
+    const readinessResponse = {
+      checks: [
+        {
+          key: "database",
+          label: "Database",
+          status: "pass",
+          message: "Database connection succeeded.",
+        },
+        {
+          key: "encryption_key",
+          label: "Encryption Key",
+          status: "pass",
+          message: "Secrets encryption key is configured.",
+        },
+      ],
+    };
+
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: async () => ({
-          error: {
-            code: "unauthorized",
-            message: "Authentication is required.",
-          },
-        }),
+      vi.fn(async (input: string | URL | Request) => {
+        const path = typeof input === "string" ? input : input.toString();
+
+        if (path === "/api/system/readiness") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => readinessResponse,
+          } satisfies Partial<Response>;
+        }
+
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({
+            error: {
+              code: "unauthorized",
+              message: "Authentication is required.",
+            },
+          }),
+        } satisfies Partial<Response>;
       }),
     );
   });
@@ -85,7 +114,7 @@ describe("docs pages", () => {
     expect(screen.getByRole("link", { name: "Back to docs home" })).toBeTruthy();
   });
 
-  it("links to the docs from the login page", () => {
+  it("links to the docs from the login page", async () => {
     render(
       <AppProviders>
         <MemoryRouter>
@@ -94,12 +123,13 @@ describe("docs pages", () => {
       </AppProviders>,
     );
 
+    expect(await screen.findByText("Ready for sign-in")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Browse docs" })).toBeTruthy();
     expect(screen.getByText(/access your quayboard workspace/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 
-  it("renders the register page without roadmap labels", () => {
+  it("renders the register page without roadmap labels", async () => {
     render(
       <AppProviders>
         <MemoryRouter>
@@ -108,6 +138,7 @@ describe("docs pages", () => {
       </AppProviders>,
     );
 
+    expect(await screen.findByText("Ready for account creation")).toBeTruthy();
     expect(screen.getByText(/create a local account for this quayboard instance/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });

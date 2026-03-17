@@ -1,13 +1,19 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
+import { ReadinessChecksList } from "../components/workflow/ReadinessChecksList.js";
 import { Alert } from "../components/ui/Alert.js";
+import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
 import { Spinner } from "../components/ui/Spinner.js";
 import { useRegisterMutation } from "../hooks/use-auth.js";
+import {
+  isSystemReadinessReady,
+  useSystemReadinessQuery,
+} from "../hooks/use-system-readiness.js";
 
 type RegisterFormValues = {
   displayName: string;
@@ -17,7 +23,13 @@ type RegisterFormValues = {
 
 export const RegisterPage = () => {
   const registerMutation = useRegisterMutation();
+  const readinessQuery = useSystemReadinessQuery();
   const navigate = useNavigate();
+  const isReady = isSystemReadinessReady(readinessQuery.data);
+  const passCount =
+    readinessQuery.data?.checks.filter((check) => check.status === "pass").length ?? 0;
+  const totalCount = readinessQuery.data?.checks.length ?? 0;
+  const authBlocked = readinessQuery.isLoading || readinessQuery.isError || !isReady;
   const {
     formState: { errors },
     handleSubmit,
@@ -44,26 +56,39 @@ export const RegisterPage = () => {
               Quayboard
             </p>
             <h1 className="mt-3 font-display text-[2rem] font-semibold tracking-[-0.02em]">
-              Create Operator Account
+              Instance Readiness
             </h1>
             <p className="mt-4 max-w-md text-sm leading-6 text-secondary">
-              Create an operator account for this instance to access guided setup, overview
-              generation, and user-flow approval.
+              Clear the current environment checks before creating an operator account
+              for this instance.
             </p>
           </div>
-          <div className="grid gap-3 pt-8">
-            <div className="qb-data-row">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Access model
-              </p>
-              <p className="mt-2 text-sm text-foreground">Local account auth with project-scoped workflow state.</p>
+          <div className="grid gap-4 pt-8">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={isReady ? "success" : "warning"}>
+                {readinessQuery.isLoading ? "checking" : `${passCount}/${totalCount || 0} passing`}
+              </Badge>
+              <Badge tone="neutral">deployment checks</Badge>
             </div>
-            <div className="qb-data-row">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                First actions
-              </p>
-              <p className="mt-2 text-sm text-foreground">Check readiness, create a project, then complete setup.</p>
-            </div>
+            {readinessQuery.isLoading ? (
+              <div className="flex min-h-32 items-center justify-center">
+                <Spinner />
+              </div>
+            ) : readinessQuery.error ? (
+              <Alert tone="error">{readinessQuery.error.message}</Alert>
+            ) : readinessQuery.data ? (
+              <>
+                <div className="qb-data-row">
+                  <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Blocking posture
+                  </p>
+                  <p className="mt-2 text-sm text-foreground">
+                    {isReady ? "Ready for account creation" : "Resolve all failing checks first."}
+                  </p>
+                </div>
+                <ReadinessChecksList checks={readinessQuery.data.checks} />
+              </>
+            ) : null}
           </div>
         </Card>
         <Card className="w-full" surface="panel">
@@ -118,7 +143,12 @@ export const RegisterPage = () => {
           {registerMutation.error ? (
             <Alert tone="error">{registerMutation.error.message}</Alert>
           ) : null}
-          <Button className="w-full" disabled={registerMutation.isPending} type="submit">
+          {authBlocked ? (
+            <Alert>
+              Resolve every instance readiness check before creating an account.
+            </Alert>
+          ) : null}
+          <Button className="w-full" disabled={registerMutation.isPending || authBlocked} type="submit">
             {registerMutation.isPending ? <Spinner /> : "Create account"}
           </Button>
           </form>

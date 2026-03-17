@@ -154,15 +154,16 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 #### Flow -1: Instance readiness and first run
 
-1. User registers or logs in.
-2. On the first run, Quayboard opens **Instance Readiness** and checks deployment prerequisites that exist outside any project:
+1. User opens the login or registration screen.
+2. Quayboard checks deployment prerequisites that exist outside any project before auth submission is allowed:
    a. Database connectivity.
    b. `SECRETS_ENCRYPTION_KEY` presence.
    c. Docker daemon reachability.
    d. Artifact storage path writability.
    e. Enabled LLM provider adapters.
-3. Any failing check shows a concrete remediation message and blocks only the setup-dependent onboarding steps.
-4. The screen does not collect project credentials. Repo PATs and LLM API keys are configured only later in **Project Setup**.
+3. Any failing check shows a concrete remediation message and blocks registration and sign-in until the instance is green.
+4. After the checks pass, the user registers or logs in.
+5. The screen does not collect project credentials. Repo PATs and LLM API keys are configured only later in **Project Setup**.
 
 #### Flow 0: Project setup and guided onboarding
 
@@ -175,7 +176,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
    e. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
    f. **Readiness checklist** — all items above show green/red status. Setup is complete when all items pass.
 3. On first project, a guided **"Hello World" onboarding** path walks the user through the full pipeline:
-   - Register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
+   - Clear instance readiness → register or log in → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
    - The full pipeline demo continues in M8, where sandbox execution, PR creation, and evidence bundles are implemented.
 
 #### Flow 1: New project — scratch to overview document

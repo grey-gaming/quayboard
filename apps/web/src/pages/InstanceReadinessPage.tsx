@@ -1,15 +1,21 @@
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { Alert } from "../components/ui/Alert.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Card } from "../components/ui/Card.js";
 import { Spinner } from "../components/ui/Spinner.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { useSystemReadinessQuery } from "../hooks/use-projects.js";
+import { ReadinessChecksList } from "../components/workflow/ReadinessChecksList.js";
+import {
+  isSystemReadinessReady,
+  useSystemReadinessQuery,
+} from "../hooks/use-system-readiness.js";
 
 export const InstanceReadinessPage = () => {
   const readinessQuery = useSystemReadinessQuery();
   const passCount =
     readinessQuery.data?.checks.filter((check) => check.status === "pass").length ?? 0;
   const totalCount = readinessQuery.data?.checks.length ?? 0;
+  const isReady = isSystemReadinessReady(readinessQuery.data);
 
   return (
     <AppFrame>
@@ -20,7 +26,7 @@ export const InstanceReadinessPage = () => {
         meta={
           <>
             <Badge tone="neutral">deployment checks</Badge>
-            <Badge tone={passCount === totalCount && totalCount > 0 ? "success" : "warning"}>
+            <Badge tone={isReady ? "success" : "warning"}>
               {passCount}/{totalCount || 0} passing
             </Badge>
           </>
@@ -44,7 +50,7 @@ export const InstanceReadinessPage = () => {
               <div className="qb-kv">
                 <p className="qb-meta-label">Blocking posture</p>
                 <p className="text-sm text-foreground">
-                  {passCount === totalCount && totalCount > 0 ? "Ready for onboarding" : "Needs remediation"}
+                  {isReady ? "Ready for onboarding" : "Needs remediation"}
                 </p>
               </div>
             </div>
@@ -55,36 +61,19 @@ export const InstanceReadinessPage = () => {
                 <p className="qb-meta-label">Checks</p>
                 <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Deployment prerequisites</p>
               </div>
-              <Badge tone={passCount === totalCount && totalCount > 0 ? "success" : "warning"}>
-                live status
+              <Badge tone={isReady ? "success" : "warning"}>
+                {isReady ? "ready" : "blocked"}
               </Badge>
             </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {readinessQuery.data?.checks.map((check) => (
-                <div
-                  key={check.key}
-                  className="grid gap-3 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto]"
-                >
-                  <div>
-                    <p className="text-base font-semibold tracking-[-0.02em]">{check.label}</p>
-                    <p className="mt-2 text-sm text-secondary">{check.message}</p>
-                  </div>
-                  <div className="flex items-start md:justify-end">
-                    <Badge
-                      tone={
-                        check.status === "pass"
-                          ? "success"
-                          : check.status === "warn"
-                            ? "warning"
-                            : "danger"
-                      }
-                    >
-                      {check.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {readinessQuery.error ? (
+              <Alert className="mt-4" tone="error">
+                {readinessQuery.error.message}
+              </Alert>
+            ) : readinessQuery.data ? (
+              <div className="mt-4">
+                <ReadinessChecksList checks={readinessQuery.data.checks} />
+              </div>
+            ) : null}
           </Card>
         </div>
       )}

@@ -36,6 +36,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 
 ## UI Surface
 
+- `/login` and `/register` surface the live instance readiness gate before auth submission is allowed
 - `/setup/instance`
 - `/projects/new`
 - `/projects/:id`

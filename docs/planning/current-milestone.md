@@ -13,6 +13,7 @@ Deliver the scratch-path planning workflow: instance readiness, project creation
 ## In Scope
 
 - `GET /api/system/readiness` with deployment prerequisite checks and remediation text
+- pre-auth readiness gating on register/sign-in until all instance checks pass
 - Project list/create/update flow with project-scoped setup status and Mission Control landing page
 - Project setup workflow:
   repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, evidence policy, and tool-policy preview
@@ -36,7 +37,8 @@ Deliver the scratch-path planning workflow: instance readiness, project creation
 
 The milestone is complete when the repo can support the following:
 
-- An authenticated user can view instance readiness and project setup readiness with concrete remediation text
+- A visitor can view instance readiness with concrete remediation text, and register/sign-in stay blocked until all instance checks pass
+- An authenticated user can view project setup readiness with concrete remediation text
 - A user can create a project, connect a repo with a GitHub PAT, verify the configured LLM, and verify sandbox startup
 - A user can save questionnaire answers, queue overview generation, inspect the canonical overview plus history, restore a version, and approve the current overview
 - Mission Control is the project landing page and reflects phase gates and next actions

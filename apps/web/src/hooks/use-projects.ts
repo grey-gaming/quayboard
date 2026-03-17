@@ -29,12 +29,6 @@ export const useCreateProjectMutation = () => {
   });
 };
 
-export const useSystemReadinessQuery = () =>
-  useQuery({
-    queryKey: ["system", "readiness"],
-    queryFn: () => api.getSystemReadiness(),
-  });
-
 export const useSetupStatusQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "setup-status"],

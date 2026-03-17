@@ -1,13 +1,19 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
+import { ReadinessChecksList } from "../components/workflow/ReadinessChecksList.js";
 import { Alert } from "../components/ui/Alert.js";
+import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
 import { Spinner } from "../components/ui/Spinner.js";
 import { useLoginMutation } from "../hooks/use-auth.js";
+import {
+  isSystemReadinessReady,
+  useSystemReadinessQuery,
+} from "../hooks/use-system-readiness.js";
 
 type LoginFormValues = {
   email: string;
@@ -16,8 +22,14 @@ type LoginFormValues = {
 
 export const LoginPage = () => {
   const loginMutation = useLoginMutation();
+  const readinessQuery = useSystemReadinessQuery();
   const location = useLocation();
   const navigate = useNavigate();
+  const isReady = isSystemReadinessReady(readinessQuery.data);
+  const passCount =
+    readinessQuery.data?.checks.filter((check) => check.status === "pass").length ?? 0;
+  const totalCount = readinessQuery.data?.checks.length ?? 0;
+  const authBlocked = readinessQuery.isLoading || readinessQuery.isError || !isReady;
   const {
     formState: { errors },
     handleSubmit,
@@ -43,26 +55,39 @@ export const LoginPage = () => {
               Quayboard
             </p>
             <h1 className="mt-3 font-display text-[2rem] font-semibold tracking-[-0.02em]">
-              Control Plane Access
+              Instance Readiness
             </h1>
             <p className="mt-4 max-w-md text-sm leading-6 text-secondary">
-              Enter the control plane with your local account to continue project setup,
-              overview review, and flow approval.
+              Clear the current environment checks before signing in and continuing
+              with project setup, overview review, and flow approval.
             </p>
           </div>
-          <div className="grid gap-3 pt-8">
-            <div className="qb-data-row">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Workspace model
-              </p>
-              <p className="mt-2 text-sm text-foreground">Project-scoped setup with gated approvals.</p>
+          <div className="grid gap-4 pt-8">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={isReady ? "success" : "warning"}>
+                {readinessQuery.isLoading ? "checking" : `${passCount}/${totalCount || 0} passing`}
+              </Badge>
+              <Badge tone="neutral">deployment checks</Badge>
             </div>
-            <div className="qb-data-row">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Current milestone
-              </p>
-              <p className="mt-2 text-sm text-foreground">Project creation, setup, overview, and user flows.</p>
-            </div>
+            {readinessQuery.isLoading ? (
+              <div className="flex min-h-32 items-center justify-center">
+                <Spinner />
+              </div>
+            ) : readinessQuery.error ? (
+              <Alert tone="error">{readinessQuery.error.message}</Alert>
+            ) : readinessQuery.data ? (
+              <>
+                <div className="qb-data-row">
+                  <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Blocking posture
+                  </p>
+                  <p className="mt-2 text-sm text-foreground">
+                    {isReady ? "Ready for sign-in" : "Resolve all failing checks first."}
+                  </p>
+                </div>
+                <ReadinessChecksList checks={readinessQuery.data.checks} />
+              </>
+            ) : null}
           </div>
         </Card>
         <Card className="w-full" surface="panel">
@@ -106,7 +131,12 @@ export const LoginPage = () => {
           {loginMutation.error ? (
             <Alert tone="error">{loginMutation.error.message}</Alert>
           ) : null}
-          <Button className="w-full" disabled={loginMutation.isPending} type="submit">
+          {authBlocked ? (
+            <Alert>
+              Resolve every instance readiness check before signing in.
+            </Alert>
+          ) : null}
+          <Button className="w-full" disabled={loginMutation.isPending || authBlocked} type="submit">
             {loginMutation.isPending ? <Spinner /> : "Sign in"}
           </Button>
           </form>

@@ -42,9 +42,9 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
 
   await app.register(healthRoute);
   await app.register(authRoutes(services));
+  await app.register(systemRoutes(services), { prefix: "/api" });
   await app.register(async (apiApp) => {
     apiApp.addHook("preHandler", requireAuthenticatedUser(services));
-    await apiApp.register(systemRoutes(services));
     await apiApp.register(eventsRoutes(services));
     await apiApp.register(projectsRoutes(services));
     await apiApp.register(jobRoutes(services));
