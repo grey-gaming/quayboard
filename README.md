@@ -48,6 +48,12 @@ The active implementation target is now M2: Project Creation, Setup, Overview Do
    pnpm db:migrate
    ```
 
+   To reset the local Postgres database from scratch and reapply migrations:
+
+   ```bash
+   pnpm db:reset
+   ```
+
 5. Ensure the artifact storage directory exists:
 
    ```bash
@@ -73,6 +79,7 @@ The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie a
 - `pnpm test:integration` runs the Postgres-backed migration test
 - `pnpm test:e2e` runs the Playwright smoke test for the web app
 - `pnpm db:migrate` runs the API migration harness against `DATABASE_URL`
+- `pnpm db:reset` recreates the local Docker Postgres volume and reapplies migrations
 
 `pnpm test:e2e` assumes the host machine has the browser dependencies Playwright needs to launch Chromium.
 

@@ -13,6 +13,7 @@
     "test:unit": "pnpm --filter @quayboard/shared test && pnpm --filter @quayboard/api test:unit && pnpm --filter @quayboard/web test && pnpm --filter @quayboard/mcp test",
     "test:integration": "pnpm --filter @quayboard/api test:integration",
     "test:e2e": "pnpm --filter @quayboard/web test:e2e",
-    "db:migrate": "pnpm --filter @quayboard/api db:migrate"
+    "db:migrate": "pnpm --filter @quayboard/api db:migrate",
+    "db:reset": "docker compose down -v && docker compose up -d --wait && pnpm db:migrate"
   }
 }
