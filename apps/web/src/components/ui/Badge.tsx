@@ -14,7 +14,7 @@ export const Badge = ({
 }: BadgeProps) => (
   <span
     className={[
-      "inline-flex items-center rounded-full border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.18em]",
+      "inline-flex min-h-6 items-center border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.16em]",
       tone === "success"
         ? "border-success/50 bg-success/12 text-success"
         : tone === "warning"
@@ -22,8 +22,8 @@ export const Badge = ({
           : tone === "danger"
             ? "border-danger/50 bg-danger/10 text-danger"
             : tone === "info"
-              ? "border-info/45 bg-info/12 text-foreground"
-              : "border-border bg-panel/80 text-muted-foreground",
+              ? "border-accent/45 bg-accent/12 text-foreground"
+              : "border-border-strong/60 bg-panel-active text-secondary",
       className,
     ].join(" ")}
     {...props}

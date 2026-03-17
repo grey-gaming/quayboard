@@ -11,6 +11,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.6",
+    "@fontsource/ibm-plex-sans": "^5.2.6",
     "@quayboard/shared": "workspace:*",
     "@tanstack/react-query": "^5.68.0",
     "react": "^18.3.1",

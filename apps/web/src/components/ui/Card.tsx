@@ -14,12 +14,12 @@ export const Card = ({
 }: CardProps) => (
   <div
     className={[
-      "rounded-[calc(var(--radius)+2px)] border p-5 md:p-6",
+      "border p-4 md:p-5",
       surface === "inset"
-        ? "border-border/70 bg-panel/75"
+        ? "border-border/80 bg-panel-inset"
         : surface === "rail"
-          ? "border-border/90 bg-surface/90"
-          : "border-border/90 bg-card/95 shadow-harbor",
+          ? "border-border/90 bg-panel"
+          : "border-border-strong/70 bg-panel-raised",
       className,
     ].join(" ")}
     {...props}

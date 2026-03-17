@@ -15,14 +15,14 @@ export const Button = ({
 }: ButtonProps) => (
   <button
     className={[
-      "inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold tracking-[0.08em] transition disabled:cursor-not-allowed disabled:opacity-60",
+      "inline-flex min-h-10 items-center justify-center border px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] transition-colors duration-150 focus-visible:border-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent/40 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-panel disabled:text-muted-foreground",
       variant === "primary"
-        ? "border-accent bg-accent/20 text-foreground hover:bg-accent/28"
+        ? "border-accent bg-accent text-background hover:border-accent-hover hover:bg-accent-hover"
         : variant === "secondary"
-          ? "border-border bg-panel/85 text-foreground hover:border-accent/50 hover:bg-surface"
+          ? "border-border-strong/70 bg-panel-raised text-foreground hover:border-accent/45 hover:bg-panel-active"
           : variant === "danger"
-            ? "border-danger/60 bg-danger/10 text-foreground hover:bg-danger/18"
-            : "border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-panel/75 hover:text-foreground",
+            ? "border-danger/70 bg-danger/10 text-foreground hover:bg-danger/16"
+            : "border-transparent bg-transparent text-secondary hover:border-border hover:bg-panel-inset hover:text-foreground",
       className,
     ].join(" ")}
     type={type}

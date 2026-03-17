@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import remarkGfm from "remark-gfm";
 
 const inlineCodeClassName =
-  "rounded-md border border-border/70 bg-panel/80 px-1.5 py-0.5 font-mono text-[0.92em] text-foreground";
+  "border border-border/70 bg-panel-inset px-1.5 py-0.5 font-mono text-[0.92em] text-foreground";
 
 const toDocsHref = (href: string) => {
   if (href === "README.md") {
@@ -48,14 +48,14 @@ export const MarkdownDocument = ({ markdown }: { markdown: string }) => (
         );
       },
       blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-accent/60 pl-4 italic text-muted-foreground">
+        <blockquote className="border-l-2 border-accent/60 pl-4 text-secondary">
           {children}
         </blockquote>
       ),
       code: ({ children, className }) => {
         if (className) {
           return (
-            <code className="block overflow-x-auto rounded-[calc(var(--radius)+1px)] border border-border/80 bg-panel/78 p-4 font-mono text-sm">
+            <code className="block overflow-x-auto border border-border/80 bg-panel-inset p-4 font-mono text-sm text-foreground">
               {children}
             </code>
           );
@@ -63,16 +63,36 @@ export const MarkdownDocument = ({ markdown }: { markdown: string }) => (
 
         return <code className={inlineCodeClassName}>{children}</code>;
       },
-      h1: ({ children }) => <h1 className="font-display text-4xl tracking-tight">{children}</h1>,
-      h2: ({ children }) => (
-        <h2 className="mt-8 font-display text-2xl tracking-tight">{children}</h2>
+      h1: ({ children }) => (
+        <h1 className="font-display text-[1.9rem] font-semibold tracking-[-0.02em]">
+          {children}
+        </h1>
       ),
-      h3: ({ children }) => <h3 className="mt-6 text-xl font-semibold">{children}</h3>,
-      hr: () => <hr className="border-border/70" />,
-      li: ({ children }) => <li className="leading-7 text-foreground/95">{children}</li>,
+      h2: ({ children }) => (
+        <h2 className="mt-8 border-t border-border/80 pt-5 font-display text-[1.35rem] font-semibold tracking-[-0.02em]">
+          {children}
+        </h2>
+      ),
+      h3: ({ children }) => <h3 className="mt-6 text-lg font-semibold">{children}</h3>,
+      hr: () => <hr className="border-border/80" />,
+      li: ({ children }) => <li className="leading-7 text-foreground">{children}</li>,
       ol: ({ children }) => <ol className="ml-6 list-decimal space-y-2">{children}</ol>,
-      p: ({ children }) => <p className="leading-7 text-foreground/95">{children}</p>,
+      p: ({ children }) => <p className="leading-7 text-secondary">{children}</p>,
       pre: ({ children }) => <pre className="my-4">{children as ReactNode}</pre>,
+      table: ({ children }) => (
+        <div className="my-4 overflow-x-auto border border-border/80">
+          <table className="min-w-full divide-y divide-border/80">{children}</table>
+        </div>
+      ),
+      tbody: ({ children }) => <tbody className="divide-y divide-border/70">{children}</tbody>,
+      td: ({ children }) => <td className="px-3 py-2 align-top text-sm text-secondary">{children}</td>,
+      th: ({ children }) => (
+        <th className="bg-panel-inset px-3 py-2 text-left font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {children}
+        </th>
+      ),
+      thead: ({ children }) => <thead>{children}</thead>,
+      tr: ({ children }) => <tr className="bg-panel">{children}</tr>,
       ul: ({ children }) => <ul className="ml-6 list-disc space-y-2">{children}</ul>,
     }}
     remarkPlugins={[remarkGfm]}

@@ -14,12 +14,12 @@ export const Alert = ({
 }: AlertProps) => (
   <div
     className={[
-      "rounded-md border px-3 py-2 text-sm",
+      "border-l-2 border px-3 py-2.5 text-sm",
       tone === "error"
-        ? "border-danger/50 bg-danger/10 text-foreground"
+        ? "border-danger bg-danger/10 text-foreground"
         : tone === "success"
-          ? "border-success/50 bg-success/10 text-foreground"
-          : "border-info/35 bg-panel/70 text-foreground",
+          ? "border-success bg-success/10 text-foreground"
+          : "border-accent bg-panel-inset text-foreground",
       className,
     ].join(" ")}
     {...props}

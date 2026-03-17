@@ -3,24 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --background: 206 33% 6%;
-  --foreground: 210 21% 93%;
-  --card: 212 30% 11%;
-  --card-foreground: 210 21% 93%;
-  --panel: 211 28% 15%;
-  --surface: 211 26% 13%;
-  --muted: 212 25% 16%;
-  --muted-foreground: 213 15% 67%;
-  --border: 210 24% 23%;
-  --input: 210 24% 23%;
-  --ring: 211 33% 62%;
-  --accent: 211 33% 62%;
-  --accent-foreground: 210 21% 93%;
-  --success: 164 27% 42%;
-  --warning: 36 57% 49%;
-  --danger: 0 37% 55%;
-  --info: 211 33% 62%;
-  --radius: 0.75rem;
+  --background: 220 16.7% 7.1%;
+  --foreground: 220 31.6% 92.5%;
+  --card: 222 23.6% 10.8%;
+  --card-foreground: 220 31.6% 92.5%;
+  --overlay: 222 28.9% 8.8%;
+  --panel: 222 23.6% 10.8%;
+  --panel-raised: 222 24.6% 13.5%;
+  --panel-inset: 221 30.8% 10.2%;
+  --panel-active: 223 24.7% 16.7%;
+  --surface: 221 30.8% 10.2%;
+  --muted: 223 24.7% 16.7%;
+  --secondary: 220 16% 70.6%;
+  --muted-foreground: 221 11.9% 53.7%;
+  --border: 222 22.2% 21.2%;
+  --border-strong: 222 20.5% 28.6%;
+  --input: 222 22.2% 21.2%;
+  --ring: 224 98.9% 64.9%;
+  --accent: 224 98.9% 64.9%;
+  --accent-hover: 224 100% 67.8%;
+  --accent-foreground: 220 16.7% 7.1%;
+  --success: 152 56.6% 41.6%;
+  --warning: 39 64.2% 55.1%;
+  --danger: 0 48.6% 56.5%;
+  --info: 204 57.1% 56.1%;
+  --radius: 0rem;
 }
 
 @layer base {
@@ -34,27 +41,74 @@
 
   body {
     @apply bg-background font-sans text-foreground antialiased;
-    background-image:
-      linear-gradient(hsl(var(--border) / 0.12) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--border) / 0.12) 1px, transparent 1px),
-      linear-gradient(
-        180deg,
-        hsl(var(--background)),
-        hsl(210 31% 7%) 38%,
-        hsl(208 32% 8%) 100%
-      );
-    background-size:
-      48px 48px,
-      48px 48px,
-      auto;
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--overlay)) 0%,
+      hsl(var(--background)) 18%,
+      hsl(var(--background)) 100%
+    );
     min-height: 100vh;
   }
 
   a {
-    @apply transition;
+    @apply transition-colors duration-150;
   }
 
   ::selection {
-    background: hsl(var(--accent) / 0.28);
+    background: hsl(var(--accent) / 0.22);
+    color: hsl(var(--foreground));
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .qb-shell {
+    @apply border border-border/90 bg-panel text-foreground;
+  }
+
+  .qb-shell-muted {
+    @apply border border-border/80 bg-panel-inset text-foreground;
+  }
+
+  .qb-panel {
+    @apply border border-border/90 bg-panel p-4 md:p-5;
+  }
+
+  .qb-panel-raised {
+    @apply border border-border-strong/70 bg-panel-raised p-4 md:p-5;
+  }
+
+  .qb-panel-inset {
+    @apply border border-border/80 bg-panel-inset p-4;
+  }
+
+  .qb-section-heading {
+    @apply grid gap-1 border-b border-border/80 pb-3;
+  }
+
+  .qb-meta-label {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .qb-nav-cell {
+    @apply inline-flex min-h-10 items-center border border-transparent px-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] transition-colors duration-150;
+  }
+
+  .qb-data-row {
+    @apply border border-border/80 bg-panel-inset px-4 py-3;
+  }
+
+  .qb-kv {
+    @apply grid gap-1 border border-border/80 bg-panel-inset px-3 py-3;
+  }
+
+  .qb-divider {
+    @apply border-t border-border/70;
   }
 }
