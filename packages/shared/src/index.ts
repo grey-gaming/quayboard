@@ -4,6 +4,7 @@ export * from "./schemas/errors.js";
 export * from "./schemas/projects.js";
 export * from "./schemas/secrets.js";
 export * from "./schemas/settings.js";
+export * from "./schemas/setup.js";
 export * from "./schemas/sse.js";
 export * from "./schemas/sessions.js";
 export * from "./schemas/users.js";

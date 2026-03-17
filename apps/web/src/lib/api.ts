@@ -2,11 +2,13 @@ import type {
   CreateProjectRequest,
   Job,
   JobListResponse,
+  LoadLlmModelsResponse,
   NextActionsResponse,
   OnePager,
   PhaseGatesResponse,
   Project,
   ProjectListResponse,
+  ProjectSetupState,
   ProjectSetupStatus,
   QuestionnaireAnswers,
   SecretMetadata,
@@ -138,6 +140,9 @@ export const api = {
   getProject(projectId: string) {
     return apiRequest<Project>(`/api/projects/${projectId}`);
   },
+  getProjectSetup(projectId: string) {
+    return apiRequest<ProjectSetupState>(`/api/projects/${projectId}/setup`);
+  },
   getQuestionnaireAnswers(projectId: string) {
     return apiRequest<QuestionnaireAnswers>(
       `/api/projects/${projectId}/questionnaire-answers`,
@@ -170,6 +175,12 @@ export const api = {
   restoreOnePagerVersion(projectId: string, version: number) {
     return apiRequest<OnePager>(`/api/projects/${projectId}/one-pager/versions/${version}/restore`, {
       method: "POST",
+    });
+  },
+  loadLlmModels(projectId: string, payload: { provider: "ollama" }) {
+    return apiRequest<LoadLlmModelsResponse>(`/api/projects/${projectId}/llm-models`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
   runUserFlowDeduplication(projectId: string) {
@@ -216,6 +227,12 @@ export const api = {
   updateUserFlow(userFlowId: string, payload: UpsertUseCaseRequest) {
     return apiRequest<UseCase>(`/api/user-flows/${userFlowId}`, {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  validateGithubPat(projectId: string, payload: { pat: string }) {
+    return apiRequest<ProjectSetupState>(`/api/projects/${projectId}/github-pat/validate`, {
+      method: "POST",
       body: JSON.stringify(payload),
     });
   },

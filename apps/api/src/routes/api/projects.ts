@@ -3,11 +3,15 @@ import { z } from "zod";
 
 import {
   createProjectRequestSchema,
+  loadLlmModelsRequestSchema,
+  loadLlmModelsResponseSchema,
   nextActionsResponseSchema,
   phaseGatesResponseSchema,
   projectListResponseSchema,
   projectSchema,
+  projectSetupStateSchema,
   projectSetupStatusSchema,
+  validateGithubPatRequestSchema,
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
@@ -157,6 +161,161 @@ const updateProjectBodyJsonSchema = {
       additionalProperties: false,
     },
   },
+} as const;
+
+const readinessCheckJsonSchema = {
+  type: "object",
+  properties: {
+    key: { type: "string" },
+    label: { type: "string" },
+    status: { type: "string" },
+    message: { type: "string" },
+  },
+  required: ["key", "label", "status", "message"],
+  additionalProperties: false,
+} as const;
+
+const projectSetupStatusJsonSchema = {
+  type: "object",
+  properties: {
+    repoConnected: { type: "boolean" },
+    llmVerified: { type: "boolean" },
+    sandboxVerified: { type: "boolean" },
+    checks: {
+      type: "array",
+      items: readinessCheckJsonSchema,
+    },
+  },
+  required: ["repoConnected", "llmVerified", "sandboxVerified", "checks"],
+  additionalProperties: false,
+} as const;
+
+const githubRepoOptionJsonSchema = {
+  type: "object",
+  properties: {
+    owner: { type: "string" },
+    repo: { type: "string" },
+    fullName: { type: "string" },
+    defaultBranch: { type: ["string", "null"] },
+    repoUrl: { type: "string" },
+  },
+  required: ["owner", "repo", "fullName", "defaultBranch", "repoUrl"],
+  additionalProperties: false,
+} as const;
+
+const projectSetupStateJsonSchema = {
+  type: "object",
+  properties: {
+    status: projectSetupStatusJsonSchema,
+    repo: {
+      type: "object",
+      properties: {
+        patConfigured: { type: "boolean" },
+        viewerLogin: { type: ["string", "null"] },
+        availableRepos: {
+          type: "array",
+          items: githubRepoOptionJsonSchema,
+        },
+        selectedRepo: {
+          anyOf: [{ type: "null" }, githubRepoOptionJsonSchema],
+        },
+      },
+      required: ["patConfigured", "viewerLogin", "availableRepos", "selectedRepo"],
+      additionalProperties: false,
+    },
+    llm: {
+      type: "object",
+      properties: {
+        provider: { type: ["string", "null"] },
+        model: { type: ["string", "null"] },
+        availableModels: {
+          type: "array",
+          items: { type: "string" },
+        },
+        verified: { type: "boolean" },
+      },
+      required: ["provider", "model", "availableModels", "verified"],
+      additionalProperties: false,
+    },
+    sandboxConfig: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          properties: {
+            allowlist: { type: "array", items: { type: "string" } },
+            cpuLimit: { type: "number", exclusiveMinimum: 0 },
+            egressPolicy: { type: "string" },
+            memoryMb: { type: "integer", minimum: 1 },
+            timeoutSeconds: { type: "integer", minimum: 1 },
+          },
+          required: [
+            "allowlist",
+            "cpuLimit",
+            "egressPolicy",
+            "memoryMb",
+            "timeoutSeconds",
+          ],
+          additionalProperties: false,
+        },
+      ],
+    },
+    evidencePolicy: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          properties: {
+            requireArchitectureDocs: { type: "boolean" },
+            requireUserDocs: { type: "boolean" },
+          },
+          required: ["requireArchitectureDocs", "requireUserDocs"],
+          additionalProperties: false,
+        },
+      ],
+    },
+    toolPolicyPreview: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          properties: {
+            budgetCapUsd: { type: ["number", "null"] },
+            enabledGroups: { type: "array", items: { type: "string" } },
+          },
+          required: ["budgetCapUsd", "enabledGroups"],
+          additionalProperties: false,
+        },
+      ],
+    },
+  },
+  required: [
+    "status",
+    "repo",
+    "llm",
+    "sandboxConfig",
+    "evidencePolicy",
+    "toolPolicyPreview",
+  ],
+  additionalProperties: false,
+} as const;
+
+const validateGithubPatBodyJsonSchema = {
+  type: "object",
+  properties: {
+    pat: { type: "string", minLength: 1 },
+  },
+  required: ["pat"],
+  additionalProperties: false,
+} as const;
+
+const loadLlmModelsBodyJsonSchema = {
+  type: "object",
+  properties: {
+    provider: { const: "ollama" },
+  },
+  required: ["provider"],
+  additionalProperties: false,
 } as const;
 
 export const projectsRoutes = (
@@ -315,35 +474,36 @@ export const projectsRoutes = (
   );
 
   app.get(
+    "/projects/:id/setup",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        response: {
+          200: projectSetupStateJsonSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const setup = await services.projectSetupService.getSetupState(
+          request.user!.id,
+          (request.params as { id: string }).id,
+        );
+
+        return projectSetupStateSchema.parse(setup);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.get(
     "/projects/:id/setup-status",
     {
       schema: {
         params: projectParamsJsonSchema,
         response: {
-          200: {
-            type: "object",
-            properties: {
-              repoConnected: { type: "boolean" },
-              llmVerified: { type: "boolean" },
-              sandboxVerified: { type: "boolean" },
-              checks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: { type: "string" },
-                    label: { type: "string" },
-                    status: { type: "string" },
-                    message: { type: "string" },
-                  },
-                  required: ["key", "label", "status", "message"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["repoConnected", "llmVerified", "sandboxVerified", "checks"],
-            additionalProperties: false,
-          },
+          200: projectSetupStatusJsonSchema,
         },
       },
     },
@@ -362,35 +522,74 @@ export const projectsRoutes = (
   );
 
   app.post(
+    "/projects/:id/github-pat/validate",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        body: validateGithubPatBodyJsonSchema,
+        response: {
+          200: projectSetupStateJsonSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const setup = await services.projectSetupService.validateGithubPat(
+          request.user!.id,
+          (request.params as { id: string }).id,
+          validateGithubPatRequestSchema.parse(request.body).pat,
+        );
+
+        return projectSetupStateSchema.parse(setup);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/projects/:id/llm-models",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        body: loadLlmModelsBodyJsonSchema,
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              models: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: ["models"],
+            additionalProperties: false,
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const response = await services.projectSetupService.loadLlmModels(
+          request.user!.id,
+          (request.params as { id: string }).id,
+          loadLlmModelsRequestSchema.parse(request.body).provider,
+        );
+
+        return loadLlmModelsResponseSchema.parse(response);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
     "/projects/:id/verify-llm",
     {
       schema: {
         params: projectParamsJsonSchema,
         response: {
-          200: {
-            type: "object",
-            properties: {
-              repoConnected: { type: "boolean" },
-              llmVerified: { type: "boolean" },
-              sandboxVerified: { type: "boolean" },
-              checks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: { type: "string" },
-                    label: { type: "string" },
-                    status: { type: "string" },
-                    message: { type: "string" },
-                  },
-                  required: ["key", "label", "status", "message"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["repoConnected", "llmVerified", "sandboxVerified", "checks"],
-            additionalProperties: false,
-          },
+          200: projectSetupStatusJsonSchema,
         },
       },
     },
@@ -414,30 +613,7 @@ export const projectsRoutes = (
       schema: {
         params: projectParamsJsonSchema,
         response: {
-          200: {
-            type: "object",
-            properties: {
-              repoConnected: { type: "boolean" },
-              llmVerified: { type: "boolean" },
-              sandboxVerified: { type: "boolean" },
-              checks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    key: { type: "string" },
-                    label: { type: "string" },
-                    status: { type: "string" },
-                    message: { type: "string" },
-                  },
-                  required: ["key", "label", "status", "message"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["repoConnected", "llmVerified", "sandboxVerified", "checks"],
-            additionalProperties: false,
-          },
+          200: projectSetupStatusJsonSchema,
         },
       },
     },

@@ -1,3 +1,5 @@
+import type { ProjectSetupState } from "@quayboard/shared";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
@@ -13,24 +15,28 @@ import { Label } from "../components/ui/Label.js";
 import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
 import {
-  useCreateSecretMutation,
+  useLoadLlmModelsMutation,
   useProjectQuery,
-  useSetupStatusQuery,
+  useProjectSetupQuery,
   useUpdateProjectMutation,
+  useValidateGithubPatMutation,
   useVerifyLlmMutation,
   useVerifySandboxMutation,
 } from "../hooks/use-projects.js";
+
+type UpdateProjectPayload = Parameters<
+  ReturnType<typeof useUpdateProjectMutation>["mutateAsync"]
+>[0];
 
 type FormValues = {
   budgetCapUsd: string;
   cpuLimit: string;
   egressPolicy: "allowlisted" | "locked";
   enabledGroups: string;
-  githubOwner: string;
   githubPat: string;
   githubRepo: string;
   llmModel: string;
-  llmProvider: "ollama" | "openai";
+  llmProvider: "" | "ollama" | "openai";
   memoryMb: string;
   requireArchitectureDocs: string;
   requireUserDocs: string;
@@ -38,43 +44,175 @@ type FormValues = {
   timeoutSeconds: string;
 };
 
+const defaultFormValues: FormValues = {
+  budgetCapUsd: "",
+  cpuLimit: "1",
+  egressPolicy: "locked",
+  enabledGroups: "planning,review",
+  githubPat: "",
+  githubRepo: "",
+  llmModel: "",
+  llmProvider: "",
+  memoryMb: "1024",
+  requireArchitectureDocs: "false",
+  requireUserDocs: "false",
+  sandboxAllowlist: "",
+  timeoutSeconds: "300",
+};
+
+const buildRepoOptions = (setupState: ProjectSetupState | undefined) => {
+  const availableRepos = setupState?.repo.availableRepos ?? [];
+  const selectedRepo = setupState?.repo.selectedRepo;
+
+  if (!selectedRepo) {
+    return availableRepos;
+  }
+
+  return availableRepos.some((repo) => repo.fullName === selectedRepo.fullName)
+    ? availableRepos
+    : [selectedRepo, ...availableRepos];
+};
+
+const buildProjectPayload = (
+  values: FormValues,
+  repoOptions: ReturnType<typeof buildRepoOptions>,
+) => {
+  const payload: UpdateProjectPayload = {
+    evidencePolicy: {
+      requireArchitectureDocs: values.requireArchitectureDocs === "true",
+      requireUserDocs: values.requireUserDocs === "true",
+    },
+    sandboxConfig: {
+      allowlist: values.sandboxAllowlist
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+      cpuLimit: Number(values.cpuLimit),
+      egressPolicy: values.egressPolicy,
+      memoryMb: Number(values.memoryMb),
+      timeoutSeconds: Number(values.timeoutSeconds),
+    },
+    toolPolicyPreview: {
+      budgetCapUsd: values.budgetCapUsd ? Number(values.budgetCapUsd) : null,
+      enabledGroups: values.enabledGroups
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    },
+  };
+  const selectedRepo = repoOptions.find((repo) => repo.fullName === values.githubRepo);
+
+  if (selectedRepo) {
+    payload.repoConfig = {
+      owner: selectedRepo.owner,
+      provider: "github",
+      repo: selectedRepo.repo,
+    };
+  }
+
+  if (values.llmProvider && values.llmModel.trim()) {
+    payload.llmConfig = {
+      model: values.llmModel.trim(),
+      provider: values.llmProvider,
+    };
+  }
+
+  return payload;
+};
+
 export const ProjectSetupPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
-  const setupStatusQuery = useSetupStatusQuery(id);
+  const setupQuery = useProjectSetupQuery(id);
   const updateProjectMutation = useUpdateProjectMutation(id);
-  const createSecretMutation = useCreateSecretMutation(id);
+  const validateGithubPatMutation = useValidateGithubPatMutation(id);
+  const loadLlmModelsMutation = useLoadLlmModelsMutation(id);
   const verifyLlmMutation = useVerifyLlmMutation(id);
   const verifySandboxMutation = useVerifySandboxMutation(id);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const readinessComplete = Boolean(
-    setupStatusQuery.data?.repoConnected &&
-      setupStatusQuery.data.llmVerified &&
-      setupStatusQuery.data.sandboxVerified,
+    setupQuery.data?.status.repoConnected &&
+      setupQuery.data.status.llmVerified &&
+      setupQuery.data.status.sandboxVerified,
   );
+  const repoOptions = buildRepoOptions(setupQuery.data);
+  const {
+    getValues,
+    handleSubmit,
+    register,
+    reset,
+    setValue,
+    watch,
+  } = useForm<FormValues>({
+    defaultValues: defaultFormValues,
+  });
+  const githubPat = watch("githubPat");
+  const llmModel = watch("llmModel");
+  const llmProvider = watch("llmProvider");
 
-  const { handleSubmit, register } = useForm<FormValues>({
-    defaultValues: {
-      budgetCapUsd: "",
-      cpuLimit: "1",
-      egressPolicy: "locked",
-      enabledGroups: "planning,review",
-      githubOwner: "",
+  useEffect(() => {
+    if (!setupQuery.data) {
+      return;
+    }
+
+    reset({
+      budgetCapUsd:
+        setupQuery.data.toolPolicyPreview?.budgetCapUsd !== null &&
+        setupQuery.data.toolPolicyPreview?.budgetCapUsd !== undefined
+          ? String(setupQuery.data.toolPolicyPreview.budgetCapUsd)
+          : "",
+      cpuLimit: String(setupQuery.data.sandboxConfig?.cpuLimit ?? 1),
+      egressPolicy: setupQuery.data.sandboxConfig?.egressPolicy ?? "locked",
+      enabledGroups:
+        setupQuery.data.toolPolicyPreview?.enabledGroups.join(",") ?? "planning,review",
       githubPat: "",
-      githubRepo: "",
-      llmModel: "llama3.2",
-      llmProvider: "ollama",
-      memoryMb: "1024",
-      requireArchitectureDocs: "false",
-      requireUserDocs: "false",
-      sandboxAllowlist: "",
-      timeoutSeconds: "300",
+      githubRepo: setupQuery.data.repo.selectedRepo?.fullName ?? "",
+      llmModel: setupQuery.data.llm.model ?? "",
+      llmProvider: setupQuery.data.llm.provider ?? "",
+      memoryMb: String(setupQuery.data.sandboxConfig?.memoryMb ?? 1024),
+      requireArchitectureDocs: String(
+        setupQuery.data.evidencePolicy?.requireArchitectureDocs ?? false,
+      ),
+      requireUserDocs: String(setupQuery.data.evidencePolicy?.requireUserDocs ?? false),
+      sandboxAllowlist: setupQuery.data.sandboxConfig?.allowlist.join(", ") ?? "",
+      timeoutSeconds: String(setupQuery.data.sandboxConfig?.timeoutSeconds ?? 300),
+    });
+    setOllamaModels(
+      setupQuery.data.llm.provider === "ollama" ? setupQuery.data.llm.availableModels : [],
+    );
+  }, [reset, setupQuery.data]);
+
+  const llmProviderField = register("llmProvider", {
+    onChange: (event) => {
+      const nextProvider = event.target.value as FormValues["llmProvider"];
+
+      setValue("llmModel", "");
+
+      if (nextProvider === "ollama") {
+        void loadLlmModelsMutation
+          .mutateAsync({ provider: "ollama" })
+          .then((response) => {
+            setOllamaModels(response.models);
+          });
+        return;
+      }
+
+      setOllamaModels([]);
     },
   });
+
+  const activeError =
+    setupQuery.error ||
+    updateProjectMutation.error ||
+    validateGithubPatMutation.error ||
+    loadLlmModelsMutation.error ||
+    verifyLlmMutation.error ||
+    verifySandboxMutation.error;
 
   return (
     <AppFrame>
       {projectQuery.data ? (
-        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatusQuery.data} />
+        <ProjectContextHeader project={projectQuery.data} setupStatus={setupQuery.data?.status} />
       ) : null}
       <PageIntro
         eyebrow="Project"
@@ -92,66 +230,66 @@ export const ProjectSetupPage = () => {
           <form
             className="grid gap-6"
             onSubmit={handleSubmit(async (values) => {
-              if (values.githubPat.trim()) {
-                await createSecretMutation.mutateAsync({
-                  type: "github_pat",
-                  value: values.githubPat.trim(),
-                });
-              }
-
-              await updateProjectMutation.mutateAsync({
-                evidencePolicy: {
-                  requireArchitectureDocs: values.requireArchitectureDocs === "true",
-                  requireUserDocs: values.requireUserDocs === "true",
-                },
-                llmConfig: {
-                  model: values.llmModel,
-                  provider: values.llmProvider,
-                },
-                repoConfig: {
-                  owner: values.githubOwner,
-                  provider: "github",
-                  repo: values.githubRepo,
-                },
-                sandboxConfig: {
-                  allowlist: values.sandboxAllowlist
-                    .split(",")
-                    .map((value) => value.trim())
-                    .filter(Boolean),
-                  cpuLimit: Number(values.cpuLimit),
-                  egressPolicy: values.egressPolicy,
-                  memoryMb: Number(values.memoryMb),
-                  timeoutSeconds: Number(values.timeoutSeconds),
-                },
-                toolPolicyPreview: {
-                  budgetCapUsd: values.budgetCapUsd ? Number(values.budgetCapUsd) : null,
-                  enabledGroups: values.enabledGroups
-                    .split(",")
-                    .map((value) => value.trim())
-                    .filter(Boolean),
-                },
-              });
+              await updateProjectMutation.mutateAsync(buildProjectPayload(values, repoOptions));
             })}
           >
             <div className="qb-section-heading">
               <p className="qb-meta-label">Repository access</p>
               <p className="text-sm text-secondary">
-                Connect the target repository and optionally store a PAT for verification.
+                Validate a PAT first, then pick one of the accessible repositories for this
+                project.
               </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="github-owner">GitHub owner</Label>
-                <Input id="github-owner" {...register("githubOwner")} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="github-repo">GitHub repo</Label>
-                <Input id="github-repo" {...register("githubRepo")} />
-              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="github-pat">GitHub PAT</Label>
               <Input id="github-pat" type="password" {...register("githubPat")} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={validateGithubPatMutation.isPending || !githubPat.trim()}
+                  onClick={() => {
+                    const pat = getValues("githubPat").trim();
+
+                    if (!pat) {
+                      return;
+                    }
+
+                    void validateGithubPatMutation.mutateAsync({ pat }).then(() => {
+                      setValue("githubPat", "");
+                    });
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  {setupQuery.data?.repo.patConfigured ? "Refresh Repositories" : "Validate PAT"}
+                </Button>
+                {setupQuery.data?.repo.patConfigured ? (
+                  <Badge tone="success">PAT saved</Badge>
+                ) : null}
+                {setupQuery.data?.repo.viewerLogin ? (
+                  <p className="text-sm text-secondary">
+                    Connected as {setupQuery.data.repo.viewerLogin}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="github-repo">GitHub repo</Label>
+              <Select
+                id="github-repo"
+                disabled={repoOptions.length === 0}
+                {...register("githubRepo")}
+              >
+                <option value="">
+                  {repoOptions.length > 0
+                    ? "Select a repository"
+                    : "Validate a PAT to load repositories"}
+                </option>
+                {repoOptions.map((repo) => (
+                  <option key={repo.fullName} value={repo.fullName}>
+                    {repo.fullName}
+                  </option>
+                ))}
+              </Select>
             </div>
 
             <div className="qb-section-heading border-t border-border/80 pt-5">
@@ -163,14 +301,43 @@ export const ProjectSetupPage = () => {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="llm-provider">LLM provider</Label>
-                <Select id="llm-provider" {...register("llmProvider")}>
+                <Select id="llm-provider" {...llmProviderField}>
+                  <option value="">Select a provider</option>
                   <option value="ollama">Ollama</option>
                   <option value="openai">OpenAI-compatible</option>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="llm-model">Model</Label>
-                <Input id="llm-model" {...register("llmModel")} />
+                {llmProvider === "ollama" ? (
+                  <Select
+                    id="llm-model"
+                    disabled={loadLlmModelsMutation.isPending || ollamaModels.length === 0}
+                    {...register("llmModel")}
+                  >
+                    <option value="">
+                      {loadLlmModelsMutation.isPending
+                        ? "Loading Ollama models"
+                        : "Select a model"}
+                    </option>
+                    {ollamaModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </Select>
+                ) : (
+                  <Input
+                    id="llm-model"
+                    disabled={!llmProvider}
+                    placeholder={
+                      llmProvider === "openai"
+                        ? "gpt-4.1"
+                        : "Choose a provider to configure a model"
+                    }
+                    {...register("llmModel")}
+                  />
+                )}
               </div>
             </div>
 
@@ -243,36 +410,61 @@ export const ProjectSetupPage = () => {
               </div>
             </div>
 
-            {(updateProjectMutation.error ||
-              createSecretMutation.error ||
-              verifyLlmMutation.error ||
-              verifySandboxMutation.error) && (
-              <Alert tone="error">
-                {updateProjectMutation.error?.message ||
-                  createSecretMutation.error?.message ||
-                  verifyLlmMutation.error?.message ||
-                  verifySandboxMutation.error?.message}
-              </Alert>
-            )}
+            {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
 
             <div className="flex flex-wrap gap-2 border-t border-border/80 pt-4">
               <Button disabled={updateProjectMutation.isPending} type="submit">
                 Save Setup
               </Button>
               <Button
-                disabled={verifyLlmMutation.isPending}
+                  disabled={
+                    verifyLlmMutation.isPending ||
+                    updateProjectMutation.isPending ||
+                    !llmProvider ||
+                    !llmModel.trim()
+                  }
                 onClick={() => {
-                  void verifyLlmMutation.mutateAsync();
+                  const values = getValues();
+
+                  if (!values.llmProvider || !values.llmModel.trim()) {
+                    return;
+                  }
+
+                  void updateProjectMutation
+                    .mutateAsync({
+                      llmConfig: {
+                        model: values.llmModel.trim(),
+                        provider: values.llmProvider,
+                      },
+                    })
+                    .then(() => verifyLlmMutation.mutateAsync());
                 }}
+                type="button"
                 variant="secondary"
               >
                 Verify LLM
               </Button>
               <Button
-                disabled={verifySandboxMutation.isPending}
+                disabled={verifySandboxMutation.isPending || updateProjectMutation.isPending}
                 onClick={() => {
-                  void verifySandboxMutation.mutateAsync();
+                  const values = getValues();
+
+                  void updateProjectMutation
+                    .mutateAsync({
+                      sandboxConfig: {
+                        allowlist: values.sandboxAllowlist
+                          .split(",")
+                          .map((value) => value.trim())
+                          .filter(Boolean),
+                        cpuLimit: Number(values.cpuLimit),
+                        egressPolicy: values.egressPolicy,
+                        memoryMb: Number(values.memoryMb),
+                        timeoutSeconds: Number(values.timeoutSeconds),
+                      },
+                    })
+                    .then(() => verifySandboxMutation.mutateAsync());
                 }}
+                type="button"
                 variant="secondary"
               >
                 Verify Sandbox
@@ -290,7 +482,7 @@ export const ProjectSetupPage = () => {
               <Badge tone={readinessComplete ? "success" : "warning"}>live status</Badge>
             </div>
             <div className="mt-4 grid gap-0 border border-border/80">
-              {setupStatusQuery.data?.checks.map((check) => (
+              {setupQuery.data?.status.checks.map((check) => (
                 <div
                   key={check.key}
                   className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"

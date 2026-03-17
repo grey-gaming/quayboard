@@ -18,6 +18,12 @@ export const useProjectQuery = (projectId: string) =>
     queryFn: () => api.getProject(projectId),
   });
 
+export const useProjectSetupQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "setup"],
+    queryFn: () => api.getProjectSetup(projectId),
+  });
+
 export const useCreateProjectMutation = () => {
   const queryClient = useQueryClient();
 
@@ -87,6 +93,7 @@ export const useUpdateProjectMutation = (projectId: string) => {
     onSuccess: () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
         queryClient.invalidateQueries({ queryKey: projectQueryKey }),
       ]);
@@ -100,10 +107,32 @@ export const useCreateSecretMutation = (projectId: string) => {
   return useMutation({
     mutationFn: (payload: { type: string; value: string }) => api.createSecret(projectId, payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
+      ]);
     },
   });
 };
+
+export const useValidateGithubPatMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { pat: string }) => api.validateGithubPat(projectId, payload),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
+      ]);
+    },
+  });
+};
+
+export const useLoadLlmModelsMutation = (projectId: string) =>
+  useMutation({
+    mutationFn: (payload: { provider: "ollama" }) => api.loadLlmModels(projectId, payload),
+  });
 
 export const useVerifyLlmMutation = (projectId: string) => {
   const queryClient = useQueryClient();
@@ -111,7 +140,10 @@ export const useVerifyLlmMutation = (projectId: string) => {
   return useMutation({
     mutationFn: () => api.verifyLlm(projectId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
+      ]);
     },
   });
 };
@@ -122,7 +154,10 @@ export const useVerifySandboxMutation = (projectId: string) => {
   return useMutation({
     mutationFn: () => api.verifySandbox(projectId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
+      ]);
     },
   });
 };

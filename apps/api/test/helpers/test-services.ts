@@ -24,6 +24,9 @@ export const createStubServices = (): AppServices => ({
     verifySandboxImage: async () => ({ ok: false, message: "Unavailable." }),
   },
   githubService: {
+    validatePat: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     verifyRepository: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -113,6 +116,35 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     configureSandbox: async () => undefined,
+    getSetupState: async () => ({
+      evidencePolicy: {
+        requireArchitectureDocs: false,
+        requireUserDocs: false,
+      },
+      llm: {
+        availableModels: [],
+        model: null,
+        provider: null,
+        verified: false,
+      },
+      repo: {
+        availableRepos: [],
+        patConfigured: false,
+        selectedRepo: null,
+        viewerLogin: null,
+      },
+      sandboxConfig: null,
+      status: {
+        checks: [],
+        llmVerified: false,
+        repoConnected: false,
+        sandboxVerified: false,
+      },
+      toolPolicyPreview: {
+        budgetCapUsd: null,
+        enabledGroups: ["planning", "review"],
+      },
+    }),
     getLlmDefinition: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -121,6 +153,36 @@ export const createStubServices = (): AppServices => ({
       llmVerified: false,
       repoConnected: false,
       sandboxVerified: false,
+    }),
+    loadLlmModels: async () => ({ models: [] }),
+    validateGithubPat: async () => ({
+      evidencePolicy: {
+        requireArchitectureDocs: false,
+        requireUserDocs: false,
+      },
+      llm: {
+        availableModels: [],
+        model: null,
+        provider: null,
+        verified: false,
+      },
+      repo: {
+        availableRepos: [],
+        patConfigured: true,
+        selectedRepo: null,
+        viewerLogin: "stub-user",
+      },
+      sandboxConfig: null,
+      status: {
+        checks: [],
+        llmVerified: false,
+        repoConnected: false,
+        sandboxVerified: false,
+      },
+      toolPolicyPreview: {
+        budgetCapUsd: null,
+        enabledGroups: ["planning", "review"],
+      },
     }),
     verifyLlm: async () => ({
       checks: [],
@@ -156,6 +218,9 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     listSecrets: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    upsertSecret: async () => {
       throw new Error("Not implemented in test stub.");
     },
     updateSecret: async () => {

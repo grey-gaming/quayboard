@@ -6,9 +6,10 @@ Quayboard's current UI supports the scratch-path planning workflow:
 2. Review **Instance Readiness** and resolve any failing checks.
 3. Create a project.
 4. Complete **Project Setup**:
-   - store a GitHub PAT
-   - connect a GitHub repository
+   - validate and store a GitHub PAT
+   - select a GitHub repository from the accessible repo list
    - choose a project-scoped LLM provider and model
+   - if using Ollama, load and select one of the available models
    - define sandbox defaults
    - verify LLM connectivity
    - verify sandbox startup

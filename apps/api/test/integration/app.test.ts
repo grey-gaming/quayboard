@@ -452,6 +452,147 @@ describe("API integration", () => {
     }
   });
 
+  it("validates a GitHub PAT, returns setup state, and clears repo verification after PAT rotation", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+    const originalValidatePat = appServices.services.githubService.validatePat;
+    const originalVerifyRepository = appServices.services.githubService.verifyRepository;
+    const originalCheckHealth = appServices.services.llmProviderService.checkHealth;
+
+    appServices.services.githubService.validatePat = async ({ token }) => ({
+      viewerLogin: token === "ghp_rotated" ? "rotated-admin" : "pat-admin",
+      repositories: [
+        {
+          owner: "acme",
+          repo: "service-api",
+          fullName: "acme/service-api",
+          defaultBranch: "main",
+          repoUrl: "https://github.com/acme/service-api",
+        },
+      ],
+    });
+    appServices.services.githubService.verifyRepository = async () => ({
+      defaultBranch: "main",
+      repoUrl: "https://github.com/acme/service-api",
+    });
+    appServices.services.llmProviderService.checkHealth = async ({ baseUrl }) => ({
+      ok: true,
+      message: "Available.",
+      models:
+        baseUrl === process.env.OLLAMA_HOST || baseUrl === "http://127.0.0.1:11434"
+          ? ["llama3.2", "mistral-nemo"]
+          : [],
+    });
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Setup User",
+          email: "setup@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "PAT Rotation Project",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      const validatePatResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/github-pat/validate`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          pat: "ghp_initial",
+        },
+      });
+
+      expect(validatePatResponse.statusCode).toBe(200);
+      expect(validatePatResponse.json().repo.patConfigured).toBe(true);
+      expect(validatePatResponse.json().repo.viewerLogin).toBe("pat-admin");
+      expect(validatePatResponse.json().repo.availableRepos).toEqual([
+        expect.objectContaining({
+          fullName: "acme/service-api",
+        }),
+      ]);
+
+      const loadModelsResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/llm-models`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          provider: "ollama",
+        },
+      });
+
+      expect(loadModelsResponse.statusCode).toBe(200);
+      expect(loadModelsResponse.json()).toEqual({
+        models: ["llama3.2", "mistral-nemo"],
+      });
+
+      const configureRepoResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          repoConfig: {
+            owner: "acme",
+            provider: "github",
+            repo: "service-api",
+          },
+        },
+      });
+
+      expect(configureRepoResponse.statusCode).toBe(200);
+
+      const setupStatusResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/setup-status`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(setupStatusResponse.statusCode).toBe(200);
+      expect(setupStatusResponse.json().repoConnected).toBe(true);
+
+      const rotatePatResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/github-pat/validate`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          pat: "ghp_rotated",
+        },
+      });
+
+      expect(rotatePatResponse.statusCode).toBe(200);
+      expect(rotatePatResponse.json().repo.viewerLogin).toBe("rotated-admin");
+
+      const afterRotationStatusResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/setup-status`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(afterRotationStatusResponse.statusCode).toBe(200);
+      expect(afterRotationStatusResponse.json().repoConnected).toBe(false);
+    } finally {
+      appServices.services.githubService.validatePat = originalValidatePat;
+      appServices.services.githubService.verifyRepository = originalVerifyRepository;
+      appServices.services.llmProviderService.checkHealth = originalCheckHealth;
+      restoreReadiness();
+    }
+  });
+
   it("rejects whitespace-only display names and project names before persistence", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
