@@ -593,6 +593,93 @@ describe("API integration", () => {
     }
   });
 
+  it("returns setup state after sandbox verification without leaking internal metadata", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+    const originalCheckAvailability = appServices.services.dockerService.checkAvailability;
+    const originalVerifySandboxImage = appServices.services.dockerService.verifySandboxImage;
+
+    appServices.services.dockerService.checkAvailability = async () => ({
+      ok: true,
+      message: "Docker daemon is reachable.",
+    });
+    appServices.services.dockerService.verifySandboxImage = async () => ({
+      ok: true,
+      message: "Sandbox container startup succeeded.",
+    });
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Sandbox User",
+          email: "sandbox@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Sandbox Project",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      const configureSandboxResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          sandboxConfig: {
+            allowlist: ["api.example.com"],
+            cpuLimit: 2,
+            egressPolicy: "allowlisted",
+            memoryMb: 2048,
+            timeoutSeconds: 600,
+          },
+        },
+      });
+
+      expect(configureSandboxResponse.statusCode).toBe(200);
+
+      const verifySandboxResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/verify-sandbox`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(verifySandboxResponse.statusCode).toBe(200);
+      expect(verifySandboxResponse.json().sandboxVerified).toBe(true);
+
+      const setupResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/setup`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(setupResponse.statusCode).toBe(200);
+      expect(setupResponse.json().sandboxConfig).toEqual({
+        allowlist: ["api.example.com"],
+        cpuLimit: 2,
+        egressPolicy: "allowlisted",
+        memoryMb: 2048,
+        timeoutSeconds: 600,
+      });
+    } finally {
+      appServices.services.dockerService.checkAvailability = originalCheckAvailability;
+      appServices.services.dockerService.verifySandboxImage = originalVerifySandboxImage;
+      restoreReadiness();
+    }
+  });
+
   it("rejects whitespace-only display names and project names before persistence", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 

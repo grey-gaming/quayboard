@@ -42,6 +42,10 @@ type SandboxConfig = {
   timeoutSeconds: number;
 };
 
+type SandboxSetting = SandboxConfig & {
+  verifiedAt?: string | null;
+};
+
 type GithubRepoOption = {
   defaultBranch: string | null;
   fullName: string;
@@ -64,6 +68,22 @@ type LlmSetting = LlmConfig & {
 const defaultEvidencePolicy: EvidencePolicy = {
   requireArchitectureDocs: false,
   requireUserDocs: false,
+};
+
+const buildSandboxConfig = (
+  sandboxSetting: SandboxSetting | null,
+): SandboxConfig | null => {
+  if (!sandboxSetting) {
+    return null;
+  }
+
+  return {
+    allowlist: sandboxSetting.allowlist,
+    cpuLimit: sandboxSetting.cpuLimit,
+    egressPolicy: sandboxSetting.egressPolicy,
+    memoryMb: sandboxSetting.memoryMb,
+    timeoutSeconds: sandboxSetting.timeoutSeconds,
+  };
 };
 
 const buildSelectedRepo = (
@@ -446,7 +466,10 @@ export const createProjectSetupService = (
           where: eq(reposTable.projectId, projectId),
         }),
         settingsService.getProjectSetting<LlmSetting>(projectId, PROJECT_SETTING_KEYS.llm),
-        settingsService.getProjectSetting<SandboxConfig>(projectId, PROJECT_SETTING_KEYS.sandbox),
+        settingsService.getProjectSetting<SandboxSetting>(
+          projectId,
+          PROJECT_SETTING_KEYS.sandbox,
+        ),
         settingsService.getProjectSetting<EvidencePolicy>(
           projectId,
           PROJECT_SETTING_KEYS.evidencePolicy,
@@ -472,7 +495,7 @@ export const createProjectSetupService = (
         availableModels: llm?.availableModels ?? [],
         verified: Boolean(llm?.verifiedAt),
       },
-      sandboxConfig: sandboxConfig ?? null,
+      sandboxConfig: buildSandboxConfig(sandboxConfig),
       evidencePolicy: evidencePolicy ?? defaultEvidencePolicy,
     };
   },
