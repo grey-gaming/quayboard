@@ -1,5 +1,5 @@
 import { questionnaireDefinition } from "@quayboard/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -9,6 +9,7 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
+import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
@@ -17,6 +18,7 @@ import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAutoAnswerQuestionnaireMutation,
   useProjectQuery,
+  useProjectJobsQuery,
   useQuestionnaireQuery,
   useSetupStatusQuery,
   useUpdateQuestionnaireMutation,
@@ -32,6 +34,7 @@ const emptyAnswers = questionnaireDefinition.reduce<FormValues>((accumulator, qu
 }, {});
 
 const questionKeys = questionnaireDefinition.map((question) => question.key);
+const autoAnswerJobType = "AutoAnswerQuestionnaire";
 
 const normalizeAnswers = (answers?: Partial<FormValues>) =>
   questionnaireDefinition.reduce<FormValues>((accumulator, question) => {
@@ -65,18 +68,23 @@ const formatAutosaveStatus = (
   return "Answers save automatically.";
 };
 
+const isTerminalJobStatus = (status: string | null | undefined) =>
+  status === "succeeded" || status === "failed" || status === "cancelled";
+
 export const OnePagerQuestionsPage = () => {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const projectQuery = useProjectQuery(id);
   const setupStatusQuery = useSetupStatusQuery(id);
   const questionnaireQuery = useQuestionnaireQuery(id);
+  const jobsQuery = useProjectJobsQuery(id);
   const updateQuestionnaireMutation = useUpdateQuestionnaireMutation(id);
   const autoAnswerQuestionnaireMutation = useAutoAnswerQuestionnaireMutation(id);
   const [autosaveState, setAutosaveState] = useState<
     "idle" | "dirty" | "saving" | "saved" | "error"
   >("idle");
   const [autosaveError, setAutosaveError] = useState<string | null>(null);
+  const [queuedAutoAnswerJobId, setQueuedAutoAnswerJobId] = useState<string | null>(null);
   const hasHydratedRef = useRef(false);
   const debounceHandleRef = useRef<number | null>(null);
   const lastSyncedAnswersRef = useRef<FormValues>(emptyAnswers);
@@ -202,8 +210,38 @@ export const OnePagerQuestionsPage = () => {
   const currentAnswers = normalizeAnswers(watchedAnswers);
   const questionnaireComplete = questionKeys.every((key) => Boolean(currentAnswers[key].trim()));
   const hasBlankAnswers = questionKeys.some((key) => !currentAnswers[key].trim());
+  const activeAutoAnswerJob = useMemo(
+    () =>
+      jobsQuery.data?.jobs.find(
+        (job) =>
+          job.type === autoAnswerJobType &&
+          (job.status === "queued" || job.status === "running"),
+      ) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const trackedAutoAnswerJob = useMemo(
+    () =>
+      queuedAutoAnswerJobId
+        ? jobsQuery.data?.jobs.find((job) => job.id === queuedAutoAnswerJobId) ?? null
+        : null,
+    [jobsQuery.data?.jobs, queuedAutoAnswerJobId],
+  );
+  const autoAnswerActive =
+    autoAnswerQuestionnaireMutation.isPending ||
+    Boolean(activeAutoAnswerJob) ||
+    (queuedAutoAnswerJobId !== null && !isTerminalJobStatus(trackedAutoAnswerJob?.status));
+
+  useEffect(() => {
+    if (!queuedAutoAnswerJobId || !isTerminalJobStatus(trackedAutoAnswerJob?.status)) {
+      return;
+    }
+
+    setQueuedAutoAnswerJobId(null);
+  }, [queuedAutoAnswerJobId, trackedAutoAnswerJob?.status]);
+
   const activeError =
     questionnaireQuery.error ||
+    jobsQuery.error ||
     updateQuestionnaireMutation.error ||
     autoAnswerQuestionnaireMutation.error;
 
@@ -241,7 +279,22 @@ export const OnePagerQuestionsPage = () => {
               saved project description, and any answers already present to fill blanks only.
             </p>
           </div>
-          <div className="grid gap-2 text-right">
+          <div className="grid gap-2 text-right" data-testid="questionnaire-header-actions">
+            <AiWorkflowButton
+              disabled={updateQuestionnaireMutation.isPending || autoAnswerActive || !hasBlankAnswers}
+              label="Generate Answers"
+              onClick={() => {
+                void flushAutosave()
+                  .then(() => autoAnswerQuestionnaireMutation.mutateAsync())
+                  .then((job) => {
+                    setQueuedAutoAnswerJobId(job.id);
+                  })
+                  .catch(() => undefined);
+              }}
+              runningLabel="Generating Answers"
+              type="button"
+              active={autoAnswerActive}
+            />
             <Badge tone={autosaveState === "error" ? "danger" : "neutral"}>
               {formatAutosaveStatus(autosaveState, questionnaireQuery.data?.updatedAt)}
             </Badge>
@@ -277,26 +330,13 @@ export const OnePagerQuestionsPage = () => {
           })}
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-2 border-t border-border/80 pt-4">
+        <div
+          className="mt-6 flex flex-wrap gap-2 border-t border-border/80 pt-4"
+          data-testid="questionnaire-footer-actions"
+        >
           <Button
             disabled={
-              autoAnswerQuestionnaireMutation.isPending ||
-              updateQuestionnaireMutation.isPending ||
-              !hasBlankAnswers
-            }
-            onClick={() => {
-              void flushAutosave()
-                .then(() => autoAnswerQuestionnaireMutation.mutateAsync())
-                .catch(() => undefined);
-            }}
-            type="button"
-            variant="secondary"
-          >
-            Generate Answers
-          </Button>
-          <Button
-            disabled={
-              autoAnswerQuestionnaireMutation.isPending ||
+              autoAnswerActive ||
               updateQuestionnaireMutation.isPending ||
               !questionnaireComplete
             }

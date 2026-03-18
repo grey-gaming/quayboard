@@ -68,6 +68,39 @@
 }
 
 @layer components {
+  @keyframes qb-ai-glow-sweep {
+    from {
+      transform: translateX(-38%) rotate(8deg);
+    }
+
+    to {
+      transform: translateX(38%) rotate(8deg);
+    }
+  }
+
+  @keyframes qb-ai-orbit-spin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes qb-ai-spark-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.72;
+      transform: scale(1.16);
+    }
+  }
+
   .qb-shell {
     @apply border border-border/90 bg-panel text-foreground;
   }
@@ -110,5 +143,86 @@
 
   .qb-divider {
     @apply border-t border-border/70;
+  }
+
+  .qb-ai-action {
+    @apply relative isolate overflow-hidden border-accent/40 bg-panel-raised text-foreground;
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--accent) / 0.08),
+      0 0 0 1px hsl(var(--accent) / 0.02);
+  }
+
+  .qb-ai-action::before,
+  .qb-ai-action::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+  }
+
+  .qb-ai-action::before {
+    background:
+      radial-gradient(circle at 18% 50%, hsl(var(--accent) / 0.18), transparent 52%),
+      linear-gradient(
+        120deg,
+        hsl(var(--accent) / 0.12) 0%,
+        hsl(var(--info) / 0.05) 42%,
+        transparent 80%
+      );
+    opacity: 0.95;
+    transition: opacity 180ms ease;
+  }
+
+  .qb-ai-action::after {
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      hsl(var(--accent) / 0.14) 44%,
+      hsl(var(--info) / 0.2) 50%,
+      transparent 66%
+    );
+    inset: -130% -40%;
+    opacity: 0;
+    transform: translateX(-38%) rotate(8deg);
+    transition: opacity 180ms ease;
+  }
+
+  .qb-ai-action:hover:not(:disabled) {
+    @apply border-accent/60 bg-panel-active;
+  }
+
+  .qb-ai-action[data-active="true"] {
+    @apply border-accent bg-panel-active;
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--accent) / 0.18),
+      0 0 0 1px hsl(var(--accent) / 0.12),
+      0 0 24px hsl(var(--accent) / 0.24),
+      0 0 42px hsl(var(--info) / 0.16);
+  }
+
+  .qb-ai-action[data-active="true"]::after {
+    animation: qb-ai-glow-sweep 2.2s linear infinite;
+    opacity: 1;
+  }
+
+  .qb-ai-action__content {
+    @apply relative z-10 flex items-center gap-2;
+  }
+
+  .qb-ai-icon {
+    @apply shrink-0;
+  }
+
+  .qb-ai-icon-orbit,
+  .qb-ai-icon-spark {
+    transform-origin: 50% 50%;
+  }
+
+  .qb-ai-action[data-active="true"] .qb-ai-icon-orbit {
+    animation: qb-ai-orbit-spin 3.2s linear infinite;
+  }
+
+  .qb-ai-action[data-active="true"] .qb-ai-icon-spark {
+    animation: qb-ai-spark-pulse 1.4s ease-in-out infinite;
   }
 }
