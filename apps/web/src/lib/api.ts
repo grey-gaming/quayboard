@@ -128,6 +128,16 @@ export const api = {
       method: "POST",
     });
   },
+  autoAnswerQuestionnaire(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/questionnaire-answers/auto-answer`, {
+      method: "POST",
+    });
+  },
+  completeSetup(projectId: string) {
+    return apiRequest<Project>(`/api/projects/${projectId}/complete-setup`, {
+      method: "POST",
+    });
+  },
   approveUserFlows(projectId: string, acceptedWarnings: string[]) {
     return apiRequest<UseCaseListResponse>(`/api/projects/${projectId}/user-flows/approve`, {
       method: "POST",

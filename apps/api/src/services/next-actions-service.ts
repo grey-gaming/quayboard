@@ -10,25 +10,29 @@ export const createNextActionsService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [setupStatus, questionnaire, onePager, userFlows] = await Promise.all([
+    const [setupStatus, setupCompleted, questionnaire, onePager, userFlows] = await Promise.all([
       projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
       questionnaireService.getAnswers(projectId),
       onePagerService.getCanonical(ownerUserId, projectId),
       userFlowService.list(ownerUserId, projectId),
     ]);
     const actions = [];
 
-    if (!setupStatus.repoConnected || !setupStatus.llmVerified || !setupStatus.sandboxVerified) {
+    if (!setupCompleted) {
+      const setupChecksPassed =
+        setupStatus.repoConnected && setupStatus.llmVerified && setupStatus.sandboxVerified;
+
       actions.push({
         key: "project_setup",
-        label: "Finish project setup",
+        label: setupChecksPassed ? "Complete project setup" : "Finish project setup",
         href: `/projects/${projectId}/setup`,
       });
     } else if (!questionnaire.completedAt) {
       actions.push({
         key: "questionnaire",
         label: "Complete the questionnaire",
-        href: `/projects/${projectId}/one-pager`,
+        href: `/projects/${projectId}/one-pager/questions`,
       });
     } else if (!onePager) {
       actions.push({

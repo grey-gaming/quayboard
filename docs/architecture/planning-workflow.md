@@ -9,7 +9,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - instance readiness checks
 - project creation and Mission Control
 - project setup with GitHub PAT verification, project-scoped LLM selection, and sandbox verification
-- questionnaire persistence
+- questionnaire persistence, autosave, and blank-answer auto-fill
 - overview document generation, version history, restore, and approval
 - user-flow generation, manual editing, deduplication, and approval
 
@@ -26,7 +26,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `systemReadinessService` checks database access, encryption key presence, Docker access, artifact storage, and enabled provider adapters
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
 - `questionnaireService`, `onePagerService`, and `userFlowService` manage the planning artifacts
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including questionnaire auto-answer and overview generation
 
 ## External Adapters
 
@@ -41,6 +41,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `/projects/new`
 - `/projects/:id`
 - `/projects/:id/setup`
+- `/projects/:id/one-pager/questions`
 - `/projects/:id/one-pager`
 - `/projects/:id/user-flows`
 - `/projects/:id/import` as a future-release stub

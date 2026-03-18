@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildUserFlowPrompt,
@@ -36,14 +37,31 @@ describe("job prompts", () => {
 
   it("preserves the overview JSON contract while raising the quality bar", () => {
     const prompt = buildProjectOverviewPrompt({
+      projectDescription: "Governed planning workspace for software teams.",
       projectName: "Quayboard",
       answers: sampleAnswers,
     });
 
-    expect(prompt).toContain('exactly two top-level string keys: "title" and "markdown"');
+    expect(prompt).toContain(
+      'exactly three top-level string keys: "title", "description", and "markdown"',
+    );
+    expect(prompt).toContain("Current project description:");
     expect(prompt).toContain("broad rather than narrow");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
     expect(prompt).toContain("Quayboard");
+  });
+
+  it("asks the questionnaire auto-answer prompt to fill blanks only", () => {
+    const prompt = buildQuestionnaireAutoAnswerPrompt({
+      projectName: "Quayboard",
+      projectDescription: "Governed planning workspace for software teams.",
+      answers: sampleAnswers,
+    });
+
+    expect(prompt).toContain('Only include keys that are currently blank.');
+    expect(prompt).toContain("Do not rewrite or repeat existing answers.");
+    expect(prompt).toContain("Questionnaire definition:");
+    expect(prompt).toContain("Existing questionnaire answers:");
   });
 
   it("asks for broad, non-duplicative user-flow coverage", () => {

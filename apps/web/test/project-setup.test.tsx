@@ -6,9 +6,19 @@ import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import type { ProjectSetupState } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
+import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
+import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
 import { ProjectSetupPage } from "../src/pages/ProjectSetupPage.js";
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
+
+class MockEventSource {
+  addEventListener() {}
+
+  removeEventListener() {}
+
+  close() {}
+}
 
 const baseSetupState = (): ProjectSetupState => ({
   evidencePolicy: {
@@ -276,7 +286,13 @@ describe("project setup page", () => {
     await user.click(screen.getByRole("button", { name: "Save Repository" }));
 
     await waitFor(() => {
-      expect(screen.getAllByText("saved").length).toBeGreaterThan(0);
+      const savedBadges = screen.getAllByText("saved");
+
+      expect(savedBadges.length).toBeGreaterThan(0);
+      savedBadges.forEach((badge) => {
+        expect(badge.className).toContain("text-success");
+        expect(badge.className).not.toContain("text-secondary");
+      });
     });
 
     await user.selectOptions(screen.getByLabelText("LLM provider"), "ollama");
@@ -291,6 +307,14 @@ describe("project setup page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
     });
+
+    expect(screen.getByRole("button", { name: "Complete Setup" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
+    expect(screen.getByText("Overview", { selector: "span" }).getAttribute("aria-disabled")).toBe(
+      "true",
+    );
   });
 
   it("shows Fastify validation messages when sandbox save fails before verification", async () => {
@@ -459,5 +483,237 @@ describe("project setup page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
     });
+  });
+
+  it("completes setup only after the required checks pass and then unlocks later sections", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("EventSource", MockEventSource);
+    let project = {
+      id: projectId,
+      name: "Harbor Control",
+      description: "Governed setup flow",
+      state: "BOOTSTRAPPING",
+      ownerUserId: projectId,
+      createdAt: "2026-03-15T00:00:00.000Z",
+      updatedAt: "2026-03-17T00:00:00.000Z",
+    };
+    let setupState: ProjectSetupState = {
+      ...baseSetupState(),
+      llm: {
+        availableModels: ["llama3.2"],
+        model: "llama3.2",
+        provider: "ollama",
+        verified: true,
+      },
+      repo: {
+        availableRepos: [
+          {
+            owner: "acme",
+            repo: "service-api",
+            fullName: "acme/service-api",
+            defaultBranch: "main",
+            repoUrl: "https://github.com/acme/service-api",
+          },
+        ],
+        patConfigured: true,
+        selectedRepo: {
+          owner: "acme",
+          repo: "service-api",
+          fullName: "acme/service-api",
+          defaultBranch: "main",
+          repoUrl: "https://github.com/acme/service-api",
+        },
+        viewerLogin: "acme-admin",
+      },
+      status: {
+        checks: [
+          {
+            key: "repo",
+            label: "Repository",
+            status: "pass",
+            message: "Repository access verified.",
+          },
+          {
+            key: "llm",
+            label: "LLM Provider",
+            status: "pass",
+            message: "LLM provider verified.",
+          },
+          {
+            key: "sandbox",
+            label: "Sandbox",
+            status: "fail",
+            message: "Configure sandbox defaults and verify startup.",
+          },
+        ],
+        llmVerified: true,
+        repoConnected: true,
+        sandboxVerified: false,
+      },
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
+
+        if (path === `/api/projects/${projectId}` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => project,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/setup` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/setup-status` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState.status,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/questionnaire-answers` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              projectId,
+              answers: {},
+              updatedAt: "2026-03-17T00:00:00.000Z",
+              completedAt: null,
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/one-pager` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ onePager: null }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/one-pager/versions` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ versions: [] }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/jobs` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ jobs: [] }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}` && method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => project,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/verify-sandbox` && method === "POST") {
+          setupState = {
+            ...setupState,
+            status: {
+              ...setupState.status,
+              sandboxVerified: true,
+              checks: setupState.status.checks.map((check) =>
+                check.key === "sandbox"
+                  ? {
+                      ...check,
+                      status: "pass",
+                      message: "Sandbox startup verified.",
+                    }
+                  : check,
+              ),
+            },
+          };
+
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState.status,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/complete-setup` && method === "POST") {
+          project = {
+            ...project,
+            state: "READY_PARTIAL",
+          };
+
+          return {
+            ok: true,
+            status: 200,
+            json: async () => project,
+          } satisfies Partial<Response>;
+        }
+
+        throw new Error(`Unhandled fetch for ${method} ${path}`);
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id/setup", element: <ProjectSetupPage /> },
+        {
+          element: <SetupCompletionGate />,
+          children: [
+            { path: "/projects/:id/one-pager/questions", element: <OnePagerQuestionsPage /> },
+          ],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${projectId}/setup`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Complete Setup" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Verify Sandbox" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Complete Setup" }).hasAttribute("disabled")).toBe(
+        false,
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Complete Setup" }));
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Questions",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Capture project intent here. Answers save automatically, and you can ask the LLM to fill only the remaining gaps before generating the overview.",
+      ),
+    ).toBeTruthy();
   });
 });

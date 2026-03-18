@@ -1,5 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
+import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboard/shared";
+
 import type { AppDatabase } from "../../db/client.js";
 import { llmRunsTable, useCasesTable } from "../../db/schema.js";
 import { generateId } from "../ids.js";
@@ -10,6 +12,7 @@ import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import {
+  buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildUserFlowPrompt,
@@ -74,12 +77,73 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, { description });
       }
 
+      case "AutoAnswerQuestionnaire": {
+        const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
+        const blankKeys = new Set(
+          questionnaireDefinition
+            .map((question) => question.key)
+            .filter((key) => !questionnaire.answers[key]?.trim()),
+        );
+
+        if (blankKeys.size === 0) {
+          return input.jobService.markSucceeded(rawJob.id, {
+            answeredKeys: [],
+            completedAt: questionnaire.completedAt,
+          });
+        }
+
+        const prompt = buildQuestionnaireAutoAnswerPrompt({
+          projectName: project.name,
+          projectDescription: project.description,
+          answers: questionnaire.answers,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt);
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: "AutoAnswerQuestionnaire",
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseJson<Record<string, string>>(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "AutoAnswerQuestionnaire returned invalid content. Expected a JSON object keyed by questionnaire fields.",
+          );
+        }
+
+        const parsedAnswers = questionnaireAnswerMapSchema.parse(parsed);
+        const filteredAnswers = Object.fromEntries(
+          Object.entries(parsedAnswers).filter(
+            ([key, value]) => blankKeys.has(key as (typeof questionnaireDefinition)[number]["key"]) && typeof value === "string" && value.trim(),
+          ),
+        );
+        const updatedQuestionnaire = await input.questionnaireService.upsertAnswers(
+          rawJob.projectId,
+          filteredAnswers,
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          answeredKeys: Object.keys(filteredAnswers),
+          completedAt: updatedQuestionnaire.completedAt,
+        });
+      }
+
       case "GenerateProjectOverview":
       case "RegenerateProjectOverview":
       case "GenerateOverviewImprovements": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectOverviewPrompt({
           projectName: project.name,
+          projectDescription: project.description,
           answers: questionnaire.answers,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
@@ -97,13 +161,19 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const parsed = parseJson<{ markdown?: string; title?: string }>(generated.content);
+        const parsed = parseJson<{ description?: string; markdown?: string; title?: string }>(
+          generated.content,
+        );
 
-        if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+        if (!parsed?.title?.trim() || !parsed?.description?.trim() || !parsed?.markdown?.trim()) {
           throw new Error(
-            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title", "description", and "markdown".`,
           );
         }
+
+        await input.projectService.updateOwnedProject(ownerUserId, rawJob.projectId, {
+          description: parsed.description.trim(),
+        });
 
         const onePager = await input.onePagerService.createVersion({
           projectId: rawJob.projectId,

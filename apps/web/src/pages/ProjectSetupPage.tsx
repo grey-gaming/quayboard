@@ -1,7 +1,7 @@
 import type { ProjectSetupState } from "@quayboard/shared";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
@@ -15,6 +15,7 @@ import { Label } from "../components/ui/Label.js";
 import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
 import {
+  useCompleteSetupMutation,
   useLoadLlmModelsMutation,
   useProjectQuery,
   useProjectSetupQuery,
@@ -23,6 +24,7 @@ import {
   useVerifyLlmMutation,
   useVerifySandboxMutation,
 } from "../hooks/use-projects.js";
+import { isSetupCompletedProjectState } from "../lib/project-state.js";
 
 type UpdateProjectPayload = Parameters<
   ReturnType<typeof useUpdateProjectMutation>["mutateAsync"]
@@ -125,8 +127,11 @@ const SectionHeader = ({
 
 export const ProjectSetupPage = () => {
   const { id = "" } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const projectQuery = useProjectQuery(id);
   const setupQuery = useProjectSetupQuery(id);
+  const completeSetupMutation = useCompleteSetupMutation(id);
   const updateProjectMutation = useUpdateProjectMutation(id);
   const validateGithubPatMutation = useValidateGithubPatMutation(id);
   const loadLlmModelsMutation = useLoadLlmModelsMutation(id);
@@ -138,6 +143,22 @@ export const ProjectSetupPage = () => {
   const readinessComplete = Boolean(
     setupStatus?.repoConnected && setupStatus.llmVerified && setupStatus.sandboxVerified,
   );
+  const setupCompleted = Boolean(
+    projectQuery.data && isSetupCompletedProjectState(projectQuery.data.state),
+  );
+  const setupReadyToComplete = readinessComplete && !setupCompleted;
+  const setupMetaBadge = setupCompleted
+    ? { label: "complete", tone: "success" as const }
+    : setupReadyToComplete
+      ? { label: "ready to complete", tone: "info" as const }
+      : { label: "in progress", tone: "warning" as const };
+  const redirectedFromLockedSection =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "lockedFromPath" in location.state &&
+    typeof location.state.lockedFromPath === "string"
+      ? location.state.lockedFromPath
+      : null;
   const repoOptions = buildRepoOptions(setupState);
   const { getValues, register, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: defaultFormValues,
@@ -176,6 +197,7 @@ export const ProjectSetupPage = () => {
 
   const activeError =
     setupQuery.error ||
+    completeSetupMutation.error ||
     updateProjectMutation.error ||
     validateGithubPatMutation.error ||
     loadLlmModelsMutation.error ||
@@ -255,14 +277,30 @@ export const ProjectSetupPage = () => {
         meta={
           <>
             <Badge tone="neutral">project-scoped setup</Badge>
-            <Badge tone={readinessComplete ? "success" : "warning"}>
-              {readinessComplete ? "ready" : "in progress"}
-            </Badge>
+            <Badge tone={setupMetaBadge.tone}>{setupMetaBadge.label}</Badge>
           </>
         }
       />
 
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+      {redirectedFromLockedSection && !setupCompleted ? (
+        <Alert tone="info">
+          Complete setup to unlock Questions, Overview, User Flows, and Import. You were
+          redirected from <span className="font-mono">{redirectedFromLockedSection}</span>.
+        </Alert>
+      ) : null}
+      {setupReadyToComplete ? (
+        <Alert tone="info">
+          All required setup checks are green. Click <span className="font-medium">Complete Setup</span>{" "}
+          to unlock the rest of the project.
+        </Alert>
+      ) : null}
+      {setupCompleted ? (
+        <Alert tone="success">
+          Setup is complete. Questions, Overview, User Flows, and Import are now available for
+          this project.
+        </Alert>
+      ) : null}
 
       <div className="grid gap-4">
         <Card surface="panel">
@@ -276,7 +314,7 @@ export const ProjectSetupPage = () => {
               setupStatus?.repoConnected ? (
                 <Badge tone="success">verified</Badge>
               ) : repoSaved ? (
-                <Badge tone="neutral">saved</Badge>
+                <Badge tone="success">saved</Badge>
               ) : null
             }
           />
@@ -355,7 +393,7 @@ export const ProjectSetupPage = () => {
               setupStatus?.llmVerified ? (
                 <Badge tone="success">verified</Badge>
               ) : llmSaved ? (
-                <Badge tone="neutral">saved</Badge>
+                <Badge tone="success">saved</Badge>
               ) : null
             }
           />
@@ -498,7 +536,7 @@ export const ProjectSetupPage = () => {
               setupStatus?.sandboxVerified ? (
                 <Badge tone="success">verified</Badge>
               ) : sandboxSaved ? (
-                <Badge tone="neutral">saved</Badge>
+                <Badge tone="success">saved</Badge>
               ) : null
             }
           />
@@ -593,6 +631,62 @@ export const ProjectSetupPage = () => {
                 type="button"
               >
                 Save Documentation Policy
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card surface="panel">
+          <SectionHeader
+            title="Setup Completion"
+            summary="Later planning sections stay locked until you explicitly complete setup for this project."
+            docs={[
+              { label: "Planning workflow", to: "/docs/planning-workflow" },
+            ]}
+            badge={
+              setupCompleted ? (
+                <Badge tone="success">complete</Badge>
+              ) : setupReadyToComplete ? (
+                <Badge tone="info">ready</Badge>
+              ) : (
+                <Badge tone="warning">blocked</Badge>
+              )
+            }
+          />
+          <div className="mt-4 grid gap-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="qb-kv">
+                <p className="qb-meta-label">Repository</p>
+                <p className="text-sm text-foreground">
+                  {setupStatus?.repoConnected ? "Verified" : "Pending"}
+                </p>
+              </div>
+              <div className="qb-kv">
+                <p className="qb-meta-label">LLM</p>
+                <p className="text-sm text-foreground">
+                  {setupStatus?.llmVerified ? "Verified" : "Pending"}
+                </p>
+              </div>
+              <div className="qb-kv">
+                <p className="qb-meta-label">Sandbox</p>
+                <p className="text-sm text-foreground">
+                  {setupStatus?.sandboxVerified ? "Verified" : "Pending"}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={
+                  completeSetupMutation.isPending || !readinessComplete || setupCompleted
+                }
+                onClick={() => {
+                  void completeSetupMutation
+                    .mutateAsync()
+                    .then(() => navigate(`/projects/${id}/one-pager/questions`));
+                }}
+                type="button"
+              >
+                {setupCompleted ? "Setup Completed" : "Complete Setup"}
               </Button>
             </div>
           </div>

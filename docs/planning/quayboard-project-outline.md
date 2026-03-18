@@ -131,7 +131,8 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/projects/:id` | **Mission Control** | Project landing page: stage map, next actions, auto-advance controls, timeline/evidence feed, phase summary |
 | `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, and evidence policy |
 | `/projects/:id/import` | **Import Project** | GitHub / local file import |
-| `/projects/:id/one-pager` | **Overview Document** | Questionnaire, naming phase, document overview with review loop |
+| `/projects/:id/one-pager/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
+| `/projects/:id/one-pager` | **Overview Document** | Generated overview review, history, restore, and approval |
 | `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
 | `/projects/:id/blueprint` | **Blueprint Builder** | Decision deck, UX/tech project blueprint review |
 | `/projects/:id/milestones` | **Milestones** | Create, edit, approve, complete milestone lifecycle |
@@ -173,7 +174,8 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
    b. **Configure LLM provider** — select one of the enabled provider adapters for this project, enter the project-scoped API key or endpoint override when required, choose models for activity types, and verify connectivity.
    c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted), and verify sandbox startup.
    d. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
-   e. **Save and verify setup sections** — repository, LLM, and sandbox state is surfaced inline within each setup section. Setup is complete when all required checks pass.
+   e. **Save and verify setup sections** — repository, LLM, and sandbox state is surfaced inline within each setup section.
+   f. **Complete Setup** — once the required checks pass, the user explicitly marks setup complete. Overview and later planning sections stay locked until this action is confirmed.
 3. On first project, a guided **"Hello World" onboarding** path walks the user through the full pipeline:
    - Clear instance readiness → register or log in → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
    - The full pipeline demo continues in M8, where sandbox execution, PR creation, and evidence bundles are implemented.
@@ -181,9 +183,9 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 #### Flow 1: New project — scratch to overview document
 
 1. User clicks **New Project** and selects **Start from scratch**.
-2. Completes a 14-question guided questionnaire (config-driven question keys: `q1_name_and_description` through `q14_product_feel`).
-3. LLM generates a project description; user enters a project name.
-4. LLM generates the **overview document** (versioned, restorable).
+2. Completes a 14-question guided questionnaire on the **Questions** page (config-driven question keys: `q1_name_and_description` through `q14_product_feel`), with autosave and optional LLM blank-answer generation.
+3. User clicks **Generate Overview** to move to the overview screen.
+4. LLM generates the **overview document** (versioned, restorable) and refreshes the saved project description.
 5. User reviews the overview document, triggers targeted regenerations or section improvements.
 6. User approves the overview document — phase gate passes.
 
@@ -1166,7 +1168,8 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), and evidence/docs policy with inline saved/verified status
 - `MissionControlPage` (`/projects/:id`) — project landing page absorbing the old `ProjectDetailPage` phase summary. Shows stage map, next actions, and activity timeline (auto-advance controls added in M7)
 - `ProjectContextHeader` — persistent sticky header on all project-scoped pages (project state, repo, model profile, sandbox policy, setup readiness)
-- `OnePagerIntakePage` — questionnaire phase, naming phase, overview document phase
+- `OnePagerQuestionsPage` — questionnaire phase with autosave and LLM blank-answer generation
+- `OnePagerOverviewPage` — overview document phase, history, restore, and approval
 - `UserFlowsPage` (`/projects/:id/user-flows`) — generation, manual editing, coverage summary, dedupe, and approval
 - Guided onboarding flow — step-by-step walkthrough: register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document
 - DS primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Spinner`, `Skeleton`, `Alert`, `Toast`

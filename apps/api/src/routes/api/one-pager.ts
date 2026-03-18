@@ -42,9 +42,11 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const onePager = await services.onePagerService.getCanonical(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
         );
 
         return onePagerListResponseSchema.parse({ onePager });
@@ -64,6 +66,7 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     async (request, reply) => {
       try {
         const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(request.user!.id, projectId);
         const payload = queueOnePagerGenerationRequestSchema.parse(request.body);
         const type =
@@ -95,9 +98,11 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const versions = await services.onePagerService.listVersions(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
         );
 
         return onePagerVersionListResponseSchema.parse({ versions });
@@ -116,9 +121,11 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string; version: number }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const onePager = await services.onePagerService.restoreVersion(
           request.user!.id,
-          (request.params as { id: string; version: number }).id,
+          projectId,
           Number((request.params as { id: string; version: number }).version),
         );
 
@@ -138,15 +145,42 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
         );
         const answers = await services.questionnaireService.getAnswers(
-          (request.params as { id: string }).id,
+          projectId,
         );
 
         return questionnaireAnswersSchema.parse(answers);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/projects/:id/questionnaire-answers/auto-answer",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await services.projectService.getOwnedProject(request.user!.id, projectId);
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId,
+          type: "AutoAnswerQuestionnaire",
+        });
+
+        return reply.status(202).send(jobSchema.parse(job));
       } catch (error) {
         return handleRouteError(reply, error);
       }
@@ -162,13 +196,15 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
         );
         const payload = updateQuestionnaireAnswersRequestSchema.parse(request.body);
         const answers = await services.questionnaireService.upsertAnswers(
-          (request.params as { id: string }).id,
+          projectId,
           payload.answers,
         );
 

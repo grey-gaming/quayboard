@@ -1,3 +1,5 @@
+import { questionnaireDefinition } from "@quayboard/shared";
+
 import type { QuestionnaireAnswers } from "@quayboard/shared";
 
 const qualityCharter = [
@@ -25,7 +27,42 @@ export const buildProjectDescriptionPrompt = (answers: QuestionnaireAnswers["ans
     renderQuestionnaireContext(answers),
   ].join("\n");
 
+export const buildQuestionnaireAutoAnswerPrompt = (input: {
+  projectDescription: string | null;
+  projectName: string;
+  answers: QuestionnaireAnswers["answers"];
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Fill only the blank questionnaire answers for "${input.projectName}".`,
+    "Return valid JSON as an object that uses only the official questionnaire keys.",
+    "Only include keys that are currently blank. Do not rewrite or repeat existing answers.",
+    "Each returned value must be a non-empty string.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Project description:",
+    input.projectDescription?.trim() || "(none saved yet)",
+    "",
+    "Questionnaire definition:",
+    JSON.stringify(
+      questionnaireDefinition.map((question) => ({
+        helpText: question.helpText,
+        key: question.key,
+        prompt: question.prompt,
+        title: question.title,
+      })),
+      null,
+      2,
+    ),
+    "",
+    "Existing questionnaire answers:",
+    renderQuestionnaireContext(input.answers),
+  ].join("\n");
+
 export const buildProjectOverviewPrompt = (input: {
+  projectDescription: string | null;
   projectName: string;
   answers: QuestionnaireAnswers["answers"];
 }) =>
@@ -34,11 +71,15 @@ export const buildProjectOverviewPrompt = (input: {
     "",
     "Task:",
     `Create a project overview for "${input.projectName}".`,
-    "Return valid JSON with exactly two top-level string keys: \"title\" and \"markdown\".",
+    "Return valid JSON with exactly three top-level string keys: \"title\", \"description\", and \"markdown\".",
+    "The description should be a concise paragraph suitable for the project header and project list surfaces.",
     "The markdown should read like a polished, user-facing planning document and should be broad rather than narrow.",
     "Cover the product vision, who it serves, the core problem, differentiators, primary workflows, success criteria, constraints, and the intended product feel.",
     "Make the writing concrete and product-quality. Do not fall back to generic software-product language.",
     "Do not wrap the JSON in code fences.",
+    "",
+    "Current project description:",
+    input.projectDescription?.trim() || "(none saved yet)",
     "",
     "Questionnaire answers:",
     renderQuestionnaireContext(input.answers),

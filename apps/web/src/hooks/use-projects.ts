@@ -62,6 +62,25 @@ export const useCreateProjectMutation = () => {
   });
 };
 
+export const useCompleteSetupMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.completeSetup(projectId),
+    onSuccess: (project) => {
+      queryClient.setQueryData(["project", projectId], project);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+        queryClient.invalidateQueries({ queryKey: projectQueryKey }),
+      ]);
+    },
+  });
+};
+
 export const useSetupStatusQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "setup-status"],
@@ -193,6 +212,20 @@ export const useUpdateQuestionnaireMutation = (projectId: string) => {
   });
 };
 
+export const useAutoAnswerQuestionnaireMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.autoAnswerQuestionnaire(projectId),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "questionnaire"] }),
+      ]);
+    },
+  });
+};
+
 export const useGenerateDescriptionMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
@@ -204,14 +237,12 @@ export const useGenerateDescriptionMutation = (projectId: string) => {
   });
 };
 
-export const useGenerateOnePagerMutation = (
-  projectId: string,
-  mode: "generate" | "regenerate" | "improve",
-) => {
+export const useGenerateOnePagerMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.generateOnePager(projectId, mode),
+    mutationFn: (mode: "generate" | "regenerate" | "improve") =>
+      api.generateOnePager(projectId, mode),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] });
     },

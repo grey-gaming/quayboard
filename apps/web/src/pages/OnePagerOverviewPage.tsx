@@ -1,0 +1,275 @@
+import { useEffect, useMemo, useRef } from "react";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+
+import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
+import { PageIntro } from "../components/composites/PageIntro.js";
+import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
+import { AppFrame } from "../components/templates/AppFrame.js";
+import { Alert } from "../components/ui/Alert.js";
+import { Badge } from "../components/ui/Badge.js";
+import { Button } from "../components/ui/Button.js";
+import { Card } from "../components/ui/Card.js";
+import {
+  useApproveOnePagerMutation,
+  useGenerateOnePagerMutation,
+  useOnePagerQuery,
+  useOnePagerVersionsQuery,
+  useProjectJobsQuery,
+  useProjectQuery,
+  useQuestionnaireQuery,
+  useRestoreOnePagerMutation,
+  useSetupStatusQuery,
+} from "../hooks/use-projects.js";
+import { useSseEvents } from "../hooks/use-sse-events.js";
+import { formatDateTime } from "../lib/format.js";
+
+type NavigationState = {
+  questionnaireCompleted?: boolean;
+  startGeneration?: boolean;
+};
+
+const overviewJobTypes = new Set([
+  "GenerateProjectOverview",
+  "RegenerateProjectOverview",
+  "GenerateOverviewImprovements",
+]);
+
+const jobTone = (status: string) =>
+  status === "succeeded"
+    ? "success"
+    : status === "failed" || status === "cancelled"
+      ? "danger"
+      : "info";
+
+export const OnePagerOverviewPage = () => {
+  const { id = "" } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationState = location.state as NavigationState | null;
+  const projectQuery = useProjectQuery(id);
+  const setupStatusQuery = useSetupStatusQuery(id);
+  const questionnaireQuery = useQuestionnaireQuery(id);
+  const onePagerQuery = useOnePagerQuery(id);
+  const versionsQuery = useOnePagerVersionsQuery(id);
+  const jobsQuery = useProjectJobsQuery(id);
+  const generateOnePagerMutation = useGenerateOnePagerMutation(id);
+  const approveOnePagerMutation = useApproveOnePagerMutation(id);
+  const restoreOnePagerMutation = useRestoreOnePagerMutation(id);
+  const hasTriggeredGenerationRef = useRef(false);
+
+  useSseEvents(id);
+
+  const questionnaireReady =
+    navigationState?.questionnaireCompleted || Boolean(questionnaireQuery.data?.completedAt);
+  const activeOverviewJob = useMemo(
+    () =>
+      jobsQuery.data?.jobs.find(
+        (job) =>
+          overviewJobTypes.has(job.type) &&
+          (job.status === "queued" || job.status === "running"),
+      ) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const latestOverviewJob = useMemo(
+    () => jobsQuery.data?.jobs.find((job) => overviewJobTypes.has(job.type)) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const generationMode = onePagerQuery.data?.onePager ? "regenerate" : "generate";
+  const activeError =
+    questionnaireQuery.error ||
+    onePagerQuery.error ||
+    versionsQuery.error ||
+    jobsQuery.error ||
+    generateOnePagerMutation.error ||
+    approveOnePagerMutation.error ||
+    restoreOnePagerMutation.error;
+
+  useEffect(() => {
+    if (!navigationState?.startGeneration || hasTriggeredGenerationRef.current || !questionnaireReady) {
+      return;
+    }
+
+    hasTriggeredGenerationRef.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+
+    if (!activeOverviewJob) {
+      void generateOnePagerMutation.mutateAsync(generationMode);
+    }
+  }, [
+    activeOverviewJob,
+    generateOnePagerMutation,
+    generationMode,
+    location.pathname,
+    navigate,
+    navigationState?.startGeneration,
+    questionnaireReady,
+  ]);
+
+  if (questionnaireQuery.data && !questionnaireReady && !navigationState?.startGeneration) {
+    return <Navigate replace to={`/projects/${id}/one-pager/questions`} />;
+  }
+
+  return (
+    <AppFrame>
+      {projectQuery.data ? (
+        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatusQuery.data} />
+      ) : null}
+      <PageIntro
+        eyebrow="Overview"
+        title="Generated Overview"
+        summary="Review the current one-pager, regenerate it when needed, inspect history, and approve the canonical version."
+        meta={
+          <>
+            <Badge tone={questionnaireReady ? "success" : "warning"}>
+              {questionnaireReady ? "questionnaire complete" : "questionnaire required"}
+            </Badge>
+            <Badge tone={onePagerQuery.data?.onePager ? "success" : "warning"}>
+              {onePagerQuery.data?.onePager ? "overview present" : "overview pending"}
+            </Badge>
+          </>
+        }
+      />
+
+      {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+      {activeOverviewJob ? (
+        <Alert tone="info">
+          Overview generation is {activeOverviewJob.status}. The page will refresh automatically
+          when the job completes.
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-4">
+        <Card surface="panel">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
+            <div className="grid gap-2">
+              <div>
+                <p className="qb-meta-label">Document</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Current Overview</p>
+              </div>
+              <p className="max-w-3xl text-sm text-secondary">
+                Overview generation also refreshes the saved project description. Approval still
+                applies only to the canonical document shown here.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={!questionnaireReady || generateOnePagerMutation.isPending || Boolean(activeOverviewJob)}
+                onClick={() => {
+                  void generateOnePagerMutation.mutateAsync(generationMode);
+                }}
+                type="button"
+              >
+                {onePagerQuery.data?.onePager ? "Regenerate Overview" : "Generate Overview"}
+              </Button>
+              <Button
+                disabled={!onePagerQuery.data?.onePager || approveOnePagerMutation.isPending}
+                onClick={() => {
+                  void approveOnePagerMutation.mutateAsync();
+                }}
+                type="button"
+                variant="secondary"
+              >
+                Approve Overview
+              </Button>
+            </div>
+          </div>
+          <div className="mt-4 border border-border/80 bg-panel px-4 py-4">
+            {onePagerQuery.data?.onePager ? (
+              <MarkdownDocument markdown={onePagerQuery.data.onePager.markdown} />
+            ) : activeOverviewJob || latestOverviewJob ? (
+              <p className="text-sm text-secondary">
+                The overview is being prepared. Stay on this page to review it when the job
+                finishes.
+              </p>
+            ) : (
+              <p className="text-sm text-secondary">
+                No overview has been generated yet. Generate the overview from the questions page
+                or from this screen.
+              </p>
+            )}
+          </div>
+        </Card>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card surface="rail">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">History</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Overview Versions</p>
+              </div>
+              <Badge tone="neutral">{versionsQuery.data?.versions.length ?? 0} versions</Badge>
+            </div>
+            <div className="mt-4 grid gap-0 border border-border/80">
+              {versionsQuery.data?.versions.length ? (
+                versionsQuery.data.versions.map((version) => (
+                  <div
+                    key={version.id}
+                    className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Version {version.version} {version.isCanonical ? "(canonical)" : ""}
+                        </p>
+                        <p className="qb-meta-label">{formatDateTime(version.createdAt)}</p>
+                      </div>
+                      <Button
+                        disabled={restoreOnePagerMutation.isPending}
+                        onClick={() => {
+                          void restoreOnePagerMutation.mutateAsync(version.version);
+                        }}
+                        type="button"
+                        variant="ghost"
+                      >
+                        Restore
+                      </Button>
+                    </div>
+                    <p className="text-sm text-secondary">
+                      {version.approvedAt
+                        ? `approved ${formatDateTime(version.approvedAt)}`
+                        : "awaiting approval"}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
+                  No overview versions yet.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          <Card surface="rail">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Background</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Background Jobs</p>
+              </div>
+              <Badge tone="neutral">{jobsQuery.data?.jobs.length ?? 0} jobs</Badge>
+            </div>
+            <div className="mt-4 grid gap-0 border border-border/80">
+              {jobsQuery.data?.jobs.length ? (
+                jobsQuery.data.jobs.slice(0, 6).map((job) => (
+                  <div
+                    key={job.id}
+                    className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">{job.type}</p>
+                      <Badge tone={jobTone(job.status)}>{job.status}</Badge>
+                    </div>
+                    <p className="qb-meta-label">queued {formatDateTime(job.queuedAt)}</p>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
+                  No background jobs yet.
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </AppFrame>
+  );
+};
