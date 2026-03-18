@@ -293,6 +293,70 @@ describe("project setup page", () => {
     });
   });
 
+  it("shows Fastify validation messages when sandbox save fails before verification", async () => {
+    const user = userEvent.setup();
+    const setupState = baseSetupState();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
+
+        if (path === `/api/projects/${projectId}` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: projectId,
+              name: "Harbor Control",
+              description: "Governed setup flow",
+              state: "BOOTSTRAPPING",
+              ownerUserId: projectId,
+              createdAt: "2026-03-15T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:00:00.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}/setup` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${projectId}` && method === "PATCH") {
+          return {
+            ok: false,
+            status: 400,
+            headers: new Headers({
+              "content-type": "application/json",
+            }),
+            json: async () => ({
+              statusCode: 400,
+              code: "FST_ERR_VALIDATION",
+              error: "Bad Request",
+              message: "body/sandboxConfig/memoryMb must be integer",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        throw new Error(`Unhandled fetch for ${method} ${path}`);
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Verify Sandbox" }));
+
+    expect(
+      await screen.findByText("body/sandboxConfig/memoryMb must be integer"),
+    ).toBeTruthy();
+  });
+
   it("keeps explicit LLM verification for the openai-compatible flow", async () => {
     const user = userEvent.setup();
     const isolatedProjectId = "7cf8405e-3f3d-4ad8-a9b2-5f2776184b4b";

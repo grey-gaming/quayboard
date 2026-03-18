@@ -32,6 +32,35 @@ export class ApiError extends Error {
 
 const apiRequestTimeoutMs = 10_000;
 
+const getErrorDetails = (json: unknown) => {
+  if (typeof json !== "object" || json === null) {
+    return null;
+  }
+
+  const nestedError =
+    "error" in json && typeof json.error === "object" && json.error !== null ? json.error : null;
+  const nestedCode =
+    nestedError && "code" in nestedError && typeof nestedError.code === "string"
+      ? nestedError.code
+      : undefined;
+  const nestedMessage =
+    nestedError && "message" in nestedError && typeof nestedError.message === "string"
+      ? nestedError.message
+      : undefined;
+  const rootCode = "code" in json && typeof json.code === "string" ? json.code : undefined;
+  const rootMessage =
+    "message" in json && typeof json.message === "string" ? json.message : undefined;
+
+  if (!nestedCode && !nestedMessage && !rootCode && !rootMessage) {
+    return null;
+  }
+
+  return {
+    code: nestedCode ?? rootCode,
+    message: nestedMessage ?? rootMessage,
+  };
+};
+
 const parseResponse = async <T>(response: Response) => {
   if (response.status === 204) {
     return undefined as T;
@@ -46,15 +75,10 @@ const parseResponse = async <T>(response: Response) => {
     );
   }
 
-  const json = (await response.json()) as
-    | T
-    | { error?: { code?: string; message?: string } };
+  const json = (await response.json()) as T | unknown;
 
   if (!response.ok) {
-    const error =
-      typeof json === "object" && json !== null && "error" in json
-        ? json.error
-        : undefined;
+    const error = getErrorDetails(json);
     throw new ApiError(
       response.status,
       error?.code ?? "request_failed",

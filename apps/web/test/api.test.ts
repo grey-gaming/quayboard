@@ -50,4 +50,29 @@ describe("apiRequest", () => {
       status: 200,
     });
   });
+
+  it("preserves Fastify validation messages from the default error shape", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statusCode: 400,
+          code: "FST_ERR_VALIDATION",
+          error: "Bad Request",
+          message: "body/sandboxConfig/memoryMb must be integer",
+        }),
+        {
+          headers: {
+            "content-type": "application/json",
+          },
+          status: 400,
+        },
+      ),
+    );
+
+    await expect(apiRequest("/api/projects/test-project")).rejects.toMatchObject({
+      code: "FST_ERR_VALIDATION",
+      message: "body/sandboxConfig/memoryMb must be integer",
+      status: 400,
+    });
+  });
 });

@@ -545,7 +545,9 @@ export const ProjectSetupPage = () => {
               <Button
                 disabled={verifySandboxMutation.isPending || updateProjectMutation.isPending}
                 onClick={() => {
-                  void saveSandbox().then(() => verifySandboxMutation.mutateAsync());
+                  void saveSandbox()
+                    .then(() => verifySandboxMutation.mutateAsync())
+                    .catch(() => undefined);
                 }}
                 type="button"
                 variant="secondary"
