@@ -30,9 +30,20 @@ export class ApiError extends Error {
   }
 }
 
+const apiRequestTimeoutMs = 10_000;
+
 const parseResponse = async <T>(response: Response) => {
   if (response.status === 204) {
     return undefined as T;
+  }
+
+  const contentType = response.headers?.get?.("content-type");
+  if (contentType && !contentType.includes("application/json")) {
+    throw new ApiError(
+      response.status,
+      "invalid_response",
+      "The API returned a non-JSON response. Check whether the API server or /api proxy is misconfigured.",
+    );
   }
 
   const json = (await response.json()) as
@@ -55,16 +66,34 @@ const parseResponse = async <T>(response: Response) => {
 };
 
 export const apiRequest = async <T>(path: string, init?: RequestInit) => {
-  const response = await fetch(path, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), apiRequestTimeoutMs);
 
-  return parseResponse<T>(response);
+  try {
+    const response = await fetch(path, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      signal: controller.signal,
+    });
+
+    return parseResponse<T>(response);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(
+        504,
+        "request_timeout",
+        "The API request timed out. Check whether the API server is reachable and try again.",
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 };
 
 export const api = {
