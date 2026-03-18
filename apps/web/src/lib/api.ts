@@ -92,15 +92,17 @@ const parseResponse = async <T>(response: Response) => {
 export const apiRequest = async <T>(path: string, init?: RequestInit) => {
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), apiRequestTimeoutMs);
+  const headers = new Headers(init?.headers);
+
+  if (init?.body !== undefined && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
 
   try {
     const response = await fetch(path, {
       ...init,
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
+      headers,
       signal: controller.signal,
     });
 

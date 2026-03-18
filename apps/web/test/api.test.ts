@@ -51,6 +51,26 @@ describe("apiRequest", () => {
     });
   });
 
+  it("omits the default JSON content type when the request has no body", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        headers: {
+          "content-type": "application/json",
+        },
+        status: 200,
+      }),
+    );
+
+    await apiRequest<{ ok: boolean }>("/api/projects/test-project/verify-sandbox", {
+      method: "POST",
+    });
+
+    const requestInit = fetchSpy.mock.calls[0]?.[1];
+    const headers = new Headers(requestInit?.headers);
+
+    expect(headers.has("Content-Type")).toBe(false);
+  });
+
   it("preserves Fastify validation messages from the default error shape", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
