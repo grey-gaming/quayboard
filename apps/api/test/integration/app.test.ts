@@ -284,10 +284,7 @@ describe("API integration", () => {
         },
       });
 
-      expect(questionnaireResponse.statusCode).toBe(200);
-      expect(questionnaireResponse.json().answers.q1_name_and_description).toContain(
-        "planning control plane",
-      );
+      expect(questionnaireResponse.statusCode).toBe(409);
 
       const emptyOnePagerResponse = await server.inject({
         method: "GET",
@@ -295,8 +292,7 @@ describe("API integration", () => {
         cookies: { qb_session: cookie!.value },
       });
 
-      expect(emptyOnePagerResponse.statusCode).toBe(200);
-      expect(emptyOnePagerResponse.json()).toEqual({ onePager: null });
+      expect(emptyOnePagerResponse.statusCode).toBe(409);
     } finally {
       restoreReadiness();
     }
@@ -679,6 +675,209 @@ describe("API integration", () => {
         timeoutSeconds: 600,
       });
     } finally {
+      appServices.services.dockerService.checkAvailability = originalCheckAvailability;
+      appServices.services.dockerService.verifySandboxImage = originalVerifySandboxImage;
+      restoreReadiness();
+    }
+  });
+
+  it("requires explicit setup completion before overview surfaces unlock", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+    const originalValidatePat = appServices.services.githubService.validatePat;
+    const originalVerifyRepository = appServices.services.githubService.verifyRepository;
+    const originalCheckHealth = appServices.services.llmProviderService.checkHealth;
+    const originalCheckAvailability = appServices.services.dockerService.checkAvailability;
+    const originalVerifySandboxImage = appServices.services.dockerService.verifySandboxImage;
+
+    appServices.services.githubService.validatePat = async () => ({
+      repositories: [
+        {
+          owner: "acme",
+          repo: "service-api",
+          fullName: "acme/service-api",
+          defaultBranch: "main",
+          repoUrl: "https://github.com/acme/service-api",
+        },
+      ],
+      viewerLogin: "setup-admin",
+    });
+    appServices.services.githubService.verifyRepository = async () => ({
+      defaultBranch: "main",
+      repoUrl: "https://github.com/acme/service-api",
+    });
+    appServices.services.llmProviderService.checkHealth = async () => ({
+      ok: true,
+      message: "Provider is reachable.",
+      models: ["llama3.2", "mistral-nemo"],
+    });
+    appServices.services.dockerService.checkAvailability = async () => ({
+      ok: true,
+      message: "Docker daemon is reachable.",
+    });
+    appServices.services.dockerService.verifySandboxImage = async () => ({
+      ok: true,
+      message: "Sandbox container startup succeeded.",
+    });
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Setup User",
+          email: "setup-flow@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Explicit Setup Project",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      const earlyCompleteResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/complete-setup`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(earlyCompleteResponse.statusCode).toBe(409);
+
+      const validatePatResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/github-pat/validate`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          pat: "ghp_setup",
+        },
+      });
+
+      expect(validatePatResponse.statusCode).toBe(200);
+
+      const configureRepoResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          repoConfig: {
+            owner: "acme",
+            provider: "github",
+            repo: "service-api",
+          },
+        },
+      });
+
+      expect(configureRepoResponse.statusCode).toBe(200);
+
+      const configureLlmResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          llmConfig: {
+            provider: "ollama",
+            model: "llama3.2",
+          },
+        },
+      });
+
+      expect(configureLlmResponse.statusCode).toBe(200);
+
+      const verifyLlmResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/verify-llm`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(verifyLlmResponse.statusCode).toBe(200);
+
+      const configureSandboxResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          sandboxConfig: {
+            allowlist: [],
+            cpuLimit: 1,
+            egressPolicy: "locked",
+            memoryMb: 1024,
+            timeoutSeconds: 300,
+          },
+        },
+      });
+
+      expect(configureSandboxResponse.statusCode).toBe(200);
+
+      const verifySandboxResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/verify-sandbox`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(verifySandboxResponse.statusCode).toBe(200);
+
+      const setupStatusResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/setup-status`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(setupStatusResponse.statusCode).toBe(200);
+      expect(setupStatusResponse.json()).toEqual(
+        expect.objectContaining({
+          repoConnected: true,
+          llmVerified: true,
+          sandboxVerified: true,
+        }),
+      );
+
+      const beforeCompletionProjectResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(beforeCompletionProjectResponse.statusCode).toBe(200);
+      expect(beforeCompletionProjectResponse.json().state).toBe("BOOTSTRAPPING");
+
+      const blockedQuestionnaireResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/questionnaire-answers`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(blockedQuestionnaireResponse.statusCode).toBe(409);
+
+      const completeSetupResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/complete-setup`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(completeSetupResponse.statusCode).toBe(200);
+      expect(completeSetupResponse.json().state).toBe("READY_PARTIAL");
+
+      const questionnaireResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/questionnaire-answers`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(questionnaireResponse.statusCode).toBe(200);
+    } finally {
+      appServices.services.githubService.validatePat = originalValidatePat;
+      appServices.services.githubService.verifyRepository = originalVerifyRepository;
+      appServices.services.llmProviderService.checkHealth = originalCheckHealth;
       appServices.services.dockerService.checkAvailability = originalCheckAvailability;
       appServices.services.dockerService.verifySandboxImage = originalVerifySandboxImage;
       restoreReadiness();

@@ -107,7 +107,13 @@ export const createStubServices = (): AppServices => ({
     },
   },
   projectSetupService: {
+    assertSetupCompleted: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     buildProviderDefinition: () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    completeSetup: async () => {
       throw new Error("Not implemented in test stub.");
     },
     configureLlm: async () => undefined,
@@ -144,6 +150,7 @@ export const createStubServices = (): AppServices => ({
     getLlmDefinition: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    isSetupCompleted: async () => false,
     getSetupStatus: async () => ({
       checks: [],
       llmVerified: false,

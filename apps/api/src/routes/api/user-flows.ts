@@ -41,9 +41,11 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const response = await services.userFlowService.list(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
         );
 
         return useCaseListResponseSchema.parse(response);
@@ -62,9 +64,11 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const userFlow = await services.userFlowService.create(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
           upsertUseCaseRequestSchema.parse(request.body),
         );
 
@@ -130,9 +134,11 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
-          projectId: (request.params as { id: string }).id,
+          projectId,
           type: "GenerateUseCases",
         });
 
@@ -152,9 +158,11 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
-          projectId: (request.params as { id: string }).id,
+          projectId,
           type: "DeduplicateUseCases",
         });
 
@@ -174,9 +182,11 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const response = await services.userFlowService.approve(
           request.user!.id,
-          (request.params as { id: string }).id,
+          projectId,
           approveUserFlowsRequestSchema.parse(request.body),
         );
 

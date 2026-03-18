@@ -70,6 +70,15 @@ const defaultEvidencePolicy: EvidencePolicy = {
   requireUserDocs: false,
 };
 
+const isSetupCompletedProjectState = (state: string) =>
+  state === "READY_PARTIAL" || state === "READY";
+
+const hasPassingSetupChecks = (status: {
+  llmVerified: boolean;
+  repoConnected: boolean;
+  sandboxVerified: boolean;
+}) => status.repoConnected && status.llmVerified && status.sandboxVerified;
+
 const buildSandboxConfig = (
   sandboxSetting: SandboxSetting | null,
 ): SandboxConfig | null => {
@@ -396,8 +405,50 @@ export const createProjectSetupService = (
     return this.getSetupStatus(ownerUserId, projectId);
   },
 
+  async completeSetup(ownerUserId: string, projectId: string) {
+    const project = await projectService.getOwnedProject(ownerUserId, projectId);
+
+    if (isSetupCompletedProjectState(project.state)) {
+      return project;
+    }
+
+    const status = await this.getSetupStatus(ownerUserId, projectId);
+
+    if (!hasPassingSetupChecks(status)) {
+      throw new HttpError(
+        409,
+        "setup_incomplete",
+        "Verify the repository, LLM, and sandbox before completing setup.",
+      );
+    }
+
+    return projectService.updateOwnedProject(ownerUserId, projectId, {
+      state: "READY_PARTIAL",
+    });
+  },
+
+  async isSetupCompleted(ownerUserId: string, projectId: string) {
+    const project = await projectService.getOwnedProject(ownerUserId, projectId);
+
+    return isSetupCompletedProjectState(project.state);
+  },
+
+  async assertSetupCompleted(ownerUserId: string, projectId: string) {
+    const project = await projectService.getOwnedProject(ownerUserId, projectId);
+
+    if (isSetupCompletedProjectState(project.state)) {
+      return project;
+    }
+
+    throw new HttpError(
+      409,
+      "setup_incomplete",
+      "Complete project setup before accessing overview and user-flow planning.",
+    );
+  },
+
   async getSetupStatus(ownerUserId: string, projectId: string) {
-    const project = await projectService.getOwnedProjectRecord(ownerUserId, projectId);
+    await projectService.getOwnedProject(ownerUserId, projectId);
     const repo = await db.query.reposTable.findFirst({
       where: eq(reposTable.projectId, projectId),
     });
@@ -436,18 +487,6 @@ export const createProjectSetupService = (
           : "Configure sandbox defaults and verify startup.",
       },
     ];
-
-    if (
-      repo?.verifiedAt &&
-      llm?.verifiedAt &&
-      sandbox?.verifiedAt &&
-      project.state !== "READY_PARTIAL" &&
-      project.state !== "READY"
-    ) {
-      await projectService.updateOwnedProject(ownerUserId, projectId, {
-        state: "READY_PARTIAL",
-      });
-    }
 
     return {
       repoConnected: Boolean(repo?.verifiedAt),

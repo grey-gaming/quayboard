@@ -10,15 +10,15 @@ export const createPhaseGateService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [onePager, setupStatus, questionnaire, userFlows] = await Promise.all([
+    const [onePager, setupStatus, setupCompleted, questionnaire, userFlows] = await Promise.all([
       onePagerService.getCanonical(ownerUserId, projectId),
       projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
       questionnaireService.getAnswers(projectId),
       userFlowService.list(ownerUserId, projectId),
     ]);
 
-    const setupPassed =
-      setupStatus.repoConnected && setupStatus.llmVerified && setupStatus.sandboxVerified;
+    const setupPassed = setupCompleted;
     const overviewPassed = Boolean(onePager?.approvedAt);
     const userFlowsPassed = Boolean(userFlows.approvedAt);
 
@@ -27,11 +27,18 @@ export const createPhaseGateService = (
         {
           phase: "Project Setup",
           passed: setupPassed,
-          items: setupStatus.checks.map((check) => ({
-            key: check.key,
-            label: check.label,
-            passed: check.status === "pass",
-          })),
+          items: [
+            ...setupStatus.checks.map((check) => ({
+              key: check.key,
+              label: check.label,
+              passed: check.status === "pass",
+            })),
+            {
+              key: "setup_completed",
+              label: "Setup completed",
+              passed: setupCompleted,
+            },
+          ],
         },
         {
           phase: "Overview Document",

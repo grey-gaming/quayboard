@@ -591,6 +591,30 @@ export const projectsRoutes = (
   );
 
   app.post(
+    "/projects/:id/complete-setup",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        response: {
+          200: projectJsonSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const project = await services.projectSetupService.completeSetup(
+          request.user!.id,
+          (request.params as { id: string }).id,
+        );
+
+        return projectSchema.parse(project);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
     "/projects/:id/generate-description",
     {
       schema: {
@@ -630,6 +654,7 @@ export const projectsRoutes = (
     async (request, reply) => {
       try {
         const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
@@ -657,6 +682,7 @@ export const projectsRoutes = (
     async (request, reply) => {
       try {
         const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         const onePager = await services.onePagerService.getCanonical(
           request.user!.id,
           projectId,
