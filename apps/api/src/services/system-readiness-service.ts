@@ -2,6 +2,25 @@ import { access } from "node:fs/promises";
 
 import type { DockerService } from "./docker-service.js";
 
+const readinessCheckTimeoutMs = 5_000;
+
+const withTimeout = async <T>(promise: Promise<T>, fallback: T) => {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(fallback), readinessCheckTimeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
 export const createSystemReadinessService = (input: {
   artifactStoragePath: string;
   databaseCheck: () => Promise<boolean>;
@@ -11,8 +30,14 @@ export const createSystemReadinessService = (input: {
 }) => ({
   async getReadiness() {
     const [databaseReady, dockerReady, artifactWritable] = await Promise.all([
-      input.databaseCheck(),
-      input.dockerService.checkAvailability(),
+      withTimeout(input.databaseCheck(), false),
+      withTimeout(
+        input.dockerService.checkAvailability(),
+        {
+          ok: false,
+          message: "Docker readiness check timed out.",
+        },
+      ),
       access(input.artifactStoragePath).then(
         () => true,
         () => false,

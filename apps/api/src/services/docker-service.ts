@@ -2,11 +2,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const dockerCommandTimeoutMs = 5_000;
 
 export const createDockerService = (dockerHost: string | null) => {
   const baseEnv = dockerHost ? { ...process.env, DOCKER_HOST: dockerHost } : process.env;
   const runDockerCommand = async (args: string[]) =>
-    execFileAsync("docker", args, { env: baseEnv });
+    execFileAsync("docker", args, {
+      env: baseEnv,
+      timeout: dockerCommandTimeoutMs,
+    });
 
   return {
     async checkAvailability() {
