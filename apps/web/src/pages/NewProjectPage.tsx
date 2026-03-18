@@ -4,7 +4,6 @@ import { useForm } from "react-hook-form";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { Alert } from "../components/ui/Alert.js";
-import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Input } from "../components/ui/Input.js";
@@ -33,11 +32,6 @@ export const NewProjectPage = () => {
         eyebrow="Projects"
         title="Create Project"
         summary="Create a project and move through setup, questionnaire, overview, and user flows."
-        meta={
-          <>
-            <Badge tone="warning">import deferred</Badge>
-          </>
-        }
       />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <Card surface="panel">
