@@ -129,7 +129,8 @@ describe("project entry surfaces", () => {
         "Create a project and move through setup, questionnaire, overview, and user flows.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText("import deferred")).toBeTruthy();
+    expect(screen.getByText("What happens next")).toBeTruthy();
+    expect(screen.getByText("Project setup and readiness verification")).toBeTruthy();
     expect(screen.queryByText(/scratch path/i)).toBeNull();
   });
 

@@ -65,11 +65,11 @@ const baseSetupState = (): ProjectSetupState => ({
   },
 });
 
-const renderPage = () => {
+const renderPage = (activeProjectId = projectId) => {
   const router = createMemoryRouter(
     [{ path: "/projects/:id/setup", element: <ProjectSetupPage /> }],
     {
-      initialEntries: [`/projects/${projectId}/setup`],
+      initialEntries: [`/projects/${activeProjectId}/setup`],
     },
   );
 
@@ -194,5 +194,118 @@ describe("project setup page", () => {
       expect(screen.getByRole("option", { name: "llama3.2" })).toBeTruthy();
     });
     expect(screen.getByLabelText("Model").tagName).toBe("SELECT");
+  });
+
+  it("updates the readiness checklist immediately from verify responses", async () => {
+    const user = userEvent.setup();
+    const isolatedProjectId = "7cf8405e-3f3d-4ad8-a9b2-5f2776184b4b";
+    const setupState = {
+      ...baseSetupState(),
+      llm: {
+        availableModels: [],
+        model: "gpt-4.1",
+        provider: "openai" as const,
+        verified: false,
+      },
+    } satisfies ProjectSetupState;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const path = typeof input === "string" ? input : input.toString();
+        const method = init?.method ?? "GET";
+
+        if (path === `/api/projects/${isolatedProjectId}` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: isolatedProjectId,
+              name: "Harbor Control",
+              description: "Governed setup flow",
+              state: "BOOTSTRAPPING",
+              ownerUserId: isolatedProjectId,
+              createdAt: "2026-03-15T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:00:00.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${isolatedProjectId}/setup` && method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState,
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${isolatedProjectId}` && method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: isolatedProjectId,
+              name: "Harbor Control",
+              description: "Governed setup flow",
+              state: "BOOTSTRAPPING",
+              ownerUserId: isolatedProjectId,
+              createdAt: "2026-03-15T00:00:00.000Z",
+              updatedAt: "2026-03-17T00:00:00.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        if (path === `/api/projects/${isolatedProjectId}/verify-llm` && method === "POST") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              repoConnected: false,
+              llmVerified: true,
+              sandboxVerified: false,
+              checks: [
+                {
+                  key: "repo",
+                  label: "Repository",
+                  status: "fail",
+                  message: "Connect and verify a repository.",
+                },
+                {
+                  key: "llm",
+                  label: "LLM Provider",
+                  status: "pass",
+                  message: "LLM provider verified.",
+                },
+                {
+                  key: "sandbox",
+                  label: "Sandbox",
+                  status: "fail",
+                  message: "Configure sandbox defaults and verify startup.",
+                },
+              ],
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        throw new Error(`Unhandled fetch for ${method} ${path}`);
+      }),
+    );
+
+    renderPage(isolatedProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Verify LLM" })).toHaveProperty(
+        "disabled",
+        false,
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Verify LLM" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("LLM provider verified.")).toBeTruthy();
+    });
+    expect(screen.getByText("pass")).toBeTruthy();
   });
 });

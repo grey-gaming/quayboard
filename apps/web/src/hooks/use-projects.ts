@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { CreateProjectRequest, UpsertUseCaseRequest } from "@quayboard/shared";
+import type {
+  CreateProjectRequest,
+  ProjectSetupState,
+  ProjectSetupStatus,
+  UpsertUseCaseRequest,
+} from "@quayboard/shared";
 
 import { api } from "../lib/api.js";
 
@@ -23,6 +28,28 @@ export const useProjectSetupQuery = (projectId: string) =>
     queryKey: ["project", projectId, "setup"],
     queryFn: () => api.getProjectSetup(projectId),
   });
+
+const syncSetupStatusCache = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: string,
+  status: ProjectSetupStatus,
+) => {
+  queryClient.setQueryData<ProjectSetupStatus>(["project", projectId, "setup-status"], status);
+  queryClient.setQueryData<ProjectSetupState | undefined>(
+    ["project", projectId, "setup"],
+    (current) =>
+      current
+        ? {
+            ...current,
+            status,
+            llm: {
+              ...current.llm,
+              verified: status.llmVerified,
+            },
+          }
+        : current,
+  );
+};
 
 export const useCreateProjectMutation = () => {
   const queryClient = useQueryClient();
@@ -120,11 +147,9 @@ export const useValidateGithubPatMutation = (projectId: string) => {
 
   return useMutation({
     mutationFn: (payload: { pat: string }) => api.validateGithubPat(projectId, payload),
-    onSuccess: () => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
-      ]);
+    onSuccess: (setupState) => {
+      queryClient.setQueryData<ProjectSetupState>(["project", projectId, "setup"], setupState);
+      syncSetupStatusCache(queryClient, projectId, setupState.status);
     },
   });
 };
@@ -139,11 +164,8 @@ export const useVerifyLlmMutation = (projectId: string) => {
 
   return useMutation({
     mutationFn: () => api.verifyLlm(projectId),
-    onSuccess: () => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
-      ]);
+    onSuccess: (status) => {
+      syncSetupStatusCache(queryClient, projectId, status);
     },
   });
 };
@@ -153,11 +175,8 @@ export const useVerifySandboxMutation = (projectId: string) => {
 
   return useMutation({
     mutationFn: () => api.verifySandbox(projectId),
-    onSuccess: () => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup"] }),
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "setup-status"] }),
-      ]);
+    onSuccess: (status) => {
+      syncSetupStatusCache(queryClient, projectId, status);
     },
   });
 };

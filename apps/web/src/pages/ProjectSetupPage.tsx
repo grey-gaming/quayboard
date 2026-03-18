@@ -130,12 +130,14 @@ export const ProjectSetupPage = () => {
   const verifyLlmMutation = useVerifyLlmMutation(id);
   const verifySandboxMutation = useVerifySandboxMutation(id);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [liveSetupState, setLiveSetupState] = useState<ProjectSetupState | null>(null);
+  const [liveStatus, setLiveStatus] = useState<ProjectSetupState["status"] | null>(null);
+  const setupState = liveSetupState ?? setupQuery.data;
+  const setupStatus = liveStatus ?? setupState?.status;
   const readinessComplete = Boolean(
-    setupQuery.data?.status.repoConnected &&
-      setupQuery.data.status.llmVerified &&
-      setupQuery.data.status.sandboxVerified,
+    setupStatus?.repoConnected && setupStatus.llmVerified && setupStatus.sandboxVerified,
   );
-  const repoOptions = buildRepoOptions(setupQuery.data);
+  const repoOptions = buildRepoOptions(setupState);
   const {
     getValues,
     handleSubmit,
@@ -155,6 +157,8 @@ export const ProjectSetupPage = () => {
       return;
     }
 
+    setLiveSetupState(setupQuery.data);
+    setLiveStatus(setupQuery.data.status);
     reset({
       budgetCapUsd:
         setupQuery.data.toolPolicyPreview?.budgetCapUsd !== null &&
@@ -212,7 +216,7 @@ export const ProjectSetupPage = () => {
   return (
     <AppFrame>
       {projectQuery.data ? (
-        <ProjectContextHeader project={projectQuery.data} setupStatus={setupQuery.data?.status} />
+        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatus} />
       ) : null}
       <PageIntro
         eyebrow="Project"
@@ -253,21 +257,23 @@ export const ProjectSetupPage = () => {
                       return;
                     }
 
-                    void validateGithubPatMutation.mutateAsync({ pat }).then(() => {
+                    void validateGithubPatMutation.mutateAsync({ pat }).then((response) => {
+                      setLiveSetupState(response);
+                      setLiveStatus(response.status);
                       setValue("githubPat", "");
                     });
                   }}
                   type="button"
                   variant="secondary"
                 >
-                  {setupQuery.data?.repo.patConfigured ? "Refresh Repositories" : "Validate PAT"}
+                  {setupState?.repo.patConfigured ? "Refresh Repositories" : "Validate PAT"}
                 </Button>
-                {setupQuery.data?.repo.patConfigured ? (
+                {setupState?.repo.patConfigured ? (
                   <Badge tone="success">PAT saved</Badge>
                 ) : null}
-                {setupQuery.data?.repo.viewerLogin ? (
+                {setupState?.repo.viewerLogin ? (
                   <p className="text-sm text-secondary">
-                    Connected as {setupQuery.data.repo.viewerLogin}
+                    Connected as {setupState.repo.viewerLogin}
                   </p>
                 ) : null}
               </div>
@@ -437,7 +443,10 @@ export const ProjectSetupPage = () => {
                         provider: values.llmProvider,
                       },
                     })
-                    .then(() => verifyLlmMutation.mutateAsync());
+                    .then(() => verifyLlmMutation.mutateAsync())
+                    .then((status) => {
+                      setLiveStatus(status);
+                    });
                 }}
                 type="button"
                 variant="secondary"
@@ -462,7 +471,10 @@ export const ProjectSetupPage = () => {
                         timeoutSeconds: Number(values.timeoutSeconds),
                       },
                     })
-                    .then(() => verifySandboxMutation.mutateAsync());
+                    .then(() => verifySandboxMutation.mutateAsync())
+                    .then((status) => {
+                      setLiveStatus(status);
+                    });
                 }}
                 type="button"
                 variant="secondary"
@@ -482,7 +494,7 @@ export const ProjectSetupPage = () => {
               <Badge tone={readinessComplete ? "success" : "warning"}>live status</Badge>
             </div>
             <div className="mt-4 grid gap-0 border border-border/80">
-              {setupQuery.data?.status.checks.map((check) => (
+              {setupStatus?.checks.map((check) => (
                 <div
                   key={check.key}
                   className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
