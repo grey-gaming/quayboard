@@ -111,7 +111,7 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     configureLlm: async () => undefined,
-    configurePreferences: async () => undefined,
+    configureEvidencePolicy: async () => undefined,
     configureRepo: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -139,10 +139,6 @@ export const createStubServices = (): AppServices => ({
         llmVerified: false,
         repoConnected: false,
         sandboxVerified: false,
-      },
-      toolPolicyPreview: {
-        budgetCapUsd: null,
-        enabledGroups: ["planning", "review"],
       },
     }),
     getLlmDefinition: async () => {
@@ -178,10 +174,6 @@ export const createStubServices = (): AppServices => ({
         llmVerified: false,
         repoConnected: false,
         sandboxVerified: false,
-      },
-      toolPolicyPreview: {
-        budgetCapUsd: null,
-        enabledGroups: ["planning", "review"],
       },
     }),
     verifyLlm: async () => ({

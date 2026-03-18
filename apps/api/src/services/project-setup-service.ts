@@ -16,7 +16,6 @@ export const PROJECT_SETTING_KEYS = {
   githubConnection: "project.setup.github_connection",
   llm: "project.setup.llm",
   sandbox: "project.setup.sandbox",
-  toolPolicyPreview: "project.setup.tool_policy_preview",
 } as const;
 
 type RepoConfig = {
@@ -33,11 +32,6 @@ type LlmConfig = {
 type EvidencePolicy = {
   requireArchitectureDocs: boolean;
   requireUserDocs: boolean;
-};
-
-type ToolPolicyPreview = {
-  budgetCapUsd: number | null;
-  enabledGroups: string[];
 };
 
 type SandboxConfig = {
@@ -70,11 +64,6 @@ type LlmSetting = LlmConfig & {
 const defaultEvidencePolicy: EvidencePolicy = {
   requireArchitectureDocs: false,
   requireUserDocs: false,
-};
-
-const defaultToolPolicyPreview: ToolPolicyPreview = {
-  budgetCapUsd: null,
-  enabledGroups: ["planning", "review"],
 };
 
 const buildSelectedRepo = (
@@ -256,24 +245,16 @@ export const createProjectSetupService = (
     });
   },
 
-  async configurePreferences(
+  async configureEvidencePolicy(
     ownerUserId: string,
     projectId: string,
-      input: {
-      evidencePolicy: EvidencePolicy;
-      toolPolicyPreview: ToolPolicyPreview;
-    },
+    evidencePolicy: EvidencePolicy,
   ) {
     await projectService.getOwnedProject(ownerUserId, projectId);
     await settingsService.upsertProjectSetting(
       projectId,
       PROJECT_SETTING_KEYS.evidencePolicy,
-      input.evidencePolicy,
-    );
-    await settingsService.upsertProjectSetting(
-      projectId,
-      PROJECT_SETTING_KEYS.toolPolicyPreview,
-      input.toolPolicyPreview,
+      evidencePolicy,
     );
   },
 
@@ -458,7 +439,7 @@ export const createProjectSetupService = (
 
   async getSetupState(ownerUserId: string, projectId: string) {
     await projectService.getOwnedProject(ownerUserId, projectId);
-    const [status, repo, llm, sandboxConfig, evidencePolicy, toolPolicyPreview, githubConnection] =
+    const [status, repo, llm, sandboxConfig, evidencePolicy, githubConnection] =
       await Promise.all([
         this.getSetupStatus(ownerUserId, projectId),
         db.query.reposTable.findFirst({
@@ -469,10 +450,6 @@ export const createProjectSetupService = (
         settingsService.getProjectSetting<EvidencePolicy>(
           projectId,
           PROJECT_SETTING_KEYS.evidencePolicy,
-        ),
-        settingsService.getProjectSetting<ToolPolicyPreview>(
-          projectId,
-          PROJECT_SETTING_KEYS.toolPolicyPreview,
         ),
         settingsService.getProjectSetting<GithubConnection>(
           projectId,
@@ -497,7 +474,6 @@ export const createProjectSetupService = (
       },
       sandboxConfig: sandboxConfig ?? null,
       evidencePolicy: evidencePolicy ?? defaultEvidencePolicy,
-      toolPolicyPreview: toolPolicyPreview ?? defaultToolPolicyPreview,
     };
   },
 });

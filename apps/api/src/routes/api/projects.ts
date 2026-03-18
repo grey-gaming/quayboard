@@ -91,12 +91,6 @@ const updateProjectRequestSchema = z.object({
       timeoutSeconds: z.number().int().positive(),
     })
     .optional(),
-  toolPolicyPreview: z
-    .object({
-      budgetCapUsd: z.number().positive().nullable(),
-      enabledGroups: z.array(z.string().min(1)),
-    })
-    .optional(),
 });
 
 const updateProjectBodyJsonSchema = {
@@ -149,15 +143,6 @@ const updateProjectBodyJsonSchema = {
         requireUserDocs: { type: "boolean" },
       },
       required: ["requireArchitectureDocs", "requireUserDocs"],
-      additionalProperties: false,
-    },
-    toolPolicyPreview: {
-      type: "object",
-      properties: {
-        budgetCapUsd: { type: ["number", "null"] },
-        enabledGroups: { type: "array", items: { type: "string" } },
-      },
-      required: ["budgetCapUsd", "enabledGroups"],
       additionalProperties: false,
     },
   },
@@ -274,20 +259,6 @@ const projectSetupStateJsonSchema = {
         },
       ],
     },
-    toolPolicyPreview: {
-      anyOf: [
-        { type: "null" },
-        {
-          type: "object",
-          properties: {
-            budgetCapUsd: { type: ["number", "null"] },
-            enabledGroups: { type: "array", items: { type: "string" } },
-          },
-          required: ["budgetCapUsd", "enabledGroups"],
-          additionalProperties: false,
-        },
-      ],
-    },
   },
   required: [
     "status",
@@ -295,7 +266,6 @@ const projectSetupStateJsonSchema = {
     "llm",
     "sandboxConfig",
     "evidencePolicy",
-    "toolPolicyPreview",
   ],
   additionalProperties: false,
 } as const;
@@ -438,22 +408,11 @@ export const projectsRoutes = (
           );
         }
 
-        if (payload.evidencePolicy || payload.toolPolicyPreview) {
-          await services.projectSetupService.configurePreferences(
+        if (payload.evidencePolicy) {
+          await services.projectSetupService.configureEvidencePolicy(
             request.user!.id,
             projectId,
-            {
-              evidencePolicy:
-                payload.evidencePolicy ?? {
-                  requireArchitectureDocs: false,
-                  requireUserDocs: false,
-                },
-              toolPolicyPreview:
-                payload.toolPolicyPreview ?? {
-                  budgetCapUsd: null,
-                  enabledGroups: ["planning", "review"],
-                },
-            },
+            payload.evidencePolicy,
           );
         }
 

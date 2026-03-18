@@ -51,20 +51,12 @@ export const evidencePolicySchema = z.object({
 
 export type EvidencePolicy = z.infer<typeof evidencePolicySchema>;
 
-export const toolPolicyPreviewSchema = z.object({
-  budgetCapUsd: z.number().positive().nullable(),
-  enabledGroups: z.array(z.string().min(1)),
-});
-
-export type ToolPolicyPreview = z.infer<typeof toolPolicyPreviewSchema>;
-
 export const projectSetupStateSchema = z.object({
   status: projectSetupStatusSchema,
   repo: projectSetupRepoStateSchema,
   llm: projectSetupLlmStateSchema,
   sandboxConfig: sandboxConfigSchema.nullable(),
   evidencePolicy: evidencePolicySchema.nullable(),
-  toolPolicyPreview: toolPolicyPreviewSchema.nullable(),
 });
 
 export type ProjectSetupState = z.infer<typeof projectSetupStateSchema>;

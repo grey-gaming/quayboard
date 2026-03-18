@@ -9,10 +9,10 @@ Quayboard's current UI supports the scratch-path planning workflow:
    - validate and store a GitHub PAT
    - select a GitHub repository from the accessible repo list
    - choose a project-scoped LLM provider and model
-   - if using Ollama, load and select one of the available models
+   - if using Ollama, load and select one of the available models; the selection is saved and verified immediately
    - define sandbox defaults
-   - verify LLM connectivity
-   - verify sandbox startup
+   - verify OpenAI-compatible LLM connectivity when that provider is selected
+   - verify sandbox startup; the first verification can pull the sandbox base image if it is missing locally
 5. Answer the questionnaire in **Overview Document**.
 6. Generate the project description and overview document.
 7. Review history or restore an older overview version if needed.

@@ -95,7 +95,7 @@ The top-level navigation divides into:
 Home (project list)
 └── Project
     ├── Mission Control (project landing page: stage map, next actions, timeline/evidence feed)
-    ├── Project Setup (repo access, LLM provider, sandbox defaults, tool policy, evidence policy, readiness checklist)
+    ├── Project Setup (repo access, LLM provider, sandbox defaults, evidence policy)
     ├── Overview Document (questionnaire -> document)
     ├── Blueprint (decision deck -> UX/tech project blueprints)
     ├── Milestones (lifecycle: draft -> approved -> completed)
@@ -129,7 +129,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/setup/instance` | **Instance Readiness** | First-run deployment checks: database, encryption key, Docker, artifact storage, enabled provider adapters |
 | `/projects/new` | **New Project** | Create from scratch or import chooser |
 | `/projects/:id` | **Mission Control** | Project landing page: stage map, next actions, auto-advance controls, timeline/evidence feed, phase summary |
-| `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, tool policy (tool group toggles, budget caps), evidence policy, readiness checklist |
+| `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, and evidence policy |
 | `/projects/:id/import` | **Import Project** | GitHub / local file import |
 | `/projects/:id/one-pager` | **Overview Document** | Questionnaire, naming phase, document overview with review loop |
 | `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
@@ -171,10 +171,9 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 2. User enters the **Project Setup** page and completes the readiness checklist:
    a. **Connect repository** — provide a GitHub PAT or initiate OAuth, select a repo. Quayboard verifies access.
    b. **Configure LLM provider** — select one of the enabled provider adapters for this project, enter the project-scoped API key or endpoint override when required, choose models for activity types, and verify connectivity.
-   c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted).
-   d. **Configure tool policy** (optional) — toggle tool groups on/off (planning, review, execution, assets, integrations) and set budget caps for LLM token spend and asset generation. Sensible defaults are pre-applied; most users skip this step entirely.
-   e. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
-   f. **Readiness checklist** — all items above show green/red status. Setup is complete when all items pass.
+   c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted), and verify sandbox startup.
+   d. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
+   e. **Save and verify setup sections** — repository, LLM, and sandbox state is surfaced inline within each setup section. Setup is complete when all required checks pass.
 3. On first project, a guided **"Hello World" onboarding** path walks the user through the full pipeline:
    - Clear instance readiness → register or log in → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
    - The full pipeline demo continues in M8, where sandbox execution, PR creation, and evidence bundles are implemented.
@@ -1164,7 +1163,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - `HomePage` — project list, empty state, error state, filter bar, status badges
 - `InstanceReadinessPage` (`/setup/instance`) — first-run deployment checks with remediation guidance for missing prerequisites
 - `NewProjectPage` — create from scratch / import chooser
-- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), evidence/docs policy, readiness checklist with green/red status indicators
+- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), and evidence/docs policy with inline saved/verified status
 - `MissionControlPage` (`/projects/:id`) — project landing page absorbing the old `ProjectDetailPage` phase summary. Shows stage map, next actions, and activity timeline (auto-advance controls added in M7)
 - `ProjectContextHeader` — persistent sticky header on all project-scoped pages (project state, repo, model profile, sandbox policy, setup readiness)
 - `OnePagerIntakePage` — questionnaire phase, naming phase, overview document phase
@@ -1890,7 +1889,7 @@ Before M12, project access is single-owner: the authenticated creating user is t
 | **Phase gate** | A structured checklist of conditions that must be met before progressing from one phase to the next. |
 | **Creativity mode** | A per-session policy (`off / scoped / balanced / high`) applied to LLM generation prompts. |
 | **Instance Readiness** | The first-run deployment check shown before project onboarding. Verifies instance-level prerequisites such as database access, encryption key presence, Docker availability, artifact storage, and enabled provider adapters. |
-| **Project Setup** | The readiness phase where a user connects a repository, configures the LLM provider, sets sandbox defaults, configures tool policy (optional), and establishes evidence/docs policy before proceeding to the questionnaire. |
+| **Project Setup** | The readiness phase where a user connects a repository, configures the LLM provider, sets sandbox defaults, and establishes evidence/docs policy before proceeding to the questionnaire. |
 | **Project Context Header** | A persistent, sticky header strip shown on every project-scoped page displaying project state, connected repo, model profile, sandbox policy, tool policy summary, and setup readiness. |
 | **User documentation** | User-facing documentation generated from the product specification — guides, help text, API docs. A workstream track within the Feature Editor. |
 | **Architecture documentation** | Internal architecture documentation generated from the tech specification — design rationale, data flow, integration points. A workstream track within the Feature Editor. |

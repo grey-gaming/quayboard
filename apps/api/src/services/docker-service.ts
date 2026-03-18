@@ -5,11 +5,13 @@ const execFileAsync = promisify(execFile);
 
 export const createDockerService = (dockerHost: string | null) => {
   const baseEnv = dockerHost ? { ...process.env, DOCKER_HOST: dockerHost } : process.env;
+  const runDockerCommand = async (args: string[]) =>
+    execFileAsync("docker", args, { env: baseEnv });
 
   return {
     async checkAvailability() {
       try {
-        await execFileAsync("docker", ["version"], { env: baseEnv });
+        await runDockerCommand(["version"]);
         return { ok: true, message: "Docker daemon is reachable." };
       } catch {
         return { ok: false, message: "Docker daemon is unavailable." };
@@ -18,11 +20,20 @@ export const createDockerService = (dockerHost: string | null) => {
 
     async verifySandboxImage(image = "alpine:3.20") {
       try {
-        await execFileAsync(
-          "docker",
-          ["run", "--rm", "--pull=never", image, "true"],
-          { env: baseEnv },
-        );
+        await runDockerCommand(["image", "inspect", image]);
+      } catch {
+        try {
+          await runDockerCommand(["pull", image]);
+        } catch {
+          return {
+            ok: false,
+            message: `Sandbox image pull failed for ${image}. Make sure Docker can pull images, then retry verification.`,
+          };
+        }
+      }
+
+      try {
+        await runDockerCommand(["run", "--rm", "--pull=never", image, "true"]);
 
         return {
           ok: true,
@@ -31,8 +42,7 @@ export const createDockerService = (dockerHost: string | null) => {
       } catch {
         return {
           ok: false,
-          message:
-            "Sandbox startup failed. Make sure Docker is running and the sandbox base image is available locally.",
+          message: `Sandbox startup failed for ${image}. Make sure Docker can start containers, then retry verification.`,
         };
       }
     },

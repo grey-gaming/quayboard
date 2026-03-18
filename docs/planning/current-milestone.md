@@ -16,7 +16,7 @@ Deliver the scratch-path planning workflow: instance readiness, project creation
 - pre-auth readiness gating on register/sign-in until all instance checks pass
 - Project list/create/update flow with project-scoped setup status and Mission Control landing page
 - Project setup workflow:
-  repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, evidence policy, and tool-policy preview
+  repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, and evidence policy
 - Questionnaire persistence with the refined 14-question M2 definition
 - Async job execution for project description, overview document generation, and user-flow generation/deduplication
 - Overview document canonical/version history plus approval

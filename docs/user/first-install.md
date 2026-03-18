@@ -33,6 +33,7 @@ Use this guide when the readiness checks on `/login` or `/register` are not all 
 - Make sure Docker Desktop or the Docker daemon is running.
 - Confirm `docker version` works from your shell.
 - If you use a custom daemon, verify `DOCKER_HOST`.
+- The first sandbox verification may pull `alpine:3.20` before running the startup check.
 
 ### Artifact Storage
 

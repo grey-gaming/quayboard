@@ -1,7 +1,7 @@
 import type { ProjectSetupState } from "@quayboard/shared";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
@@ -29,10 +29,8 @@ type UpdateProjectPayload = Parameters<
 >[0];
 
 type FormValues = {
-  budgetCapUsd: string;
   cpuLimit: string;
   egressPolicy: "allowlisted" | "locked";
-  enabledGroups: string;
   githubPat: string;
   githubRepo: string;
   llmModel: string;
@@ -45,10 +43,8 @@ type FormValues = {
 };
 
 const defaultFormValues: FormValues = {
-  budgetCapUsd: "",
   cpuLimit: "1",
   egressPolicy: "locked",
-  enabledGroups: "planning,review",
   githubPat: "",
   githubRepo: "",
   llmModel: "",
@@ -73,52 +69,59 @@ const buildRepoOptions = (setupState: ProjectSetupState | undefined) => {
     : [selectedRepo, ...availableRepos];
 };
 
-const buildProjectPayload = (
+const buildSandboxConfig = (values: FormValues): NonNullable<UpdateProjectPayload["sandboxConfig"]> => ({
+  allowlist: values.sandboxAllowlist
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+  cpuLimit: Number(values.cpuLimit),
+  egressPolicy: values.egressPolicy,
+  memoryMb: Number(values.memoryMb),
+  timeoutSeconds: Number(values.timeoutSeconds),
+});
+
+const buildEvidencePolicy = (
   values: FormValues,
-  repoOptions: ReturnType<typeof buildRepoOptions>,
-) => {
-  const payload: UpdateProjectPayload = {
-    evidencePolicy: {
-      requireArchitectureDocs: values.requireArchitectureDocs === "true",
-      requireUserDocs: values.requireUserDocs === "true",
-    },
-    sandboxConfig: {
-      allowlist: values.sandboxAllowlist
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
-      cpuLimit: Number(values.cpuLimit),
-      egressPolicy: values.egressPolicy,
-      memoryMb: Number(values.memoryMb),
-      timeoutSeconds: Number(values.timeoutSeconds),
-    },
-    toolPolicyPreview: {
-      budgetCapUsd: values.budgetCapUsd ? Number(values.budgetCapUsd) : null,
-      enabledGroups: values.enabledGroups
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
-    },
-  };
-  const selectedRepo = repoOptions.find((repo) => repo.fullName === values.githubRepo);
+): NonNullable<UpdateProjectPayload["evidencePolicy"]> => ({
+  requireArchitectureDocs: values.requireArchitectureDocs === "true",
+  requireUserDocs: values.requireUserDocs === "true",
+});
 
-  if (selectedRepo) {
-    payload.repoConfig = {
-      owner: selectedRepo.owner,
-      provider: "github",
-      repo: selectedRepo.repo,
-    };
-  }
+const DocLink = ({ to, children }: { to: string; children: string }) => (
+  <Link className="text-sm font-medium text-accent transition hover:text-foreground" to={to}>
+    {children}
+  </Link>
+);
 
-  if (values.llmProvider && values.llmModel.trim()) {
-    payload.llmConfig = {
-      model: values.llmModel.trim(),
-      provider: values.llmProvider,
-    };
-  }
-
-  return payload;
-};
+const SectionHeader = ({
+  title,
+  summary,
+  docs,
+  badge,
+}: {
+  title: string;
+  summary: string;
+  docs: { label: string; to: string }[];
+  badge?: React.ReactNode;
+}) => (
+  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
+    <div className="grid gap-2">
+      <div>
+        <p className="qb-meta-label">{title}</p>
+        <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{title}</p>
+      </div>
+      <p className="max-w-3xl text-sm text-secondary">{summary}</p>
+      <div className="flex flex-wrap gap-3">
+        {docs.map((doc) => (
+          <DocLink key={doc.to} to={doc.to}>
+            {doc.label}
+          </DocLink>
+        ))}
+      </div>
+    </div>
+    {badge}
+  </div>
+);
 
 export const ProjectSetupPage = () => {
   const { id = "" } = useParams();
@@ -130,45 +133,30 @@ export const ProjectSetupPage = () => {
   const verifyLlmMutation = useVerifyLlmMutation(id);
   const verifySandboxMutation = useVerifySandboxMutation(id);
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
-  const [liveSetupState, setLiveSetupState] = useState<ProjectSetupState | null>(null);
-  const [liveStatus, setLiveStatus] = useState<ProjectSetupState["status"] | null>(null);
-  const setupState = liveSetupState ?? setupQuery.data;
-  const setupStatus = liveStatus ?? setupState?.status;
+  const setupState = setupQuery.data;
+  const setupStatus = setupState?.status;
   const readinessComplete = Boolean(
     setupStatus?.repoConnected && setupStatus.llmVerified && setupStatus.sandboxVerified,
   );
   const repoOptions = buildRepoOptions(setupState);
-  const {
-    getValues,
-    handleSubmit,
-    register,
-    reset,
-    setValue,
-    watch,
-  } = useForm<FormValues>({
+  const { getValues, register, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: defaultFormValues,
   });
   const githubPat = watch("githubPat");
+  const githubRepo = watch("githubRepo");
   const llmModel = watch("llmModel");
   const llmProvider = watch("llmProvider");
+  const requireArchitectureDocs = watch("requireArchitectureDocs");
+  const requireUserDocs = watch("requireUserDocs");
 
   useEffect(() => {
     if (!setupQuery.data) {
       return;
     }
 
-    setLiveSetupState(setupQuery.data);
-    setLiveStatus(setupQuery.data.status);
     reset({
-      budgetCapUsd:
-        setupQuery.data.toolPolicyPreview?.budgetCapUsd !== null &&
-        setupQuery.data.toolPolicyPreview?.budgetCapUsd !== undefined
-          ? String(setupQuery.data.toolPolicyPreview.budgetCapUsd)
-          : "",
       cpuLimit: String(setupQuery.data.sandboxConfig?.cpuLimit ?? 1),
       egressPolicy: setupQuery.data.sandboxConfig?.egressPolicy ?? "locked",
-      enabledGroups:
-        setupQuery.data.toolPolicyPreview?.enabledGroups.join(",") ?? "planning,review",
       githubPat: "",
       githubRepo: setupQuery.data.repo.selectedRepo?.fullName ?? "",
       llmModel: setupQuery.data.llm.model ?? "",
@@ -186,25 +174,6 @@ export const ProjectSetupPage = () => {
     );
   }, [reset, setupQuery.data]);
 
-  const llmProviderField = register("llmProvider", {
-    onChange: (event) => {
-      const nextProvider = event.target.value as FormValues["llmProvider"];
-
-      setValue("llmModel", "");
-
-      if (nextProvider === "ollama") {
-        void loadLlmModelsMutation
-          .mutateAsync({ provider: "ollama" })
-          .then((response) => {
-            setOllamaModels(response.models);
-          });
-        return;
-      }
-
-      setOllamaModels([]);
-    },
-  });
-
   const activeError =
     setupQuery.error ||
     updateProjectMutation.error ||
@@ -212,6 +181,67 @@ export const ProjectSetupPage = () => {
     loadLlmModelsMutation.error ||
     verifyLlmMutation.error ||
     verifySandboxMutation.error;
+
+  const loadOllamaModels = async () => {
+    const response = await loadLlmModelsMutation.mutateAsync({ provider: "ollama" });
+    setOllamaModels(response.models);
+    return response.models;
+  };
+
+  const saveSelectedRepo = async () => {
+    const selectedRepo = repoOptions.find((repo) => repo.fullName === getValues("githubRepo"));
+
+    if (!selectedRepo) {
+      return;
+    }
+
+    await updateProjectMutation.mutateAsync({
+      repoConfig: {
+        owner: selectedRepo.owner,
+        provider: "github",
+        repo: selectedRepo.repo,
+      },
+    });
+  };
+
+  const saveOpenAiLlm = async () => {
+    const values = getValues();
+
+    if (values.llmProvider !== "openai" || !values.llmModel.trim()) {
+      return;
+    }
+
+    await updateProjectMutation.mutateAsync({
+      llmConfig: {
+        model: values.llmModel.trim(),
+        provider: "openai",
+      },
+    });
+  };
+
+  const saveSandbox = async () => {
+    await updateProjectMutation.mutateAsync({
+      sandboxConfig: buildSandboxConfig(getValues()),
+    });
+  };
+
+  const saveEvidencePolicy = async () => {
+    await updateProjectMutation.mutateAsync({
+      evidencePolicy: buildEvidencePolicy(getValues()),
+    });
+  };
+
+  const repoSaved =
+    Boolean(githubRepo) && setupState?.repo.selectedRepo?.fullName === githubRepo;
+  const llmSaved =
+    Boolean(llmProvider && llmModel.trim()) &&
+    setupState?.llm.provider === llmProvider &&
+    setupState.llm.model === llmModel.trim();
+  const sandboxSaved = Boolean(setupState?.sandboxConfig);
+  const evidenceSaved =
+    setupState?.evidencePolicy?.requireArchitectureDocs ===
+      (requireArchitectureDocs === "true") &&
+    setupState?.evidencePolicy?.requireUserDocs === (requireUserDocs === "true");
 
   return (
     <AppFrame>
@@ -221,29 +251,36 @@ export const ProjectSetupPage = () => {
       <PageIntro
         eyebrow="Project"
         title="Project Setup"
-        summary="Connect the repo, configure the project-scoped LLM, define sandbox defaults, and verify the setup checklist."
+        summary="Connect the repository, configure the project-scoped LLM, define sandbox defaults, and save the documentation requirements for this project."
         meta={
           <>
             <Badge tone="neutral">project-scoped setup</Badge>
-            <Badge tone={readinessComplete ? "success" : "warning"}>readiness</Badge>
+            <Badge tone={readinessComplete ? "success" : "warning"}>
+              {readinessComplete ? "ready" : "in progress"}
+            </Badge>
           </>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_22rem]">
+
+      {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+
+      <div className="grid gap-4">
         <Card surface="panel">
-          <form
-            className="grid gap-6"
-            onSubmit={handleSubmit(async (values) => {
-              await updateProjectMutation.mutateAsync(buildProjectPayload(values, repoOptions));
-            })}
-          >
-            <div className="qb-section-heading">
-              <p className="qb-meta-label">Repository access</p>
-              <p className="text-sm text-secondary">
-                Validate a PAT first, then pick one of the accessible repositories for this
-                project.
-              </p>
-            </div>
+          <SectionHeader
+            title="Repository Access"
+            summary="Store a GitHub PAT for this project, load the repositories it can access, then save the exact repository Quayboard should use."
+            docs={[
+              { label: "Planning workflow", to: "/docs/planning-workflow" },
+            ]}
+            badge={
+              setupStatus?.repoConnected ? (
+                <Badge tone="success">verified</Badge>
+              ) : repoSaved ? (
+                <Badge tone="neutral">saved</Badge>
+              ) : null
+            }
+          />
+          <div className="mt-4 grid gap-4">
             <div className="space-y-2">
               <Label htmlFor="github-pat">GitHub PAT</Label>
               <Input id="github-pat" type="password" {...register("githubPat")} />
@@ -257,9 +294,7 @@ export const ProjectSetupPage = () => {
                       return;
                     }
 
-                    void validateGithubPatMutation.mutateAsync({ pat }).then((response) => {
-                      setLiveSetupState(response);
-                      setLiveStatus(response.status);
+                    void validateGithubPatMutation.mutateAsync({ pat }).then(() => {
                       setValue("githubPat", "");
                     });
                   }}
@@ -268,9 +303,7 @@ export const ProjectSetupPage = () => {
                 >
                   {setupState?.repo.patConfigured ? "Refresh Repositories" : "Validate PAT"}
                 </Button>
-                {setupState?.repo.patConfigured ? (
-                  <Badge tone="success">PAT saved</Badge>
-                ) : null}
+                {setupState?.repo.patConfigured ? <Badge tone="success">PAT saved</Badge> : null}
                 {setupState?.repo.viewerLogin ? (
                   <p className="text-sm text-secondary">
                     Connected as {setupState.repo.viewerLogin}
@@ -297,17 +330,56 @@ export const ProjectSetupPage = () => {
                 ))}
               </Select>
             </div>
-
-            <div className="qb-section-heading border-t border-border/80 pt-5">
-              <p className="qb-meta-label">Model configuration</p>
-              <p className="text-sm text-secondary">
-                Set the provider and model that overview and planning jobs should use.
-              </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={updateProjectMutation.isPending || !githubRepo}
+                onClick={() => {
+                  void saveSelectedRepo();
+                }}
+                type="button"
+              >
+                Save Repository
+              </Button>
             </div>
+          </div>
+        </Card>
+
+        <Card surface="panel">
+          <SectionHeader
+            title="Model Configuration"
+            summary="Choose the LLM provider and model for overview and planning work. Ollama saves and verifies when you select a model. OpenAI-compatible providers stay explicit."
+            docs={[
+              { label: "Planning workflow", to: "/docs/planning-workflow" },
+            ]}
+            badge={
+              setupStatus?.llmVerified ? (
+                <Badge tone="success">verified</Badge>
+              ) : llmSaved ? (
+                <Badge tone="neutral">saved</Badge>
+              ) : null
+            }
+          />
+          <div className="mt-4 grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="llm-provider">LLM provider</Label>
-                <Select id="llm-provider" {...llmProviderField}>
+                <Select
+                  id="llm-provider"
+                  onChange={(event) => {
+                    const nextProvider = event.target.value as FormValues["llmProvider"];
+
+                    setValue("llmProvider", nextProvider);
+                    setValue("llmModel", "");
+
+                    if (nextProvider === "ollama") {
+                      void loadOllamaModels();
+                      return;
+                    }
+
+                    setOllamaModels([]);
+                  }}
+                  value={llmProvider}
+                >
                   <option value="">Select a provider</option>
                   <option value="ollama">Ollama</option>
                   <option value="openai">OpenAI-compatible</option>
@@ -317,9 +389,27 @@ export const ProjectSetupPage = () => {
                 <Label htmlFor="llm-model">Model</Label>
                 {llmProvider === "ollama" ? (
                   <Select
-                    id="llm-model"
                     disabled={loadLlmModelsMutation.isPending || ollamaModels.length === 0}
-                    {...register("llmModel")}
+                    id="llm-model"
+                    onChange={(event) => {
+                      const nextModel = event.target.value;
+
+                      setValue("llmModel", nextModel);
+
+                      if (!nextModel.trim()) {
+                        return;
+                      }
+
+                      void updateProjectMutation
+                        .mutateAsync({
+                          llmConfig: {
+                            model: nextModel.trim(),
+                            provider: "ollama",
+                          },
+                        })
+                        .then(() => verifyLlmMutation.mutateAsync());
+                    }}
+                    value={llmModel}
                   >
                     <option value="">
                       {loadLlmModelsMutation.isPending
@@ -336,23 +426,83 @@ export const ProjectSetupPage = () => {
                   <Input
                     id="llm-model"
                     disabled={!llmProvider}
+                    onChange={(event) => {
+                      setValue("llmModel", event.target.value);
+                    }}
                     placeholder={
                       llmProvider === "openai"
                         ? "gpt-4.1"
                         : "Choose a provider to configure a model"
                     }
-                    {...register("llmModel")}
+                    value={llmModel}
                   />
                 )}
               </div>
             </div>
+            {llmProvider === "ollama" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  disabled={loadLlmModelsMutation.isPending}
+                  onClick={() => {
+                    void loadOllamaModels();
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  Refresh Models
+                </Button>
+                <p className="text-sm text-secondary">
+                  Selecting an Ollama model saves it immediately and verifies the provider.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  disabled={updateProjectMutation.isPending || llmProvider !== "openai" || !llmModel.trim()}
+                  onClick={() => {
+                    void saveOpenAiLlm();
+                  }}
+                  type="button"
+                >
+                  Save LLM
+                </Button>
+                <Button
+                  disabled={
+                    verifyLlmMutation.isPending ||
+                    updateProjectMutation.isPending ||
+                    llmProvider !== "openai" ||
+                    !llmModel.trim()
+                  }
+                  onClick={() => {
+                    void saveOpenAiLlm().then(() => verifyLlmMutation.mutateAsync());
+                  }}
+                  type="button"
+                  variant="secondary"
+                >
+                  Verify LLM
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
 
-            <div className="qb-section-heading border-t border-border/80 pt-5">
-              <p className="qb-meta-label">Sandbox defaults</p>
-              <p className="text-sm text-secondary">
-                Define execution limits and outbound access rules before verification.
-              </p>
-            </div>
+        <Card surface="panel">
+          <SectionHeader
+            title="Sandbox Defaults"
+            summary="Define the limits Quayboard should use when testing sandbox startup. The first verification can pull the base image if it is missing locally."
+            docs={[
+              { label: "First install", to: "/docs/first-install" },
+              { label: "Planning workflow", to: "/docs/planning-workflow" },
+            ]}
+            badge={
+              setupStatus?.sandboxVerified ? (
+                <Badge tone="success">verified</Badge>
+              ) : sandboxSaved ? (
+                <Badge tone="neutral">saved</Badge>
+              ) : null
+            }
+          />
+          <div className="mt-4 grid gap-4">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="timeout-seconds">Timeout seconds</Label>
@@ -382,13 +532,40 @@ export const ProjectSetupPage = () => {
                 {...register("sandboxAllowlist")}
               />
             </div>
-
-            <div className="qb-section-heading border-t border-border/80 pt-5">
-              <p className="qb-meta-label">Evidence and tools</p>
-              <p className="text-sm text-secondary">
-                Decide which docs matter for milestone completion and preview tool budget settings.
-              </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={updateProjectMutation.isPending}
+                onClick={() => {
+                  void saveSandbox();
+                }}
+                type="button"
+              >
+                Save Sandbox Defaults
+              </Button>
+              <Button
+                disabled={verifySandboxMutation.isPending || updateProjectMutation.isPending}
+                onClick={() => {
+                  void saveSandbox().then(() => verifySandboxMutation.mutateAsync());
+                }}
+                type="button"
+                variant="secondary"
+              >
+                Verify Sandbox
+              </Button>
             </div>
+          </div>
+        </Card>
+
+        <Card surface="panel">
+          <SectionHeader
+            title="Evidence And Documentation"
+            summary="Choose which documentation checkpoints matter before planning work can move forward for this project."
+            docs={[
+              { label: "Planning workflow", to: "/docs/planning-workflow" },
+            ]}
+            badge={evidenceSaved ? <Badge tone="success">saved</Badge> : null}
+          />
+          <div className="mt-4 grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="require-user-docs">Require user docs</Label>
@@ -405,137 +582,19 @@ export const ProjectSetupPage = () => {
                 </Select>
               </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="enabled-groups">Enabled tool groups</Label>
-                <Input id="enabled-groups" {...register("enabledGroups")} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="budget-cap">Budget cap USD</Label>
-                <Input id="budget-cap" {...register("budgetCapUsd")} />
-              </div>
-            </div>
-
-            {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
-
-            <div className="flex flex-wrap gap-2 border-t border-border/80 pt-4">
-              <Button disabled={updateProjectMutation.isPending} type="submit">
-                Save Setup
-              </Button>
+            <div className="flex flex-wrap gap-2">
               <Button
-                  disabled={
-                    verifyLlmMutation.isPending ||
-                    updateProjectMutation.isPending ||
-                    !llmProvider ||
-                    !llmModel.trim()
-                  }
+                disabled={updateProjectMutation.isPending}
                 onClick={() => {
-                  const values = getValues();
-
-                  if (!values.llmProvider || !values.llmModel.trim()) {
-                    return;
-                  }
-
-                  void updateProjectMutation
-                    .mutateAsync({
-                      llmConfig: {
-                        model: values.llmModel.trim(),
-                        provider: values.llmProvider,
-                      },
-                    })
-                    .then(() => verifyLlmMutation.mutateAsync())
-                    .then((status) => {
-                      setLiveStatus(status);
-                    });
+                  void saveEvidencePolicy();
                 }}
                 type="button"
-                variant="secondary"
               >
-                Verify LLM
-              </Button>
-              <Button
-                disabled={verifySandboxMutation.isPending || updateProjectMutation.isPending}
-                onClick={() => {
-                  const values = getValues();
-
-                  void updateProjectMutation
-                    .mutateAsync({
-                      sandboxConfig: {
-                        allowlist: values.sandboxAllowlist
-                          .split(",")
-                          .map((value) => value.trim())
-                          .filter(Boolean),
-                        cpuLimit: Number(values.cpuLimit),
-                        egressPolicy: values.egressPolicy,
-                        memoryMb: Number(values.memoryMb),
-                        timeoutSeconds: Number(values.timeoutSeconds),
-                      },
-                    })
-                    .then(() => verifySandboxMutation.mutateAsync())
-                    .then((status) => {
-                      setLiveStatus(status);
-                    });
-                }}
-                type="button"
-                variant="secondary"
-              >
-                Verify Sandbox
+                Save Documentation Policy
               </Button>
             </div>
-          </form>
+          </div>
         </Card>
-        <div className="grid gap-4">
-          <Card surface="rail" className="h-fit">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Checklist</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Readiness Checklist</p>
-              </div>
-              <Badge tone={readinessComplete ? "success" : "warning"}>live status</Badge>
-            </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {setupStatus?.checks.map((check) => (
-                <div
-                  key={check.key}
-                  className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">{check.label}</p>
-                    <Badge
-                      tone={
-                        check.status === "pass"
-                          ? "success"
-                          : check.status === "warn"
-                            ? "warning"
-                            : "danger"
-                      }
-                    >
-                      {check.status}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-secondary">{check.message}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card surface="inset" className="h-fit">
-            <p className="qb-meta-label">Controls</p>
-            <div className="mt-4 grid gap-2">
-              <div className="qb-kv">
-                <p className="qb-meta-label">Verification</p>
-                <p className="text-sm text-foreground">
-                  Repo, provider, and sandbox checks stay explicit and reviewable.
-                </p>
-              </div>
-              <div className="qb-kv">
-                <p className="qb-meta-label">Scope</p>
-                <p className="text-sm text-foreground">
-                  Credentials and setup state remain project-scoped for the current milestone.
-                </p>
-              </div>
-            </div>
-          </Card>
-        </div>
       </div>
     </AppFrame>
   );

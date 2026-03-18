@@ -19,7 +19,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `one_pagers` stores immutable overview versions with a canonical flag
 - `use_cases` stores mutable user flows with archive support
 - `projects` now stores overview approval time plus user-flow approval snapshot metadata
-- `settings` holds project-scoped setup state: LLM config, sandbox defaults, evidence policy, and tool-policy preview
+- `settings` holds project-scoped setup state: LLM config, sandbox defaults, and evidence policy
 
 ## Runtime Services
 
@@ -32,7 +32,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 
 - GitHub repo verification is PAT-based only in M2
 - LLM providers supported in M2 are Ollama and OpenAI-compatible
-- Sandbox verification checks Docker daemon availability and attempts to start a throwaway container using a locally available base image
+- Sandbox verification checks Docker daemon availability, pulls the base image when needed, and attempts to start a throwaway container
 
 ## UI Surface
 

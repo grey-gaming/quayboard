@@ -213,10 +213,6 @@ export const api = {
         memoryMb: number;
         timeoutSeconds: number;
       };
-      toolPolicyPreview?: {
-        budgetCapUsd: number | null;
-        enabledGroups: string[];
-      };
     },
   ) {
     return apiRequest<Project>(`/api/projects/${projectId}`, {

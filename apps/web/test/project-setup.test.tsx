@@ -59,10 +59,6 @@ const baseSetupState = (): ProjectSetupState => ({
     repoConnected: false,
     sandboxVerified: false,
   },
-  toolPolicyPreview: {
-    budgetCapUsd: null,
-    enabledGroups: ["planning", "review"],
-  },
 });
 
 const renderPage = (activeProjectId = projectId) => {
@@ -86,7 +82,7 @@ describe("project setup page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads repositories from a validated PAT and fetches Ollama models on provider selection", async () => {
+  it("renders setup as section cards, saves repositories, and auto-verifies Ollama selections", async () => {
     const user = userEvent.setup();
     let setupState = baseSetupState();
 
@@ -157,6 +153,57 @@ describe("project setup page", () => {
         }
 
         if (path === `/api/projects/${projectId}` && method === "PATCH") {
+          const payload =
+            typeof init?.body === "string"
+              ? (JSON.parse(init.body) as {
+                  evidencePolicy?: ProjectSetupState["evidencePolicy"];
+                  llmConfig?: { model: string; provider: "ollama" | "openai" };
+                  repoConfig?: { owner: string; repo: string };
+                  sandboxConfig?: ProjectSetupState["sandboxConfig"];
+                })
+              : {};
+
+          if (payload.repoConfig) {
+            setupState = {
+              ...setupState,
+              repo: {
+                ...setupState.repo,
+                selectedRepo: {
+                  owner: payload.repoConfig.owner,
+                  repo: payload.repoConfig.repo,
+                  fullName: `${payload.repoConfig.owner}/${payload.repoConfig.repo}`,
+                  defaultBranch: "main",
+                  repoUrl: `https://github.com/${payload.repoConfig.owner}/${payload.repoConfig.repo}`,
+                },
+              },
+            };
+          }
+
+          if (payload.llmConfig) {
+            setupState = {
+              ...setupState,
+              llm: {
+                ...setupState.llm,
+                model: payload.llmConfig.model,
+                provider: payload.llmConfig.provider,
+              },
+            };
+          }
+
+          if (payload.sandboxConfig) {
+            setupState = {
+              ...setupState,
+              sandboxConfig: payload.sandboxConfig,
+            };
+          }
+
+          if (payload.evidencePolicy) {
+            setupState = {
+              ...setupState,
+              evidencePolicy: payload.evidencePolicy,
+            };
+          }
+
           return {
             ok: true,
             status: 200,
@@ -172,6 +219,35 @@ describe("project setup page", () => {
           } satisfies Partial<Response>;
         }
 
+        if (path === `/api/projects/${projectId}/verify-llm` && method === "POST") {
+          setupState = {
+            ...setupState,
+            llm: {
+              ...setupState.llm,
+              verified: true,
+            },
+            status: {
+              ...setupState.status,
+              llmVerified: true,
+              checks: setupState.status.checks.map((check) =>
+                check.key === "llm"
+                  ? {
+                      ...check,
+                      status: "pass",
+                      message: "LLM provider verified.",
+                    }
+                  : check,
+              ),
+            },
+          };
+
+          return {
+            ok: true,
+            status: 200,
+            json: async () => setupState.status,
+          } satisfies Partial<Response>;
+        }
+
         throw new Error(`Unhandled fetch for ${method} ${path}`);
       }),
     );
@@ -179,27 +255,48 @@ describe("project setup page", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
-    expect(screen.queryByLabelText("GitHub owner")).toBeNull();
-    expect((screen.getByLabelText("LLM provider") as HTMLSelectElement).value).toBe("");
+    expect(screen.getAllByText("Repository Access").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Model Configuration").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Sandbox Defaults").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Evidence And Documentation").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Planning workflow" })[0]?.getAttribute("href")).toBe(
+      "/docs/planning-workflow",
+    );
+    expect(screen.getByRole("link", { name: "First install" }).getAttribute("href")).toBe(
+      "/docs/first-install",
+    );
+    expect(screen.queryByText("Readiness Checklist")).toBeNull();
+    expect(screen.queryByText("Controls")).toBeNull();
 
     await user.type(screen.getByLabelText("GitHub PAT"), "ghp_valid_pat");
     await user.click(screen.getByRole("button", { name: "Validate PAT" }));
 
     await screen.findByRole("option", { name: "acme/service-api" });
-    expect(screen.getByText("Connected as acme-admin")).toBeTruthy();
+    await user.selectOptions(screen.getByLabelText("GitHub repo"), "acme/service-api");
+    await user.click(screen.getByRole("button", { name: "Save Repository" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("saved").length).toBeGreaterThan(0);
+    });
 
     await user.selectOptions(screen.getByLabelText("LLM provider"), "ollama");
-
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "llama3.2" })).toBeTruthy();
     });
-    expect(screen.getByLabelText("Model").tagName).toBe("SELECT");
+
+    expect(screen.queryByRole("button", { name: "Verify LLM" })).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText("Model"), "llama3.2");
+
+    await waitFor(() => {
+      expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
+    });
   });
 
-  it("updates the readiness checklist immediately from verify responses", async () => {
+  it("keeps explicit LLM verification for the openai-compatible flow", async () => {
     const user = userEvent.setup();
     const isolatedProjectId = "7cf8405e-3f3d-4ad8-a9b2-5f2776184b4b";
-    const setupState = {
+    let setupState: ProjectSetupState = {
       ...baseSetupState(),
       llm: {
         availableModels: [],
@@ -207,7 +304,7 @@ describe("project setup page", () => {
         provider: "openai" as const,
         verified: false,
       },
-    } satisfies ProjectSetupState;
+    };
 
     vi.stubGlobal(
       "fetch",
@@ -256,34 +353,31 @@ describe("project setup page", () => {
         }
 
         if (path === `/api/projects/${isolatedProjectId}/verify-llm` && method === "POST") {
+          setupState = {
+            ...setupState,
+            llm: {
+              ...setupState.llm,
+              verified: true,
+            },
+            status: {
+              ...setupState.status,
+              llmVerified: true,
+              checks: setupState.status.checks.map((check) =>
+                check.key === "llm"
+                  ? {
+                      ...check,
+                      status: "pass",
+                      message: "LLM provider verified.",
+                    }
+                  : check,
+              ),
+            },
+          };
+
           return {
             ok: true,
             status: 200,
-            json: async () => ({
-              repoConnected: false,
-              llmVerified: true,
-              sandboxVerified: false,
-              checks: [
-                {
-                  key: "repo",
-                  label: "Repository",
-                  status: "fail",
-                  message: "Connect and verify a repository.",
-                },
-                {
-                  key: "llm",
-                  label: "LLM Provider",
-                  status: "pass",
-                  message: "LLM provider verified.",
-                },
-                {
-                  key: "sandbox",
-                  label: "Sandbox",
-                  status: "fail",
-                  message: "Configure sandbox defaults and verify startup.",
-                },
-              ],
-            }),
+            json: async () => setupState.status,
           } satisfies Partial<Response>;
         }
 
@@ -294,18 +388,12 @@ describe("project setup page", () => {
     renderPage(isolatedProjectId);
 
     expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Verify LLM" })).toHaveProperty(
-        "disabled",
-        false,
-      );
-    });
+    expect(screen.getByRole("button", { name: "Verify LLM" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Verify LLM" }));
 
     await waitFor(() => {
-      expect(screen.getByText("LLM provider verified.")).toBeTruthy();
+      expect(screen.getAllByText("verified").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("pass")).toBeTruthy();
   });
 });
