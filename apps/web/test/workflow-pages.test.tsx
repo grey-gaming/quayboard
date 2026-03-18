@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +73,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     },
   );
 
-  render(
+  return render(
     <AppProviders>
       <RouterProvider router={router} />
     </AppProviders>,
@@ -207,6 +207,16 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
+      if (path === `/api/projects/${autosaveProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
       if (
         path === `/api/projects/${autosaveProjectId}/questionnaire-answers` &&
         method === "PATCH"
@@ -251,6 +261,211 @@ describe("workflow pages", () => {
           q1_name_and_description: "Planning workspace",
         },
       });
+    });
+  });
+
+  it("moves Generate Answers into the questionnaire header and reflects running jobs", async () => {
+    const autoAnswerProjectId = "12121212-1212-4212-8212-121212121212";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      [`/api/projects/${autoAnswerProjectId}`]: {
+        id: autoAnswerProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY_PARTIAL",
+        ownerUserId: autoAnswerProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${autoAnswerProjectId}/setup-status`]: {
+        repoConnected: true,
+        llmVerified: true,
+        sandboxVerified: true,
+        checks: [],
+      },
+      [`/api/projects/${autoAnswerProjectId}/questionnaire-answers`]: {
+        projectId: autoAnswerProjectId,
+        answers: {
+          q1_name_and_description: "Planning workspace",
+        },
+        updatedAt: "2026-03-16T09:00:00.000Z",
+        completedAt: null,
+      },
+      [`/api/projects/${autoAnswerProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "8c2b3e2c-b40a-4d0f-9d1f-89d18133f8bb",
+            projectId: autoAnswerProjectId,
+            type: "AutoAnswerQuestionnaire",
+            status: "running",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:00:00.000Z",
+            startedAt: "2026-03-16T09:01:00.000Z",
+            completedAt: null,
+          },
+        ],
+      },
+    });
+
+    const { getByTestId } = renderRoute(
+      "/projects/:id/one-pager/questions",
+      <OnePagerQuestionsPage />,
+      autoAnswerProjectId,
+    );
+
+    expect(await screen.findByRole("button", { name: "Generating Answers" })).toBeTruthy();
+    expect(
+      within(getByTestId("questionnaire-header-actions")).getByRole("button", {
+        name: "Generating Answers",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId("questionnaire-footer-actions")).queryByRole("button", {
+        name: /Generate Answers/i,
+      }),
+    ).toBeNull();
+    expect(
+      within(getByTestId("questionnaire-footer-actions")).getByRole("button", {
+        name: "Generate Overview",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("queues auto-answer and starts the AI state immediately", async () => {
+    const autoAnswerProjectId = "13131313-1313-4313-8313-131313131313";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === `/api/projects/${autoAnswerProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: autoAnswerProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: autoAnswerProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers` &&
+        method === "GET"
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: autoAnswerProjectId,
+            answers: {
+              q1_name_and_description: "Planning workspace",
+            },
+            updatedAt: "2026-03-16T09:00:00.000Z",
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers` &&
+        method === "PATCH"
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: autoAnswerProjectId,
+            answers: {
+              q1_name_and_description: "Planning workspace",
+            },
+            updatedAt: "2026-03-16T09:01:00.000Z",
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+        method === "POST"
+      ) {
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "2d5728c9-4107-4ad1-ab46-d3fa333e4b98",
+            projectId: autoAnswerProjectId,
+            type: "AutoAnswerQuestionnaire",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:02:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/one-pager/questions", <OnePagerQuestionsPage />, autoAnswerProjectId);
+
+    const generateAnswersButton = await screen.findByRole("button", {
+      name: "Generate Answers",
+    });
+
+    fireEvent.click(generateAnswersButton);
+
+    expect(await screen.findByRole("button", { name: "Generating Answers" })).toBeTruthy();
+    await waitFor(() => {
+      const requestCalls = fetchMock.mock.calls.map(([input, init]) => ({
+        method: init?.method ?? "GET",
+        path: typeof input === "string" ? input : input.toString(),
+      }));
+      const autoAnswerCall = requestCalls.findIndex(
+        ({ path, method }) =>
+          path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+          method === "POST",
+      );
+
+      expect(autoAnswerCall).toBeGreaterThanOrEqual(0);
     });
   });
 
