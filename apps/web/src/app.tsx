@@ -102,7 +102,7 @@ export const appRouter = createBrowserRouter([
         element: <SetupCompletionGate />,
         children: [
           {
-            path: "/projects/:id/one-pager/questions",
+            path: "/projects/:id/questions",
             element: <OnePagerQuestionsPage />,
           },
           {

@@ -7,10 +7,12 @@ import {
   onePagerVersionListResponseSchema,
   queueOnePagerGenerationRequestSchema,
   questionnaireAnswersSchema,
+  updateOnePagerRequestSchema,
   updateQuestionnaireAnswersRequestSchema,
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
+import { HttpError } from "../../services/http-error.js";
 import { handleRouteError } from "../route-helpers.js";
 
 const projectParamsJsonSchema = {
@@ -83,6 +85,41 @@ export const onePagerRoutes = (services: AppServices): FastifyPluginAsync => asy
         });
 
         return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.patch(
+    "/projects/:id/one-pager",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        const canonical = await services.onePagerService.getCanonical(
+          request.user!.id,
+          projectId,
+        );
+
+        if (!canonical) {
+          throw new HttpError(404, "one_pager_not_found", "Overview document not found.");
+        }
+
+        const payload = updateOnePagerRequestSchema.parse(request.body);
+        const onePager = await services.onePagerService.createVersion({
+          projectId,
+          title: canonical.title,
+          markdown: payload.markdown,
+          source: "ManualEdit",
+        });
+
+        return onePagerSchema.parse(onePager);
       } catch (error) {
         return handleRouteError(reply, error);
       }

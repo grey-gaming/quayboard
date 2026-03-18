@@ -35,7 +35,7 @@ describe("job prompts", () => {
     expect(prompt).toContain('"q1_name_and_description"');
   });
 
-  it("preserves the overview JSON contract while raising the quality bar", () => {
+  it("preserves the overview JSON contract while generating a richer preference document", () => {
     const prompt = buildProjectOverviewPrompt({
       projectDescription: "Governed planning workspace for software teams.",
       projectName: "Quayboard",
@@ -46,7 +46,9 @@ describe("job prompts", () => {
       'exactly three top-level string keys: "title", "description", and "markdown"',
     );
     expect(prompt).toContain("Current project description:");
-    expect(prompt).toContain("broad rather than narrow");
+    expect(prompt).toContain("Questionnaire definition:");
+    expect(prompt).toContain("stitched questionnaire recap");
+    expect(prompt).toContain("Assumptions and Proposed Defaults");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
     expect(prompt).toContain("Quayboard");
   });

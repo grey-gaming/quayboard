@@ -22,6 +22,12 @@ export const onePagerVersionListResponseSchema = z.object({
   versions: z.array(onePagerSchema),
 });
 
+export const updateOnePagerRequestSchema = z.object({
+  markdown: z.string().trim().min(1),
+});
+
+export type UpdateOnePagerRequest = z.infer<typeof updateOnePagerRequestSchema>;
+
 export const restoreOnePagerVersionRequestSchema = z.object({
   approve: z.boolean().optional(),
 });

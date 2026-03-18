@@ -131,7 +131,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/projects/:id` | **Mission Control** | Project landing page: stage map, next actions, auto-advance controls, timeline/evidence feed, phase summary |
 | `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, and evidence policy |
 | `/projects/:id/import` | **Import Project** | GitHub / local file import |
-| `/projects/:id/one-pager/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
+| `/projects/:id/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
 | `/projects/:id/one-pager` | **Overview Document** | Generated overview review, history, restore, and approval |
 | `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
 | `/projects/:id/blueprint` | **Blueprint Builder** | Decision deck, UX/tech project blueprint review |
@@ -184,7 +184,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 1. User clicks **New Project** and selects **Start from scratch**.
 2. Completes a 14-question guided questionnaire on the **Questions** page (config-driven question keys: `q1_name_and_description` through `q14_product_feel`), with autosave and optional LLM blank-answer generation.
-3. User clicks **Generate Overview** to move to the overview screen.
+3. User clicks **Next: Generate Overview** to move to the overview screen.
 4. LLM generates the **overview document** (versioned, restorable) and refreshes the saved project description.
 5. User reviews the overview document, triggers targeted regenerations or section improvements.
 6. User approves the overview document — phase gate passes.
@@ -543,7 +543,7 @@ The REST API is served by the Fastify backend under the `/api` prefix (except `/
 - `GET /projects/:id/phase-gates` — phase gate checklist
 
 #### Overview document
-- `GET/POST /projects/:id/one-pager` — canonical overview document
+- `GET/POST/PATCH /projects/:id/one-pager` — canonical overview document
 - `GET /projects/:id/one-pager/versions` — version history
 - `POST /projects/:id/one-pager/versions/:v/restore` — restore version
 - `GET/PATCH /projects/:id/questionnaire-answers` — questionnaire persistence

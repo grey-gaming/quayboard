@@ -57,8 +57,8 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/settings", <div />],
     ["/projects/:id", <div />],
     ["/projects/:id/setup", <div />],
+    ["/projects/:id/questions", <div />],
     ["/projects/:id/one-pager", <div />],
-    ["/projects/:id/one-pager/questions", <div />],
     ["/projects/:id/user-flows", <div />],
     ["/projects/:id/import", <div />],
   ]);
@@ -241,9 +241,15 @@ describe("workflow pages", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    renderRoute("/projects/:id/one-pager/questions", <OnePagerQuestionsPage />, autosaveProjectId);
+    renderRoute("/projects/:id/questions", <OnePagerQuestionsPage />, autosaveProjectId);
 
     expect(await screen.findByText(/Saved/)).toBeTruthy();
+    expect(screen.queryByText("Unsaved changes pending.")).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Next: Generate Overview",
+      }),
+    ).toBeTruthy();
     const summaryField = await screen.findByLabelText("Project Summary");
     fireEvent.change(summaryField, { target: { value: "Planning workspace" } });
     fireEvent.blur(summaryField);
@@ -311,7 +317,7 @@ describe("workflow pages", () => {
     });
 
     const { getByTestId } = renderRoute(
-      "/projects/:id/one-pager/questions",
+      "/projects/:id/questions",
       <OnePagerQuestionsPage />,
       autoAnswerProjectId,
     );
@@ -329,9 +335,13 @@ describe("workflow pages", () => {
     ).toBeNull();
     expect(
       within(getByTestId("questionnaire-footer-actions")).getByRole("button", {
-        name: "Generate Overview",
+        name: "Next: Generate Overview",
       }),
     ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Questions" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("queues auto-answer and starts the AI state immediately", async () => {
@@ -445,7 +455,7 @@ describe("workflow pages", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    renderRoute("/projects/:id/one-pager/questions", <OnePagerQuestionsPage />, autoAnswerProjectId);
+    renderRoute("/projects/:id/questions", <OnePagerQuestionsPage />, autoAnswerProjectId);
 
     const generateAnswersButton = await screen.findByRole("button", {
       name: "Generate Answers",
@@ -469,12 +479,190 @@ describe("workflow pages", () => {
     });
   });
 
-  it("renders the overview document through the governed markdown surface", async () => {
+  it("renders the overview document through the editable markdown surface", async () => {
     const overviewProjectId = "22222222-2222-4222-8222-222222222222";
 
     vi.stubGlobal("EventSource", MockEventSource);
+    let onePager = {
+      id: "14ec48cb-6248-4fd0-8df0-58bfa13f8370",
+      projectId: overviewProjectId,
+      version: 2,
+      title: "Overview",
+      markdown: "# Overview\n\nCanonical scope for the planning workspace.",
+      source: "generated",
+      isCanonical: true,
+      approvedAt: null,
+      createdAt: "2026-03-16T09:10:00.000Z",
+    };
+    let versions = [onePager];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: overviewProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: overviewProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/questionnaire-answers` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: overviewProjectId,
+            answers: {},
+            updatedAt: "2026-03-16T09:00:00.000Z",
+            completedAt: "2026-03-16T09:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ onePager }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "PATCH") {
+        const payload = JSON.parse(String(init?.body)) as { markdown: string };
+        onePager = {
+          ...onePager,
+          id: "a9dc6076-20da-43b0-84fb-e8cac2409318",
+          version: 3,
+          markdown: payload.markdown,
+          source: "ManualEdit",
+          approvedAt: null,
+          createdAt: "2026-03-16T09:12:00.000Z",
+        };
+        versions = [onePager, ...versions.map((version) => ({ ...version, isCanonical: false }))];
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => onePager,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [
+              {
+                id: "4c57d789-a423-46e0-8b36-c09f9e9d8ad8",
+                projectId: overviewProjectId,
+                type: "GenerateProjectOverview",
+                status: "succeeded",
+                inputs: {},
+                outputs: {},
+                error: null,
+                queuedAt: "2026-03-16T09:00:00.000Z",
+                startedAt: "2026-03-16T09:01:00.000Z",
+                completedAt: "2026-03-16T09:10:00.000Z",
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ phases: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/next-actions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ actions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Regenerate Overview" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
+    expect(screen.getByText("Background Jobs")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Overview" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${overviewProjectId}/one-pager` && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      await screen.findByText("Expanded canonical scope for the planning workspace."),
+    ).toBeTruthy();
+    expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
+  });
+
+  it("uses the AI button state while overview generation is running", async () => {
+    const overviewProjectId = "20202020-2020-4020-8020-202020202020";
+
+    vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
-      "/auth/me": { user },
       [`/api/projects/${overviewProjectId}`]: {
         id: overviewProjectId,
         name: "Quayboard",
@@ -530,7 +718,7 @@ describe("workflow pages", () => {
             id: "4c57d789-a423-46e0-8b36-c09f9e9d8ad8",
             projectId: overviewProjectId,
             type: "GenerateProjectOverview",
-            status: "succeeded",
+            status: "running",
             inputs: {},
             outputs: {},
             error: null,
@@ -544,12 +732,8 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
 
-    expect(
-      await screen.findByRole("heading", { name: "Generated Overview" }),
-    ).toBeTruthy();
-    expect(screen.getByText("Current Overview")).toBeTruthy();
-    expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
-    expect(screen.getByText("Background Jobs")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Generating Overview" })).toBeTruthy();
   });
 
   it("redirects incomplete overview access back to setup until setup is explicitly completed", async () => {
@@ -622,7 +806,7 @@ describe("workflow pages", () => {
         {
           element: <SetupCompletionGate />,
           children: [
-            { path: "/projects/:id/one-pager/questions", element: <OnePagerQuestionsPage /> },
+            { path: "/projects/:id/questions", element: <OnePagerQuestionsPage /> },
           ],
         },
         {
@@ -634,7 +818,7 @@ describe("workflow pages", () => {
         { path: "/projects/:id/import", element: <div /> },
       ],
       {
-        initialEntries: [`/projects/${lockedProjectId}/one-pager/questions`],
+        initialEntries: [`/projects/${lockedProjectId}/questions`],
       },
     );
 

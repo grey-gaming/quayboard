@@ -675,7 +675,7 @@ describe("project setup page", () => {
         {
           element: <SetupCompletionGate />,
           children: [
-            { path: "/projects/:id/one-pager/questions", element: <OnePagerQuestionsPage /> },
+            { path: "/projects/:id/questions", element: <OnePagerQuestionsPage /> },
           ],
         },
       ],

@@ -242,6 +242,12 @@ export const api = {
       method: "POST",
     });
   },
+  updateOnePager(projectId: string, payload: { markdown: string }) {
+    return apiRequest<OnePager>(`/api/projects/${projectId}/one-pager`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
   loadLlmModels(projectId: string, payload: { provider: "ollama" }) {
     return apiRequest<LoadLlmModelsResponse>(`/api/projects/${projectId}/llm-models`, {
       method: "POST",

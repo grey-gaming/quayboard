@@ -16,16 +16,32 @@ export const AiAutomationRunIcon = ({
     viewBox="0 0 20 20"
     width="18"
   >
-    <g className="qb-ai-icon-orbit" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6">
-      <ellipse cx="10" cy="10" rx="7.1" ry="4.5" transform="rotate(-20 10 10)" />
+    <g
+      className="qb-ai-icon-wheel"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.55"
+    >
+      <circle cx="10" cy="10" r="5.8" />
+      <circle cx="10" cy="10" r="1.55" />
+      <path d="M10 2.8V8.1" />
+      <path d="M10 11.9V17.2" />
+      <path d="M17.2 10H11.9" />
+      <path d="M8.1 10H2.8" />
+      <path d="M15.1 4.9L11.35 8.65" />
+      <path d="M8.65 11.35L4.9 15.1" />
+      <path d="M15.1 15.1L11.35 11.35" />
+      <path d="M8.65 8.65L4.9 4.9" />
     </g>
-    <g className="qb-ai-icon-nodes" fill="currentColor">
-      <circle cx="15.6" cy="7.2" r="1.45" />
+    <g className="qb-ai-icon-handles" fill="currentColor">
+      <circle cx="10" cy="2.55" r="1.1" />
+      <circle cx="17.45" cy="10" r="1.1" />
+      <circle cx="10" cy="17.45" r="1.1" />
+      <circle cx="2.55" cy="10" r="1.1" />
+      <circle cx="15.35" cy="4.65" r="1.05" />
+      <circle cx="15.35" cy="15.35" r="1.05" />
+      <circle cx="4.65" cy="15.35" r="1.05" />
+      <circle cx="4.65" cy="4.65" r="1.05" />
     </g>
-    <path
-      className="qb-ai-icon-spark"
-      d="M10 4.6L11.25 8.75L15.4 10L11.25 11.25L10 15.4L8.75 11.25L4.6 10L8.75 8.75L10 4.6Z"
-      fill="currentColor"
-    />
   </svg>
 );

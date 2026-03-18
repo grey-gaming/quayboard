@@ -14,6 +14,18 @@ const qualityCharter = [
 const renderQuestionnaireContext = (answers: QuestionnaireAnswers["answers"]) =>
   JSON.stringify(answers, null, 2);
 
+const renderQuestionnaireDefinition = () =>
+  JSON.stringify(
+    questionnaireDefinition.map((question) => ({
+      helpText: question.helpText,
+      key: question.key,
+      prompt: question.prompt,
+      title: question.title,
+    })),
+    null,
+    2,
+  );
+
 export const buildProjectDescriptionPrompt = (answers: QuestionnaireAnswers["answers"]) =>
   [
     qualityCharter,
@@ -46,16 +58,7 @@ export const buildQuestionnaireAutoAnswerPrompt = (input: {
     input.projectDescription?.trim() || "(none saved yet)",
     "",
     "Questionnaire definition:",
-    JSON.stringify(
-      questionnaireDefinition.map((question) => ({
-        helpText: question.helpText,
-        key: question.key,
-        prompt: question.prompt,
-        title: question.title,
-      })),
-      null,
-      2,
-    ),
+    renderQuestionnaireDefinition(),
     "",
     "Existing questionnaire answers:",
     renderQuestionnaireContext(input.answers),
@@ -70,16 +73,21 @@ export const buildProjectOverviewPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Create a project overview for "${input.projectName}".`,
+    `Create a detailed product preference document for "${input.projectName}".`,
     "Return valid JSON with exactly three top-level string keys: \"title\", \"description\", and \"markdown\".",
     "The description should be a concise paragraph suitable for the project header and project list surfaces.",
-    "The markdown should read like a polished, user-facing planning document and should be broad rather than narrow.",
-    "Cover the product vision, who it serves, the core problem, differentiators, primary workflows, success criteria, constraints, and the intended product feel.",
-    "Make the writing concrete and product-quality. Do not fall back to generic software-product language.",
+    "The markdown should read like a polished planning artifact, not a stitched questionnaire recap or a list of answered prompts.",
+    "Synthesize the full context into a coherent product direction and fill reasonable gaps with explicit proposed defaults when the source material is incomplete.",
+    "Do not mirror the questionnaire ordering or quote answers back line-by-line.",
+    "Use these section headings in this exact order: Product Summary, Users and Roles, Problem and Opportunity, Product Vision, Core Workflows, Key Capabilities, Constraints and Non-Goals, Experience and Product Feel, Success Measures, Assumptions and Proposed Defaults.",
+    "Make the writing concrete, creative, and product-quality. Avoid generic software-product filler and avoid narrowing the output to only what was stated explicitly.",
     "Do not wrap the JSON in code fences.",
     "",
     "Current project description:",
     input.projectDescription?.trim() || "(none saved yet)",
+    "",
+    "Questionnaire definition:",
+    renderQuestionnaireDefinition(),
     "",
     "Questionnaire answers:",
     renderQuestionnaireContext(input.answers),

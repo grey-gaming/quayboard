@@ -21,7 +21,7 @@ const toOnePager = (record: typeof onePagersTable.$inferSelect) =>
   });
 
 export const createOnePagerService = (db: AppDatabase) => ({
-  async getCanonical(ownerUserId: string, projectId: string) {
+  async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
         eq(projectsTable.id, projectId),
@@ -33,28 +33,41 @@ export const createOnePagerService = (db: AppDatabase) => ({
       throw new HttpError(404, "project_not_found", "Project not found.");
     }
 
-    const onePager = await db.query.onePagersTable.findFirst({
+    return project;
+  },
+
+  async getCanonicalRecord(projectId: string) {
+    return db.query.onePagersTable.findFirst({
       where: and(
         eq(onePagersTable.projectId, projectId),
         eq(onePagersTable.isCanonical, true),
       ),
       orderBy: [desc(onePagersTable.version)],
     });
+  },
+
+  async syncProjectFromCanonical(projectId: string, canonical: typeof onePagersTable.$inferSelect) {
+    await db
+      .update(projectsTable)
+      .set({
+        onePagerApprovedAt: canonical.approvedAt,
+        state: canonical.approvedAt ? "READY" : "READY_PARTIAL",
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, projectId));
+  },
+
+  async getCanonical(ownerUserId: string, projectId: string) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+
+    const onePager = await this.getCanonicalRecord(projectId);
 
     return onePager ? toOnePager(onePager) : null;
   },
 
   async listVersions(ownerUserId: string, projectId: string) {
-    const project = await db.query.projectsTable.findFirst({
-      where: and(
-        eq(projectsTable.id, projectId),
-        eq(projectsTable.ownerUserId, ownerUserId),
-      ),
-    });
+    await this.assertOwnedProject(ownerUserId, projectId);
 
-    if (!project) {
-      throw new HttpError(404, "project_not_found", "Project not found.");
-    }
     const versions = await db.query.onePagersTable.findMany({
       where: eq(onePagersTable.projectId, projectId),
       orderBy: [desc(onePagersTable.version)],
@@ -99,39 +112,13 @@ export const createOnePagerService = (db: AppDatabase) => ({
       })
       .returning();
 
-    if (input.approve) {
-      await db
-        .update(projectsTable)
-        .set({
-          onePagerApprovedAt: now,
-          state: "READY",
-          updatedAt: now,
-        })
-        .where(eq(projectsTable.id, input.projectId));
-    } else {
-      await db
-        .update(projectsTable)
-        .set({
-          state: "READY_PARTIAL",
-          updatedAt: now,
-        })
-        .where(eq(projectsTable.id, input.projectId));
-    }
+    await this.syncProjectFromCanonical(input.projectId, created);
 
     return toOnePager(created);
   },
 
   async restoreVersion(ownerUserId: string, projectId: string, version: number) {
-    const project = await db.query.projectsTable.findFirst({
-      where: and(
-        eq(projectsTable.id, projectId),
-        eq(projectsTable.ownerUserId, ownerUserId),
-      ),
-    });
-
-    if (!project) {
-      throw new HttpError(404, "project_not_found", "Project not found.");
-    }
+    await this.assertOwnedProject(ownerUserId, projectId);
 
     const versionRecord = await db.query.onePagersTable.findFirst({
       where: and(
@@ -154,28 +141,15 @@ export const createOnePagerService = (db: AppDatabase) => ({
       .where(eq(onePagersTable.id, versionRecord.id))
       .returning();
 
+    await this.syncProjectFromCanonical(projectId, updated);
+
     return toOnePager(updated);
   },
 
   async approveCanonical(ownerUserId: string, projectId: string) {
-    const project = await db.query.projectsTable.findFirst({
-      where: and(
-        eq(projectsTable.id, projectId),
-        eq(projectsTable.ownerUserId, ownerUserId),
-      ),
-    });
+    await this.assertOwnedProject(ownerUserId, projectId);
 
-    if (!project) {
-      throw new HttpError(404, "project_not_found", "Project not found.");
-    }
-
-    const canonical = await db.query.onePagersTable.findFirst({
-      where: and(
-        eq(onePagersTable.projectId, projectId),
-        eq(onePagersTable.isCanonical, true),
-      ),
-      orderBy: [desc(onePagersTable.version)],
-    });
+    const canonical = await this.getCanonicalRecord(projectId);
 
     if (!canonical) {
       throw new HttpError(404, "one_pager_not_found", "Overview document not found.");
@@ -188,14 +162,7 @@ export const createOnePagerService = (db: AppDatabase) => ({
       .where(eq(onePagersTable.id, canonical.id))
       .returning();
 
-    await db
-      .update(projectsTable)
-      .set({
-        onePagerApprovedAt: now,
-        state: "READY",
-        updatedAt: now,
-      })
-      .where(eq(projectsTable.id, projectId));
+    await this.syncProjectFromCanonical(projectId, updated);
 
     return toOnePager(updated);
   },

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 
-import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
+import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
+import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
@@ -19,6 +20,7 @@ import {
   useQuestionnaireQuery,
   useRestoreOnePagerMutation,
   useSetupStatusQuery,
+  useUpdateOnePagerMutation,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
@@ -55,6 +57,7 @@ export const OnePagerOverviewPage = () => {
   const generateOnePagerMutation = useGenerateOnePagerMutation(id);
   const approveOnePagerMutation = useApproveOnePagerMutation(id);
   const restoreOnePagerMutation = useRestoreOnePagerMutation(id);
+  const updateOnePagerMutation = useUpdateOnePagerMutation(id);
   const hasTriggeredGenerationRef = useRef(false);
 
   useSseEvents(id);
@@ -82,7 +85,8 @@ export const OnePagerOverviewPage = () => {
     jobsQuery.error ||
     generateOnePagerMutation.error ||
     approveOnePagerMutation.error ||
-    restoreOnePagerMutation.error;
+    restoreOnePagerMutation.error ||
+    updateOnePagerMutation.error;
 
   useEffect(() => {
     if (!navigationState?.startGeneration || hasTriggeredGenerationRef.current || !questionnaireReady) {
@@ -106,8 +110,10 @@ export const OnePagerOverviewPage = () => {
   ]);
 
   if (questionnaireQuery.data && !questionnaireReady && !navigationState?.startGeneration) {
-    return <Navigate replace to={`/projects/${id}/one-pager/questions`} />;
+    return <Navigate replace to={`/projects/${id}/questions`} />;
   }
+
+  const overviewButtonActive = generateOnePagerMutation.isPending || Boolean(activeOverviewJob);
 
   return (
     <AppFrame>
@@ -152,15 +158,17 @@ export const OnePagerOverviewPage = () => {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={!questionnaireReady || generateOnePagerMutation.isPending || Boolean(activeOverviewJob)}
+              <AiWorkflowButton
+                active={overviewButtonActive}
+                disabled={!questionnaireReady || overviewButtonActive}
+                label={onePagerQuery.data?.onePager ? "Regenerate Overview" : "Generate Overview"}
                 onClick={() => {
                   void generateOnePagerMutation.mutateAsync(generationMode);
                 }}
+                runningLabel="Generating Overview"
                 type="button"
-              >
-                {onePagerQuery.data?.onePager ? "Regenerate Overview" : "Generate Overview"}
-              </Button>
+                variant="secondary"
+              />
               <Button
                 disabled={!onePagerQuery.data?.onePager || approveOnePagerMutation.isPending}
                 onClick={() => {
@@ -175,7 +183,13 @@ export const OnePagerOverviewPage = () => {
           </div>
           <div className="mt-4 border border-border/80 bg-panel px-4 py-4">
             {onePagerQuery.data?.onePager ? (
-              <MarkdownDocument markdown={onePagerQuery.data.onePager.markdown} />
+              <EditableMarkdownDocument
+                disabled={Boolean(activeOverviewJob)}
+                isSaving={updateOnePagerMutation.isPending}
+                markdown={onePagerQuery.data.onePager.markdown}
+                onSave={(markdown) => updateOnePagerMutation.mutateAsync({ markdown })}
+                saveLabel="Save Overview"
+              />
             ) : activeOverviewJob || latestOverviewJob ? (
               <p className="text-sm text-secondary">
                 The overview is being prepared. Stay on this page to review it when the job

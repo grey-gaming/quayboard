@@ -682,7 +682,7 @@ export const ProjectSetupPage = () => {
                 onClick={() => {
                   void completeSetupMutation
                     .mutateAsync()
-                    .then(() => navigate(`/projects/${id}/one-pager/questions`));
+                    .then(() => navigate(`/projects/${id}/questions`));
                 }}
                 type="button"
               >

@@ -5,12 +5,12 @@ import { isSetupCompletedProjectState } from "../../lib/project-state.js";
 import { Badge } from "../ui/Badge.js";
 
 const projectNavItems = [
-  { label: "Mission Control", suffix: "" },
-  { label: "Project Setup", suffix: "/setup" },
-  { label: "Questions", suffix: "/one-pager/questions", requiresSetupCompletion: true },
-  { label: "Overview", suffix: "/one-pager", requiresSetupCompletion: true },
-  { label: "User Flows", suffix: "/user-flows", requiresSetupCompletion: true },
-  { label: "Import", suffix: "/import", requiresSetupCompletion: true },
+  { label: "Mission Control", suffix: "", end: true },
+  { label: "Project Setup", suffix: "/setup", end: true },
+  { label: "Questions", suffix: "/questions", end: true, requiresSetupCompletion: true },
+  { label: "Overview", suffix: "/one-pager", end: true, requiresSetupCompletion: true },
+  { label: "User Flows", suffix: "/user-flows", end: true, requiresSetupCompletion: true },
+  { label: "Import", suffix: "/import", end: true, requiresSetupCompletion: true },
 ];
 
 export const ProjectContextHeader = ({
@@ -103,7 +103,7 @@ export const ProjectContextHeader = ({
                     : "border-border/70 bg-panel text-secondary hover:border-border-strong hover:text-foreground",
                 ].join(" ")
               }
-              end={item.suffix === ""}
+              end={item.end}
               to={`/projects/${project.id}${item.suffix}`}
             >
               {item.label}

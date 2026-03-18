@@ -78,7 +78,7 @@
     }
   }
 
-  @keyframes qb-ai-orbit-spin {
+  @keyframes qb-ai-wheel-spin {
     from {
       transform: rotate(0deg);
     }
@@ -88,16 +88,14 @@
     }
   }
 
-  @keyframes qb-ai-spark-pulse {
+  @keyframes qb-ai-handle-pulse {
     0%,
     100% {
-      opacity: 1;
-      transform: scale(1);
+      opacity: 0.92;
     }
 
     50% {
-      opacity: 0.72;
-      transform: scale(1.16);
+      opacity: 1;
     }
   }
 
@@ -213,16 +211,15 @@
     @apply shrink-0;
   }
 
-  .qb-ai-icon-orbit,
-  .qb-ai-icon-spark {
+  .qb-ai-icon-wheel {
     transform-origin: 50% 50%;
   }
 
-  .qb-ai-action[data-active="true"] .qb-ai-icon-orbit {
-    animation: qb-ai-orbit-spin 3.2s linear infinite;
+  .qb-ai-action[data-active="true"] .qb-ai-icon-wheel {
+    animation: qb-ai-wheel-spin 2.6s linear infinite;
   }
 
-  .qb-ai-action[data-active="true"] .qb-ai-icon-spark {
-    animation: qb-ai-spark-pulse 1.4s ease-in-out infinite;
+  .qb-ai-action[data-active="true"] .qb-ai-icon-handles {
+    animation: qb-ai-handle-pulse 1.4s ease-in-out infinite;
   }
 }

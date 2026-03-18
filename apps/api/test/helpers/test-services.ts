@@ -77,12 +77,19 @@ export const createStubServices = (): AppServices => ({
     approveCanonical: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     createVersion: async () => {
       throw new Error("Not implemented in test stub.");
     },
     getCanonical: async () => null,
+    getCanonicalRecord: async () => undefined,
     listVersions: async () => [],
     restoreVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    syncProjectFromCanonical: async () => {
       throw new Error("Not implemented in test stub.");
     },
   },

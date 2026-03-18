@@ -884,6 +884,125 @@ describe("API integration", () => {
     }
   });
 
+  it("creates a new unapproved canonical version when editing the overview document", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Overview Editor",
+          email: "overview-editor@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const meResponse = await server.inject({
+        method: "GET",
+        url: "/auth/me",
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(meResponse.statusCode).toBe(200);
+      const ownerUserId = meResponse.json().user.id as string;
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Editable Overview Project",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
+        state: "READY_PARTIAL",
+      });
+
+      await appServices.services.onePagerService.createVersion({
+        projectId,
+        title: "Overview",
+        markdown: "# Overview\n\nApproved planning scope.",
+        source: "GenerateProjectOverview",
+        approve: true,
+      });
+
+      const updateResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/one-pager`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          markdown: "# Overview\n\nUpdated planning scope after manual editing.",
+        },
+      });
+
+      expect(updateResponse.statusCode).toBe(200);
+      expect(updateResponse.json()).toEqual(
+        expect.objectContaining({
+          version: 2,
+          source: "ManualEdit",
+          approvedAt: null,
+          isCanonical: true,
+        }),
+      );
+
+      const onePagerResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/one-pager`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(onePagerResponse.statusCode).toBe(200);
+      expect(onePagerResponse.json().onePager).toEqual(
+        expect.objectContaining({
+          version: 2,
+          markdown: "# Overview\n\nUpdated planning scope after manual editing.",
+          approvedAt: null,
+        }),
+      );
+
+      const versionsResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/one-pager/versions`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(versionsResponse.statusCode).toBe(200);
+      expect(versionsResponse.json().versions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            version: 2,
+            isCanonical: true,
+            approvedAt: null,
+            source: "ManualEdit",
+          }),
+          expect.objectContaining({
+            version: 1,
+            isCanonical: false,
+          }),
+        ]),
+      );
+
+      const projectStateResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(projectStateResponse.statusCode).toBe(200);
+      expect(projectStateResponse.json().state).toBe("READY_PARTIAL");
+    } finally {
+      restoreReadiness();
+    }
+  });
+
   it("rejects whitespace-only display names and project names before persistence", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 

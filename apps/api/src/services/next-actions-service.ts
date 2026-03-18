@@ -32,7 +32,7 @@ export const createNextActionsService = (
       actions.push({
         key: "questionnaire",
         label: "Complete the questionnaire",
-        href: `/projects/${projectId}/one-pager/questions`,
+        href: `/projects/${projectId}/questions`,
       });
     } else if (!onePager) {
       actions.push({

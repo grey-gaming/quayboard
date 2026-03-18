@@ -278,6 +278,23 @@ export const useRestoreOnePagerMutation = (projectId: string) => {
   });
 };
 
+export const useUpdateOnePagerMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { markdown: string }) => api.updateOnePager(projectId, payload),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager-versions"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
 export const useCreateUserFlowMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 

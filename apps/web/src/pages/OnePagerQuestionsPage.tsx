@@ -83,9 +83,11 @@ export const OnePagerQuestionsPage = () => {
   const [autosaveState, setAutosaveState] = useState<
     "idle" | "dirty" | "saving" | "saved" | "error"
   >("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<string | undefined>(undefined);
   const [autosaveError, setAutosaveError] = useState<string | null>(null);
   const [queuedAutoAnswerJobId, setQueuedAutoAnswerJobId] = useState<string | null>(null);
   const hasHydratedRef = useRef(false);
+  const skipDirtyCheckRef = useRef(false);
   const debounceHandleRef = useRef<number | null>(null);
   const lastSyncedAnswersRef = useRef<FormValues>(emptyAnswers);
   const { getValues, register, reset, watch } = useForm<FormValues>({
@@ -103,9 +105,11 @@ export const OnePagerQuestionsPage = () => {
     const serverAnswers = normalizeAnswers(questionnaireQuery.data.answers);
 
     if (!hasHydratedRef.current) {
+      skipDirtyCheckRef.current = true;
       reset(serverAnswers);
       lastSyncedAnswersRef.current = serverAnswers;
       hasHydratedRef.current = true;
+      setLastSavedAt(questionnaireQuery.data.updatedAt);
       setAutosaveState(questionnaireQuery.data.updatedAt ? "saved" : "idle");
       return;
     }
@@ -124,9 +128,12 @@ export const OnePagerQuestionsPage = () => {
     }
 
     lastSyncedAnswersRef.current = serverAnswers;
+    setLastSavedAt(questionnaireQuery.data.updatedAt);
 
     if (shouldReset && !answersEqual(currentValues, mergedValues)) {
+      skipDirtyCheckRef.current = true;
       reset(mergedValues);
+      setAutosaveState(questionnaireQuery.data.updatedAt ? "saved" : "idle");
     }
   }, [getValues, questionnaireQuery.data, reset]);
 
@@ -146,6 +153,7 @@ export const OnePagerQuestionsPage = () => {
     );
 
     if (changedEntries.length === 0) {
+      setAutosaveState(lastSavedAt ? "saved" : "idle");
       return null;
     }
 
@@ -158,6 +166,7 @@ export const OnePagerQuestionsPage = () => {
       );
       const syncedAnswers = normalizeAnswers(response.answers);
       lastSyncedAnswersRef.current = syncedAnswers;
+      setLastSavedAt(response.updatedAt);
       setAutosaveState("saved");
       return response;
     } catch (error) {
@@ -167,10 +176,15 @@ export const OnePagerQuestionsPage = () => {
       );
       throw error;
     }
-  }, [getValues, updateQuestionnaireMutation]);
+  }, [getValues, lastSavedAt, updateQuestionnaireMutation]);
 
   useEffect(() => {
     if (!hasHydratedRef.current) {
+      return;
+    }
+
+    if (skipDirtyCheckRef.current) {
+      skipDirtyCheckRef.current = false;
       return;
     }
 
@@ -178,6 +192,9 @@ export const OnePagerQuestionsPage = () => {
     const hasPendingChanges = !answersEqual(currentValues, lastSyncedAnswersRef.current);
 
     if (!hasPendingChanges) {
+      setAutosaveState((currentState) =>
+        currentState === "saving" ? currentState : lastSavedAt ? "saved" : "idle",
+      );
       return;
     }
 
@@ -196,7 +213,7 @@ export const OnePagerQuestionsPage = () => {
         window.clearTimeout(debounceHandleRef.current);
       }
     };
-  }, [flushAutosave, watchedAnswers]);
+  }, [flushAutosave, lastSavedAt, watchedAnswers]);
 
   useEffect(
     () => () => {
@@ -296,7 +313,7 @@ export const OnePagerQuestionsPage = () => {
               active={autoAnswerActive}
             />
             <Badge tone={autosaveState === "error" ? "danger" : "neutral"}>
-              {formatAutosaveStatus(autosaveState, questionnaireQuery.data?.updatedAt)}
+              {formatAutosaveStatus(autosaveState, lastSavedAt)}
             </Badge>
             {questionnaireQuery.data?.completedAt ? (
               <p className="qb-meta-label">
@@ -331,7 +348,7 @@ export const OnePagerQuestionsPage = () => {
         </div>
 
         <div
-          className="mt-6 flex flex-wrap gap-2 border-t border-border/80 pt-4"
+          className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border/80 pt-4"
           data-testid="questionnaire-footer-actions"
         >
           <Button
@@ -357,7 +374,7 @@ export const OnePagerQuestionsPage = () => {
             }}
             type="button"
           >
-            Generate Overview
+            Next: Generate Overview
           </Button>
         </div>
       </Card>

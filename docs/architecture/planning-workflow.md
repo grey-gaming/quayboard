@@ -41,7 +41,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `/projects/new`
 - `/projects/:id`
 - `/projects/:id/setup`
-- `/projects/:id/one-pager/questions`
+- `/projects/:id/questions`
 - `/projects/:id/one-pager`
 - `/projects/:id/user-flows`
 - `/projects/:id/import` as a future-release stub
