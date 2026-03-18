@@ -2,11 +2,14 @@ import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppServices } from "../../src/app-services.js";
-import { readDatabaseUrl } from "../../src/config.js";
 import { runMigrations } from "../../src/db/migrate.js";
 import { buildServer } from "../../src/server.js";
+import {
+  ensureIntegrationDatabaseExists,
+  integrationDatabaseUrl,
+} from "./test-database.js";
 
-const databaseUrl = readDatabaseUrl();
+const databaseUrl = integrationDatabaseUrl;
 const secretsKey = Buffer.alloc(32, 3).toString("base64url");
 const readyChecks = [
   {
@@ -43,14 +46,16 @@ const readyChecks = [
 
 describe("API integration", () => {
   const sql = postgres(databaseUrl, { max: 1 });
-  const appServices = createAppServices(databaseUrl, secretsKey);
+  let appServices: ReturnType<typeof createAppServices>;
   let server: Awaited<ReturnType<typeof buildServer>>;
   let baseUrl = "";
 
   beforeAll(async () => {
     process.env.SECRETS_ENCRYPTION_KEY = secretsKey;
-    await runMigrations();
-    await runMigrations();
+    await ensureIntegrationDatabaseExists();
+    await runMigrations(databaseUrl);
+    await runMigrations(databaseUrl);
+    appServices = createAppServices(databaseUrl, secretsKey);
     server = await buildServer({
       corsOrigin: "http://localhost:3000",
       services: appServices.services,
@@ -73,7 +78,7 @@ describe("API integration", () => {
 
   afterAll(async () => {
     await server?.close();
-    await appServices.close();
+    await appServices?.close();
     await sql.end();
   });
 
@@ -89,8 +94,8 @@ describe("API integration", () => {
   };
 
   it("runs migrations successfully more than once", async () => {
-    await runMigrations();
-    await runMigrations();
+    await runMigrations(databaseUrl);
+    await runMigrations(databaseUrl);
   });
 
   it("registers, authenticates, and logs out a user with a cookie session", async () => {

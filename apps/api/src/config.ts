@@ -8,6 +8,7 @@ const runtimeEnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().url().default("http://localhost:3000"),
   DATABASE_URL: z.string().url().optional(),
+  TEST_DATABASE_URL: z.string().url().optional(),
   SECRETS_ENCRYPTION_KEY: z.string().optional(),
   ARTIFACT_STORAGE_PATH: z.string().default("/tmp/quayboard-artifacts"),
   DOCKER_HOST: z.string().optional(),
@@ -43,6 +44,24 @@ export const readDatabaseUrl = () => {
     env.DATABASE_URL,
     "DATABASE_URL is required for database access.",
   );
+};
+
+export const deriveTestDatabaseUrl = (databaseUrl: string) => {
+  const url = new URL(databaseUrl);
+  const databaseName = url.pathname.replace(/^\//, "");
+
+  if (!databaseName) {
+    throw new Error("DATABASE_URL must include a database name.");
+  }
+
+  url.pathname = `/${databaseName}_test`;
+  return url.toString();
+};
+
+export const readIntegrationDatabaseUrl = () => {
+  const env = parseEnv();
+
+  return env.TEST_DATABASE_URL ?? deriveTestDatabaseUrl(readDatabaseUrl());
 };
 
 export const readSecretsEncryptionKey = () => {

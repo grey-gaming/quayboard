@@ -88,6 +88,7 @@ The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie a
 Documented runtime variables live in `.env.example`:
 
 - `DATABASE_URL` for Drizzle migrations, API runtime, and Postgres-backed integration tests
+- `TEST_DATABASE_URL` for API integration tests; if omitted, the test suite derives a sibling database name by appending `_test` to `DATABASE_URL`
 - `API_PORT` for the Fastify server port
 - `CORS_ORIGIN` for the allowed frontend origin
 - `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
