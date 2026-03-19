@@ -89,8 +89,9 @@ export const ProductSpecPage = () => {
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
       {activeProductSpecJob ? (
         <Alert tone="info">
-          Product Spec generation is {activeProductSpecJob.status}. The page will refresh
-          automatically when the job completes.
+          Product Spec generation is {activeProductSpecJob.status}. This can take up to 10 minutes
+          depending on the quality and speed of the selected model, so please be patient. The page
+          will refresh automatically when the job completes.
         </Alert>
       ) : null}
 
