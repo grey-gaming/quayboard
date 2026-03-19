@@ -59,6 +59,21 @@ const createRequestSignal = (timeoutMs: number) => {
   };
 };
 
+const formatHealthCheckFetchError = (
+  providerLabel: string,
+  error: unknown,
+  timeoutMs: number,
+) => {
+  const detail =
+    error instanceof Error && error.name === "AbortError"
+      ? `timed out after ${timeoutMs}ms`
+      : error instanceof Error
+        ? error.message
+        : "request failed";
+
+  return `${providerLabel} is unavailable: ${detail}.`;
+};
+
 const createOllamaAdapter = (input: {
   dispatcher: Agent;
   maxOutputTokens: number;
@@ -73,6 +88,12 @@ const createOllamaAdapter = (input: {
         dispatcher: input.dispatcher,
         signal: timeout.signal,
       });
+    } catch (error) {
+      return {
+        ok: false,
+        message: formatHealthCheckFetchError("Ollama", error, input.requestTimeoutMs),
+        models: [],
+      };
     } finally {
       timeout.clear();
     }
@@ -179,6 +200,16 @@ const createOpenAiAdapter = (input: {
           Authorization: apiKey ? `Bearer ${apiKey}` : "",
         },
       });
+    } catch (error) {
+      return {
+        ok: false,
+        message: formatHealthCheckFetchError(
+          "OpenAI-compatible provider",
+          error,
+          input.requestTimeoutMs,
+        ),
+        models: [],
+      };
     } finally {
       timeout.clear();
     }

@@ -200,6 +200,15 @@ export const createUserFlowService = (db: AppDatabase) => ({
   async approve(ownerUserId: string, projectId: string, input: unknown) {
     const payload = approveUserFlowsRequestSchema.parse(input);
     const list = await this.list(ownerUserId, projectId);
+
+    if (list.userFlows.length === 0) {
+      throw new HttpError(
+        409,
+        "user_flows_required",
+        "Add at least one active user flow before approval.",
+      );
+    }
+
     const unresolved = list.coverage.warnings.filter(
       (warning) => !payload.acceptedWarnings.includes(warning),
     );

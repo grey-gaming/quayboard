@@ -1360,6 +1360,108 @@ describe("API integration", () => {
     }
   });
 
+  it("rejects user-flow approval when the project has no active flows", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+    const originalGetCanonical = appServices.services.productSpecService.getCanonical;
+    const originalGetOnePager = appServices.services.onePagerService.getCanonical;
+    const originalGetAnswers = appServices.services.questionnaireService.getAnswers;
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "No Flows Owner",
+          email: "no-flows@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+      expect(cookie?.value).toBeTruthy();
+
+      const meResponse = await server.inject({
+        method: "GET",
+        url: "/auth/me",
+        cookies: { qb_session: cookie!.value },
+      });
+      const ownerUserId = meResponse.json().user.id as string;
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "No Flows Project",
+        },
+      });
+      const projectId = projectResponse.json().id as string;
+
+      await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
+        state: "READY_PARTIAL",
+      });
+
+      appServices.services.productSpecService.getCanonical = async () => ({
+        id: "product-spec-approved",
+        projectId,
+        version: 1,
+        title: "Product Spec",
+        markdown: "# Product Spec",
+        source: "ManualEdit",
+        isCanonical: true,
+        approvedAt: "2026-03-18T00:00:00.000Z",
+        createdAt: "2026-03-18T00:00:00.000Z",
+      });
+      appServices.services.onePagerService.getCanonical = async () => ({
+        id: "one-pager-approved",
+        projectId,
+        version: 1,
+        title: "Overview",
+        markdown: "# Overview",
+        source: "GenerateProjectOverview",
+        isCanonical: true,
+        approvedAt: "2026-03-17T00:00:00.000Z",
+        createdAt: "2026-03-17T00:00:00.000Z",
+      });
+      appServices.services.questionnaireService.getAnswers = async () => ({
+        projectId,
+        answers: {},
+        updatedAt: "2026-03-16T00:00:00.000Z",
+        completedAt: "2026-03-16T00:00:00.000Z",
+      });
+
+      const approveResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows/approve`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          acceptedWarnings: ["Add at least one active user flow."],
+        },
+      });
+
+      expect(approveResponse.statusCode).toBe(409);
+      expect(approveResponse.json()).toEqual({
+        error: {
+          code: "user_flows_required",
+          message: "Add at least one active user flow before approval.",
+        },
+      });
+
+      const listResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(listResponse.statusCode).toBe(200);
+      expect(listResponse.json().approvedAt).toBeNull();
+    } finally {
+      appServices.services.productSpecService.getCanonical = originalGetCanonical;
+      appServices.services.onePagerService.getCanonical = originalGetOnePager;
+      appServices.services.questionnaireService.getAnswers = originalGetAnswers;
+      restoreReadiness();
+    }
+  });
+
   it("applies setup and Product Spec gates to user-flow update and archive routes", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 

@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 
 import type { DockerService } from "./docker-service.js";
@@ -38,7 +39,7 @@ export const createSystemReadinessService = (input: {
           message: "Docker readiness check timed out.",
         },
       ),
-      access(input.artifactStoragePath).then(
+      access(input.artifactStoragePath, constants.W_OK).then(
         () => true,
         () => false,
       ),
