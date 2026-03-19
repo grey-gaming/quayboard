@@ -5,17 +5,21 @@ import { createJobRunnerService } from "../../src/services/jobs/job-runner-servi
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
 const userId = "d3057770-eca1-417a-a1c6-c00bb83a47d0";
 
-const createDbStub = () =>
-  ({
+const createDbStub = () => {
+  const values = vi.fn(async () => undefined);
+
+  return {
     insert: vi.fn(() => ({
-      values: vi.fn(async () => undefined),
+      values,
     })),
+    values,
     query: {
       useCasesTable: {
         findMany: vi.fn(async () => []),
       },
     },
-  }) as never;
+  };
+};
 
 describe("job runner service", () => {
   beforeEach(() => {
@@ -44,7 +48,7 @@ describe("job runner service", () => {
       completedAt: null,
     }));
     const service = createJobRunnerService({
-      db,
+      db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
           id: "job-auto-answer",
@@ -105,7 +109,7 @@ describe("job runner service", () => {
     const createVersion = vi.fn(async () => ({ id: "one-pager-id" }));
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      db,
+      db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
           id: "job-overview",
@@ -179,8 +183,26 @@ describe("job runner service", () => {
     const db = createDbStub();
     const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
     const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Product Spec",
+          markdown: "# Product Spec\n\n## Specification Gaps\n\n- Clarify defaults.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Product Spec",
+          markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
+        }),
+        promptTokens: 14,
+        completionTokens: 16,
+      });
     const service = createJobRunnerService({
-      db,
+      db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
           id: "job-product-spec",
@@ -191,14 +213,7 @@ describe("job runner service", () => {
         markSucceeded,
       } as never,
       llmProviderService: {
-        generate: vi.fn(async () => ({
-          content: JSON.stringify({
-            title: "Product Spec",
-            markdown: "# Product Spec\n\nDetailed planning contract.",
-          }),
-          promptTokens: 10,
-          completionTokens: 12,
-        })),
+        generate,
       } as never,
       onePagerService: {
         getCanonical: vi.fn(async () => ({
@@ -235,16 +250,109 @@ describe("job runner service", () => {
 
     await service.run("job-product-spec");
 
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(db.values).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ templateId: "GenerateProductSpec" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+    );
     expect(createVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId,
         title: "Product Spec",
-        markdown: "# Product Spec\n\nDetailed planning contract.",
+        markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
       }),
     );
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-product-spec",
       expect.objectContaining({ productSpecId: "product-spec-id" }),
     );
+  });
+
+  it("fails Product Spec generation when the review pass returns invalid content", async () => {
+    const db = createDbStub();
+    const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nDraft content.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Product Spec",
+          markdown: "",
+        }),
+        promptTokens: 14,
+        completionTokens: 16,
+      });
+    const service = createJobRunnerService({
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-product-spec",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateProductSpec",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "one-pager-id",
+          projectId,
+          version: 2,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved scope.",
+          source: "GenerateProjectOverview",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        createVersion,
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-product-spec")).rejects.toThrow(
+      'GenerateProductSpecReview returned invalid content. Expected JSON with non-empty "title" and "markdown".',
+    );
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(db.values).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+    );
+    expect(createVersion).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
   });
 });

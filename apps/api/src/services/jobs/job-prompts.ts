@@ -398,6 +398,38 @@ export const buildProductSpecPrompt = (input: {
     input.sourceMaterial,
   ].join("\n");
 
+export const buildProductSpecReviewPrompt = (input: {
+  draftMarkdown: string;
+  draftTitle: string;
+  projectName: string;
+  sourceMaterial: string;
+}) =>
+  [
+    `Review and tidy the completed Product Spec for "${input.projectName}".`,
+    'Return valid JSON with exactly two top-level string keys: "title" and "markdown".',
+    'The "title" should stay the same unless a minor wording cleanup is genuinely needed.',
+    'The "markdown" must remain the same Product Spec, improved through review rather than materially rewritten.',
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Review goals:",
+    "- inspect the draft for specification gaps, inconsistencies, duplication, and weak assumptions",
+    "- resolve missing details when they can be inferred reasonably from the approved overview and the existing draft",
+    "- preserve the existing scope, structure, feature set, and intent",
+    "- improve clarity, completeness, consistency, and organization without changing the document materially",
+    '- if a final "Specification Gaps" section is empty after review, remove it',
+    '- if unresolved items remain, convert that content into a section named "Assumptions and Proposed Defaults" instead of "Specification Gaps"',
+    "- explicitly label any remaining inference or assumption-driven content",
+    "",
+    "Approved overview source material:",
+    input.sourceMaterial,
+    "",
+    "First-pass Product Spec title:",
+    input.draftTitle,
+    "",
+    "First-pass Product Spec markdown:",
+    input.draftMarkdown,
+  ].join("\n");
+
 export const buildUserFlowPrompt = (input: {
   projectName: string;
   sourceMaterial: string;

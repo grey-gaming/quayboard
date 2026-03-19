@@ -5,6 +5,7 @@ import {
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
+  buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
@@ -78,6 +79,23 @@ describe("job prompts", () => {
     expect(prompt).toContain("Feature Catalogue");
     expect(prompt).toContain("Specification Gaps");
     expect(prompt).toContain("I will now provide the product information.");
+  });
+
+  it("asks the Product Spec review pass to tidy gaps without materially rewriting the draft", () => {
+    const prompt = buildProductSpecReviewPrompt({
+      projectName: "Quayboard",
+      sourceMaterial: "# Overview\n\nPlanning control plane.",
+      draftTitle: "Product Spec",
+      draftMarkdown: "# Product Spec\n\n## Specification Gaps\n\n- TBD",
+    });
+
+    expect(prompt).toContain('exactly two top-level string keys: "title" and "markdown"');
+    expect(prompt).toContain("preserve the existing scope, structure, feature set, and intent");
+    expect(prompt).toContain("without changing the document materially");
+    expect(prompt).toContain('convert that content into a section named "Assumptions and Proposed Defaults"');
+    expect(prompt).toContain('if a final "Specification Gaps" section is empty after review, remove it');
+    expect(prompt).toContain("Approved overview source material:");
+    expect(prompt).toContain("First-pass Product Spec markdown:");
   });
 
   it("asks for broad, non-duplicative user-flow coverage", () => {

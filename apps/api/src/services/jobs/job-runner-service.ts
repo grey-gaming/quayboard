@@ -17,6 +17,7 @@ import {
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
+  buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
 } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
@@ -27,6 +28,21 @@ const parseJson = <T>(value: string): T | null => {
   } catch {
     return null;
   }
+};
+
+const parseProductSpecResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{ markdown?: string; title?: string }>(value);
+
+  if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+    );
+  }
+
+  return {
+    title: parsed.title.trim(),
+    markdown: parsed.markdown.trim(),
+  };
 };
 
 export const createJobRunnerService = (input: {
@@ -219,20 +235,37 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const parsed = parseJson<{ markdown?: string; title?: string }>(generated.content);
-
-        if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
-          throw new Error(
-            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
-          );
-        }
+        const firstPass = parseProductSpecResult(generated.content, rawJob.type);
+        const reviewPrompt = buildProductSpecReviewPrompt({
+          projectName: project.name,
+          sourceMaterial: onePager.markdown,
+          draftTitle: firstPass.title,
+          draftMarkdown: firstPass.markdown,
+        });
+        const reviewed = await input.llmProviderService.generate(provider, reviewPrompt);
+        const reviewTemplateId = `${rawJob.type}Review`;
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: reviewTemplateId,
+          parameters: {},
+          input: { prompt: reviewPrompt },
+          output: { content: reviewed.content },
+          promptTokens: reviewed.promptTokens,
+          completionTokens: reviewed.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseProductSpecResult(reviewed.content, reviewTemplateId);
 
         const productSpec = await input.productSpecService.createVersion({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
           source: rawJob.type,
-          title: parsed.title.trim(),
-          markdown: parsed.markdown.trim(),
+          title: parsed.title,
+          markdown: parsed.markdown,
         });
 
         return input.jobService.markSucceeded(rawJob.id, { productSpecId: productSpec.id });
