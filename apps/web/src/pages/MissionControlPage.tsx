@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Card } from "../components/ui/Card.js";
 import {
@@ -12,14 +13,6 @@ import {
   useProjectQuery,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
-import { formatDateTime } from "../lib/format.js";
-
-const jobTone = (status: string) =>
-  status === "succeeded"
-    ? "success"
-    : status === "failed" || status === "cancelled"
-      ? "danger"
-      : "info";
 
 export const MissionControlPage = () => {
   const { id = "" } = useParams();
@@ -150,41 +143,12 @@ export const MissionControlPage = () => {
               </div>
             </div>
           </Card>
-          <Card surface="rail" className="h-fit">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Background</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Recent Jobs</p>
-              </div>
-              <Badge tone="neutral">background</Badge>
-            </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {jobsQuery.data?.jobs.slice(0, 5).map((job) => (
-                <div
-                  key={job.id}
-                  className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0 text-sm"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium tracking-[-0.02em]">{job.type}</p>
-                    <Badge tone={jobTone(job.status)}>{job.status}</Badge>
-                  </div>
-                  <p className="qb-meta-label">queued {formatDateTime(job.queuedAt)}</p>
-                  <p className="text-secondary">
-                    {job.completedAt
-                      ? `completed ${formatDateTime(job.completedAt)}`
-                      : job.startedAt
-                        ? `started ${formatDateTime(job.startedAt)}`
-                        : "awaiting execution"}
-                  </p>
-                </div>
-              ))}
-              {jobsQuery.data?.jobs.length === 0 ? (
-                <div className="qb-data-row text-sm text-secondary">
-                  No background jobs recorded yet.
-                </div>
-              ) : null}
-            </div>
-          </Card>
+          <ProjectJobsPanel
+            emptyMessage="No background jobs recorded yet."
+            headerBadge="background"
+            jobs={jobsQuery.data?.jobs ?? []}
+            title="Recent Jobs"
+          />
         </div>
       </div>
     </AppFrame>

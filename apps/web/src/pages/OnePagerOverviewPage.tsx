@@ -35,13 +35,6 @@ const overviewJobTypes = new Set([
   "GenerateOverviewImprovements",
 ]);
 
-const jobTone = (status: string) =>
-  status === "succeeded"
-    ? "success"
-    : status === "failed" || status === "cancelled"
-      ? "danger"
-      : "info";
-
 export const OnePagerOverviewPage = () => {
   const { id = "" } = useParams();
   const location = useLocation();
@@ -202,7 +195,7 @@ export const OnePagerOverviewPage = () => {
           </div>
         </Card>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4">
           <Card surface="rail">
             <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
               <div>
@@ -246,36 +239,6 @@ export const OnePagerOverviewPage = () => {
               ) : (
                 <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
                   No overview versions yet.
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card surface="rail">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Background</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Background Jobs</p>
-              </div>
-              <Badge tone="neutral">{jobsQuery.data?.jobs.length ?? 0} jobs</Badge>
-            </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {jobsQuery.data?.jobs.length ? (
-                jobsQuery.data.jobs.slice(0, 6).map((job) => (
-                  <div
-                    key={job.id}
-                    className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium">{job.type}</p>
-                      <Badge tone={jobTone(job.status)}>{job.status}</Badge>
-                    </div>
-                    <p className="qb-meta-label">queued {formatDateTime(job.queuedAt)}</p>
-                  </div>
-                ))
-              ) : (
-                <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
-                  No background jobs yet.
                 </div>
               )}
             </div>

@@ -243,7 +243,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/questions", <OnePagerQuestionsPage />, autosaveProjectId);
 
-    expect(await screen.findByText(/Saved/)).toBeTruthy();
+    expect(await screen.findByText("Saved")).toBeTruthy();
     expect(screen.queryByText("Unsaved changes pending.")).toBeNull();
     expect(
       screen.getByRole("button", {
@@ -635,9 +635,9 @@ describe("workflow pages", () => {
     expect(await screen.findByRole("button", { name: "Regenerate Overview" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
-    expect(screen.getByText("Background Jobs")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
     });
@@ -656,6 +656,55 @@ describe("workflow pages", () => {
       await screen.findByText("Expanded canonical scope for the planning workspace."),
     ).toBeTruthy();
     expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
+    expect(screen.queryByText("Background Jobs")).toBeNull();
+  });
+
+  it("keeps questions header status text free of timestamps", async () => {
+    const completedProjectId = "14141414-1414-4414-8414-141414141414";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${completedProjectId}`]: {
+        id: completedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY_PARTIAL",
+        ownerUserId: completedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${completedProjectId}/setup-status`]: {
+        repoConnected: true,
+        llmVerified: true,
+        sandboxVerified: true,
+        checks: [],
+      },
+      [`/api/projects/${completedProjectId}/questionnaire-answers`]: {
+        projectId: completedProjectId,
+        answers: {
+          q1_name_and_description: "Planning workspace",
+        },
+        updatedAt: "2026-03-16T09:00:00.000Z",
+        completedAt: "2026-03-16T09:05:00.000Z",
+      },
+      [`/api/projects/${completedProjectId}/jobs`]: {
+        jobs: [],
+      },
+    });
+
+    const { getByTestId } = renderRoute(
+      "/projects/:id/questions",
+      <OnePagerQuestionsPage />,
+      completedProjectId,
+    );
+
+    expect(await screen.findByText("Saved")).toBeTruthy();
+    expect(screen.queryByText(/Mar 16, 2026/i)).toBeNull();
+    expect(screen.queryByText(/^complete /i)).toBeNull();
+    expect(
+      within(getByTestId("questionnaire-header-actions")).getByText("Saved"),
+    ).toBeTruthy();
   });
 
   it("uses the AI button state while overview generation is running", async () => {

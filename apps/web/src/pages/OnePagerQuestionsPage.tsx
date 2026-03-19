@@ -3,8 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 
-import type { QuestionnaireAnswers } from "@quayboard/shared";
-
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
@@ -23,7 +21,6 @@ import {
   useUpdateQuestionnaireMutation,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
-import { formatDateTime } from "../lib/format.js";
 
 type FormValues = Record<string, string>;
 
@@ -44,10 +41,7 @@ const normalizeAnswers = (answers?: Partial<FormValues>) =>
 const answersEqual = (left: FormValues, right: FormValues) =>
   questionKeys.every((key) => left[key] === right[key]);
 
-const formatAutosaveStatus = (
-  autosaveState: "idle" | "dirty" | "saving" | "saved" | "error",
-  updatedAt: string | undefined,
-) => {
+const formatAutosaveStatus = (autosaveState: "idle" | "dirty" | "saving" | "saved" | "error") => {
   if (autosaveState === "saving") {
     return "Saving answers...";
   }
@@ -56,8 +50,8 @@ const formatAutosaveStatus = (
     return "Unsaved changes pending.";
   }
 
-  if (autosaveState === "saved" && updatedAt) {
-    return `Saved ${formatDateTime(updatedAt)}`;
+  if (autosaveState === "saved") {
+    return "Saved";
   }
 
   if (autosaveState === "error") {
@@ -311,13 +305,8 @@ export const OnePagerQuestionsPage = () => {
               active={autoAnswerActive}
             />
             <Badge tone={autosaveState === "error" ? "danger" : "neutral"}>
-              {formatAutosaveStatus(autosaveState, lastSavedAt)}
+              {formatAutosaveStatus(autosaveState)}
             </Badge>
-            {questionnaireQuery.data?.completedAt ? (
-              <p className="qb-meta-label">
-                complete {formatDateTime(questionnaireQuery.data.completedAt)}
-              </p>
-            ) : null}
           </div>
         </div>
 
