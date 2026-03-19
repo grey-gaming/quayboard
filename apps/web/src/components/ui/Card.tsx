@@ -1,11 +1,25 @@
 import type { HTMLAttributes, PropsWithChildren } from "react";
 
-type CardProps = PropsWithChildren<HTMLAttributes<HTMLDivElement>>;
+type CardProps = PropsWithChildren<
+  HTMLAttributes<HTMLDivElement> & {
+    surface?: "panel" | "inset" | "rail";
+  }
+>;
 
-export const Card = ({ children, className = "", ...props }: CardProps) => (
+export const Card = ({
+  children,
+  className = "",
+  surface = "panel",
+  ...props
+}: CardProps) => (
   <div
     className={[
-      "rounded-[calc(var(--radius)+6px)] border border-border/70 bg-card/95 p-6 shadow-harbor backdrop-blur",
+      "min-w-0 border p-4 md:p-5",
+      surface === "inset"
+        ? "border-border/80 bg-panel-inset"
+        : surface === "rail"
+          ? "border-border/90 bg-panel"
+          : "border-border-strong/70 bg-panel-raised",
       className,
     ].join(" ")}
     {...props}

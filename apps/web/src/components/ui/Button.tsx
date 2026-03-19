@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
 
 type ButtonProps = PropsWithChildren<
   ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: "primary" | "secondary";
+    variant?: "primary" | "secondary" | "ghost" | "danger";
   }
 >;
 
@@ -15,10 +15,14 @@ export const Button = ({
 }: ButtonProps) => (
   <button
     className={[
-      "inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+      "inline-flex min-h-10 items-center justify-center border px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] transition-colors duration-150 focus-visible:border-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent/40 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-panel disabled:text-muted-foreground",
       variant === "primary"
-        ? "bg-accent text-accent-foreground hover:bg-accent/90"
-        : "border border-border bg-background/70 text-foreground hover:bg-muted/70",
+        ? "border-accent bg-accent text-background hover:border-accent-hover hover:bg-accent-hover"
+        : variant === "secondary"
+          ? "border-border-strong/70 bg-panel-raised text-foreground hover:border-accent/45 hover:bg-panel-active"
+          : variant === "danger"
+            ? "border-danger/70 bg-danger/10 text-foreground hover:bg-danger/16"
+            : "border-transparent bg-transparent text-secondary hover:border-border hover:bg-panel-inset hover:text-foreground",
       className,
     ].join(" ")}
     type={type}

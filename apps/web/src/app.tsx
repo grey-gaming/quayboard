@@ -8,11 +8,26 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
+import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
+import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
+import { DocsArticlePage } from "./pages/DocsArticlePage.js";
+import { DocsHomePage } from "./pages/DocsHomePage.js";
+import { ImportStubPage } from "./pages/ImportStubPage.js";
+import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
+import { MissionControlPage } from "./pages/MissionControlPage.js";
+import { NewProjectPage } from "./pages/NewProjectPage.js";
+import { OnePagerOverviewPage } from "./pages/OnePagerOverviewPage.js";
+import { OnePagerQuestionsPage } from "./pages/OnePagerQuestionsPage.js";
+import { ProductSpecPage } from "./pages/ProductSpecPage.js";
+import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
+import { UserFlowsPage } from "./pages/UserFlowsPage.js";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +59,14 @@ const RequireAuth = () => {
 
 export const appRouter = createBrowserRouter([
   {
+    path: "/docs",
+    element: <DocsHomePage />,
+  },
+  {
+    path: "/docs/:slug",
+    element: <DocsArticlePage />,
+  },
+  {
     path: "/login",
     element: <LoginPage />,
   },
@@ -57,6 +80,61 @@ export const appRouter = createBrowserRouter([
       {
         path: "/",
         element: <ProtectedHomePage />,
+      },
+      {
+        path: "/setup/instance",
+        element: <InstanceReadinessPage />,
+      },
+      {
+        path: "/projects/new",
+        element: <NewProjectPage />,
+      },
+      {
+        path: "/settings",
+        element: <SettingsPage />,
+      },
+      {
+        path: "/projects/:id",
+        element: <MissionControlPage />,
+      },
+      {
+        path: "/projects/:id/setup",
+        element: <ProjectSetupPage />,
+      },
+      {
+        element: <SetupCompletionGate />,
+        children: [
+          {
+            path: "/projects/:id/questions",
+            element: <OnePagerQuestionsPage />,
+          },
+          {
+            path: "/projects/:id/one-pager",
+            element: <OnePagerOverviewPage />,
+          },
+          {
+            path: "/projects/:id/import",
+            element: <ImportStubPage />,
+          },
+          {
+            element: <OverviewApprovalGate />,
+            children: [
+              {
+                path: "/projects/:id/product-spec",
+                element: <ProductSpecPage />,
+              },
+            ],
+          },
+          {
+            element: <ProductSpecApprovalGate />,
+            children: [
+              {
+                path: "/projects/:id/user-flows",
+                element: <UserFlowsPage />,
+              },
+            ],
+          },
+        ],
       },
     ],
   },

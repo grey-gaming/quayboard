@@ -8,7 +8,14 @@ const runtimeEnvSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(3001),
   CORS_ORIGIN: z.string().url().default("http://localhost:3000"),
   DATABASE_URL: z.string().url().optional(),
+  TEST_DATABASE_URL: z.string().url().optional(),
   SECRETS_ENCRYPTION_KEY: z.string().optional(),
+  ARTIFACT_STORAGE_PATH: z.string().default("/tmp/quayboard-artifacts"),
+  DOCKER_HOST: z.string().optional(),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(50000),
+  LLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(900000),
+  OLLAMA_HOST: z.string().url().default("http://127.0.0.1:11434"),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
 });
 
 type RuntimeEnv = z.infer<typeof runtimeEnvSchema>;
@@ -41,11 +48,39 @@ export const readDatabaseUrl = () => {
   );
 };
 
+export const deriveTestDatabaseUrl = (databaseUrl: string) => {
+  const url = new URL(databaseUrl);
+  const databaseName = url.pathname.replace(/^\//, "");
+
+  if (!databaseName) {
+    throw new Error("DATABASE_URL must include a database name.");
+  }
+
+  url.pathname = `/${databaseName}_test`;
+  return url.toString();
+};
+
+export const readIntegrationDatabaseUrl = () => {
+  const env = parseEnv();
+
+  return env.TEST_DATABASE_URL ?? deriveTestDatabaseUrl(readDatabaseUrl());
+};
+
 export const readSecretsEncryptionKey = () => {
   const env = parseEnv();
 
-  return requireValue(
-    env.SECRETS_ENCRYPTION_KEY,
-    "SECRETS_ENCRYPTION_KEY is required for secrets access.",
-  );
+  return env.SECRETS_ENCRYPTION_KEY ?? null;
+};
+
+export const readAppConfig = () => {
+  const env = parseEnv();
+
+  return {
+    artifactStoragePath: env.ARTIFACT_STORAGE_PATH,
+    dockerHost: env.DOCKER_HOST ?? null,
+    llmMaxOutputTokens: env.LLM_MAX_OUTPUT_TOKENS,
+    llmRequestTimeoutMs: env.LLM_REQUEST_TIMEOUT_MS,
+    ollamaHost: env.OLLAMA_HOST,
+    openAiBaseUrl: env.OPENAI_BASE_URL,
+  };
 };

@@ -4,16 +4,14 @@ Quayboard is a web control plane for managing software projects and orchestratin
 
 ## Status
 
-The repository now contains the M1 authenticated foundation:
+The repository now contains the M2 scratch-path planning workflow:
 
-- Fastify API with:
-  `GET /healthz`, cookie-session auth, protected `/api/*`, authenticated SSE, and project-scoped secrets
-- Drizzle/Postgres foundation schema and initial SQL migration
-- Minimal Vite + React auth UI at `/login`, `/register`, and an authenticated placeholder at `/`
-- Shared schemas for auth, users, sessions, projects, secrets, settings, and SSE events
-- Typed `501` route scaffolds for later milestone API areas
+- Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, Product Spec APIs, user-flow APIs, and project/job status endpoints
+- Drizzle/Postgres schema and migrations covering the M1 foundation plus M2 planning tables
+- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, Product Spec, user flows, and a public `/docs` guide sourced from `docs/user`
+- Shared schemas for planning-phase resources across API and web
 
-The active implementation target is now M1: Database, API Skeleton, and Auth Foundation. M2 product workflows are not implemented yet.
+The active implementation target is now M2: Project Creation, Setup, Overview Document, Product Spec, and User Flows.
 
 ## Prerequisites
 
@@ -35,7 +33,8 @@ The active implementation target is now M1: Database, API Skeleton, and Auth Fou
    cp .env.example .env
    ```
 
-   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. The example value is a local placeholder and should be replaced for real use.
+   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. If it is missing, the API still boots so `/setup/instance` can report the failing readiness check, but secret-backed setup actions stay unavailable until the key is configured and the API is restarted.
+   `ARTIFACT_STORAGE_PATH` should point to a writable directory.
 
 3. Start Postgres:
 
@@ -49,7 +48,19 @@ The active implementation target is now M1: Database, API Skeleton, and Auth Fou
    pnpm db:migrate
    ```
 
-5. Start the API and web apps:
+   To reset the local Postgres database from scratch and reapply migrations:
+
+   ```bash
+   pnpm db:reset
+   ```
+
+5. Ensure the artifact storage directory exists:
+
+   ```bash
+   mkdir -p /tmp/quayboard-artifacts
+   ```
+
+6. Start the API and web apps:
 
    ```bash
    pnpm dev
@@ -68,6 +79,7 @@ The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie a
 - `pnpm test:integration` runs the Postgres-backed migration test
 - `pnpm test:e2e` runs the Playwright smoke test for the web app
 - `pnpm db:migrate` runs the API migration harness against `DATABASE_URL`
+- `pnpm db:reset` recreates the local Docker Postgres volume and reapplies migrations
 
 `pnpm test:e2e` assumes the host machine has the browser dependencies Playwright needs to launch Chromium.
 
@@ -76,16 +88,23 @@ The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie a
 Documented runtime variables live in `.env.example`:
 
 - `DATABASE_URL` for Drizzle migrations, API runtime, and Postgres-backed integration tests
+- `TEST_DATABASE_URL` for API integration tests; if omitted, the test suite derives a sibling database name by appending `_test` to `DATABASE_URL`
 - `API_PORT` for the Fastify server port
 - `CORS_ORIGIN` for the allowed frontend origin
 - `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
+- `ARTIFACT_STORAGE_PATH` for readiness checks and future artifact persistence
+- `DOCKER_HOST` to target a non-default Docker daemon for sandbox verification
+- `LLM_MAX_OUTPUT_TOKENS` for the API-side Ollama output-token cap used on generation requests
+- `LLM_REQUEST_TIMEOUT_MS` for the API-side timeout applied to Ollama and OpenAI-compatible generation requests
+- `OLLAMA_HOST` for the Ollama adapter base URL
+- `OPENAI_BASE_URL` for the OpenAI-compatible adapter base URL; the API key itself is stored per project through the UI
 
 ## Repository Layout
 
 ```text
 apps/
-  api/      Fastify service, auth/session middleware, SSE, secrets, migrations, API tests
-  web/      Vite + React auth shell, DS primitives, Playwright smoke test
+  api/      Fastify service, auth/session middleware, SSE, setup/planning APIs, migrations, API tests
+  web/      Vite + React planning UI, DS primitives, Playwright smoke test
   mcp/      Buildable placeholder package for the future MCP server
 packages/
   shared/   Shared schemas and types used across the workspace
@@ -93,7 +112,7 @@ docs/
   adr/            Architecture decisions
   architecture/   Monorepo, toolchain, API foundation, and local-dev documentation
   planning/       Active milestone and long-range project outline
-  user/           User-facing auth and future product documentation
+  user/           User-facing guides rendered by the public `/docs` experience
 ```
 
 ## Source Of Truth
@@ -112,5 +131,5 @@ Use these documents in this order:
 - [Project outline](docs/planning/quayboard-project-outline.md)
 - [ADR guide](docs/adr/README.md)
 - [Architecture docs](docs/architecture/README.md)
-- [User docs scaffold](docs/user/README.md)
+- [User docs guide source](docs/user/README.md)
 - [Contributor guide](CONTRIBUTING.md)

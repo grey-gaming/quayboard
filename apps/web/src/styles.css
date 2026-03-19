@@ -3,18 +3,31 @@
 @tailwind utilities;
 
 :root {
-  --background: 220 42% 9%;
-  --foreground: 210 33% 96%;
-  --card: 218 34% 13%;
-  --card-foreground: 210 33% 96%;
-  --muted: 217 24% 18%;
-  --muted-foreground: 215 18% 72%;
-  --border: 217 22% 24%;
-  --input: 217 22% 24%;
-  --ring: 188 72% 58%;
-  --accent: 188 72% 58%;
-  --accent-foreground: 220 42% 9%;
-  --radius: 1rem;
+  --background: 220 18% 6.5%;
+  --foreground: 220 31.6% 92.5%;
+  --card: 223 24% 18%;
+  --card-foreground: 220 31.6% 92.5%;
+  --overlay: 222 32% 5.5%;
+  --panel: 222 24% 14%;
+  --panel-raised: 223 24% 18%;
+  --panel-inset: 221 28% 11%;
+  --panel-active: 224 24% 24%;
+  --surface: 221 28% 11%;
+  --muted: 224 18% 28%;
+  --secondary: 220 16% 70.6%;
+  --muted-foreground: 221 11.9% 53.7%;
+  --border: 223 20% 31%;
+  --border-strong: 224 18% 39%;
+  --input: 223 20% 31%;
+  --ring: 228 100% 74%;
+  --accent: 228 100% 74%;
+  --accent-hover: 230 100% 78%;
+  --accent-foreground: 220 16.7% 7.1%;
+  --success: 152 56.6% 41.6%;
+  --warning: 39 64.2% 55.1%;
+  --danger: 0 48.6% 56.5%;
+  --info: 204 57.1% 56.1%;
+  --radius: 0rem;
 }
 
 @layer base {
@@ -22,15 +35,191 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: dark;
+  }
+
   body {
     @apply bg-background font-sans text-foreground antialiased;
-    background-image:
-      radial-gradient(circle at top left, hsl(var(--ring) / 0.18), transparent 26%),
-      linear-gradient(180deg, hsl(220 42% 10%), hsl(222 37% 7%));
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--overlay)) 0%,
+      hsl(var(--background)) 18%,
+      hsl(var(--background)) 100%
+    );
     min-height: 100vh;
   }
 
   a {
-    @apply transition;
+    @apply transition-colors duration-150;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.22);
+    color: hsl(var(--foreground));
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  @keyframes qb-ai-glow-sweep {
+    from {
+      transform: translateX(-38%) rotate(8deg);
+    }
+
+    to {
+      transform: translateX(38%) rotate(8deg);
+    }
+  }
+
+  @keyframes qb-ai-wheel-spin {
+    from {
+      transform: rotate(0deg);
+    }
+
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes qb-ai-handle-pulse {
+    0%,
+    100% {
+      opacity: 0.92;
+    }
+
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .qb-shell {
+    @apply border border-border/90 bg-panel text-foreground;
+  }
+
+  .qb-shell-muted {
+    @apply border border-border/80 bg-panel-inset text-foreground;
+  }
+
+  .qb-panel {
+    @apply border border-border/90 bg-panel p-4 md:p-5;
+  }
+
+  .qb-panel-raised {
+    @apply border border-border-strong/70 bg-panel-raised p-4 md:p-5;
+  }
+
+  .qb-panel-inset {
+    @apply border border-border/80 bg-panel-inset p-4;
+  }
+
+  .qb-section-heading {
+    @apply grid gap-1 border-b border-border/80 pb-3;
+  }
+
+  .qb-meta-label {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .qb-nav-cell {
+    @apply inline-flex min-h-10 items-center border border-transparent px-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] transition-colors duration-150;
+  }
+
+  .qb-data-row {
+    @apply border border-border/80 bg-panel-inset px-4 py-3;
+  }
+
+  .qb-kv {
+    @apply grid gap-1 border border-border/80 bg-panel-inset px-3 py-3;
+  }
+
+  .qb-divider {
+    @apply border-t border-border/70;
+  }
+
+  .qb-ai-action {
+    @apply relative isolate overflow-hidden border-accent/40 bg-panel-raised text-foreground;
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--accent) / 0.08),
+      0 0 0 1px hsl(var(--accent) / 0.02);
+  }
+
+  .qb-ai-action::before,
+  .qb-ai-action::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+  }
+
+  .qb-ai-action::before {
+    background:
+      radial-gradient(circle at 18% 50%, hsl(var(--accent) / 0.18), transparent 52%),
+      linear-gradient(
+        120deg,
+        hsl(var(--accent) / 0.12) 0%,
+        hsl(var(--info) / 0.05) 42%,
+        transparent 80%
+      );
+    opacity: 0.95;
+    transition: opacity 180ms ease;
+  }
+
+  .qb-ai-action::after {
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      hsl(var(--accent) / 0.14) 44%,
+      hsl(var(--info) / 0.2) 50%,
+      transparent 66%
+    );
+    inset: -130% -40%;
+    opacity: 0;
+    transform: translateX(-38%) rotate(8deg);
+    transition: opacity 180ms ease;
+  }
+
+  .qb-ai-action:hover:not(:disabled) {
+    @apply border-accent/60 bg-panel-active;
+  }
+
+  .qb-ai-action[data-active="true"] {
+    @apply border-accent bg-panel-active;
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--accent) / 0.18),
+      0 0 0 1px hsl(var(--accent) / 0.12),
+      0 0 24px hsl(var(--accent) / 0.24),
+      0 0 42px hsl(var(--info) / 0.16);
+  }
+
+  .qb-ai-action[data-active="true"]::after {
+    animation: qb-ai-glow-sweep 2.2s linear infinite;
+    opacity: 1;
+  }
+
+  .qb-ai-action__content {
+    @apply relative z-10 flex items-center gap-2;
+  }
+
+  .qb-ai-icon {
+    @apply shrink-0;
+  }
+
+  .qb-ai-icon-wheel {
+    transform-origin: 50% 50%;
+  }
+
+  .qb-ai-action[data-active="true"] .qb-ai-icon-wheel {
+    animation: qb-ai-wheel-spin 2.6s linear infinite;
+  }
+
+  .qb-ai-action[data-active="true"] .qb-ai-icon-handles {
+    animation: qb-ai-handle-pulse 1.4s ease-in-out infinite;
   }
 }

@@ -70,6 +70,24 @@ const applySessionCookie = (
   });
 };
 
+const ensureInstanceReadyForAuth = async (services: AppServices, reply: FastifyReply) => {
+  const readiness = await services.systemReadinessService.getReadiness();
+  const blocked = readiness.checks.some((check) => check.status !== "pass");
+
+  if (!blocked) {
+    return true;
+  }
+
+  await sendApiError(
+    reply,
+    503,
+    "instance_not_ready",
+    "Resolve all instance readiness checks before registering or signing in.",
+  );
+
+  return false;
+};
+
 export const authRoutes = (services: AppServices): FastifyPluginAsync => async (app) => {
   app.post(
     "/auth/register",
@@ -83,6 +101,10 @@ export const authRoutes = (services: AppServices): FastifyPluginAsync => async (
     },
     async (request, reply) => {
       try {
+        if (!(await ensureInstanceReadyForAuth(services, reply))) {
+          return reply;
+        }
+
         const input = registerRequestSchema.parse(request.body);
         const { session, user } = await services.authService.register(input);
         applySessionCookie(reply, session.cookieValue);
@@ -105,6 +127,10 @@ export const authRoutes = (services: AppServices): FastifyPluginAsync => async (
     },
     async (request, reply) => {
       try {
+        if (!(await ensureInstanceReadyForAuth(services, reply))) {
+          return reply;
+        }
+
         const input = loginRequestSchema.parse(request.body);
         const { session, user } = await services.authService.login(input);
         applySessionCookie(reply, session.cookieValue);

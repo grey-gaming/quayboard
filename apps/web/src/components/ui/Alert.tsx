@@ -2,7 +2,7 @@ import type { HTMLAttributes, PropsWithChildren } from "react";
 
 type AlertProps = PropsWithChildren<
   HTMLAttributes<HTMLDivElement> & {
-    tone?: "error" | "info";
+    tone?: "error" | "info" | "success";
   }
 >;
 
@@ -14,10 +14,12 @@ export const Alert = ({
 }: AlertProps) => (
   <div
     className={[
-      "rounded-lg border px-3 py-2 text-sm",
+      "border-l-2 border px-3 py-2.5 text-sm",
       tone === "error"
-        ? "border-rose-400/40 bg-rose-500/10 text-rose-100"
-        : "border-border/70 bg-muted/60 text-foreground",
+        ? "border-danger bg-danger/10 text-foreground"
+        : tone === "success"
+          ? "border-success bg-success/10 text-foreground"
+          : "border-accent bg-panel-inset text-foreground",
       className,
     ].join(" ")}
     {...props}

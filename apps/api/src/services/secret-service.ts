@@ -97,6 +97,38 @@ export const createSecretService = (
     return toSecretMetadata(secret);
   },
 
+  async upsertSecret(ownerUserId: string, projectId: string, input: CreateSecretRequest) {
+    await projectService.getOwnedProject(ownerUserId, projectId);
+    const now = new Date();
+
+    const [existingSecret] = await db
+      .select()
+      .from(encryptedSecretsTable)
+      .where(
+        and(
+          eq(encryptedSecretsTable.projectId, projectId),
+          eq(encryptedSecretsTable.type, input.type),
+        ),
+      )
+      .limit(1);
+
+    if (!existingSecret) {
+      return this.createSecret(ownerUserId, projectId, input);
+    }
+
+    const [updatedSecret] = await db
+      .update(encryptedSecretsTable)
+      .set({
+        encryptedValue: crypto.encrypt(input.value),
+        maskedIdentifier: maskSecret(input.value),
+        rotatedAt: now,
+      })
+      .where(eq(encryptedSecretsTable.id, existingSecret.id))
+      .returning();
+
+    return toSecretMetadata(updatedSecret);
+  },
+
   async listSecrets(ownerUserId: string, projectId: string) {
     await projectService.getOwnedProject(ownerUserId, projectId);
     const secrets = await db.query.encryptedSecretsTable.findMany({

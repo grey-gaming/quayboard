@@ -6,8 +6,7 @@ import postgres from "postgres";
 
 import { readDatabaseUrl } from "../config.js";
 
-export const runMigrations = async () => {
-  const databaseUrl = readDatabaseUrl();
+export const runMigrations = async (databaseUrl = readDatabaseUrl()) => {
   const client = postgres(databaseUrl, { max: 1 });
   const db = drizzle(client);
   const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));

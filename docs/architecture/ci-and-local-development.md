@@ -8,6 +8,8 @@
 4. Run `pnpm db:migrate` to verify database connectivity and migration wiring.
 5. Run `pnpm dev` to start the API on port `3001` and the web app on port `3000`.
 
+To reset the local Docker-backed Postgres instance and reapply the schema from scratch, run `pnpm db:reset`.
+
 ## Verification Commands
 
 - `pnpm typecheck`

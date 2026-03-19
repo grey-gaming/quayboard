@@ -95,8 +95,9 @@ The top-level navigation divides into:
 Home (project list)
 └── Project
     ├── Mission Control (project landing page: stage map, next actions, timeline/evidence feed)
-    ├── Project Setup (repo access, LLM provider, sandbox defaults, tool policy, evidence policy, readiness checklist)
+    ├── Project Setup (repo access, LLM provider, sandbox defaults, evidence policy)
     ├── Overview Document (questionnaire -> document)
+    ├── Product Spec (overview -> full specification)
     ├── Blueprint (decision deck -> UX/tech project blueprints)
     ├── Milestones (lifecycle: draft -> approved -> completed)
     ├── Features (catalogue / editor)
@@ -129,9 +130,11 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/setup/instance` | **Instance Readiness** | First-run deployment checks: database, encryption key, Docker, artifact storage, enabled provider adapters |
 | `/projects/new` | **New Project** | Create from scratch or import chooser |
 | `/projects/:id` | **Mission Control** | Project landing page: stage map, next actions, auto-advance controls, timeline/evidence feed, phase summary |
-| `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, tool policy (tool group toggles, budget caps), evidence policy, readiness checklist |
+| `/projects/:id/setup` | **Project Setup** | Repo access (PAT/OAuth), LLM provider config, sandbox defaults, and evidence policy |
 | `/projects/:id/import` | **Import Project** | GitHub / local file import |
-| `/projects/:id/one-pager` | **Overview Document** | Questionnaire, naming phase, document overview with review loop |
+| `/projects/:id/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
+| `/projects/:id/one-pager` | **Overview Document** | Generated overview review, history, restore, and approval |
+| `/projects/:id/product-spec` | **Product Spec** | Generated Product Spec review, history, restore, and approval |
 | `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
 | `/projects/:id/blueprint` | **Blueprint Builder** | Decision deck, UX/tech project blueprint review |
 | `/projects/:id/milestones` | **Milestones** | Create, edit, approve, complete milestone lifecycle |
@@ -154,15 +157,16 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 #### Flow -1: Instance readiness and first run
 
-1. User registers or logs in.
-2. On the first run, Quayboard opens **Instance Readiness** and checks deployment prerequisites that exist outside any project:
+1. User opens the login or registration screen.
+2. Quayboard checks deployment prerequisites that exist outside any project before auth submission is allowed:
    a. Database connectivity.
    b. `SECRETS_ENCRYPTION_KEY` presence.
    c. Docker daemon reachability.
    d. Artifact storage path writability.
    e. Enabled LLM provider adapters.
-3. Any failing check shows a concrete remediation message and blocks only the setup-dependent onboarding steps.
-4. The screen does not collect project credentials. Repo PATs and LLM API keys are configured only later in **Project Setup**.
+3. Any failing check shows a concrete remediation message and blocks registration and sign-in until the instance is green.
+4. After the checks pass, the user registers or logs in.
+5. The screen does not collect project credentials. Repo PATs and LLM API keys are configured only later in **Project Setup**.
 
 #### Flow 0: Project setup and guided onboarding
 
@@ -170,33 +174,39 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 2. User enters the **Project Setup** page and completes the readiness checklist:
    a. **Connect repository** — provide a GitHub PAT or initiate OAuth, select a repo. Quayboard verifies access.
    b. **Configure LLM provider** — select one of the enabled provider adapters for this project, enter the project-scoped API key or endpoint override when required, choose models for activity types, and verify connectivity.
-   c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted).
-   d. **Configure tool policy** (optional) — toggle tool groups on/off (planning, review, execution, assets, integrations) and set budget caps for LLM token spend and asset generation. Sensible defaults are pre-applied; most users skip this step entirely.
-   e. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
-   f. **Readiness checklist** — all items above show green/red status. Setup is complete when all items pass.
+   c. **Configure sandbox defaults** — set timeouts, CPU/memory limits, network egress policy (locked / allowlisted), and verify sandbox startup.
+   d. **Set evidence and docs policy** — choose which artifact types require documentation before milestone completion.
+   e. **Save and verify setup sections** — repository, LLM, and sandbox state is surfaced inline within each setup section.
+   f. **Complete Setup** — once the required checks pass, the user explicitly marks setup complete. Overview and later planning sections stay locked until this action is confirmed.
 3. On first project, a guided **"Hello World" onboarding** path walks the user through the full pipeline:
-   - Register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
+   - Clear instance readiness → register or log in → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document.
    - The full pipeline demo continues in M8, where sandbox execution, PR creation, and evidence bundles are implemented.
 
 #### Flow 1: New project — scratch to overview document
 
 1. User clicks **New Project** and selects **Start from scratch**.
-2. Completes a 14-question guided questionnaire (config-driven question keys: `q1_name_and_description` through `q14_product_feel`).
-3. LLM generates a project description; user enters a project name.
-4. LLM generates the **overview document** (versioned, restorable).
+2. Completes a 14-question guided questionnaire on the **Questions** page (config-driven question keys: `q1_name_and_description` through `q14_product_feel`), with autosave and optional LLM blank-answer generation.
+3. User clicks **Next: Generate Overview** to move to the overview screen.
+4. LLM generates the **overview document** (versioned, restorable) and refreshes the saved project description.
 5. User reviews the overview document, triggers targeted regenerations or section improvements.
 6. User approves the overview document — phase gate passes.
 
-#### Flow 2: User-flow coverage and approval
+#### Flow 2: Product Spec
 
-1. After the overview document is approved, user enters **User Flows**.
-2. Quayboard can generate an initial set of user flows from the approved one-pager, or the user can create flows manually.
+1. After the overview document is approved, user enters **Product Spec**.
+2. Quayboard generates the Product Spec from the approved overview using the Product Spec prompt.
+3. The Product Spec is versioned, editable, restorable, and must be approved before User Flows.
+
+#### Flow 3: User-flow coverage and approval
+
+1. After the Product Spec is approved, user enters **User Flows**.
+2. Quayboard can generate an initial set of user flows from the approved Product Spec, or the user can create flows manually.
 3. Each flow captures title, user story, entry point, end state, flow steps, coverage tags, acceptance criteria, and done-criteria references.
 4. Quayboard computes a **coverage summary** over the active flow set and highlights warnings or missing journey areas.
 5. If coverage gaps remain, Quayboard can run a targeted gap-fill generation pass and a deterministic dedupe pass before approval.
 6. User reviews, edits, archives, or approves the user-flow set. Blueprint generation is gated on approved user flows.
 
-#### Flow 3: Blueprint phase
+#### Flow 4: Blueprint phase
 
 1. From Mission Control, user enters the Blueprint phase.
 2. LLM generates a **decision deck** (key architectural and UX decisions with recommendations and alternatives).
@@ -541,7 +551,7 @@ The REST API is served by the Fastify backend under the `/api` prefix (except `/
 - `GET /projects/:id/phase-gates` — phase gate checklist
 
 #### Overview document
-- `GET/POST /projects/:id/one-pager` — canonical overview document
+- `GET/POST/PATCH /projects/:id/one-pager` — canonical overview document
 - `GET /projects/:id/one-pager/versions` — version history
 - `POST /projects/:id/one-pager/versions/:v/restore` — restore version
 - `GET/PATCH /projects/:id/questionnaire-answers` — questionnaire persistence
@@ -904,7 +914,8 @@ The phase gate system provides a structured checklist of what must be true befor
 |---|---|
 | **Project Setup** | Repo connected and access verified; LLM provider configured and reachable; sandbox container startup verified |
 | **Overview Document** | Project Setup gate passed; questionnaire complete (scratch) or memory chunks built (import); overview document generated; all BLOCKER review items resolved; overview document approved |
-| **User Flows** | Overview Document gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
+| **Product Spec** | Overview Document gate passed; Product Spec generated; Product Spec approved |
+| **User Flows** | Product Spec gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
 | **Blueprint** | User Flows gate passed; decision deck generated and all cards have a user selection; UX blueprint generated; tech blueprint generated; all BLOCKER review items on both blueprints resolved; both blueprints approved |
 | **Milestones** | Blueprint gate passed; at least one milestone exists in `approved` state |
 | **Features** | Milestones gate passed; at least one feature exists with an approved product specification |
@@ -1132,14 +1143,14 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 ---
 
-### M2 — Project Creation, Setup, Overview Document, and User Flows
+### M2 — Project Creation, Setup, Overview Document, Product Spec, and User Flows
 
-**Goal**: A user can clear first-run instance readiness, create a project, complete project setup (repo, LLM, sandbox configuration), complete the 14-question questionnaire, trigger LLM-assisted generation of a project description and overview document, review/approve the result, and then generate and approve a user-flow set that becomes the planning contract for later stages. Mission Control becomes the project landing page. A guided onboarding flow introduces the full pipeline, with the execution portion completed later when sandbox runs exist.
+**Goal**: A user can clear first-run instance readiness, create a project, complete project setup (repo, LLM, sandbox configuration), complete the 14-question questionnaire, trigger LLM-assisted generation of a project description and overview document, review/approve the result, generate and approve a Product Spec from that overview, and then generate and approve a user-flow set that becomes the planning contract for later stages. Mission Control becomes the project landing page. A guided onboarding flow introduces the full pipeline, with the execution portion completed later when sandbox runs exist.
 
 **Deliverables**:
 
 **Schema additions** (new migrations):
-- `one_pagers`, `questionnaire_answers`, `questions`, `use_cases`
+- `one_pagers`, `product_specs`, `questionnaire_answers`, `questions`, `use_cases`
 - project user-flow approval metadata (`user_flows_approved_at`, `user_flows_approval_snapshot`)
 
 **Backend**:
@@ -1153,9 +1164,10 @@ The following milestones describe an ordered delivery plan. Each milestone is se
   - `POST /projects/:id/verify-sandbox` — test sandbox container startup
 - Questionnaire answer persistence (`GET/PATCH /projects/:id/questionnaire-answers`)
 - Overview document routes (canonical, versions, restore)
+- Product Spec routes (canonical, versions, restore, approve)
 - User-flow routes (list, create, update, archive, generate, deduplicate, approve)
 - Job system: scheduler polling loop, job CRUD routes, terminal state handling
-- LLM executors: `GenerateProjectDescription`, `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `SuggestExampleAnswer`, `SuggestProjectNames`, `AutoAnswerQuestionnaire`, `GenerateUseCases`, `DeduplicateUseCases`, `GenerateOnePager`, `RefineOnePagerSection`
+- LLM executors: `GenerateProjectDescription`, `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `GenerateProductSpec`, `RegenerateProductSpec`, `GenerateProductSpecImprovements`, `SuggestExampleAnswer`, `SuggestProjectNames`, `AutoAnswerQuestionnaire`, `GenerateUseCases`, `DeduplicateUseCases`, `GenerateOnePager`, `RefineOnePagerSection`
 - LLM provider integration via provider abstraction (see §3.6)
 - SSE events emitted on job state changes
 
@@ -1163,10 +1175,12 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - `HomePage` — project list, empty state, error state, filter bar, status badges
 - `InstanceReadinessPage` (`/setup/instance`) — first-run deployment checks with remediation guidance for missing prerequisites
 - `NewProjectPage` — create from scratch / import chooser
-- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), evidence/docs policy, readiness checklist with green/red status indicators
+- `ProjectSetupPage` (`/projects/:id/setup`) — repo connection (PAT/OAuth), project-scoped LLM provider and model selection, connectivity verification, sandbox defaults (timeouts, CPU/mem, egress policy), and evidence/docs policy with inline saved/verified status
 - `MissionControlPage` (`/projects/:id`) — project landing page absorbing the old `ProjectDetailPage` phase summary. Shows stage map, next actions, and activity timeline (auto-advance controls added in M7)
 - `ProjectContextHeader` — persistent sticky header on all project-scoped pages (project state, repo, model profile, sandbox policy, setup readiness)
-- `OnePagerIntakePage` — questionnaire phase, naming phase, overview document phase
+- `OnePagerQuestionsPage` — questionnaire phase with autosave and LLM blank-answer generation
+- `OnePagerOverviewPage` — overview document phase, history, restore, and approval
+- `ProductSpecPage` — Product Spec phase, history, restore, editing, and approval
 - `UserFlowsPage` (`/projects/:id/user-flows`) — generation, manual editing, coverage summary, dedupe, and approval
 - Guided onboarding flow — step-by-step walkthrough: register or log in → clear instance readiness → create project → connect repo → verify LLM → verify sandbox → complete questionnaire and overview document
 - DS primitives: `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Spinner`, `Skeleton`, `Alert`, `Toast`
@@ -1185,7 +1199,8 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - User can complete all 14 questionnaire questions and generate an overview document without errors
 - LLM job is dispatched, tracked in `jobs` table, and result updates the overview document
 - Overview document versions are stored and restorable
-- User flows can be generated from the approved overview document, edited manually, deduplicated, and approved only when coverage requirements are satisfied
+- Product Spec can be generated from the approved overview document, edited manually, versioned, restored, and approved
+- User flows can be generated from the approved Product Spec, edited manually, deduplicated, and approved only when coverage requirements are satisfied
 - Blueprint generation remains locked until user flows are approved
 - SSE events cause the frontend to update job status in real time without polling
 - A guided onboarding scaffold exists introducing the workspace: account creation, instance readiness, project creation, repository connection, LLM verification, sandbox verification, and questionnaire completion. The full pipeline demo (sandbox run → PR → evidence bundle) is scoped to M8 once sandbox execution is available.
@@ -1889,7 +1904,7 @@ Before M12, project access is single-owner: the authenticated creating user is t
 | **Phase gate** | A structured checklist of conditions that must be met before progressing from one phase to the next. |
 | **Creativity mode** | A per-session policy (`off / scoped / balanced / high`) applied to LLM generation prompts. |
 | **Instance Readiness** | The first-run deployment check shown before project onboarding. Verifies instance-level prerequisites such as database access, encryption key presence, Docker availability, artifact storage, and enabled provider adapters. |
-| **Project Setup** | The readiness phase where a user connects a repository, configures the LLM provider, sets sandbox defaults, configures tool policy (optional), and establishes evidence/docs policy before proceeding to the questionnaire. |
+| **Project Setup** | The readiness phase where a user connects a repository, configures the LLM provider, sets sandbox defaults, and establishes evidence/docs policy before proceeding to the questionnaire. |
 | **Project Context Header** | A persistent, sticky header strip shown on every project-scoped page displaying project state, connected repo, model profile, sandbox policy, tool policy summary, and setup readiness. |
 | **User documentation** | User-facing documentation generated from the product specification — guides, help text, API docs. A workstream track within the Feature Editor. |
 | **Architecture documentation** | Internal architecture documentation generated from the tech specification — design rationale, data flow, integration points. A workstream track within the Feature Editor. |

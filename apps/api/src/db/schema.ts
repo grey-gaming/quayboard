@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   index,
   integer,
@@ -86,6 +87,11 @@ export const projectsTable = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     state: text("state").notNull().$type<(typeof projectStateValues)[number]>(),
+    onePagerApprovedAt: timestamp("one_pager_approved_at", { withTimezone: true }),
+    userFlowsApprovedAt: timestamp("user_flows_approved_at", {
+      withTimezone: true,
+    }),
+    userFlowsApprovalSnapshot: jsonb("user_flows_approval_snapshot"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(now()),
@@ -126,6 +132,7 @@ export const reposTable = pgTable(
     repoUrl: text("repo_url"),
     defaultBranch: text("default_branch"),
     lastSeenSha: text("last_seen_sha"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(now()),
@@ -135,6 +142,134 @@ export const reposTable = pgTable(
   },
   (table) => ({
     projectIndex: index("repos_project_id_idx").on(table.projectId),
+  }),
+);
+
+export const questionnaireAnswersTable = pgTable("questionnaire_answers", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projectsTable.id, { onDelete: "cascade" }),
+  answers: jsonb("answers").notNull().default(sql`'{}'::jsonb`),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(now()),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+export const onePagersTable = pgTable(
+  "one_pagers",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    isCanonical: boolean("is_canonical").notNull().default(false),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("one_pagers_project_id_idx").on(table.projectId),
+    projectVersionUnique: uniqueIndex("one_pagers_project_id_version_key").on(
+      table.projectId,
+      table.version,
+    ),
+  }),
+);
+
+export const productSpecsTable = pgTable(
+  "product_specs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    isCanonical: boolean("is_canonical").notNull().default(false),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("product_specs_project_id_idx").on(table.projectId),
+    projectVersionUnique: uniqueIndex("product_specs_project_id_version_key").on(
+      table.projectId,
+      table.version,
+    ),
+  }),
+);
+
+export const questionsTable = pgTable(
+  "questions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    category: text("category").notNull(),
+    priority: text("priority").notNull(),
+    status: text("status").notNull(),
+    prompt: text("prompt").notNull(),
+    answer: text("answer"),
+    placementHint: text("placement_hint"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => ({
+    projectIndex: index("questions_project_id_idx").on(table.projectId),
+  }),
+);
+
+export const useCasesTable = pgTable(
+  "use_cases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    userStory: text("user_story").notNull(),
+    entryPoint: text("entry_point").notNull(),
+    endState: text("end_state").notNull(),
+    flowSteps: jsonb("flow_steps").notNull().default(sql`'[]'::jsonb`),
+    coverageTags: jsonb("coverage_tags").notNull().default(sql`'[]'::jsonb`),
+    acceptanceCriteria: jsonb("acceptance_criteria")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    doneCriteriaRefs: jsonb("done_criteria_refs")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    source: text("source").notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("use_cases_project_id_idx").on(table.projectId),
   }),
 );
 
@@ -257,10 +392,14 @@ export type DatabaseSchema = {
   encryptedSecretsTable: typeof encryptedSecretsTable;
   jobsTable: typeof jobsTable;
   llmRunsTable: typeof llmRunsTable;
+  onePagersTable: typeof onePagersTable;
   projectCountersTable: typeof projectCountersTable;
   projectsTable: typeof projectsTable;
+  questionnaireAnswersTable: typeof questionnaireAnswersTable;
+  questionsTable: typeof questionsTable;
   reposTable: typeof reposTable;
   sessionsTable: typeof sessionsTable;
   settingsTable: typeof settingsTable;
+  useCasesTable: typeof useCasesTable;
   usersTable: typeof usersTable;
 };
