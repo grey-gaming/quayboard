@@ -5,7 +5,7 @@ import { buildServer } from "./server.js";
 
 const start = async () => {
   const config = readHttpConfig();
-  const { services, close } = createAppServices(
+  const { services, close } = await createAppServices(
     readDatabaseUrl(),
     readSecretsEncryptionKey(),
   );

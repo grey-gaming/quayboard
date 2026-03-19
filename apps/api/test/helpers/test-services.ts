@@ -57,6 +57,7 @@ export const createStubServices = (): AppServices => ({
     listOwnedJobs: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    cancelRunningJobs: async () => [],
     markFailed: async () => {
       throw new Error("Not implemented in test stub.");
     },

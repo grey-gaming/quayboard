@@ -27,6 +27,11 @@ export type JobCreateInput = {
   type: string;
 };
 
+type JobTerminalError = {
+  message: string;
+  code?: string;
+};
+
 export const createJobService = (db: AppDatabase) => ({
   async createJob(input: JobCreateInput) {
     const now = new Date();
@@ -79,10 +84,22 @@ export const createJobService = (db: AppDatabase) => ({
         error: null,
         completedAt: new Date(),
       })
-      .where(eq(jobsTable.id, jobId))
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "running")))
       .returning();
 
-    return toJob(job);
+    if (job) {
+      return toJob(job);
+    }
+
+    const existingJob = await db.query.jobsTable.findFirst({
+      where: eq(jobsTable.id, jobId),
+    });
+
+    if (!existingJob) {
+      throw new Error(`Job ${jobId} not found.`);
+    }
+
+    return toJob(existingJob);
   },
 
   async markFailed(jobId: string, error: unknown) {
@@ -93,10 +110,36 @@ export const createJobService = (db: AppDatabase) => ({
         error,
         completedAt: new Date(),
       })
-      .where(eq(jobsTable.id, jobId))
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.status, "running")))
       .returning();
 
-    return toJob(job);
+    if (job) {
+      return toJob(job);
+    }
+
+    const existingJob = await db.query.jobsTable.findFirst({
+      where: eq(jobsTable.id, jobId),
+    });
+
+    if (!existingJob) {
+      throw new Error(`Job ${jobId} not found.`);
+    }
+
+    return toJob(existingJob);
+  },
+
+  async cancelRunningJobs(error: JobTerminalError) {
+    const cancelledJobs = await db
+      .update(jobsTable)
+      .set({
+        status: "cancelled",
+        error,
+        completedAt: new Date(),
+      })
+      .where(eq(jobsTable.status, "running"))
+      .returning();
+
+    return cancelledJobs.map(toJob);
   },
 
   async getOwnedJob(ownerUserId: string, jobId: string) {

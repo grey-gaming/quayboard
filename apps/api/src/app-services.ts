@@ -97,7 +97,17 @@ export type AppServices = {
   userFlowService: UserFlowService;
 };
 
-export const createAppServices = (
+const staleJobCancellation = {
+  code: "job_interrupted_by_server_restart",
+  message: "The API restarted before this LLM job finished, so the job was cancelled.",
+} as const;
+
+const shutdownJobCancellation = {
+  code: "job_interrupted_by_server_shutdown",
+  message: "The API shut down before this LLM job finished, so the job was cancelled.",
+} as const;
+
+export const createAppServices = async (
   databaseUrl: string,
   secretsEncryptionKey: string | null,
 ) => {
@@ -222,6 +232,7 @@ export const createAppServices = (
       }
     },
   });
+  await jobService.cancelRunningJobs(staleJobCancellation);
   jobScheduler.start();
 
   return {
@@ -250,6 +261,7 @@ export const createAppServices = (
     },
     async close() {
       jobScheduler.stop();
+      await jobService.cancelRunningJobs(shutdownJobCancellation);
       sseHub.closeAll();
       await client.end();
     },

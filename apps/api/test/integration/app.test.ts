@@ -46,7 +46,7 @@ const readyChecks = [
 
 describe("API integration", () => {
   const sql = postgres(databaseUrl, { max: 1 });
-  let appServices: ReturnType<typeof createAppServices>;
+  let appServices: Awaited<ReturnType<typeof createAppServices>>;
   let server: Awaited<ReturnType<typeof buildServer>>;
   let baseUrl = "";
 
@@ -55,7 +55,7 @@ describe("API integration", () => {
     await ensureIntegrationDatabaseExists();
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
-    appServices = createAppServices(databaseUrl, secretsKey);
+    appServices = await createAppServices(databaseUrl, secretsKey);
     server = await buildServer({
       corsOrigin: "http://localhost:3000",
       services: appServices.services,
@@ -96,6 +96,58 @@ describe("API integration", () => {
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
+  });
+
+  it("cancels running jobs that were interrupted by a server restart", async () => {
+    const userId = "4fdf86ba-7f8b-4ef0-b3c7-77c77e7e5978";
+    const projectId = "2f1c261d-c88e-44a3-a27e-fd1341ce72ca";
+    const jobId = "9f5101dc-c45d-42eb-a34c-f9fcf3f52367";
+
+    await sql`
+      insert into "users" ("id", "email", "password_hash", "display_name")
+      values (${userId}, ${"restart@example.com"}, ${"hashed-password"}, ${"Restart Tester"})
+    `;
+    await sql`
+      insert into "projects" ("id", "owner_user_id", "name", "description", "state")
+      values (${projectId}, ${userId}, ${"Restart Recovery"}, ${"Restart recovery test project"}, ${"READY"})
+    `;
+    await sql`
+      insert into "jobs" (
+        "id",
+        "project_id",
+        "created_by_user_id",
+        "type",
+        "status",
+        "inputs",
+        "queued_at",
+        "started_at"
+      )
+      values (
+        ${jobId},
+        ${projectId},
+        ${userId},
+        ${"GenerateProjectOverview"},
+        ${"running"},
+        ${JSON.stringify({})}::jsonb,
+        now() - interval '2 minutes',
+        now() - interval '90 seconds'
+      )
+    `;
+
+    const restartedServices = await createAppServices(databaseUrl, secretsKey);
+
+    try {
+      const recoveredJob = await restartedServices.services.jobService.getRawJob(jobId);
+
+      expect(recoveredJob?.status).toBe("cancelled");
+      expect(recoveredJob?.completedAt).toBeTruthy();
+      expect(recoveredJob?.error).toEqual({
+        code: "job_interrupted_by_server_restart",
+        message: "The API restarted before this LLM job finished, so the job was cancelled.",
+      });
+    } finally {
+      await restartedServices.close();
+    }
   });
 
   it("registers, authenticates, and logs out a user with a cookie session", async () => {
@@ -299,7 +351,7 @@ describe("API integration", () => {
   });
 
   it("reports missing secrets encryption via readiness without crashing startup", async () => {
-    const degradedServices = createAppServices(databaseUrl, null);
+    const degradedServices = await createAppServices(databaseUrl, null);
     const degradedServer = await buildServer({
       corsOrigin: "http://localhost:3000",
       services: degradedServices.services,
@@ -343,7 +395,7 @@ describe("API integration", () => {
 
     expect(seedRegisterResponse.statusCode).toBe(200);
 
-    const degradedServices = createAppServices(databaseUrl, null);
+    const degradedServices = await createAppServices(databaseUrl, null);
     const degradedServer = await buildServer({
       corsOrigin: "http://localhost:3000",
       services: degradedServices.services,
@@ -407,7 +459,7 @@ describe("API integration", () => {
 
     expect(seedRegisterResponse.statusCode).toBe(200);
     const userId = seedRegisterResponse.json().user.id as string;
-    const degradedServices = createAppServices(databaseUrl, null);
+    const degradedServices = await createAppServices(databaseUrl, null);
     const degradedServer = await buildServer({
       corsOrigin: "http://localhost:3000",
       services: degradedServices.services,
