@@ -266,11 +266,31 @@ export const useApproveOnePagerMutation = (projectId: string) => {
 
   return useMutation({
     mutationFn: () => api.approveOnePager(projectId),
-    onSuccess: () => {
+    onSuccess: (project) => {
+      const approvedAt = new Date().toISOString();
+
+      queryClient.setQueryData(["project", projectId], project);
+      queryClient.setQueryData<{ onePager: { approvedAt: string | null } | null } | undefined>(
+        ["project", projectId, "one-pager"],
+        (current) =>
+          current?.onePager
+            ? {
+                ...current,
+                onePager: {
+                  ...current.onePager,
+                  approvedAt,
+                },
+              }
+            : current,
+      );
+
       void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", projectId, "product-spec"],
+        }),
       ]);
     },
   });
@@ -324,9 +344,11 @@ export const useApproveProductSpecMutation = (projectId: string) => {
 
   return useMutation({
     mutationFn: () => api.approveProductSpec(projectId),
-    onSuccess: () => {
+    onSuccess: (productSpec) => {
+      queryClient.setQueryData(["project", projectId, "product-spec"], {
+        productSpec,
+      });
       void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", projectId, "product-spec"] }),
         queryClient.invalidateQueries({
           queryKey: ["project", projectId, "product-spec-versions"],
         }),

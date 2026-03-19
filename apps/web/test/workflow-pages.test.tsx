@@ -924,6 +924,39 @@ describe("workflow pages", () => {
     expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
   });
 
+  it("loads the Product Spec page without an error when the overview is approved but no Product Spec exists yet", async () => {
+    const productSpecProjectId = "60606060-6060-4060-8060-606060606060";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${productSpecProjectId}`]: {
+        id: productSpecProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: productSpecProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec`]: {
+        productSpec: null,
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${productSpecProjectId}/jobs`]: {
+        jobs: [],
+      },
+    });
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(screen.getByText("No Product Spec has been generated yet. Generate it from this screen after the overview is approved.")).toBeTruthy();
+    expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
+  });
+
   it("redirects Product Spec access back to overview until the overview is approved", async () => {
     const gatedProjectId = "40404040-4040-4040-8040-404040404040";
 
@@ -970,23 +1003,37 @@ describe("workflow pages", () => {
 
     vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
-      [`/api/projects/${gatedProjectId}/phase-gates`]: {
-        phases: [
-          {
-            phase: "Product Spec",
-            passed: false,
-            items: [
-              { key: "overview_approved", label: "Overview approved", passed: true },
-              { key: "product_spec", label: "Product Spec generated", passed: true },
-              { key: "product_spec_approved", label: "Product Spec approved", passed: false },
-            ],
-          },
-        ],
+      [`/api/projects/${gatedProjectId}/one-pager`]: {
+        onePager: {
+          id: "one-pager-id",
+          projectId: gatedProjectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview",
+          source: "GenerateProjectOverview",
+          isCanonical: true,
+          approvedAt: "2026-03-16T09:00:00.000Z",
+          createdAt: "2026-03-16T09:00:00.000Z",
+        },
+      },
+      [`/api/projects/${gatedProjectId}/product-spec`]: {
+        productSpec: {
+          id: "product-spec-id",
+          projectId: gatedProjectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:30:00.000Z",
+        },
       },
     });
 
     const router = createMemoryRouter(
       [
+        { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
         { path: "/projects/:id/product-spec", element: <div>Product Spec page</div> },
         {
           element: <ProductSpecApprovalGate />,

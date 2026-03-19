@@ -1,14 +1,14 @@
 import { Navigate, Outlet, useLocation, useParams } from "react-router-dom";
 
-import { usePhaseGatesQuery } from "../../hooks/use-projects.js";
+import { useOnePagerQuery } from "../../hooks/use-projects.js";
 import { Spinner } from "../ui/Spinner.js";
 
 export const OverviewApprovalGate = () => {
   const { id = "" } = useParams();
   const location = useLocation();
-  const phaseGatesQuery = usePhaseGatesQuery(id);
+  const onePagerQuery = useOnePagerQuery(id);
 
-  if (phaseGatesQuery.isLoading) {
+  if (onePagerQuery.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner />
@@ -16,10 +16,7 @@ export const OverviewApprovalGate = () => {
     );
   }
 
-  const overviewPhase = phaseGatesQuery.data?.phases.find(
-    (phase) => phase.phase === "Overview Document",
-  );
-  const overviewApproved = overviewPhase?.items.find((item) => item.key === "overview")?.passed;
+  const overviewApproved = Boolean(onePagerQuery.data?.onePager?.approvedAt);
 
   if (!overviewApproved) {
     return (
