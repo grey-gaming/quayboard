@@ -76,7 +76,9 @@ describe("global navigation", () => {
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     expect(screen.getAllByText("Instance")).toHaveLength(2);
     expect(
-      screen.getByText("Manage instance-level controls for the current Quayboard instance."),
+      screen.getByText(
+        "Review the instance-level controls available in this environment. Use this page to confirm the current defaults while broader settings work remains out of scope.",
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/Quayboard workspace/i)).toBeNull();
     expect(screen.getByRole("link", { name: "Open Instance Readiness" }).getAttribute("href")).toBe(

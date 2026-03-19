@@ -14,7 +14,7 @@ export const Card = ({
 }: CardProps) => (
   <div
     className={[
-      "border p-4 md:p-5",
+      "min-w-0 border p-4 md:p-5",
       surface === "inset"
         ? "border-border/80 bg-panel-inset"
         : surface === "rail"

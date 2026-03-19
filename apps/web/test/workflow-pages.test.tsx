@@ -250,12 +250,15 @@ describe("workflow pages", () => {
 
     expect(await screen.findByText("Saved")).toBeTruthy();
     expect(screen.queryByText("Unsaved changes pending.")).toBeNull();
+    expect(screen.queryByText("Project Questions")).toBeNull();
     expect(
       screen.getByRole("button", {
         name: "Next: Generate Overview",
       }),
     ).toBeTruthy();
     const summaryField = await screen.findByLabelText("Project Summary");
+    expect(screen.getByText("What are you building, and what should it do in plain terms?")).toBeTruthy();
+    expect(summaryField.getAttribute("placeholder")).toBeNull();
     fireEvent.change(summaryField, { target: { value: "Planning workspace" } });
     fireEvent.blur(summaryField);
 
@@ -637,12 +640,14 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(screen.queryByText("Current Overview")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Overview" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
+    expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
     });
@@ -901,11 +906,13 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(screen.queryByText("Current Product Spec")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Product Spec" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "# Product Spec\n\nExpanded canonical specification." },
     });
@@ -958,10 +965,9 @@ describe("workflow pages", () => {
     expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
   });
 
-  it("renders User Flows AI actions and posts both async job requests", async () => {
+  it("renders User Flows generation and approval actions", async () => {
     const userFlowsProjectId = "70707070-7070-4070-8070-707070707070";
     const generateJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d1";
-    const dedupeJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d2";
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const path = typeof input === "string" ? input : input.toString();
       const method = init?.method ?? "GET";
@@ -1034,28 +1040,6 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
-      if (
-        path === `/api/projects/${userFlowsProjectId}/user-flows/deduplicate` &&
-        method === "POST"
-      ) {
-        return {
-          ok: true,
-          status: 202,
-          json: async () => ({
-            id: dedupeJobId,
-            projectId: userFlowsProjectId,
-            type: "DeduplicateUseCases",
-            status: "queued",
-            inputs: {},
-            outputs: null,
-            error: null,
-            queuedAt: "2026-03-16T10:02:00.000Z",
-            startedAt: null,
-            completedAt: null,
-          }),
-        } satisfies Partial<Response>;
-      }
-
       throw new Error(`Unhandled fetch for ${method} ${path}`);
     });
 
@@ -1066,23 +1050,16 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Flows" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Deduplicate" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve User Flows" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Deduplicate" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Generate Flows" }));
-    fireEvent.click(screen.getByRole("button", { name: "Deduplicate" }));
 
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.some(
           ([path, init]) =>
             path === `/api/projects/${userFlowsProjectId}/user-flows/generate` &&
-            init?.method === "POST",
-        ),
-      ).toBe(true);
-      expect(
-        fetchMock.mock.calls.some(
-          ([path, init]) =>
-            path === `/api/projects/${userFlowsProjectId}/user-flows/deduplicate` &&
             init?.method === "POST",
         ),
       ).toBe(true);
@@ -1135,56 +1112,7 @@ describe("workflow pages", () => {
     expect(
       (await screen.findByRole("button", { name: "Generating Flows" })) as HTMLButtonElement,
     ).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: "Deduplicate" })).toHaveProperty("disabled", false);
-  });
-
-  it("shows the deduplicate AI button as active only for running dedupe jobs", async () => {
-    const userFlowsProjectId = "72727272-7272-4272-8272-727272727272";
-
-    vi.stubGlobal("EventSource", MockEventSource);
-    installFetchStub({
-      "/auth/me": { user },
-      [`/api/projects/${userFlowsProjectId}`]: {
-        id: userFlowsProjectId,
-        name: "Quayboard",
-        description: "Governed software delivery workspace.",
-        state: "READY",
-        ownerUserId: userFlowsProjectId,
-        createdAt: "2026-03-15T00:00:00.000Z",
-        updatedAt: "2026-03-16T10:00:00.000Z",
-      },
-      [`/api/projects/${userFlowsProjectId}/user-flows`]: {
-        userFlows: [],
-        coverage: {
-          warnings: [],
-          acceptedWarnings: [],
-        },
-        approvedAt: null,
-      },
-      [`/api/projects/${userFlowsProjectId}/jobs`]: {
-        jobs: [
-          {
-            id: "d3057770-eca1-417a-a1c6-c00bb83a47d4",
-            projectId: userFlowsProjectId,
-            type: "DeduplicateUseCases",
-            status: "queued",
-            inputs: {},
-            outputs: null,
-            error: null,
-            queuedAt: "2026-03-16T10:00:00.000Z",
-            startedAt: null,
-            completedAt: null,
-          },
-        ],
-      },
-    });
-
-    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
-
-    expect(
-      (await screen.findByRole("button", { name: "Deduplicating Flows" })) as HTMLButtonElement,
-    ).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", { name: "Generate Flows" })).toHaveProperty("disabled", false);
+    expect(screen.queryByRole("button", { name: "Deduplicate" })).toBeNull();
   });
 
   it("edits an existing user flow inline and preserves metadata", async () => {
@@ -1313,6 +1241,9 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
 
     expect(await screen.findByText("Invite a teammate")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Archive" }).parentElement?.className).toContain(
+      "flex-col",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getAllByLabelText("Title")[1], {

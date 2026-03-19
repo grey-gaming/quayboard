@@ -114,7 +114,7 @@ export const OnePagerOverviewPage = () => {
       <PageIntro
         eyebrow="Overview"
         title="Generated Overview"
-        summary="Review the current one-pager, regenerate it when needed, inspect history, and approve the canonical version."
+        summary="This page turns the saved questionnaire into the working overview document. Regenerate it when needed, inspect history, and approve the version that should guide the next stage."
         meta={
           <>
             <Badge tone={questionnaireReady ? "success" : "warning"}>
@@ -137,17 +137,7 @@ export const OnePagerOverviewPage = () => {
 
       <div className="grid gap-4">
         <Card surface="panel">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
-            <div className="grid gap-2">
-              <div>
-                <p className="qb-meta-label">Document</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Current Overview</p>
-              </div>
-              <p className="max-w-3xl text-sm text-secondary">
-                Overview generation also refreshes the saved project description. Approval still
-                applies only to the canonical document shown here.
-              </p>
-            </div>
+          <div className="flex flex-wrap justify-end gap-2 border-b border-border/80 pb-4">
             <div className="flex flex-wrap gap-2">
               <AiWorkflowButton
                 active={overviewButtonActive}
@@ -172,7 +162,7 @@ export const OnePagerOverviewPage = () => {
               </Button>
             </div>
           </div>
-          <div className="mt-4 border border-border/80 bg-panel px-4 py-4">
+          <div className="mt-4 min-w-0 overflow-hidden border border-border/80 bg-panel px-4 py-4">
             {onePagerQuery.data?.onePager ? (
               <EditableMarkdownDocument
                 disabled={Boolean(activeOverviewJob)}

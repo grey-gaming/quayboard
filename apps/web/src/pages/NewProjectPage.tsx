@@ -31,7 +31,7 @@ export const NewProjectPage = () => {
       <PageIntro
         eyebrow="Projects"
         title="Create Project"
-        summary="Create a project and move through setup, questions, overview, Product Spec, and user flows."
+        summary="Create the project record here, then move through setup, questions, overview, Product Spec, and user flows to shape the delivery plan."
       />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <Card surface="panel">

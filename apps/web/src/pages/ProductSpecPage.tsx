@@ -75,7 +75,7 @@ export const ProductSpecPage = () => {
       <PageIntro
         eyebrow="Product Spec"
         title="Generated Product Spec"
-        summary="Review the current Product Spec, regenerate it when needed, inspect version history, and approve the canonical version before User Flows."
+        summary="This page expands the approved overview into the working Product Spec. Review it, refine it, inspect version history, and approve the version that user flows should follow."
         meta={
           <>
             <Badge tone="success">overview approved</Badge>
@@ -97,19 +97,7 @@ export const ProductSpecPage = () => {
 
       <div className="grid gap-4">
         <Card surface="panel">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
-            <div className="grid gap-2">
-              <div>
-                <p className="qb-meta-label">Document</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                  Current Product Spec
-                </p>
-              </div>
-              <p className="max-w-3xl text-sm text-secondary">
-                This specification is generated from the approved overview and becomes the source
-                document for User Flows.
-              </p>
-            </div>
+          <div className="flex flex-wrap justify-end gap-2 border-b border-border/80 pb-4">
             <div className="flex flex-wrap gap-2">
               <AiWorkflowButton
                 active={productSpecButtonActive}
@@ -138,7 +126,7 @@ export const ProductSpecPage = () => {
               </Button>
             </div>
           </div>
-          <div className="mt-4 border border-border/80 bg-panel px-4 py-4">
+          <div className="mt-4 min-w-0 overflow-hidden border border-border/80 bg-panel px-4 py-4">
             {productSpecQuery.data?.productSpec ? (
               <EditableMarkdownDocument
                 disabled={Boolean(activeProductSpecJob)}

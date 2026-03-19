@@ -13,7 +13,7 @@ export const SettingsPage = () => (
     <PageIntro
       eyebrow="Instance"
       title="Settings"
-      summary="Manage instance-level controls for the current Quayboard instance."
+      summary="Review the instance-level controls available in this environment. Use this page to confirm the current defaults while broader settings work remains out of scope."
       meta={
         <>
           <Badge tone="neutral">instance controls</Badge>

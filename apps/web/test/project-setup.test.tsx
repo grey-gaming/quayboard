@@ -725,7 +725,7 @@ describe("project setup page", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Capture project intent here. Answers save automatically, and you can ask the LLM to fill only the remaining gaps before generating the overview.",
+        "Use these 14 prompts to capture project intent before generating the overview. Answers save automatically, and the LLM can fill only the fields you leave blank.",
       ),
     ).toBeTruthy();
   });

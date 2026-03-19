@@ -273,7 +273,7 @@ export const ProjectSetupPage = () => {
       <PageIntro
         eyebrow="Project"
         title="Project Setup"
-        summary="Connect the repository, configure the project-scoped LLM, define sandbox defaults, and save the documentation requirements for this project."
+        summary="Use this page to connect the repository, verify the project LLM, confirm sandbox defaults, and complete the checks that unlock the planning workflow."
         meta={
           <>
             <Badge tone="neutral">project-scoped setup</Badge>

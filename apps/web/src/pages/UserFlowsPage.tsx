@@ -18,7 +18,6 @@ import {
   useApproveUserFlowsMutation,
   useCreateUserFlowMutation,
   useDeleteUserFlowMutation,
-  useDedupeUserFlowsMutation,
   useGenerateUserFlowsMutation,
   useProjectJobsQuery,
   useProjectQuery,
@@ -29,7 +28,6 @@ import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
 const generateUserFlowJobTypes = new Set(["GenerateUseCases"]);
-const dedupeUserFlowJobTypes = new Set(["DeduplicateUseCases"]);
 
 type FormValues = {
   acceptanceCriteria: string;
@@ -135,7 +133,6 @@ export const UserFlowsPage = () => {
   const updateUserFlowMutation = useUpdateUserFlowMutation(id);
   const deleteUserFlowMutation = useDeleteUserFlowMutation(id);
   const generateUserFlowsMutation = useGenerateUserFlowsMutation(id);
-  const dedupeUserFlowsMutation = useDedupeUserFlowsMutation(id);
   const approveUserFlowsMutation = useApproveUserFlowsMutation(id);
   const [acceptedWarnings, setAcceptedWarnings] = useState<string[]>([]);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
@@ -170,19 +167,8 @@ export const UserFlowsPage = () => {
       ) ?? null,
     [jobsQuery.data?.jobs],
   );
-  const activeDedupeUserFlowsJob = useMemo(
-    () =>
-      jobsQuery.data?.jobs.find(
-        (job) =>
-          dedupeUserFlowJobTypes.has(job.type) &&
-          (job.status === "queued" || job.status === "running"),
-      ) ?? null,
-    [jobsQuery.data?.jobs],
-  );
   const generateFlowsButtonActive =
     generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
-  const dedupeFlowsButtonActive =
-    dedupeUserFlowsMutation.isPending || Boolean(activeDedupeUserFlowsJob);
 
   return (
     <AppFrame>
@@ -190,7 +176,7 @@ export const UserFlowsPage = () => {
       <PageIntro
         eyebrow="User Flows"
         title="User Flows"
-        summary="Generate, edit, and approve the user-facing journeys derived from the approved Product Spec."
+        summary="Use this page to build the journeys the team must support, review coverage warnings, and approve the flow set that will guide later planning."
         meta={
           <>
             <Badge tone="neutral">planning contract</Badge>
@@ -221,16 +207,6 @@ export const UserFlowsPage = () => {
                   void generateUserFlowsMutation.mutateAsync();
                 }}
                 runningLabel="Generating Flows"
-                variant="secondary"
-              />
-              <AiWorkflowButton
-                active={dedupeFlowsButtonActive}
-                disabled={dedupeFlowsButtonActive}
-                label="Deduplicate"
-                onClick={() => {
-                  void dedupeUserFlowsMutation.mutateAsync();
-                }}
-                runningLabel="Deduplicating Flows"
                 variant="secondary"
               />
               <Button
@@ -359,15 +335,15 @@ export const UserFlowsPage = () => {
                   </Card>
                 ) : (
                   <Card key={flow.id} surface="inset">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="grid gap-2">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 flex-1 grid gap-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold tracking-[-0.02em]">{flow.title}</p>
                           <Badge tone="neutral">{flow.source}</Badge>
                         </div>
-                        <p className="text-sm text-secondary">{flow.userStory}</p>
+                        <p className="break-words text-sm text-secondary">{flow.userStory}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:justify-end">
                         <Button
                           disabled={updateUserFlowMutation.isPending}
                           onClick={() => {

@@ -262,7 +262,7 @@ export const OnePagerQuestionsPage = () => {
       <PageIntro
         eyebrow="Overview"
         title="Questions"
-        summary="Capture project intent here. Answers save automatically, and you can ask the LLM to fill only the remaining gaps before generating the overview."
+        summary="Use these 14 prompts to capture project intent before generating the overview. Answers save automatically, and the LLM can fill only the fields you leave blank."
         meta={
           <>
             <Badge tone="neutral">14-question intake</Badge>
@@ -277,18 +277,14 @@ export const OnePagerQuestionsPage = () => {
       {autosaveError ? <Alert tone="error">{autosaveError}</Alert> : null}
 
       <Card surface="panel">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
-          <div className="grid gap-2">
-            <div>
-              <p className="qb-meta-label">Questionnaire</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Project Questions</p>
-            </div>
-            <p className="max-w-3xl text-sm text-secondary">
-              Any answers you type are preserved. The LLM answer fill uses the current project name,
-              saved project description, and any answers already present to fill blanks only.
-            </p>
-          </div>
-          <div className="grid gap-2 text-right" data-testid="questionnaire-header-actions">
+        <div
+          className="flex flex-wrap items-center justify-end gap-2 border-b border-border/80 pb-4"
+          data-testid="questionnaire-header-actions"
+        >
+          <Badge tone={autosaveState === "error" ? "danger" : "neutral"}>
+            {formatAutosaveStatus(autosaveState)}
+          </Badge>
+          <div className="grid gap-2 text-right">
             <AiWorkflowButton
               disabled={updateQuestionnaireMutation.isPending || autoAnswerActive || !hasBlankAnswers}
               label="Generate Answers"
@@ -304,9 +300,6 @@ export const OnePagerQuestionsPage = () => {
               type="button"
               active={autoAnswerActive}
             />
-            <Badge tone={autosaveState === "error" ? "danger" : "neutral"}>
-              {formatAutosaveStatus(autosaveState)}
-            </Badge>
           </div>
         </div>
 
@@ -315,20 +308,25 @@ export const OnePagerQuestionsPage = () => {
             const field = register(question.key);
 
             return (
-              <div key={question.key} className="space-y-2">
-                <Label htmlFor={question.key}>{question.title}</Label>
+              <div
+                key={question.key}
+                className="grid gap-3 border border-border/80 bg-panel-inset p-4 md:p-5"
+              >
+                <div className="grid gap-1">
+                  <Label htmlFor={question.key}>{question.title}</Label>
+                  <p className="text-sm leading-6 text-foreground">{question.prompt}</p>
+                  {question.helpText ? (
+                    <p className="text-xs leading-5 text-muted-foreground">{question.helpText}</p>
+                  ) : null}
+                </div>
                 <Textarea
                   id={question.key}
-                  placeholder={question.prompt}
                   {...field}
                   onBlur={(event) => {
                     field.onBlur(event);
                     void flushAutosave();
                   }}
                 />
-                {question.helpText ? (
-                  <p className="text-xs text-muted-foreground">{question.helpText}</p>
-                ) : null}
               </div>
             );
           })}

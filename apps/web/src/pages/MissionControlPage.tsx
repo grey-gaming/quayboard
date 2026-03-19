@@ -37,7 +37,7 @@ export const MissionControlPage = () => {
       <PageIntro
         eyebrow="Project"
         title="Mission Control"
-        summary="Track phase progress, next actions, and recent background work for this project."
+        summary="Use this page to see the current planning stage, review recent background work, and pick the next action needed to move the project forward."
         meta={
           <>
             <Badge tone="neutral">orchestration surface</Badge>

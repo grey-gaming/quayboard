@@ -22,7 +22,7 @@ export const InstanceReadinessPage = () => {
       <PageIntro
         eyebrow="Setup"
         title="Instance Readiness"
-        summary="Check the deployment prerequisites that must be healthy before project onboarding."
+        summary="Check the deployment prerequisites here before anyone signs in. Fix any failing checks first so project onboarding can continue without setup blockers."
         meta={
           <>
             <Badge tone="neutral">deployment checks</Badge>
