@@ -22,31 +22,49 @@ export const createJobScheduler = ({
   let active = false;
   let timer: NodeJS.Timeout | null = null;
 
+  const scheduleNext = (delayMs: number) => {
+    if (!active) {
+      return;
+    }
+
+    timer = setTimeout(() => {
+      timer = null;
+      void loop();
+    }, delayMs);
+  };
+
   const loop = async () => {
     if (!active) {
       return;
     }
 
-    const job = await getNextJob();
-
-    if (!job) {
-      timer = setTimeout(() => {
-        void loop();
-      }, onIdleDelayMs);
-      return;
-    }
-
     try {
-      await execute({ job });
-    } catch (error) {
-      await onFailure(job.id, {
-        message: error instanceof Error ? error.message : "Job execution failed.",
-      });
-    }
+      const job = await getNextJob();
 
-    timer = setTimeout(() => {
-      void loop();
-    }, 0);
+      if (!job) {
+        scheduleNext(onIdleDelayMs);
+        return;
+      }
+
+      try {
+        await execute({ job });
+      } catch (error) {
+        try {
+          await onFailure(job.id, {
+            message: error instanceof Error ? error.message : "Job execution failed.",
+          });
+        } catch (failureError) {
+          console.error("Failed to mark job as failed.", failureError);
+          scheduleNext(onIdleDelayMs);
+          return;
+        }
+      }
+
+      scheduleNext(0);
+    } catch (error) {
+      console.error("Job scheduler poll failed.", error);
+      scheduleNext(onIdleDelayMs);
+    }
   };
 
   return {

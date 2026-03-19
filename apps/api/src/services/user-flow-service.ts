@@ -160,6 +160,60 @@ export const createUserFlowService = (db: AppDatabase) => ({
     return toUseCase(created);
   },
 
+  async createMany(ownerUserId: string, projectId: string, inputs: unknown[]) {
+    const project = await db.query.projectsTable.findFirst({
+      where: and(
+        eq(projectsTable.id, projectId),
+        eq(projectsTable.ownerUserId, ownerUserId),
+      ),
+    });
+
+    if (!project) {
+      throw new HttpError(404, "project_not_found", "Project not found.");
+    }
+
+    const payloads = inputs.map((input) => upsertUseCaseRequestSchema.parse(input));
+
+    return db.transaction(async (tx) => {
+      const createdFlows: ReturnType<typeof toUseCase>[] = [];
+
+      for (const payload of payloads) {
+        const now = new Date();
+        const [created] = await tx
+          .insert(useCasesTable)
+          .values({
+            id: generateId(),
+            projectId,
+            title: payload.title,
+            userStory: payload.userStory,
+            entryPoint: payload.entryPoint,
+            endState: payload.endState,
+            flowSteps: payload.flowSteps,
+            coverageTags: payload.coverageTags,
+            acceptanceCriteria: payload.acceptanceCriteria,
+            doneCriteriaRefs: payload.doneCriteriaRefs,
+            source: payload.source,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        createdFlows.push(toUseCase(created));
+      }
+
+      await tx
+        .update(projectsTable)
+        .set({
+          userFlowsApprovedAt: null,
+          userFlowsApprovalSnapshot: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectsTable.id, projectId));
+
+      return createdFlows;
+    });
+  },
+
   async update(ownerUserId: string, userFlowId: string, input: unknown) {
     const context = await this.getContext(ownerUserId, userFlowId);
 

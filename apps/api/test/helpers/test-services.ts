@@ -283,6 +283,9 @@ export const createStubServices = (): AppServices => ({
     create: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    createMany: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     getContext: async () => ({
       projectId: "test-project-id",
     }),

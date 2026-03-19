@@ -116,6 +116,52 @@ const parseProductSpecResult = (value: string, templateId: string) => {
   };
 };
 
+const validateGeneratedUserFlows = (
+  flows: Array<{
+    acceptanceCriteria?: string[];
+    coverageTags?: string[];
+    doneCriteriaRefs?: string[];
+    endState?: string;
+    entryPoint?: string;
+    flowSteps?: string[];
+    source?: string;
+    title?: string;
+    userStory?: string;
+  }>,
+) => {
+  if (flows.length === 0) {
+    throw new Error(
+      "GenerateUseCases returned invalid content. Expected a non-empty JSON array of user flows.",
+    );
+  }
+
+  return flows.map((flow) => {
+    if (
+      !flow.title?.trim() ||
+      !flow.userStory?.trim() ||
+      !flow.entryPoint?.trim() ||
+      !flow.endState?.trim() ||
+      !flow.flowSteps?.length
+    ) {
+      throw new Error(
+        "GenerateUseCases returned an incomplete user flow. Each flow must include title, userStory, entryPoint, endState, and at least one flow step.",
+      );
+    }
+
+    return {
+      acceptanceCriteria: flow.acceptanceCriteria ?? ["The described flow can be completed."],
+      coverageTags: flow.coverageTags ?? ["happy-path"],
+      doneCriteriaRefs: flow.doneCriteriaRefs ?? ["product-spec"],
+      endState: flow.endState,
+      entryPoint: flow.entryPoint,
+      flowSteps: flow.flowSteps,
+      source: flow.source ?? "generated",
+      title: flow.title,
+      userStory: flow.userStory,
+    };
+  });
+};
+
 export const createJobRunnerService = (input: {
   db: AppDatabase;
   jobService: JobService;
@@ -482,33 +528,8 @@ export const createJobRunnerService = (input: {
           );
         }
 
-        for (const flow of parsed) {
-          if (
-            !flow.title?.trim() ||
-            !flow.userStory?.trim() ||
-            !flow.entryPoint?.trim() ||
-            !flow.endState?.trim() ||
-            !flow.flowSteps?.length
-          ) {
-            throw new Error(
-              "GenerateUseCases returned an incomplete user flow. Each flow must include title, userStory, entryPoint, endState, and at least one flow step.",
-            );
-          }
-
-          await input.userFlowService.create(ownerUserId, rawJob.projectId, {
-            acceptanceCriteria: flow.acceptanceCriteria ?? [
-              "The described flow can be completed.",
-            ],
-            coverageTags: flow.coverageTags ?? ["happy-path"],
-            doneCriteriaRefs: flow.doneCriteriaRefs ?? ["product-spec"],
-            endState: flow.endState,
-            entryPoint: flow.entryPoint,
-            flowSteps: flow.flowSteps,
-            source: flow.source ?? "generated",
-            title: flow.title,
-            userStory: flow.userStory,
-          });
-        }
+        const flowsToCreate = validateGeneratedUserFlows(parsed);
+        await input.userFlowService.createMany(ownerUserId, rawJob.projectId, flowsToCreate);
 
         return input.jobService.markSucceeded(rawJob.id, { createdCount: parsed.length });
       }
