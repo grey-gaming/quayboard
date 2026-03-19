@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { User, UseCaseListResponse } from "@quayboard/shared";
+import type { Job, User, UseCaseListResponse } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
@@ -27,9 +27,42 @@ const user: User = {
 };
 
 class MockEventSource {
-  addEventListener() {}
+  static instances: MockEventSource[] = [];
 
-  removeEventListener() {}
+  static emit(eventName: string, data: unknown) {
+    const messageEvent = { data: JSON.stringify(data) } as MessageEvent<string>;
+
+    for (const instance of MockEventSource.instances) {
+      const handlers = instance.listeners.get(eventName) ?? [];
+      for (const handler of handlers) {
+        handler(messageEvent);
+      }
+    }
+  }
+
+  static reset() {
+    MockEventSource.instances = [];
+  }
+
+  private listeners = new Map<string, Array<(event: Event) => void>>();
+
+  constructor() {
+    MockEventSource.instances.push(this);
+  }
+
+  addEventListener(eventName: string, handler: (event: Event) => void) {
+    const handlers = this.listeners.get(eventName) ?? [];
+    handlers.push(handler);
+    this.listeners.set(eventName, handlers);
+  }
+
+  removeEventListener(eventName: string, handler: (event: Event) => void) {
+    const handlers = this.listeners.get(eventName) ?? [];
+    this.listeners.set(
+      eventName,
+      handlers.filter((currentHandler) => currentHandler !== handler),
+    );
+  }
 
   close() {}
 }
@@ -88,6 +121,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
 describe("workflow pages", () => {
   afterEach(() => {
     cleanup();
+    MockEventSource.reset();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -793,6 +827,181 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Generating Overview" })).toBeTruthy();
+  });
+
+  it("refreshes overview content when an SSE job completion event arrives", async () => {
+    const overviewProjectId = "21212121-2121-4121-8121-212121212121";
+    let onePager = null as
+      | {
+          approvedAt: string | null;
+          createdAt: string;
+          id: string;
+          isCanonical: boolean;
+          markdown: string;
+          projectId: string;
+          source: string;
+          title: string;
+          version: number;
+        }
+      | null;
+    let versions: Array<{
+      approvedAt: string | null;
+      createdAt: string;
+      id: string;
+      isCanonical: boolean;
+      markdown: string;
+      projectId: string;
+      source: string;
+      title: string;
+      version: number;
+    }> = [];
+    let jobs: Job[] = [
+      {
+        id: "overview-job-id",
+        projectId: overviewProjectId,
+        type: "GenerateProjectOverview",
+        status: "running",
+        inputs: {},
+        outputs: null,
+        error: null,
+        queuedAt: "2026-03-16T09:00:00.000Z",
+        startedAt: "2026-03-16T09:01:00.000Z",
+        completedAt: null,
+      },
+    ];
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: overviewProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: overviewProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/questionnaire-answers` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: overviewProjectId,
+            answers: {},
+            updatedAt: "2026-03-16T09:00:00.000Z",
+            completedAt: "2026-03-16T09:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ onePager }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ phases: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/next-actions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ actions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
+
+    expect(await screen.findByText("The overview is being prepared. Stay on this page to review it when the job finishes.")).toBeTruthy();
+
+    onePager = {
+      id: "new-overview-id",
+      projectId: overviewProjectId,
+      version: 1,
+      title: "Overview",
+      markdown: "# Overview\n\nGenerated after SSE.",
+      source: "generated",
+      isCanonical: true,
+      approvedAt: null,
+      createdAt: "2026-03-16T09:10:00.000Z",
+    };
+    versions = [onePager];
+    jobs = [
+      {
+        ...jobs[0],
+        status: "succeeded",
+        completedAt: "2026-03-16T09:10:00.000Z",
+      },
+    ];
+
+    MockEventSource.emit("job:updated", {
+      jobId: "overview-job-id",
+      projectId: overviewProjectId,
+      status: "succeeded",
+    });
+
+    expect(await screen.findByText("Generated after SSE.")).toBeTruthy();
+    expect(screen.queryByText("The overview is being prepared. Stay on this page to review it when the job finishes.")).toBeNull();
   });
 
   it("renders the Product Spec page through the editable markdown surface", async () => {
