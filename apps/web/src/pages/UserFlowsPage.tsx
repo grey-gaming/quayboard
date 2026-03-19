@@ -184,8 +184,8 @@ export const UserFlowsPage = () => {
           </>
         }
       />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_22rem]">
-        <div className="grid gap-4">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.2fr)_22rem]">
+        <div className="grid self-start gap-4">
           <Card surface="panel">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-3">
               <div>
