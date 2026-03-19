@@ -25,10 +25,10 @@ Quayboard's current UI supports the scratch-path planning workflow:
 13. Edit the Product Spec markdown if needed, then save to create a new version.
 14. Approve the current Product Spec.
 15. Generate, edit, deduplicate, and approve user flows.
-16. Open **Blueprint** and generate the decision deck once user flows are approved.
+16. Open **Blueprint** and use the header action to generate the decision deck once user flows are approved.
 17. Review each decision card, choose the recommended or alternative option, or save a custom choice.
-18. Generate the **UX Blueprint** and **Tech Blueprint**, or save either one manually if you prefer to author it directly.
+18. After every card is selected, use the bottom-of-deck AI action to generate both the **UX Blueprint** and **Tech Blueprint**. You can also save either blueprint manually after the deck is complete if you prefer to author it directly.
 19. Run review on each blueprint, triage the review items, and clear all blocker items.
-20. Approve both canonical blueprints.
+20. Approve both canonical blueprints from the top of their respective blueprint views.
 
 The import path remains a stub for now, and Quayboard does not yet execute sandbox implementation runs or create pull requests.

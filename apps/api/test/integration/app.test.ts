@@ -93,6 +93,75 @@ describe("API integration", () => {
     };
   };
 
+  const registerAndSeedBlueprintProject = async ({
+    approveUserFlows = true,
+  }: { approveUserFlows?: boolean } = {}) => {
+    const registerResponse = await server.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        displayName: approveUserFlows ? "Blueprint Owner" : "Blueprint Gate Owner",
+        email: approveUserFlows ? "blueprint-owner@example.com" : "blueprint-gate@example.com",
+        password: "correct-horse-battery",
+      },
+    });
+
+    expect(registerResponse.statusCode).toBe(200);
+    const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+    expect(cookie?.value).toBeTruthy();
+
+    const ownerUserId = registerResponse.json().user.id as string;
+    const projectResponse = await server.inject({
+      method: "POST",
+      url: "/api/projects",
+      cookies: { qb_session: cookie!.value },
+      payload: {
+        name: approveUserFlows ? "Blueprint Project" : "Blueprint Gate Project",
+      },
+    });
+
+    expect(projectResponse.statusCode).toBe(200);
+    const projectId = projectResponse.json().id as string;
+
+    await appServices.services.onePagerService.createVersion({
+      approve: true,
+      markdown: "# Overview\n\nApproved planning scope.",
+      projectId,
+      source: "ManualSave",
+      title: "Overview",
+    });
+    await appServices.services.productSpecService.createVersion({
+      markdown: "# Product Spec\n\nApproved scope.",
+      projectId,
+      source: "ManualSave",
+      title: "Product Spec",
+    });
+    await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+    await appServices.services.userFlowService.create(ownerUserId, projectId, {
+      acceptanceCriteria: ["The flow can be completed."],
+      coverageTags: ["happy-path", "onboarding"],
+      doneCriteriaRefs: ["manual"],
+      endState: "Journey complete",
+      entryPoint: "Mission Control",
+      flowSteps: ["Open page", "Complete action"],
+      source: "manual",
+      title: "Primary journey",
+      userStory: "As a user, I want to complete the primary journey.",
+    });
+
+    if (approveUserFlows) {
+      await appServices.services.userFlowService.approve(ownerUserId, projectId, {
+        acceptedWarnings: [],
+      });
+    }
+
+    return {
+      cookieValue: cookie!.value,
+      ownerUserId,
+      projectId,
+    };
+  };
+
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
@@ -1653,6 +1722,224 @@ describe("API integration", () => {
 
       expect(listProjectsResponse.statusCode).toBe(200);
       expect(listProjectsResponse.json().projects).toHaveLength(0);
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("gates blueprint routes on user-flow approval and a complete decision deck", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const blockedProject = await registerAndSeedBlueprintProject({ approveUserFlows: false });
+      const blockedDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${blockedProject.projectId}/blueprints/generate-deck`,
+        cookies: { qb_session: blockedProject.cookieValue },
+      });
+
+      expect(blockedDeckResponse.statusCode).toBe(409);
+      expect(blockedDeckResponse.json()).toEqual({
+        error: {
+          code: "user_flows_approval_required",
+          message: "Approve user flows before using Blueprint Builder.",
+        },
+      });
+
+      const readyProject = await registerAndSeedBlueprintProject();
+      const missingDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/blueprints/generate`,
+        cookies: { qb_session: readyProject.cookieValue },
+        payload: {
+          kind: "ux",
+        },
+      });
+
+      expect(missingDeckResponse.statusCode).toBe(409);
+      expect(missingDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_deck_required",
+          message: "Generate the decision deck before creating blueprints.",
+        },
+      });
+
+      await appServices.services.blueprintService.replaceDecisionDeck({
+        cards: [
+          {
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+        projectId: readyProject.projectId,
+      });
+
+      const incompleteDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/blueprints/generate`,
+        cookies: { qb_session: readyProject.cookieValue },
+        payload: {
+          kind: "ux",
+        },
+      });
+
+      expect(incompleteDeckResponse.statusCode).toBe(409);
+      expect(incompleteDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_selection_required",
+          message: "Select an option for every decision card before generating blueprints.",
+        },
+      });
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("requires completed review and cleared blockers before blueprint approval", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const project = await registerAndSeedBlueprintProject();
+      const [card] = await appServices.services.blueprintService.replaceDecisionDeck({
+        cards: [
+          {
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+        projectId: project.projectId,
+      });
+
+      await appServices.services.blueprintService.updateDecisionCards(
+        project.ownerUserId,
+        project.projectId,
+        {
+          cards: [{ id: card.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+
+      const blueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Blueprint\n\nCanonical blueprint.",
+        projectId: project.projectId,
+        source: "ManualSave",
+        title: "UX Blueprint",
+      });
+
+      const missingReviewResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
+        cookies: { qb_session: project.cookieValue },
+      });
+
+      expect(missingReviewResponse.statusCode).toBe(409);
+      expect(missingReviewResponse.json()).toEqual({
+        error: {
+          code: "artifact_review_required",
+          message: "Run and complete artifact review before approval.",
+        },
+      });
+
+      const reviewJob = await appServices.services.jobService.createJob({
+        createdByUserId: project.ownerUserId,
+        projectId: project.projectId,
+        type: "ReviewBlueprintUX",
+        inputs: {
+          artifactId: blueprint.id,
+          artifactType: "blueprint_ux",
+        },
+      });
+      const run = await appServices.services.artifactReviewService.createRun(
+        project.ownerUserId,
+        project.projectId,
+        "blueprint_ux",
+        blueprint.id,
+        reviewJob.id,
+      );
+
+      await appServices.services.artifactReviewService.replaceRunItems(run.id, [
+        {
+          artifactId: blueprint.id,
+          artifactType: "blueprint_ux",
+          category: "navigation",
+          details: "The primary path is missing a blocker review.",
+          projectId: project.projectId,
+          severity: "BLOCKER",
+          title: "Resolve blocker before approval",
+        },
+      ]);
+      await appServices.services.artifactReviewService.markRunSucceeded(run.id);
+
+      const blockedApprovalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
+        cookies: { qb_session: project.cookieValue },
+      });
+
+      expect(blockedApprovalResponse.statusCode).toBe(409);
+      expect(blockedApprovalResponse.json()).toEqual({
+        error: {
+          code: "artifact_blockers_open",
+          message: "Resolve or accept all blocker review items before approval.",
+        },
+      });
+
+      const reviewItems = await appServices.services.artifactReviewService.listItems(
+        project.ownerUserId,
+        project.projectId,
+        "blueprint_ux",
+        blueprint.id,
+      );
+
+      await appServices.services.artifactReviewService.updateReviewItem(
+        project.ownerUserId,
+        reviewItems.items[0]!.id,
+        "ACCEPTED",
+      );
+
+      const approvalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
+        cookies: { qb_session: project.cookieValue },
+      });
+
+      expect(approvalResponse.statusCode).toBe(200);
+      expect(approvalResponse.json()).toEqual(
+        expect.objectContaining({
+          artifactId: blueprint.id,
+          artifactType: "blueprint_ux",
+          approvedByUserId: project.ownerUserId,
+          projectId: project.projectId,
+        }),
+      );
     } finally {
       restoreReadiness();
     }

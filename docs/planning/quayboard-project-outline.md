@@ -265,7 +265,7 @@ The frontend uses a layered, purpose-built design system:
 | **Composites** | `components/composites/` | `CenteredState` (loading/error/empty), `PageIntro` (section header), `WorkspaceTopBar` (sticky bar) |
 | **Templates** | `components/templates/` | `StandalonePage` (full-height single-column), `AppFrame` (shell wrapper) |
 | **Layout** | `components/layout/` | `Layout`, `PrimaryBar` (sidebar nav), `ProjectSubNav`, `GlobalHeader`, `DebugStatusBar` |
-| **Workflow** | `components/workflow/` | `ReviewPanel`, `WorkflowLoop`, `NextActionBar`, `TransitionConfirmDialog`, `PhaseGateChecklist`, `StateMachineVisualizer` |
+| **Workflow** | `components/workflow/` | `ReviewPanel`, `NextActionBar`, `TransitionConfirmDialog`, `PhaseGateChecklist`, `StateMachineVisualizer` |
 
 **Critical rule**: Page files (`pages/**`) must never use raw `<button>`, `<input>`, `<select>`, or `<textarea>` HTML elements. DS primitives are required throughout.
 
@@ -1214,7 +1214,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 ### M3 — Blueprint Builder
 
-**Goal**: After approving user flows, a user can generate a decision deck, select options, generate UX and tech project blueprints, review LLM findings, and approve both blueprints.
+**Goal**: After approving user flows, a user can generate a decision deck, select options, generate both UX and tech project blueprints from the completed deck, review LLM findings, and approve both blueprints.
 
 **Deliverables**:
 
@@ -1229,19 +1229,20 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 **Frontend**:
 - `BlueprintBuilderPage` with two sub-views:
-  - `DecisionCardDeck` — card selection UI with recommendations and alternatives
+  - `DecisionCardDeck` — card selection UI with recommendations and alternatives plus the deck-bottom blueprint generation CTA
   - `BlueprintDocumentView` — markdown view with review panel
 - `ReviewPanel` component — review item triage (DONE / ACCEPTED / IGNORED)
-- `WorkflowLoop` component — phase progression visualiser
-- `NextActionBar` component — stage transition actions and approval CTA
+- Header AI action for decision-deck generation
+- `NextActionBar` component — deck-bottom generation CTA, review actions, and top-of-view blueprint approval CTA
 - `TransitionConfirmDialog` — approval confirmation modal
 
 **Acceptance criteria**:
 - Decision deck generates only after user flows are approved; cards are selectable and selections persist
-- Both UX and tech project blueprints generate from selected decisions
+- UX and tech blueprint views stay locked until every decision card has a selected or custom choice
+- Both UX and tech project blueprints generate from the completed decision deck flow
 - UX and tech blueprints can also be saved directly via API/MCP for manual authoring paths
 - Review jobs surface BLOCKER/WARNING/SUGGESTION items in the review panel
-- Approval button is disabled while any BLOCKER item remains OPEN
+- Approval button is surfaced at the top of each blueprint view and remains disabled while any BLOCKER item remains OPEN
 - Approval writes an `artifact_approvals` record and advances the project phase
 - Tests cover decision card update, blueprint generation trigger, review item triage, and approval flow
 - User-facing documentation exists for all new screens and flows introduced in this milestone

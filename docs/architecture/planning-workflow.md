@@ -14,7 +14,7 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - Product Spec generation, version history, restore, and approval
 - user-flow generation, manual editing, deduplication, and approval
 - decision deck generation and selection persistence
-- UX and tech blueprint generation, manual save, review-item triage, and approval
+- deck-first UX and tech blueprint generation, manual save, review-item triage, and approval
 
 ## Data Model
 

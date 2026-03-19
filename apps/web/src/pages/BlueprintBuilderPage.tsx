@@ -1,5 +1,5 @@
 import type { ArtifactType, BlueprintKind, DecisionCard, ProjectBlueprint } from "@quayboard/shared";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
@@ -9,8 +9,8 @@ import { AppFrame } from "../components/templates/AppFrame.js";
 import { NextActionBar } from "../components/workflow/NextActionBar.js";
 import { ReviewPanel } from "../components/workflow/ReviewPanel.js";
 import { TransitionConfirmDialog } from "../components/workflow/TransitionConfirmDialog.js";
-import { WorkflowLoop } from "../components/workflow/WorkflowLoop.js";
 import { Alert } from "../components/ui/Alert.js";
+import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
@@ -142,7 +142,7 @@ const DecisionCardDeck = ({
       {cards.length === 0 ? (
         <Card surface="inset">
           <p className="text-sm text-secondary">
-            No decision deck exists yet. Generate it from the action bar to start Blueprint Builder.
+            No decision deck exists yet. Generate it from the header to start Blueprint Builder.
           </p>
         </Card>
       ) : null}
@@ -282,15 +282,19 @@ export const BlueprintBuilderPage = () => {
         : null;
   const currentArtifactType =
     activeView === "deck" ? null : viewToArtifactType(activeView);
+  const cards = decisionCardsQuery.data?.cards ?? [];
+  const deckGenerated = cards.length > 0;
   const artifactStateQuery = useArtifactStateQuery(
     id,
     currentArtifactType ?? "blueprint_ux",
     currentBlueprint?.id ?? null,
   );
 
-  const deckComplete = decisionCardsQuery.data?.cards.every(
-    (card) => card.selectedOptionId || card.customSelection,
-  );
+  const deckComplete = deckGenerated && cards.every((card) => card.selectedOptionId || card.customSelection);
+  const generateDeckButtonActive =
+    generateDecisionDeckMutation.isPending || Boolean(activeDeckJob);
+  const generateBlueprintsButtonActive =
+    generateBlueprintMutation.isPending || Boolean(activeBlueprintJob);
   const activeError =
     projectQuery.error ||
     phaseGatesQuery.error ||
@@ -306,17 +310,37 @@ export const BlueprintBuilderPage = () => {
     updateArtifactReviewItemMutation.error ||
     approveArtifactMutation.error;
 
+  useEffect(() => {
+    if (activeView !== "deck" && !deckComplete) {
+      setActiveView("deck");
+    }
+  }, [activeView, deckComplete]);
+
   return (
     <AppFrame>
       {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
       <PageIntro
+        actions={
+          activeView === "deck" ? (
+            <AiWorkflowButton
+              active={generateDeckButtonActive}
+              disabled={generateDeckButtonActive}
+              label={deckGenerated ? "Regenerate Decision Deck" : "Generate Decision Deck"}
+              onClick={() => {
+                void generateDecisionDeckMutation.mutateAsync();
+              }}
+              runningLabel="Generating Decision Deck"
+              variant="secondary"
+            />
+          ) : null
+        }
         eyebrow="Blueprint"
         title="Blueprint Builder"
-        summary="Generate the decision deck, lock key tradeoffs, produce UX and tech blueprints, and clear review before approval."
+        summary="Work through the decision deck first, then generate, review, and approve the UX and tech blueprints."
         meta={
           <>
             <Badge tone="neutral">m3 planning</Badge>
-            <Badge tone="neutral">{decisionCardsQuery.data?.cards.length ?? 0} cards</Badge>
+            <Badge tone="neutral">{cards.length} cards</Badge>
           </>
         }
       />
@@ -339,16 +363,8 @@ export const BlueprintBuilderPage = () => {
       ) : null}
 
       <div className="grid gap-4">
-        <WorkflowLoop
-          currentPhase="Blueprint"
-          phases={(phaseGatesQuery.data?.phases ?? []).map((phase) => ({
-            label: phase.phase,
-            passed: phase.passed,
-          }))}
-        />
-
         <Card surface="panel">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 border-b border-border/80 pb-3">
             <Button
               onClick={() => {
                 setActiveView("deck");
@@ -358,6 +374,7 @@ export const BlueprintBuilderPage = () => {
               Decision Deck
             </Button>
             <Button
+              disabled={!deckComplete}
               onClick={() => {
                 setActiveView("ux");
               }}
@@ -366,6 +383,7 @@ export const BlueprintBuilderPage = () => {
               UX Blueprint
             </Button>
             <Button
+              disabled={!deckComplete}
               onClick={() => {
                 setActiveView("tech");
               }}
@@ -374,81 +392,98 @@ export const BlueprintBuilderPage = () => {
               Tech Blueprint
             </Button>
           </div>
+          {!deckComplete ? (
+            <p className="mt-3 text-sm text-secondary">
+              Complete every decision card to unlock the UX and Tech blueprint views.
+            </p>
+          ) : null}
         </Card>
 
         {activeView === "deck" ? (
-          <DecisionCardDeck
-            cards={decisionCardsQuery.data?.cards ?? []}
-            isUpdating={updateDecisionCardsMutation.isPending}
-            onSaveCustomSelection={(card, customSelection) => {
-              void updateDecisionCardsMutation.mutateAsync({
-                cards: [{ id: card.id, customSelection }],
-              });
-            }}
-            onSelectOption={(card, optionId) => {
-              void updateDecisionCardsMutation.mutateAsync({
-                cards: [{ id: card.id, selectedOptionId: optionId }],
-              });
-            }}
-          />
-        ) : (
-          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_22rem]">
-            <Card surface="panel">
-              <BlueprintDocumentView
-                blueprint={currentBlueprint}
-                defaultTitle={activeView === "ux" ? "UX Blueprint" : "Tech Blueprint"}
-                isSaving={saveBlueprintMutation.isPending}
-                kind={currentKind!}
-                onSave={(title, markdown) => {
-                  void saveBlueprintMutation.mutateAsync({
-                    kind: currentKind!,
-                    title,
-                    markdown,
-                  });
-                }}
-              />
-            </Card>
-            <ReviewPanel
-              isUpdating={updateArtifactReviewItemMutation.isPending}
-              items={artifactStateQuery.data?.reviewItems ?? []}
-              onUpdate={(reviewItemId, status) => {
-                void updateArtifactReviewItemMutation.mutateAsync({ reviewItemId, status });
+          <>
+            <DecisionCardDeck
+              cards={cards}
+              isUpdating={updateDecisionCardsMutation.isPending}
+              onSaveCustomSelection={(card, customSelection) => {
+                void updateDecisionCardsMutation.mutateAsync({
+                  cards: [{ id: card.id, customSelection }],
+                });
+              }}
+              onSelectOption={(card, optionId) => {
+                void updateDecisionCardsMutation.mutateAsync({
+                  cards: [{ id: card.id, selectedOptionId: optionId }],
+                });
               }}
             />
-          </div>
-        )}
-
-        <NextActionBar
-          summary={
-            activeView === "deck"
-              ? "Generate the deck first, then select or customize every decision before blueprint generation."
-              : "Generate or edit the blueprint, run review manually, then approve the canonical revision when blockers are clear."
-          }
-          title={activeView === "deck" ? "Decision deck actions" : "Blueprint actions"}
-        >
-          {activeView === "deck" ? (
-            <Button
-              disabled={generateDecisionDeckMutation.isPending || Boolean(activeDeckJob)}
-              onClick={() => {
-                void generateDecisionDeckMutation.mutateAsync();
-              }}
-              variant="secondary"
+            <NextActionBar
+              summary="Once every decision is selected, queue both blueprints from here to keep the workflow deck-first."
+              title="Blueprint generation"
             >
-              {activeDeckJob ? "Generating Deck" : "Generate Decision Deck"}
-            </Button>
-          ) : (
-            <>
+              <AiWorkflowButton
+                active={generateBlueprintsButtonActive}
+                disabled={!deckComplete || generateBlueprintsButtonActive}
+                label="Generate Blueprints"
+                onClick={() => {
+                  void generateBlueprintMutation
+                    .mutateAsync({ kind: "ux" })
+                    .then(() => generateBlueprintMutation.mutateAsync({ kind: "tech" }));
+                }}
+                runningLabel="Generating Blueprints"
+                variant="secondary"
+              />
+            </NextActionBar>
+          </>
+        ) : (
+          <>
+            <NextActionBar
+              summary="Approve the current canonical blueprint after review succeeds and all blocker items are resolved or accepted."
+              title={`${currentKind === "ux" ? "UX" : "Tech"} blueprint approval`}
+            >
               <Button
                 disabled={
-                  generateBlueprintMutation.isPending || Boolean(activeBlueprintJob) || !deckComplete
+                  approveArtifactMutation.isPending ||
+                  !currentBlueprint ||
+                  !currentArtifactType ||
+                  !artifactStateQuery.data?.latestReviewRun ||
+                  artifactStateQuery.data.latestReviewRun.status !== "succeeded" ||
+                  (artifactStateQuery.data.openBlockerCount ?? 0) > 0
                 }
                 onClick={() => {
-                  void generateBlueprintMutation.mutateAsync({ kind: currentKind! });
+                  setConfirmKind(currentKind);
                 }}
                 variant="secondary"
               >
-                {currentBlueprint ? "Regenerate Blueprint" : "Generate Blueprint"}
+                Approve Blueprint
               </Button>
+            </NextActionBar>
+            <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_22rem]">
+              <Card surface="panel">
+                <BlueprintDocumentView
+                  blueprint={currentBlueprint}
+                  defaultTitle={activeView === "ux" ? "UX Blueprint" : "Tech Blueprint"}
+                  isSaving={saveBlueprintMutation.isPending}
+                  kind={currentKind!}
+                  onSave={(title, markdown) => {
+                    void saveBlueprintMutation.mutateAsync({
+                      kind: currentKind!,
+                      title,
+                      markdown,
+                    });
+                  }}
+                />
+              </Card>
+              <ReviewPanel
+                isUpdating={updateArtifactReviewItemMutation.isPending}
+                items={artifactStateQuery.data?.reviewItems ?? []}
+                onUpdate={(reviewItemId, status) => {
+                  void updateArtifactReviewItemMutation.mutateAsync({ reviewItemId, status });
+                }}
+              />
+            </div>
+            <NextActionBar
+              summary="Run review on the current canonical blueprint when you are ready to validate it."
+              title="Review actions"
+            >
               <Button
                 disabled={
                   runArtifactReviewMutation.isPending ||
@@ -470,25 +505,9 @@ export const BlueprintBuilderPage = () => {
               >
                 {activeReviewJob ? "Running Review" : "Run Review"}
               </Button>
-              <Button
-                disabled={
-                  approveArtifactMutation.isPending ||
-                  !currentBlueprint ||
-                  !currentArtifactType ||
-                  !artifactStateQuery.data?.latestReviewRun ||
-                  artifactStateQuery.data.latestReviewRun.status !== "succeeded" ||
-                  (artifactStateQuery.data.openBlockerCount ?? 0) > 0
-                }
-                onClick={() => {
-                  setConfirmKind(currentKind);
-                }}
-                variant="secondary"
-              >
-                Approve Blueprint
-              </Button>
-            </>
-          )}
-        </NextActionBar>
+            </NextActionBar>
+          </>
+        )}
       </div>
 
       <TransitionConfirmDialog

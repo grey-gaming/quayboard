@@ -8,13 +8,13 @@ This is the active implementation target. Work beyond M3 requires an explicit re
 
 ## Goal
 
-Deliver the Blueprint phase on top of the completed M2 planning workflow: decision deck generation, persisted user selections, UX/tech blueprint generation or manual save, review-item triage, approval, and Mission Control updates.
+Deliver the Blueprint phase on top of the completed M2 planning workflow: decision deck generation, persisted user selections, deck-first UX/tech blueprint generation or manual save, review-item triage, approval, and Mission Control updates.
 
 ## In Scope
 
 - `decision_cards`, `project_blueprints`, `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` schema additions
 - Decision deck generation from approved planning artifacts, with persisted option or custom selections
-- UX and tech blueprint generation from the selected deck plus manual-save support for direct authoring
+- UX and tech blueprint generation from the selected deck via a deck-first flow, plus manual-save support for direct authoring
 - Blueprint review jobs, review-item triage (`DONE`, `ACCEPTED`, `IGNORED`), and approval records
 - Blueprint-specific phase gates and Mission Control next-action updates
 - Shared schemas, API client contracts, and UI routes for Blueprint Builder and artifact review
@@ -35,8 +35,8 @@ Deliver the Blueprint phase on top of the completed M2 planning workflow: decisi
 The milestone is complete when the repo can support the following:
 
 - A user with approved user flows can queue a decision deck and see recommendation-driven decision cards
-- Decision card selections persist, support custom choices, and invalidate stale canonical blueprints when the deck changes
-- A user can generate UX and tech blueprints from the selected deck or save them manually through the API/UI
+- Decision card selections persist, support custom choices, unlock the UX/tech views only after the deck is complete, and invalidate stale canonical blueprints when the deck changes
+- A user can generate UX and tech blueprints from the bottom of the completed decision deck or save them manually through the API/UI
 - Review jobs create structured review items with `BLOCKER`, `WARNING`, and `SUGGESTION` severities
 - Review items can be triaged to `DONE`, `ACCEPTED`, or `IGNORED`
 - A blueprint cannot be approved until review has completed and no blocker remains open

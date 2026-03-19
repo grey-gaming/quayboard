@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Job, User, UseCaseListResponse } from "@quayboard/shared";
+import type { DecisionCard, Job, User, UseCaseListResponse } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
@@ -1866,8 +1866,235 @@ describe("workflow pages", () => {
     expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
   });
 
-  it("renders the blueprint builder after user-flow approval", async () => {
+  it("keeps blueprint generation deck-first and locks blueprint tabs until the deck is complete", async () => {
     const blueprintProjectId = "70707070-7070-4070-8070-707070707070";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const generateBlueprintKinds: string[] = [];
+    let cards: DecisionCard[] = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        projectId: blueprintProjectId,
+        key: "architecture-style",
+        category: "tech",
+        title: "Architecture style",
+        prompt: "Choose the primary service boundary model.",
+        recommendation: {
+          id: "modular-monolith",
+          label: "Modular monolith",
+          description: "Keep early delivery cohesive.",
+        },
+        alternatives: [
+          {
+            id: "service-oriented",
+            label: "Service oriented",
+            description: "Split early into multiple services.",
+          },
+          {
+            id: "event-first",
+            label: "Event first",
+            description: "Lead with events.",
+          },
+        ],
+        selectedOptionId: null,
+        customSelection: null,
+        createdAt: "2026-03-18T00:00:00.000Z",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+      },
+    ];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: blueprintProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: blueprintProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/decision-cards` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cards }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/decision-cards` && method === "PATCH") {
+        const payload = JSON.parse(String(init?.body)) as {
+          cards: Array<{ customSelection?: string | null; id: string; selectedOptionId?: string | null }>;
+        };
+
+        cards = cards.map((card) => {
+          const update = payload.cards.find((candidate) => candidate.id === card.id);
+
+          if (!update) {
+            return card;
+          }
+
+          return {
+            ...card,
+            customSelection: update.customSelection ?? null,
+            selectedOptionId: update.customSelection ? null : (update.selectedOptionId ?? null),
+            updatedAt: "2026-03-19T00:00:00.000Z",
+          };
+        });
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cards }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/blueprints/canonical` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            uxBlueprint: null,
+            techBlueprint: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            phases: [
+              { phase: "Project Setup", passed: true, items: [] },
+              { phase: "Overview Document", passed: true, items: [] },
+              { phase: "Product Spec", passed: true, items: [] },
+              { phase: "User Flows", passed: true, items: [] },
+              { phase: "Blueprint", passed: false, items: [] },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-1",
+                projectId: blueprintProjectId,
+                title: "Create project",
+                userStory: "Story",
+                entryPoint: "Entry",
+                endState: "End",
+                flowSteps: ["Step"],
+                coverageTags: ["happy-path", "onboarding"],
+                acceptanceCriteria: ["Criterion"],
+                doneCriteriaRefs: ["manual"],
+                source: "generated",
+                archivedAt: null,
+                createdAt: "2026-03-18T00:00:00.000Z",
+                updatedAt: "2026-03-18T00:00:00.000Z",
+              },
+            ],
+            coverage: {
+              warnings: [],
+              acceptedWarnings: [],
+            },
+            approvedAt: "2026-03-18T00:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${blueprintProjectId}/blueprints/generate` && method === "POST") {
+        const payload = JSON.parse(String(init?.body)) as { kind: string };
+        generateBlueprintKinds.push(payload.kind);
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: `job-generate-${payload.kind}`,
+            projectId: blueprintProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "queued",
+            inputs: payload,
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-19T00:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/blueprint", <BlueprintBuilderPage />, blueprintProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Blueprint Builder" })).toBeTruthy();
+    expect(screen.queryByText("Planning Loop")).toBeNull();
+    expect(screen.getByRole("button", { name: "Generate Decision Deck" })).toBeTruthy();
+    expect(await screen.findByText("Architecture style")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("button", { name: "Tech Blueprint" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Generate Blueprints" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Choose Option" })[0]!);
+
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+    expect(
+      (screen.getByRole("button", { name: "Generate Blueprints" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Blueprints" }));
+
+    await waitFor(() => {
+      expect(generateBlueprintKinds).toEqual(["ux", "tech"]);
+    });
+  });
+
+  it("shows blueprint approval above the blueprint content and removes in-view generation", async () => {
+    const blueprintProjectId = "80808080-8080-4080-8080-808080808080";
+    const uxBlueprintId = "22222222-2222-4222-8222-222222222222";
 
     vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
@@ -1900,11 +2127,6 @@ describe("workflow pages", () => {
                 label: "Service oriented",
                 description: "Split early into multiple services.",
               },
-              {
-                id: "event-first",
-                label: "Event first",
-                description: "Lead with events.",
-              },
             ],
             selectedOptionId: "modular-monolith",
             customSelection: null,
@@ -1914,7 +2136,17 @@ describe("workflow pages", () => {
         ],
       },
       [`/api/projects/${blueprintProjectId}/blueprints/canonical`]: {
-        uxBlueprint: null,
+        uxBlueprint: {
+          id: uxBlueprintId,
+          projectId: blueprintProjectId,
+          kind: "ux",
+          version: 1,
+          title: "UX Blueprint",
+          markdown: "# UX Blueprint\n\nApproved blueprint.",
+          source: "GenerateProjectBlueprint",
+          isCanonical: true,
+          createdAt: "2026-03-19T00:00:00.000Z",
+        },
         techBlueprint: null,
       },
       [`/api/projects/${blueprintProjectId}/phase-gates`]: {
@@ -1939,7 +2171,7 @@ describe("workflow pages", () => {
             entryPoint: "Entry",
             endState: "End",
             flowSteps: ["Step"],
-            coverageTags: ["happy-path"],
+            coverageTags: ["happy-path", "onboarding"],
             acceptanceCriteria: ["Criterion"],
             doneCriteriaRefs: ["manual"],
             source: "generated",
@@ -1954,14 +2186,44 @@ describe("workflow pages", () => {
         },
         approvedAt: "2026-03-18T00:00:00.000Z",
       },
+      [`/api/projects/${blueprintProjectId}/artifacts/blueprint_ux/${uxBlueprintId}/state`]: {
+        artifactType: "blueprint_ux",
+        artifactId: uxBlueprintId,
+        latestReviewRun: {
+          id: "review-run-1",
+          projectId: blueprintProjectId,
+          artifactType: "blueprint_ux",
+          artifactId: uxBlueprintId,
+          jobId: "job-review-ux",
+          status: "succeeded",
+          createdAt: "2026-03-19T00:00:00.000Z",
+          completedAt: "2026-03-19T00:02:00.000Z",
+        },
+        reviewItems: [],
+        openBlockerCount: 0,
+        openWarningCount: 0,
+        openSuggestionCount: 0,
+        approval: null,
+      },
     });
 
     renderRoute("/projects/:id/blueprint", <BlueprintBuilderPage />, blueprintProjectId);
 
     expect(await screen.findByRole("heading", { name: "Blueprint Builder" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Decision Deck" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "UX Blueprint" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Tech Blueprint" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Generate Decision Deck" })).toBeTruthy();
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "UX Blueprint" }));
+
+    const approveButton = await screen.findByRole("button", { name: "Approve Blueprint" });
+    const reviewPanelHeading = await screen.findByText("Review Panel");
+
+    expect(screen.queryByText("Planning Loop")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate Blueprints" })).toBeNull();
+    expect(
+      approveButton.compareDocumentPosition(reviewPanelHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
