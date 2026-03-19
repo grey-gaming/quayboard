@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
+import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -19,7 +19,6 @@ import {
   useDedupeUserFlowsMutation,
   useGenerateUserFlowsMutation,
   useProjectQuery,
-  useSetupStatusQuery,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
@@ -38,7 +37,6 @@ type FormValues = {
 export const UserFlowsPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
-  const setupStatusQuery = useSetupStatusQuery(id);
   const userFlowsQuery = useUserFlowsQuery(id);
   const createUserFlowMutation = useCreateUserFlowMutation(id);
   const deleteUserFlowMutation = useDeleteUserFlowMutation(id);
@@ -63,7 +61,7 @@ export const UserFlowsPage = () => {
   return (
     <AppFrame>
       {projectQuery.data ? (
-        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatusQuery.data} />
+        <ProjectSubNav project={projectQuery.data} />
       ) : null}
       <PageIntro
         eyebrow="User Flows"

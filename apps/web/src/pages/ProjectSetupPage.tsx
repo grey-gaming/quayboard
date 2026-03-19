@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
+import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -268,7 +268,7 @@ export const ProjectSetupPage = () => {
   return (
     <AppFrame>
       {projectQuery.data ? (
-        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatus} />
+        <ProjectSubNav project={projectQuery.data} />
       ) : null}
       <PageIntro
         eyebrow="Project"

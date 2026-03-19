@@ -3,7 +3,7 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
+import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
@@ -19,7 +19,6 @@ import {
   useProjectQuery,
   useQuestionnaireQuery,
   useRestoreOnePagerMutation,
-  useSetupStatusQuery,
   useUpdateOnePagerMutation,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
@@ -49,7 +48,6 @@ export const OnePagerOverviewPage = () => {
   const navigate = useNavigate();
   const navigationState = location.state as NavigationState | null;
   const projectQuery = useProjectQuery(id);
-  const setupStatusQuery = useSetupStatusQuery(id);
   const questionnaireQuery = useQuestionnaireQuery(id);
   const onePagerQuery = useOnePagerQuery(id);
   const versionsQuery = useOnePagerVersionsQuery(id);
@@ -118,7 +116,7 @@ export const OnePagerOverviewPage = () => {
   return (
     <AppFrame>
       {projectQuery.data ? (
-        <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatusQuery.data} />
+        <ProjectSubNav project={projectQuery.data} />
       ) : null}
       <PageIntro
         eyebrow="Overview"

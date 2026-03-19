@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 
-import { ProjectContextHeader } from "../components/layout/ProjectContextHeader.js";
+import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -10,7 +10,6 @@ import {
   usePhaseGatesQuery,
   useProjectJobsQuery,
   useProjectQuery,
-  useSetupStatusQuery,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
@@ -25,7 +24,6 @@ const jobTone = (status: string) =>
 export const MissionControlPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
-  const setupStatusQuery = useSetupStatusQuery(id);
   const phaseGatesQuery = usePhaseGatesQuery(id);
   const nextActionsQuery = useNextActionsQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
@@ -42,7 +40,7 @@ export const MissionControlPage = () => {
 
   return (
     <AppFrame>
-      <ProjectContextHeader project={projectQuery.data} setupStatus={setupStatusQuery.data} />
+      <ProjectSubNav project={projectQuery.data} />
       <PageIntro
         eyebrow="Project"
         title="Mission Control"

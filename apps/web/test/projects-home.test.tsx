@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, User } from "@quayboard/shared";
 
-import { ProjectContextHeader } from "../src/components/layout/ProjectContextHeader.js";
+import { ProjectSubNav } from "../src/components/layout/ProjectSubNav.js";
 import { NewProjectPage } from "../src/pages/NewProjectPage.js";
 import { ProtectedHomePage } from "../src/pages/ProtectedHomePage.js";
 
@@ -134,7 +134,7 @@ describe("project entry surfaces", () => {
     expect(screen.queryByText(/scratch path/i)).toBeNull();
   });
 
-  it("renders the project context fallback copy without workspace wording", () => {
+  it("renders the compact project secondary nav without summary copy", () => {
     const project: Project = {
       id: "91a28b19-825c-496f-bc99-205d02664a2e",
       name: "Harbor Console",
@@ -147,11 +147,14 @@ describe("project entry surfaces", () => {
 
     render(
       <MemoryRouter>
-        <ProjectContextHeader project={project} setupStatus={undefined} />
+        <ProjectSubNav project={project} />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Project setup and planning for the current delivery phase.")).toBeTruthy();
-    expect(screen.queryByText(/workspace/i)).toBeNull();
+    expect(screen.getByText("Harbor Console")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.queryByText("Project setup and planning for the current delivery phase.")).toBeNull();
+    expect(screen.queryByText("Active Project")).toBeNull();
   });
 });
