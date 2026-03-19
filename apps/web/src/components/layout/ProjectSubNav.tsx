@@ -10,6 +10,7 @@ const projectNavItems = [
   { label: "Overview", suffix: "/one-pager", end: true, requiresSetupCompletion: true },
   { label: "Product Spec", suffix: "/product-spec", end: true, requiresSetupCompletion: true },
   { label: "User Flows", suffix: "/user-flows", end: true, requiresSetupCompletion: true },
+  { label: "Blueprint", suffix: "/blueprint", end: true, requiresSetupCompletion: true },
   { label: "Import", suffix: "/import", end: true, requiresSetupCompletion: true },
 ];
 

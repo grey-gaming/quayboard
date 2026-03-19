@@ -9,6 +9,7 @@ import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
+import { BlueprintBuilderPage } from "../src/pages/BlueprintBuilderPage.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
@@ -98,6 +99,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/projects/:id/one-pager", <div />],
     ["/projects/:id/product-spec", <div />],
     ["/projects/:id/user-flows", <div />],
+    ["/projects/:id/blueprint", <div />],
     ["/projects/:id/import", <div />],
   ]);
   routeEntries.set(path, element);
@@ -1862,5 +1864,104 @@ describe("workflow pages", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
+  });
+
+  it("renders the blueprint builder after user-flow approval", async () => {
+    const blueprintProjectId = "70707070-7070-4070-8070-707070707070";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      [`/api/projects/${blueprintProjectId}`]: {
+        id: blueprintProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: blueprintProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${blueprintProjectId}/decision-cards`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: blueprintProjectId,
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+              {
+                id: "event-first",
+                label: "Event first",
+                description: "Lead with events.",
+              },
+            ],
+            selectedOptionId: "modular-monolith",
+            customSelection: null,
+            createdAt: "2026-03-18T00:00:00.000Z",
+            updatedAt: "2026-03-18T00:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${blueprintProjectId}/blueprints/canonical`]: {
+        uxBlueprint: null,
+        techBlueprint: null,
+      },
+      [`/api/projects/${blueprintProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "User Flows", passed: true, items: [] },
+          { phase: "Blueprint", passed: false, items: [] },
+        ],
+      },
+      [`/api/projects/${blueprintProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${blueprintProjectId}/user-flows`]: {
+        userFlows: [
+          {
+            id: "flow-1",
+            projectId: blueprintProjectId,
+            title: "Create project",
+            userStory: "Story",
+            entryPoint: "Entry",
+            endState: "End",
+            flowSteps: ["Step"],
+            coverageTags: ["happy-path"],
+            acceptanceCriteria: ["Criterion"],
+            doneCriteriaRefs: ["manual"],
+            source: "generated",
+            archivedAt: null,
+            createdAt: "2026-03-18T00:00:00.000Z",
+            updatedAt: "2026-03-18T00:00:00.000Z",
+          },
+        ],
+        coverage: {
+          warnings: [],
+          acceptedWarnings: [],
+        },
+        approvedAt: "2026-03-18T00:00:00.000Z",
+      },
+    });
+
+    renderRoute("/projects/:id/blueprint", <BlueprintBuilderPage />, blueprintProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Blueprint Builder" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decision Deck" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "UX Blueprint" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tech Blueprint" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Decision Deck" })).toBeTruthy();
   });
 });

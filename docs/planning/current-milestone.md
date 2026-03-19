@@ -2,52 +2,49 @@
 
 ## Active Target
 
-M2: Project Creation, Setup, Overview Document, Product Spec, and User Flows
+M3: Blueprint Builder
 
-This is the active implementation target. Work beyond M2 requires an explicit request.
+This is the active implementation target. Work beyond M3 requires an explicit request.
 
 ## Goal
 
-Deliver the scratch-path planning workflow: instance readiness, project creation, project setup, the 14-question questionnaire, LLM-assisted overview document generation, Product Spec generation/approval, Mission Control, and user-flow generation/approval.
+Deliver the Blueprint phase on top of the completed M2 planning workflow: decision deck generation, persisted user selections, UX/tech blueprint generation or manual save, review-item triage, approval, and Mission Control updates.
 
 ## In Scope
 
-- `GET /api/system/readiness` with deployment prerequisite checks and remediation text
-- pre-auth readiness gating on register/sign-in until all instance checks pass
-- Project list/create/update flow with project-scoped setup status and Mission Control landing page
-- Project setup workflow:
-  repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, and evidence policy
-- Questionnaire persistence with the refined 14-question M2 definition
-- Async job execution for project description, overview document generation, Product Spec generation, and user-flow generation/deduplication
-- Overview document canonical/version history plus approval
-- Product Spec canonical/version history plus approval
-- User-flow CRUD, coverage warnings, explicit warning acceptance, and approval snapshotting
-- Shared schemas for planning-phase resources and SSE-driven job refresh
-- User-facing and architecture docs that describe the M2 repo reality
+- `decision_cards`, `project_blueprints`, `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` schema additions
+- Decision deck generation from approved planning artifacts, with persisted option or custom selections
+- UX and tech blueprint generation from the selected deck plus manual-save support for direct authoring
+- Blueprint review jobs, review-item triage (`DONE`, `ACCEPTED`, `IGNORED`), and approval records
+- Blueprint-specific phase gates and Mission Control next-action updates
+- Shared schemas, API client contracts, and UI routes for Blueprint Builder and artifact review
+- User-facing and architecture docs that describe the M3 repo reality
 
 ## Out Of Scope
 
 - import workflow execution beyond the future-release stub page
+- milestone, feature, documentation, bug, and sandbox execution workflows
 - OAuth, RBAC, API keys, or other M12 auth extensions
 - Anthropic provider support
 - full tool-policy enforcement and tool audit tables
 - sandbox execution, PR creation, or evidence bundle generation
-- blueprint, milestone, feature, and implementation workflows
+- generic artifact workflow support beyond blueprint artifacts
 
 ## Acceptance Criteria
 
 The milestone is complete when the repo can support the following:
 
-- A visitor can view instance readiness with concrete remediation text, and register/sign-in stay blocked until all instance checks pass
-- An authenticated user can view project setup readiness with concrete remediation text
-- A user can create a project, connect a repo with a GitHub PAT, verify the configured LLM, and verify sandbox startup
-- A user can save questionnaire answers, queue overview generation, inspect the canonical overview plus history, restore a version, and approve the current overview
-- After overview approval, a user can queue Product Spec generation, inspect the canonical Product Spec plus history, restore a version, edit it, and approve the current Product Spec
-- Mission Control is the project landing page and reflects phase gates and next actions
-- User flows can be generated from the approved Product Spec, added manually, deduplicated, and approved only when warnings are resolved or explicitly accepted
+- A user with approved user flows can queue a decision deck and see recommendation-driven decision cards
+- Decision card selections persist, support custom choices, and invalidate stale canonical blueprints when the deck changes
+- A user can generate UX and tech blueprints from the selected deck or save them manually through the API/UI
+- Review jobs create structured review items with `BLOCKER`, `WARNING`, and `SUGGESTION` severities
+- Review items can be triaged to `DONE`, `ACCEPTED`, or `IGNORED`
+- A blueprint cannot be approved until review has completed and no blocker remains open
+- Approval writes an `artifact_approvals` record for the canonical blueprint revision
+- Mission Control includes the Blueprint phase plus blueprint-specific next actions
 - Shared schema imports resolve across the workspace without TypeScript errors
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
-- Architecture and user docs describe the M2 repo behavior
+- Architecture and user docs describe the M3 repo behavior
 
 ## Relevant ADRs
 
@@ -56,7 +53,8 @@ The milestone is complete when the repo can support the following:
 
 ## Working Rules
 
-- Keep the M2 import path as an explicit stub page rather than partial execution.
+- Keep the import path as an explicit stub page rather than partial execution.
 - Use project-scoped settings and secrets for setup state; do not introduce user-level or system-level PAT/API-key defaults.
+- Limit the artifact workflow implementation to `blueprint_ux` and `blueprint_tech` in M3.
 - Keep OAuth, full tool-policy enforcement, and sandbox execution deferred to their later milestones.
 - If implementation needs to deviate from the outline’s cookie-session, SSE, or project-scoped secret model, capture that in an ADR first.

@@ -4,6 +4,8 @@ import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboar
 
 import type { AppDatabase } from "../../db/client.js";
 import { llmRunsTable, useCasesTable } from "../../db/schema.js";
+import type { ArtifactReviewService } from "../artifact-review-service.js";
+import type { BlueprintService } from "../blueprint-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
 import type { OnePagerService } from "../one-pager-service.js";
@@ -13,6 +15,10 @@ import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import {
+  buildBlueprintReviewPrompt,
+  buildDecisionConsistencyPrompt,
+  buildDecisionDeckPrompt,
+  buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
@@ -162,7 +168,149 @@ const validateGeneratedUserFlows = (
   });
 };
 
+const validateGeneratedDecisionDeck = (
+  cards: Array<{
+    alternatives?: Array<{
+      description?: string;
+      id?: string;
+      label?: string;
+    }>;
+    category?: string;
+    key?: string;
+    prompt?: string;
+    recommendation?: {
+      description?: string;
+      id?: string;
+      label?: string;
+    };
+    title?: string;
+  }>,
+) => {
+  if (cards.length === 0) {
+    throw new Error(
+      "GenerateDecisionDeck returned invalid content. Expected a non-empty JSON array of decision cards.",
+    );
+  }
+
+  return cards.map((card) => {
+    if (
+      !card.key?.trim() ||
+      !card.category?.trim() ||
+      !card.title?.trim() ||
+      !card.prompt?.trim() ||
+      !card.recommendation?.id?.trim() ||
+      !card.recommendation.label?.trim() ||
+      !card.recommendation.description?.trim()
+    ) {
+      throw new Error(
+        "GenerateDecisionDeck returned an incomplete decision card. Each card must include key, category, title, prompt, and a full recommendation.",
+      );
+    }
+
+    if (!card.alternatives || card.alternatives.length < 2) {
+      throw new Error(
+        "GenerateDecisionDeck returned a card without at least two alternatives.",
+      );
+    }
+
+    const alternatives = card.alternatives.map((option) => {
+      if (!option.id?.trim() || !option.label?.trim() || !option.description?.trim()) {
+        throw new Error(
+          "GenerateDecisionDeck returned an alternative without id, label, and description.",
+        );
+      }
+
+      return {
+        id: option.id.trim(),
+        label: option.label.trim(),
+        description: option.description.trim(),
+      };
+    });
+
+    return {
+      key: card.key.trim(),
+      category: card.category.trim(),
+      title: card.title.trim(),
+      prompt: card.prompt.trim(),
+      recommendation: {
+        id: card.recommendation.id.trim(),
+        label: card.recommendation.label.trim(),
+        description: card.recommendation.description.trim(),
+      },
+      alternatives,
+    };
+  });
+};
+
+const parseBlueprintResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{ markdown?: string; title?: string }>(value);
+
+  if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+    );
+  }
+
+  return {
+    title: parsed.title.trim(),
+    markdown: parsed.markdown.trim(),
+  };
+};
+
+const parseDecisionValidationResult = (value: string) => {
+  const parsed = parseJson<{ issues?: string[]; ok?: boolean }>(value);
+
+  if (!parsed || typeof parsed.ok !== "boolean" || !Array.isArray(parsed.issues)) {
+    throw new Error(
+      "ValidateDecisionConsistency returned invalid content. Expected JSON with boolean ok and string-array issues.",
+    );
+  }
+
+  return parsed;
+};
+
+const parseBlueprintReviewItems = (
+  value: string,
+  templateId: string,
+) => {
+  const parsed = parseJson<
+    Array<{
+      category?: string;
+      details?: string;
+      severity?: "BLOCKER" | "SUGGESTION" | "WARNING";
+      title?: string;
+    }>
+  >(value);
+
+  if (!parsed) {
+    throw new Error(`${templateId} returned invalid content. Expected a JSON array.`);
+  }
+
+  return parsed.map((item) => {
+    if (
+      !item.category?.trim() ||
+      !item.details?.trim() ||
+      !item.title?.trim() ||
+      !item.severity ||
+      !["BLOCKER", "WARNING", "SUGGESTION"].includes(item.severity)
+    ) {
+      throw new Error(
+        `${templateId} returned a review item without severity, category, title, and details.`,
+      );
+    }
+
+    return {
+      severity: item.severity,
+      category: item.category.trim(),
+      title: item.title.trim(),
+      details: item.details.trim(),
+    };
+  });
+};
+
 export const createJobRunnerService = (input: {
+  artifactReviewService: ArtifactReviewService;
+  blueprintService: BlueprintService;
   db: AppDatabase;
   jobService: JobService;
   llmProviderService: LlmProviderService;
@@ -181,10 +329,11 @@ export const createJobRunnerService = (input: {
     }
 
     const ownerUserId = rawJob.createdByUserId;
-    const project = await input.projectService.getOwnedProject(ownerUserId, rawJob.projectId);
+    const projectId = rawJob.projectId;
+    const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
       ownerUserId,
-      rawJob.projectId,
+      projectId,
     );
 
     switch (rawJob.type) {
@@ -556,6 +705,225 @@ export const createJobRunnerService = (input: {
         }
 
         return input.jobService.markSucceeded(rawJob.id, { archivedIds });
+      }
+
+      case "GenerateDecisionDeck": {
+        const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
+        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+
+        if (!productSpec?.approvedAt || !userFlows.approvedAt) {
+          throw new Error(
+            "GenerateDecisionDeck requires approved Product Spec and approved user flows.",
+          );
+        }
+
+        const prompt = buildDecisionDeckPrompt({
+          projectName: project.name,
+          productSpec: productSpec.markdown,
+          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseJson<
+          Array<{
+            alternatives?: Array<{ description?: string; id?: string; label?: string }>;
+            category?: string;
+            key?: string;
+            prompt?: string;
+            recommendation?: { description?: string; id?: string; label?: string };
+            title?: string;
+          }>
+        >(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "GenerateDecisionDeck returned invalid content. Expected a JSON array of decision cards.",
+          );
+        }
+
+        const cards = validateGeneratedDecisionDeck(parsed);
+        const persistedCards = await input.blueprintService.replaceDecisionDeck({
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          cards,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: persistedCards.length });
+      }
+
+      case "GenerateProjectBlueprint": {
+        const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
+        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const kind = jobInput?.kind;
+
+        if (!kind) {
+          throw new Error("GenerateProjectBlueprint requires a blueprint kind.");
+        }
+
+        if (!productSpec?.approvedAt || !userFlows.approvedAt) {
+          throw new Error(
+            "GenerateProjectBlueprint requires approved Product Spec and approved user flows.",
+          );
+        }
+
+        const selections = await input.blueprintService.assertFullySelectedDecisionDeck(
+          ownerUserId,
+          rawJob.projectId,
+        );
+        const serializedSelections = JSON.stringify(selections, null, 2);
+        const consistencyPrompt = buildDecisionConsistencyPrompt({
+          projectName: project.name,
+          decisions: serializedSelections,
+          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
+        });
+        const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: "ValidateDecisionConsistency",
+          parameters: { kind },
+          input: { prompt: consistencyPrompt },
+          output: { content: consistency.content },
+          promptTokens: consistency.promptTokens,
+          completionTokens: consistency.completionTokens,
+          createdAt: new Date(),
+        });
+        const consistencyResult = parseDecisionValidationResult(consistency.content);
+
+        if (!consistencyResult.ok) {
+          throw new Error(
+            `ValidateDecisionConsistency found conflicts: ${(consistencyResult.issues ?? []).join("; ") || "unknown issue"}`,
+          );
+        }
+
+        const prompt = buildProjectBlueprintPrompt({
+          kind,
+          projectName: project.name,
+          productSpec: productSpec.markdown,
+          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
+          decisions: serializedSelections,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { kind },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const blueprintPayload = parseBlueprintResult(generated.content, rawJob.type);
+        const blueprint = await input.blueprintService.createBlueprintVersion({
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          kind,
+          title: blueprintPayload.title,
+          markdown: blueprintPayload.markdown,
+          source: rawJob.type,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          blueprintId: blueprint.id,
+          kind,
+        });
+      }
+
+      case "ReviewBlueprintUX":
+      case "ReviewBlueprintTech": {
+        const artifactType = rawJob.type === "ReviewBlueprintUX" ? "blueprint_ux" : "blueprint_tech";
+        const kind = artifactType === "blueprint_ux" ? "ux" : "tech";
+        const jobInputs = parseJson<{ artifactId?: string }>(JSON.stringify(rawJob.inputs));
+        const artifactId = jobInputs?.artifactId;
+
+        if (!artifactId) {
+          throw new Error(`${rawJob.type} requires an artifactId.`);
+        }
+
+        await input.artifactReviewService.markRunRunning(rawJob.id);
+        const blueprintRecord = await input.blueprintService.assertCanonicalBlueprint(
+          ownerUserId,
+          rawJob.projectId,
+          kind,
+          artifactId,
+        );
+        const prompt = buildBlueprintReviewPrompt({
+          kind,
+          projectName: project.name,
+          title: blueprintRecord.title,
+          markdown: blueprintRecord.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { artifactId },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const items = parseBlueprintReviewItems(generated.content, rawJob.type);
+        const run = await input.artifactReviewService.getLatestRun(
+          rawJob.projectId,
+          artifactType,
+          artifactId,
+        );
+
+        if (!run) {
+          throw new Error("Artifact review run not found.");
+        }
+
+        await input.artifactReviewService.replaceRunItems(
+          run.id,
+          items.map((item) => ({
+            ...item,
+            projectId,
+            artifactType,
+            artifactId,
+          })),
+        );
+        await input.artifactReviewService.markRunSucceeded(run.id);
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          reviewRunId: run.id,
+          reviewItemCount: items.length,
+        });
       }
 
       default:

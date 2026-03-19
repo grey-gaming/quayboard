@@ -1,3 +1,5 @@
+import type { ArtifactReviewService } from "./artifact-review-service.js";
+import type { BlueprintService } from "./blueprint-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
@@ -5,6 +7,8 @@ import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 export const createNextActionsService = (
+  artifactReviewService: ArtifactReviewService,
+  blueprintService: BlueprintService,
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
   onePagerService: OnePagerService,
@@ -12,7 +16,7 @@ export const createNextActionsService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [setupStatus, setupCompleted, questionnaire, onePager, productSpec, userFlows] =
+    const [setupStatus, setupCompleted, questionnaire, onePager, productSpec, userFlows, decisionCards, blueprints] =
       await Promise.all([
         projectSetupService.getSetupStatus(ownerUserId, projectId),
         projectSetupService.isSetupCompleted(ownerUserId, projectId),
@@ -20,6 +24,8 @@ export const createNextActionsService = (
         onePagerService.getCanonical(ownerUserId, projectId),
         productSpecService.getCanonical(ownerUserId, projectId),
         userFlowService.list(ownerUserId, projectId),
+        blueprintService.listDecisionCards(ownerUserId, projectId),
+        blueprintService.getCanonical(ownerUserId, projectId),
       ]);
     const actions = [];
 
@@ -68,6 +74,83 @@ export const createNextActionsService = (
         label: "Generate and approve user flows",
         href: `/projects/${projectId}/user-flows`,
       });
+    } else if (decisionCards.cards.length === 0) {
+      actions.push({
+        key: "blueprint_deck",
+        label: "Generate the decision deck",
+        href: `/projects/${projectId}/blueprint`,
+      });
+    } else if (decisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)) {
+      actions.push({
+        key: "blueprint_decisions",
+        label: "Select every decision card",
+        href: `/projects/${projectId}/blueprint`,
+      });
+    } else if (!blueprints.uxBlueprint) {
+      actions.push({
+        key: "blueprint_ux",
+        label: "Generate the UX blueprint",
+        href: `/projects/${projectId}/blueprint`,
+      });
+    } else if (!blueprints.techBlueprint) {
+      actions.push({
+        key: "blueprint_tech",
+        label: "Generate the tech blueprint",
+        href: `/projects/${projectId}/blueprint`,
+      });
+    } else {
+      const [uxState, techState] = await Promise.all([
+        artifactReviewService.getState(
+          ownerUserId,
+          projectId,
+          "blueprint_ux",
+          blueprints.uxBlueprint.id,
+        ),
+        artifactReviewService.getState(
+          ownerUserId,
+          projectId,
+          "blueprint_tech",
+          blueprints.techBlueprint.id,
+        ),
+      ]);
+
+      if (!uxState.latestReviewRun || uxState.latestReviewRun.status !== "succeeded") {
+        actions.push({
+          key: "blueprint_ux_review",
+          label: "Run UX blueprint review",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      } else if (uxState.openBlockerCount > 0) {
+        actions.push({
+          key: "blueprint_ux_blockers",
+          label: "Resolve UX blueprint blockers",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      } else if (!uxState.approval) {
+        actions.push({
+          key: "blueprint_ux_approval",
+          label: "Approve the UX blueprint",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      } else if (!techState.latestReviewRun || techState.latestReviewRun.status !== "succeeded") {
+        actions.push({
+          key: "blueprint_tech_review",
+          label: "Run tech blueprint review",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      } else if (techState.openBlockerCount > 0) {
+        actions.push({
+          key: "blueprint_tech_blockers",
+          label: "Resolve tech blueprint blockers",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      } else if (!techState.approval) {
+        actions.push({
+          key: "blueprint_tech_approval",
+          label: "Approve the tech blueprint",
+          href: `/projects/${projectId}/blueprint`,
+        });
+      }
     }
 
     return { actions };

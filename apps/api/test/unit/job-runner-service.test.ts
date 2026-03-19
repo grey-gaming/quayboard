@@ -48,6 +48,8 @@ describe("job runner service", () => {
       completedAt: null,
     }));
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -109,6 +111,8 @@ describe("job runner service", () => {
     const createVersion = vi.fn(async () => ({ id: "one-pager-id" }));
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -179,6 +183,120 @@ describe("job runner service", () => {
     );
   });
 
+  it("stores a fresh decision deck from approved planning artifacts", async () => {
+    const db = createDbStub();
+    const replaceDecisionDeck = vi.fn(async () => [{ id: "card-1" }]);
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {
+        replaceDecisionDeck,
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-decision-deck",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateDecisionDeck",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate: vi.fn(async () => ({
+          content: JSON.stringify([
+            {
+              key: "architecture-style",
+              category: "tech",
+              title: "Architecture style",
+              prompt: "Choose the primary service boundary model.",
+              recommendation: {
+                id: "modular-monolith",
+                label: "Modular monolith",
+                description: "Keep early delivery cohesive with clear module boundaries.",
+              },
+              alternatives: [
+                {
+                  id: "service-oriented",
+                  label: "Service oriented",
+                  description: "Split the system into multiple collaborating services.",
+                },
+                {
+                  id: "event-first",
+                  label: "Event first",
+                  description: "Lead with an event-driven architecture from the start.",
+                },
+              ],
+            },
+          ]),
+          promptTokens: 10,
+          completionTokens: 12,
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-1",
+              title: "Create project",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-decision-deck");
+
+    expect(replaceDecisionDeck).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        cards: [
+          expect.objectContaining({
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+          }),
+        ],
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith("job-decision-deck", {
+      createdCount: 1,
+    });
+  });
+
   it("stores a Product Spec version from the approved overview", async () => {
     const db = createDbStub();
     const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
@@ -202,6 +320,8 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -294,6 +414,8 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -387,6 +509,8 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -488,6 +612,8 @@ describe("job runner service", () => {
     const archive = vi.fn(async () => undefined);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -533,6 +659,8 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -611,6 +739,8 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
+      artifactReviewService: {} as never,
+      blueprintService: {} as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({

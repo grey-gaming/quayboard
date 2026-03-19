@@ -29,6 +29,13 @@
       "when": 1760000003000,
       "tag": "0003_product-spec-phase",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1760000004000,
+      "tag": "0004_blueprint-builder",
+      "breakpoints": true
     }
   ]
 }

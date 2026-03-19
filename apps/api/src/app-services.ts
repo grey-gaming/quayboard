@@ -3,7 +3,15 @@ import { eq } from "drizzle-orm";
 import { createPostgresDatabase, type AppDatabase } from "./db/client.js";
 import { readAppConfig } from "./config.js";
 import { projectsTable } from "./db/schema.js";
+import {
+  createArtifactReviewService,
+  type ArtifactReviewService,
+} from "./services/artifact-review-service.js";
 import { createAuthService, type AuthService } from "./services/auth-service.js";
+import {
+  createBlueprintService,
+  type BlueprintService,
+} from "./services/blueprint-service.js";
 import { createDockerService, type DockerService } from "./services/docker-service.js";
 import { createGithubService, type GithubService } from "./services/github-service.js";
 import {
@@ -74,7 +82,9 @@ import {
 } from "./services/user-flow-service.js";
 
 export type AppServices = {
+  artifactReviewService: ArtifactReviewService;
   authService: AuthService;
+  blueprintService: BlueprintService;
   db: AppDatabase;
   dockerService: DockerService;
   githubService: GithubService;
@@ -132,6 +142,8 @@ export const createAppServices = async (
   const onePagerService = createOnePagerService(db);
   const productSpecService = createProductSpecService(db);
   const userFlowService = createUserFlowService(db);
+  const blueprintService = createBlueprintService(db);
+  const artifactReviewService = createArtifactReviewService(db, blueprintService);
   const projectSetupService = createProjectSetupService(
     db,
     projectService,
@@ -160,6 +172,8 @@ export const createAppServices = async (
     secretsKeyPresent: Boolean(secretsEncryptionKey),
   });
   const phaseGateService = createPhaseGateService(
+    artifactReviewService,
+    blueprintService,
     onePagerService,
     productSpecService,
     projectSetupService,
@@ -167,6 +181,8 @@ export const createAppServices = async (
     userFlowService,
   );
   const nextActionsService = createNextActionsService(
+    artifactReviewService,
+    blueprintService,
     projectSetupService,
     questionnaireService,
     onePagerService,
@@ -175,6 +191,8 @@ export const createAppServices = async (
   );
   const jobRunnerService = createJobRunnerService({
     db,
+    artifactReviewService,
+    blueprintService,
     jobService,
     llmProviderService,
     onePagerService,
@@ -216,6 +234,7 @@ export const createAppServices = async (
     getNextJob: () => jobService.claimNextQueuedJob(),
     onFailure: async (jobId, error) => {
       const failedJob = await jobService.markFailed(jobId, error);
+      await artifactReviewService.markRunFailed(jobId);
       if (!failedJob.projectId) {
         return;
       }
@@ -237,7 +256,9 @@ export const createAppServices = async (
 
   return {
     services: {
+      artifactReviewService,
       authService,
+      blueprintService,
       db,
       dockerService,
       githubService,

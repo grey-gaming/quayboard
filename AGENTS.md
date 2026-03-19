@@ -20,7 +20,7 @@ If these sources conflict, the more specific and newer document wins. If the con
 
 ## Operating Mode
 
-- The repo is in pre-development and currently targeting M0 only.
+- The repo is in active milestone-based development.
 - Work one milestone at a time.
 - Do not scaffold future milestones unless the user explicitly requests it.
 - Keep changes small, reviewable, and directly tied to milestone deliverables or acceptance criteria.

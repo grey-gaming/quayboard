@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
+  ArtifactType,
   CreateProjectRequest,
   ProjectSetupState,
   ProjectSetupStatus,
+  QueueBlueprintGenerationRequest,
+  SaveBlueprintRequest,
+  UpdateDecisionCardsRequest,
   UpsertUseCaseRequest,
 } from "@quayboard/shared";
 
@@ -121,6 +125,40 @@ export const useUserFlowsQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "user-flows"],
     queryFn: () => api.getUserFlows(projectId),
+  });
+
+export const useDecisionCardsQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "decision-cards"],
+    queryFn: () => api.getDecisionCards(projectId),
+  });
+
+export const useBlueprintsQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "blueprints"],
+    queryFn: () => api.getBlueprints(projectId),
+  });
+
+export const useArtifactStateQuery = (
+  projectId: string,
+  artifactType: ArtifactType,
+  artifactId?: string | null,
+) =>
+  useQuery({
+    enabled: Boolean(artifactId),
+    queryKey: ["project", projectId, "artifact-state", artifactType, artifactId],
+    queryFn: () => api.getArtifactState(projectId, artifactType, artifactId!),
+  });
+
+export const useArtifactReviewItemsQuery = (
+  projectId: string,
+  artifactType: ArtifactType,
+  artifactId?: string | null,
+) =>
+  useQuery({
+    enabled: Boolean(artifactId),
+    queryKey: ["project", projectId, "artifact-review-items", artifactType, artifactId],
+    queryFn: () => api.getArtifactReviewItems(projectId, artifactType, artifactId!),
   });
 
 export const usePhaseGatesQuery = (projectId: string) =>
@@ -474,6 +512,100 @@ export const useApproveUserFlowsMutation = (projectId: string) => {
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
       ]);
+    },
+  });
+};
+
+const invalidateBlueprintQueries = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: string,
+) =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "decision-cards"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "blueprints"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-state"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-review-items"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+  ]);
+
+export const useGenerateDecisionDeckMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.generateDecisionDeck(projectId),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useUpdateDecisionCardsMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: UpdateDecisionCardsRequest) => api.updateDecisionCards(projectId, payload),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useGenerateBlueprintMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: QueueBlueprintGenerationRequest) => api.generateBlueprint(projectId, payload),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useSaveBlueprintMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SaveBlueprintRequest) => api.saveBlueprint(projectId, payload),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useRunArtifactReviewMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ artifactId, artifactType }: { artifactId: string; artifactType: ArtifactType }) =>
+      api.runArtifactReview(projectId, artifactType, artifactId),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useUpdateArtifactReviewItemMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ reviewItemId, status }: { reviewItemId: string; status: "DONE" | "ACCEPTED" | "IGNORED" }) =>
+      api.updateReviewItem(reviewItemId, status),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useApproveArtifactMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ artifactId, artifactType }: { artifactId: string; artifactType: ArtifactType }) =>
+      api.approveArtifact(projectId, artifactType, artifactId),
+    onSuccess: () => {
+      void invalidateBlueprintQueries(queryClient, projectId);
     },
   });
 };

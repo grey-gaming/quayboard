@@ -11,10 +11,12 @@ import {
 import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
+import { UserFlowsApprovalGate } from "./components/layout/UserFlowsApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
 import { DocsHomePage } from "./pages/DocsHomePage.js";
+import { BlueprintBuilderPage } from "./pages/BlueprintBuilderPage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
 import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
@@ -131,6 +133,15 @@ export const appRouter = createBrowserRouter([
               {
                 path: "/projects/:id/user-flows",
                 element: <UserFlowsPage />,
+              },
+              {
+                element: <UserFlowsApprovalGate />,
+                children: [
+                  {
+                    path: "/projects/:id/blueprint",
+                    element: <BlueprintBuilderPage />,
+                  },
+                ],
               },
             ],
           },

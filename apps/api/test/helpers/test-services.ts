@@ -2,6 +2,34 @@ import type { AppServices } from "../../src/app-services.js";
 import { createSseHub } from "../../src/services/sse.js";
 
 export const createStubServices = (): AppServices => ({
+  artifactReviewService: {
+    approve: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getApproval: async () => null,
+    getLatestRun: async () => undefined,
+    getState: async () => ({
+      artifactId: "00000000-0000-4000-8000-000000000000",
+      artifactType: "blueprint_ux",
+      latestReviewRun: null,
+      openBlockerCount: 0,
+      openSuggestionCount: 0,
+      openWarningCount: 0,
+      approval: null,
+      reviewItems: [],
+    }),
+    listItems: async () => ({ items: [] }),
+    markRunFailed: async () => null,
+    markRunRunning: async () => null,
+    markRunSucceeded: async () => null,
+    replaceRunItems: async () => undefined,
+    updateReviewItem: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
   authService: {
     authenticate: async () => null,
     createSession: async () => {
@@ -17,6 +45,27 @@ export const createStubServices = (): AppServices => ({
     register: async () => {
       throw new Error("Not implemented in test stub.");
     },
+  },
+  blueprintService: {
+    assertCanonicalBlueprint: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertFullySelectedDecisionDeck: async () => [],
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createBlueprintVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getCanonical: async () => ({
+      uxBlueprint: null,
+      techBlueprint: null,
+    }),
+    getCanonicalRecord: async () => undefined,
+    getDecisionSelections: async () => [],
+    listDecisionCards: async () => ({ cards: [] }),
+    replaceDecisionDeck: async () => [],
+    updateDecisionCards: async () => ({ cards: [] }),
   },
   db: {} as AppServices["db"],
   dockerService: {

@@ -1,5 +1,11 @@
 import type {
+  ArtifactApproval,
+  ArtifactReviewItem,
+  ArtifactStateResponse,
+  ArtifactType,
+  CanonicalBlueprintsResponse,
   CreateProjectRequest,
+  DecisionCardListResponse,
   Job,
   JobListResponse,
   LoadLlmModelsResponse,
@@ -12,8 +18,11 @@ import type {
   ProjectSetupState,
   ProjectSetupStatus,
   QuestionnaireAnswers,
+  QueueBlueprintGenerationRequest,
+  SaveBlueprintRequest,
   SecretMetadata,
   SystemReadiness,
+  UpdateDecisionCardsRequest,
   UpdateQuestionnaireAnswersRequest,
   UpsertUseCaseRequest,
   UseCase,
@@ -150,6 +159,14 @@ export const api = {
       body: JSON.stringify({ acceptedWarnings }),
     });
   },
+  approveArtifact(projectId: string, artifactType: ArtifactType, artifactId: string) {
+    return apiRequest<ArtifactApproval>(
+      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/approve`,
+      {
+        method: "POST",
+      },
+    );
+  },
   createProject(payload: CreateProjectRequest) {
     return apiRequest<Project>("/api/projects", {
       method: "POST",
@@ -190,10 +207,39 @@ export const api = {
       body: JSON.stringify({ mode }),
     });
   },
+  generateDecisionDeck(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/blueprints/generate-deck`, {
+      method: "POST",
+    });
+  },
+  generateBlueprint(projectId: string, payload: QueueBlueprintGenerationRequest) {
+    return apiRequest<Job>(`/api/projects/${projectId}/blueprints/generate`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   generateUserFlows(projectId: string) {
     return apiRequest<Job>(`/api/projects/${projectId}/user-flows/generate`, {
       method: "POST",
     });
+  },
+  getArtifactReviewItems(projectId: string, artifactType: ArtifactType, artifactId: string) {
+    return apiRequest<{ items: ArtifactReviewItem[] }>(
+      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/review-items`,
+    );
+  },
+  getArtifactState(projectId: string, artifactType: ArtifactType, artifactId: string) {
+    return apiRequest<ArtifactStateResponse>(
+      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/state`,
+    );
+  },
+  getBlueprints(projectId: string) {
+    return apiRequest<CanonicalBlueprintsResponse>(
+      `/api/projects/${projectId}/blueprints/canonical`,
+    );
+  },
+  getDecisionCards(projectId: string) {
+    return apiRequest<DecisionCardListResponse>(`/api/projects/${projectId}/decision-cards`);
   },
   getJobs(projectId?: string) {
     return apiRequest<JobListResponse>(
@@ -295,6 +341,23 @@ export const api = {
       method: "POST",
     });
   },
+  runArtifactReview(projectId: string, artifactType: ArtifactType, artifactId: string) {
+    return apiRequest<Job>(
+      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/review/run`,
+      {
+        method: "POST",
+      },
+    );
+  },
+  saveBlueprint(projectId: string, payload: SaveBlueprintRequest) {
+    return apiRequest<CanonicalBlueprintsResponse["uxBlueprint"]>(
+      `/api/projects/${projectId}/blueprints/save`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
   updateProject(
     projectId: string,
     payload: {
@@ -331,6 +394,18 @@ export const api = {
     return apiRequest<UseCase>(`/api/user-flows/${userFlowId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    });
+  },
+  updateDecisionCards(projectId: string, payload: UpdateDecisionCardsRequest) {
+    return apiRequest<DecisionCardListResponse>(`/api/projects/${projectId}/decision-cards`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateReviewItem(reviewItemId: string, status: "DONE" | "ACCEPTED" | "IGNORED") {
+    return apiRequest<ArtifactReviewItem>(`/api/artifact-review-items/${reviewItemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
   validateGithubPat(projectId: string, payload: { pat: string }) {

@@ -4,14 +4,14 @@ Quayboard is a web control plane for managing software projects and orchestratin
 
 ## Status
 
-The repository now contains the M2 scratch-path planning workflow:
+The repository now contains the M3 planning workflow:
 
-- Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, Product Spec APIs, user-flow APIs, and project/job status endpoints
-- Drizzle/Postgres schema and migrations covering the M1 foundation plus M2 planning tables
-- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, Product Spec, user flows, and a public `/docs` guide sourced from `docs/user`
+- Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, Product Spec APIs, user-flow APIs, blueprint APIs, artifact review routes, and project/job status endpoints
+- Drizzle/Postgres schema and migrations covering the M1 foundation plus M2/M3 planning tables
+- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, Product Spec, user flows, Blueprint Builder, and a public `/docs` guide sourced from `docs/user`
 - Shared schemas for planning-phase resources across API and web
 
-The active implementation target is now M2: Project Creation, Setup, Overview Document, Product Spec, and User Flows.
+The active implementation target is now M3: Blueprint Builder.
 
 ## Prerequisites
 
