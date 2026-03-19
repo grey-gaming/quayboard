@@ -1599,6 +1599,47 @@ describe("workflow pages", () => {
 
     vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${gatedProjectId}`]: {
+        id: gatedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY_PARTIAL",
+        ownerUserId: gatedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${gatedProjectId}/setup-status`]: {
+        repoConnected: true,
+        llmVerified: true,
+        sandboxVerified: true,
+        checks: [],
+      },
+      [`/api/projects/${gatedProjectId}/questionnaire-answers`]: {
+        projectId: gatedProjectId,
+        answers: {},
+        updatedAt: "2026-03-16T09:00:00.000Z",
+        completedAt: "2026-03-16T09:05:00.000Z",
+      },
+      [`/api/projects/${gatedProjectId}/one-pager`]: {
+        onePager: {
+          id: "one-pager-id",
+          projectId: gatedProjectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview",
+          source: "GenerateProjectOverview",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:00:00.000Z",
+        },
+      },
+      [`/api/projects/${gatedProjectId}/one-pager/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${gatedProjectId}/jobs`]: {
+        jobs: [],
+      },
       [`/api/projects/${gatedProjectId}/phase-gates`]: {
         phases: [
           {
@@ -1615,7 +1656,10 @@ describe("workflow pages", () => {
 
     const router = createMemoryRouter(
       [
-        { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
+        { path: "/projects/:id", element: <div /> },
+        { path: "/projects/:id/setup", element: <div /> },
+        { path: "/projects/:id/questions", element: <div /> },
+        { path: "/projects/:id/one-pager", element: <OnePagerOverviewPage /> },
         {
           element: <OverviewApprovalGate />,
           children: [{ path: "/projects/:id/product-spec", element: <ProductSpecPage /> }],
@@ -1632,7 +1676,11 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByText("Overview page")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(
+      screen.getByText(/Approve the overview on this page to continue to the next stage\./),
+    ).toBeTruthy();
+    expect(screen.getByText("/projects/40404040-4040-4040-8040-404040404040/product-spec")).toBeTruthy();
   });
 
   it("redirects User Flows access back to Product Spec until the Product Spec is approved", async () => {
@@ -1640,6 +1688,16 @@ describe("workflow pages", () => {
 
     vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${gatedProjectId}`]: {
+        id: gatedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: gatedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
       [`/api/projects/${gatedProjectId}/one-pager`]: {
         onePager: {
           id: "one-pager-id",
@@ -1666,12 +1724,21 @@ describe("workflow pages", () => {
           createdAt: "2026-03-16T09:30:00.000Z",
         },
       },
+      [`/api/projects/${gatedProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${gatedProjectId}/jobs`]: {
+        jobs: [],
+      },
     });
 
     const router = createMemoryRouter(
       [
+        { path: "/projects/:id", element: <div /> },
+        { path: "/projects/:id/setup", element: <div /> },
+        { path: "/projects/:id/questions", element: <div /> },
         { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
-        { path: "/projects/:id/product-spec", element: <div>Product Spec page</div> },
+        { path: "/projects/:id/product-spec", element: <ProductSpecPage /> },
         {
           element: <ProductSpecApprovalGate />,
           children: [{ path: "/projects/:id/user-flows", element: <div>User Flows page</div> }],
@@ -1688,7 +1755,11 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByText("Product Spec page")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(
+      screen.getByText(/Approve the Product Spec on this page to continue to User Flows\./),
+    ).toBeTruthy();
+    expect(screen.getByText("/projects/50505050-5050-4050-8050-505050505050/user-flows")).toBeTruthy();
   });
 
   it("redirects incomplete overview access back to setup until setup is explicitly completed", async () => {

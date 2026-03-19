@@ -68,6 +68,13 @@ export const OnePagerOverviewPage = () => {
     () => jobsQuery.data?.jobs.find((job) => overviewJobTypes.has(job.type)) ?? null,
     [jobsQuery.data?.jobs],
   );
+  const redirectedFromLockedSection =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "lockedFromPath" in location.state &&
+    typeof location.state.lockedFromPath === "string"
+      ? location.state.lockedFromPath
+      : null;
   const generationMode = onePagerQuery.data?.onePager ? "regenerate" : "generate";
   const activeError =
     questionnaireQuery.error ||
@@ -128,6 +135,12 @@ export const OnePagerOverviewPage = () => {
       />
 
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+      {redirectedFromLockedSection ? (
+        <Alert tone="info">
+          Approve the overview on this page to continue to the next stage. You were redirected from{" "}
+          <span className="font-mono">{redirectedFromLockedSection}</span>.
+        </Alert>
+      ) : null}
       {activeOverviewJob ? (
         <Alert tone="info">
           Overview generation is {activeOverviewJob.status}. The page will refresh automatically

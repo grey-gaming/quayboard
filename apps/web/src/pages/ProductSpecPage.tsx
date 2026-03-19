@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
@@ -31,6 +31,7 @@ const productSpecJobTypes = new Set([
 
 export const ProductSpecPage = () => {
   const { id = "" } = useParams();
+  const location = useLocation();
   const projectQuery = useProjectQuery(id);
   const productSpecQuery = useProductSpecQuery(id);
   const versionsQuery = useProductSpecVersionsQuery(id);
@@ -55,6 +56,13 @@ export const ProductSpecPage = () => {
     () => jobsQuery.data?.jobs.find((job) => productSpecJobTypes.has(job.type)) ?? null,
     [jobsQuery.data?.jobs],
   );
+  const redirectedFromLockedSection =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "lockedFromPath" in location.state &&
+    typeof location.state.lockedFromPath === "string"
+      ? location.state.lockedFromPath
+      : null;
   const generationMode = productSpecQuery.data?.productSpec ? "regenerate" : "generate";
   const activeError =
     productSpecQuery.error ||
@@ -87,6 +95,12 @@ export const ProductSpecPage = () => {
       />
 
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+      {redirectedFromLockedSection ? (
+        <Alert tone="info">
+          Approve the Product Spec on this page to continue to User Flows. You were redirected
+          from <span className="font-mono"> {redirectedFromLockedSection}</span>.
+        </Alert>
+      ) : null}
       {activeProductSpecJob ? (
         <Alert tone="info">
           Product Spec generation is {activeProductSpecJob.status}. This can take up to 10 minutes
