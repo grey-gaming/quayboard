@@ -1,3 +1,5 @@
+import { Agent, fetch } from "undici";
+
 type ProviderHealth = {
   models: string[];
   ok: boolean;
@@ -14,7 +16,11 @@ export type ProviderDefinition = {
 export type GeneratedContent = {
   content: string;
   completionTokens: number | null;
+  doneReason?: string | null;
+  evalCount?: number | null;
   promptTokens: number | null;
+  promptEvalCount?: number | null;
+  totalDuration?: number | null;
 };
 
 export type LlmProviderAdapter = {
@@ -23,6 +29,7 @@ export type LlmProviderAdapter = {
     apiKey: string | null;
     model: string;
     prompt: string;
+    responseFormat?: "json";
   }): Promise<GeneratedContent>;
   healthCheck(input: {
     baseUrl: string | null;
@@ -30,7 +37,7 @@ export type LlmProviderAdapter = {
   }): Promise<ProviderHealth>;
 };
 
-const parseJson = async (response: Response) => {
+const parseJson = async (response: { text(): Promise<string> }) => {
   const text = await response.text();
 
   if (!text) {
@@ -40,9 +47,36 @@ const parseJson = async (response: Response) => {
   return JSON.parse(text) as Record<string, unknown>;
 };
 
-const createOllamaAdapter = (): LlmProviderAdapter => ({
+const createRequestSignal = (timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  return {
+    signal: controller.signal,
+    clear() {
+      clearTimeout(timeoutHandle);
+    },
+  };
+};
+
+const createOllamaAdapter = (input: {
+  dispatcher: Agent;
+  maxOutputTokens: number;
+  requestTimeoutMs: number;
+}): LlmProviderAdapter => ({
   async healthCheck({ baseUrl }) {
-    const response = await fetch(new URL("/api/tags", baseUrl ?? "").toString());
+    const timeout = createRequestSignal(input.requestTimeoutMs);
+    let response;
+
+    try {
+      response = await fetch(new URL("/api/tags", baseUrl ?? "").toString(), {
+        dispatcher: input.dispatcher,
+        signal: timeout.signal,
+      });
+    } finally {
+      timeout.clear();
+    }
+
     const payload = await parseJson(response);
     const models = Array.isArray(payload.models)
       ? payload.models
@@ -64,22 +98,51 @@ const createOllamaAdapter = (): LlmProviderAdapter => ({
     };
   },
 
-  async generate({ baseUrl, model, prompt }) {
-    const response = await fetch(new URL("/api/generate", baseUrl ?? "").toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-      }),
-    });
+  async generate({ baseUrl, model, prompt, responseFormat }) {
+    let response;
+    const timeout = createRequestSignal(input.requestTimeoutMs);
+
+    try {
+      response = await fetch(new URL("/api/generate", baseUrl ?? "").toString(), {
+        method: "POST",
+        dispatcher: input.dispatcher,
+        signal: timeout.signal,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          options: {
+            num_predict: input.maxOutputTokens,
+          },
+          stream: false,
+        }),
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? `timed out after ${input.requestTimeoutMs}ms`
+          : error instanceof Error
+            ? error.message
+            : "unknown fetch failure";
+      throw new Error(`Ollama generation request failed: ${message}`);
+    } finally {
+      timeout.clear();
+    }
+
     const payload = await parseJson(response);
 
     if (!response.ok) {
-      throw new Error("Ollama generation failed.");
+      const payloadError =
+        typeof payload.error === "string"
+          ? payload.error
+          : typeof payload.message === "string"
+            ? payload.message
+            : null;
+      throw new Error(
+        `Ollama generation failed with status ${response.status} ${response.statusText}${payloadError ? `: ${payloadError}` : ""}.`,
+      );
     }
 
     return {
@@ -89,17 +152,37 @@ const createOllamaAdapter = (): LlmProviderAdapter => ({
           : "Generation returned no content.",
       promptTokens: null,
       completionTokens: null,
+      doneReason:
+        typeof payload.done_reason === "string" ? payload.done_reason : null,
+      promptEvalCount:
+        typeof payload.prompt_eval_count === "number" ? payload.prompt_eval_count : null,
+      evalCount: typeof payload.eval_count === "number" ? payload.eval_count : null,
+      totalDuration:
+        typeof payload.total_duration === "number" ? payload.total_duration : null,
     };
   },
 });
 
-const createOpenAiAdapter = (): LlmProviderAdapter => ({
+const createOpenAiAdapter = (input: {
+  dispatcher: Agent;
+  requestTimeoutMs: number;
+}): LlmProviderAdapter => ({
   async healthCheck({ apiKey, baseUrl }) {
-    const response = await fetch(new URL("/models", baseUrl ?? "").toString(), {
-      headers: {
-        Authorization: apiKey ? `Bearer ${apiKey}` : "",
-      },
-    });
+    const timeout = createRequestSignal(input.requestTimeoutMs);
+    let response;
+
+    try {
+      response = await fetch(new URL("/models", baseUrl ?? "").toString(), {
+        dispatcher: input.dispatcher,
+        signal: timeout.signal,
+        headers: {
+          Authorization: apiKey ? `Bearer ${apiKey}` : "",
+        },
+      });
+    } finally {
+      timeout.clear();
+    }
+
     const payload = await parseJson(response);
     const models = Array.isArray(payload.data)
       ? payload.data
@@ -124,24 +207,44 @@ const createOpenAiAdapter = (): LlmProviderAdapter => ({
   },
 
   async generate({ apiKey, baseUrl, model, prompt }) {
-    const response = await fetch(
-      new URL("/chat/completions", baseUrl ?? "").toString(),
-      {
-        method: "POST",
-        headers: {
-          Authorization: apiKey ? `Bearer ${apiKey}` : "",
-          "Content-Type": "application/json",
+    let response;
+    const timeout = createRequestSignal(input.requestTimeoutMs);
+
+    try {
+      response = await fetch(
+        new URL("/chat/completions", baseUrl ?? "").toString(),
+        {
+          method: "POST",
+          dispatcher: input.dispatcher,
+          signal: timeout.signal,
+          headers: {
+            Authorization: apiKey ? `Bearer ${apiKey}` : "",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+          }),
         },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      },
-    );
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? `timed out after ${input.requestTimeoutMs}ms`
+          : error instanceof Error
+            ? error.message
+            : "unknown fetch failure";
+      throw new Error(`OpenAI-compatible generation request failed: ${message}`);
+    } finally {
+      timeout.clear();
+    }
+
     const payload = await parseJson(response);
 
     if (!response.ok) {
-      throw new Error("OpenAI-compatible generation failed.");
+      throw new Error(
+        `OpenAI-compatible generation failed with status ${response.status} ${response.statusText}.`,
+      );
     }
 
     const choices = Array.isArray(payload.choices) ? payload.choices : [];
@@ -173,14 +276,34 @@ const createOpenAiAdapter = (): LlmProviderAdapter => ({
         typeof usage.completion_tokens === "number"
           ? usage.completion_tokens
           : null,
+      doneReason: null,
+      promptEvalCount: null,
+      evalCount: null,
+      totalDuration: null,
     };
   },
 });
 
-export const createLlmProviderService = () => {
+export const createLlmProviderService = (input?: {
+  maxOutputTokens?: number;
+  requestTimeoutMs?: number;
+}) => {
+  const requestTimeoutMs = input?.requestTimeoutMs ?? 900000;
+  const maxOutputTokens = input?.maxOutputTokens ?? 50000;
+  const dispatcher = new Agent({
+    bodyTimeout: requestTimeoutMs,
+    headersTimeout: requestTimeoutMs,
+  });
   const adapters: Record<ProviderDefinition["provider"], LlmProviderAdapter> = {
-    ollama: createOllamaAdapter(),
-    openai: createOpenAiAdapter(),
+    ollama: createOllamaAdapter({
+      dispatcher,
+      maxOutputTokens,
+      requestTimeoutMs,
+    }),
+    openai: createOpenAiAdapter({
+      dispatcher,
+      requestTimeoutMs,
+    }),
   };
 
   return {
@@ -190,12 +313,17 @@ export const createLlmProviderService = () => {
         apiKey: definition.apiKey,
       });
     },
-    async generate(definition: ProviderDefinition, prompt: string) {
+    async generate(
+      definition: ProviderDefinition,
+      prompt: string,
+      options?: { responseFormat?: "json" },
+    ) {
       return adapters[definition.provider].generate({
         apiKey: definition.apiKey,
         baseUrl: definition.baseUrl,
         model: definition.model,
         prompt,
+        responseFormat: options?.responseFormat,
       });
     },
   };

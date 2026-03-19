@@ -112,7 +112,10 @@ export const createAppServices = (
   const sseHub = createSseHub();
   const settingsService = createSettingsService(db);
   const jobService = createJobService(db);
-  const llmProviderService = createLlmProviderService();
+  const llmProviderService = createLlmProviderService({
+    maxOutputTokens: appConfig.llmMaxOutputTokens,
+    requestTimeoutMs: appConfig.llmRequestTimeoutMs,
+  });
   const githubService = createGithubService();
   const dockerService = createDockerService(appConfig.dockerHost);
   const questionnaireService = createQuestionnaireService(db);

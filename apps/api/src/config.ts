@@ -12,6 +12,8 @@ const runtimeEnvSchema = z.object({
   SECRETS_ENCRYPTION_KEY: z.string().optional(),
   ARTIFACT_STORAGE_PATH: z.string().default("/tmp/quayboard-artifacts"),
   DOCKER_HOST: z.string().optional(),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(50000),
+  LLM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(900000),
   OLLAMA_HOST: z.string().url().default("http://127.0.0.1:11434"),
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
 });
@@ -76,6 +78,8 @@ export const readAppConfig = () => {
   return {
     artifactStoragePath: env.ARTIFACT_STORAGE_PATH,
     dockerHost: env.DOCKER_HOST ?? null,
+    llmMaxOutputTokens: env.LLM_MAX_OUTPUT_TOKENS,
+    llmRequestTimeoutMs: env.LLM_REQUEST_TIMEOUT_MS,
     ollamaHost: env.OLLAMA_HOST,
     openAiBaseUrl: env.OPENAI_BASE_URL,
   };

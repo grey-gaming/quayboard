@@ -402,7 +402,6 @@ export const buildProductSpecReviewPrompt = (input: {
   draftMarkdown: string;
   draftTitle: string;
   projectName: string;
-  sourceMaterial: string;
 }) =>
   [
     `Review and tidy the completed Product Spec for "${input.projectName}".`,
@@ -413,15 +412,12 @@ export const buildProductSpecReviewPrompt = (input: {
     "",
     "Review goals:",
     "- inspect the draft for specification gaps, inconsistencies, duplication, and weak assumptions",
-    "- resolve missing details when they can be inferred reasonably from the approved overview and the existing draft",
+    "- resolve missing details when they can be inferred reasonably from the existing draft",
     "- preserve the existing scope, structure, feature set, and intent",
     "- improve clarity, completeness, consistency, and organization without changing the document materially",
     '- if a final "Specification Gaps" section is empty after review, remove it',
     '- if unresolved items remain, convert that content into a section named "Assumptions and Proposed Defaults" instead of "Specification Gaps"',
     "- explicitly label any remaining inference or assumption-driven content",
-    "",
-    "Approved overview source material:",
-    input.sourceMaterial,
     "",
     "First-pass Product Spec title:",
     input.draftTitle,

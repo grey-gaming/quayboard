@@ -22,12 +22,83 @@ import {
 } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
 
+const unwrapJsonFence = (value: string) => {
+  const trimmed = value.trim();
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+
+  return fencedMatch?.[1]?.trim() || trimmed;
+};
+
 const parseJson = <T>(value: string): T | null => {
   try {
-    return JSON.parse(value) as T;
+    return JSON.parse(unwrapJsonFence(value)) as T;
   } catch {
     return null;
   }
+};
+
+const estimatePromptTokens = (prompt: string) => Math.ceil(prompt.length / 4);
+
+const logProductSpecGeneration = (
+  phase: "start" | "success" | "failure",
+  input: {
+    durationMs?: number;
+    evalCount?: number | null;
+    error?: unknown;
+    jobId: string;
+    model: string;
+    outputChars?: number;
+    phaseName: string;
+    projectId: string;
+    prompt: string;
+    promptEvalCount?: number | null;
+    provider: string;
+    totalDuration?: number | null;
+  },
+) => {
+  const base = {
+    event: "product_spec_generation",
+    phase: input.phaseName,
+    status: phase,
+    jobId: input.jobId,
+    projectId: input.projectId,
+    provider: input.provider,
+    model: input.model,
+    promptChars: input.prompt.length,
+    approxPromptTokens: estimatePromptTokens(input.prompt),
+  };
+
+  if (phase === "start") {
+    console.info(base);
+    return;
+  }
+
+  if (phase === "success") {
+    console.info({
+      ...base,
+      durationMs: input.durationMs,
+      outputChars: input.outputChars ?? 0,
+      promptEvalCount: input.promptEvalCount ?? null,
+      evalCount: input.evalCount ?? null,
+      totalDuration: input.totalDuration ?? null,
+    });
+    return;
+  }
+
+  const error =
+    input.error instanceof Error
+      ? {
+          name: input.error.name,
+          message: input.error.message,
+          stack: input.error.stack,
+        }
+      : { message: String(input.error) };
+
+  console.error({
+    ...base,
+    durationMs: input.durationMs,
+    error,
+  });
 };
 
 const parseProductSpecResult = (value: string, templateId: string) => {
@@ -220,7 +291,46 @@ export const createJobRunnerService = (input: {
           projectName: project.name,
           sourceMaterial: onePager.markdown,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt);
+        const firstPassStartedAt = Date.now();
+        logProductSpecGeneration("start", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: rawJob.type,
+          prompt,
+        });
+        let generated;
+        try {
+          generated = await input.llmProviderService.generate(provider, prompt, {
+            responseFormat: "json",
+          });
+        } catch (error) {
+          logProductSpecGeneration("failure", {
+            jobId: rawJob.id,
+            projectId: rawJob.projectId,
+            provider: provider.provider,
+            model: provider.model,
+            phaseName: rawJob.type,
+            prompt,
+            durationMs: Date.now() - firstPassStartedAt,
+            error,
+          });
+          throw error;
+        }
+        logProductSpecGeneration("success", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: rawJob.type,
+          prompt,
+          durationMs: Date.now() - firstPassStartedAt,
+          outputChars: generated.content.length,
+          promptEvalCount: generated.promptEvalCount,
+          evalCount: generated.evalCount,
+          totalDuration: generated.totalDuration,
+        });
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -230,7 +340,13 @@ export const createJobRunnerService = (input: {
           templateId: rawJob.type,
           parameters: {},
           input: { prompt },
-          output: { content: generated.content },
+          output: {
+            content: generated.content,
+            doneReason: generated.doneReason ?? null,
+            evalCount: generated.evalCount ?? null,
+            promptEvalCount: generated.promptEvalCount ?? null,
+            totalDuration: generated.totalDuration ?? null,
+          },
           promptTokens: generated.promptTokens,
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
@@ -238,12 +354,50 @@ export const createJobRunnerService = (input: {
         const firstPass = parseProductSpecResult(generated.content, rawJob.type);
         const reviewPrompt = buildProductSpecReviewPrompt({
           projectName: project.name,
-          sourceMaterial: onePager.markdown,
           draftTitle: firstPass.title,
           draftMarkdown: firstPass.markdown,
         });
-        const reviewed = await input.llmProviderService.generate(provider, reviewPrompt);
         const reviewTemplateId = `${rawJob.type}Review`;
+        const reviewStartedAt = Date.now();
+        logProductSpecGeneration("start", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: reviewTemplateId,
+          prompt: reviewPrompt,
+        });
+        let reviewed;
+        try {
+          reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+            responseFormat: "json",
+          });
+        } catch (error) {
+          logProductSpecGeneration("failure", {
+            jobId: rawJob.id,
+            projectId: rawJob.projectId,
+            provider: provider.provider,
+            model: provider.model,
+            phaseName: reviewTemplateId,
+            prompt: reviewPrompt,
+            durationMs: Date.now() - reviewStartedAt,
+            error,
+          });
+          throw error;
+        }
+        logProductSpecGeneration("success", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: reviewTemplateId,
+          prompt: reviewPrompt,
+          durationMs: Date.now() - reviewStartedAt,
+          outputChars: reviewed.content.length,
+          promptEvalCount: reviewed.promptEvalCount,
+          evalCount: reviewed.evalCount,
+          totalDuration: reviewed.totalDuration,
+        });
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -253,19 +407,25 @@ export const createJobRunnerService = (input: {
           templateId: reviewTemplateId,
           parameters: {},
           input: { prompt: reviewPrompt },
-          output: { content: reviewed.content },
+          output: {
+            content: reviewed.content,
+            doneReason: reviewed.doneReason ?? null,
+            evalCount: reviewed.evalCount ?? null,
+            promptEvalCount: reviewed.promptEvalCount ?? null,
+            totalDuration: reviewed.totalDuration ?? null,
+          },
           promptTokens: reviewed.promptTokens,
           completionTokens: reviewed.completionTokens,
           createdAt: new Date(),
         });
-        const parsed = parseProductSpecResult(reviewed.content, reviewTemplateId);
+        const reviewedProductSpec = parseProductSpecResult(reviewed.content, reviewTemplateId);
 
         const productSpec = await input.productSpecService.createVersion({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
           source: rawJob.type,
-          title: parsed.title,
-          markdown: parsed.markdown,
+          title: reviewedProductSpec.title,
+          markdown: reviewedProductSpec.markdown,
         });
 
         return input.jobService.markSucceeded(rawJob.id, { productSpecId: productSpec.id });

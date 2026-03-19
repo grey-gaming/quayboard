@@ -273,6 +273,97 @@ describe("job runner service", () => {
     );
   });
 
+  it("accepts fenced JSON from the first Product Spec pass", async () => {
+    const db = createDbStub();
+    const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content:
+          '```json\n{"title":"Product Spec","markdown":"# Product Spec\\n\\n## Specification Gaps\\n\\n- Clarify defaults."}\n```',
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Product Spec",
+          markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
+        }),
+        promptTokens: 14,
+        completionTokens: 16,
+      });
+    const service = createJobRunnerService({
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-product-spec",
+          projectId,
+          createdByUserId: userId,
+          type: "RegenerateProductSpec",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "one-pager-id",
+          projectId,
+          version: 2,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved scope.",
+          source: "GenerateProjectOverview",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        createVersion,
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-product-spec");
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(db.values).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ templateId: "RegenerateProductSpec" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ templateId: "RegenerateProductSpecReview" }),
+    );
+    expect(createVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        title: "Product Spec",
+        markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-product-spec",
+      expect.objectContaining({ productSpecId: "product-spec-id" }),
+    );
+  });
+
   it("fails Product Spec generation when the review pass returns invalid content", async () => {
     const db = createDbStub();
     const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));

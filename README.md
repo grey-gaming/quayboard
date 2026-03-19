@@ -94,6 +94,8 @@ Documented runtime variables live in `.env.example`:
 - `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
 - `ARTIFACT_STORAGE_PATH` for readiness checks and future artifact persistence
 - `DOCKER_HOST` to target a non-default Docker daemon for sandbox verification
+- `LLM_MAX_OUTPUT_TOKENS` for the API-side Ollama output-token cap used on generation requests
+- `LLM_REQUEST_TIMEOUT_MS` for the API-side timeout applied to Ollama and OpenAI-compatible generation requests
 - `OLLAMA_HOST` for the Ollama adapter base URL
 - `OPENAI_BASE_URL` for the OpenAI-compatible adapter base URL; the API key itself is stored per project through the UI
 
