@@ -185,6 +185,35 @@ export const onePagersTable = pgTable(
   }),
 );
 
+export const productSpecsTable = pgTable(
+  "product_specs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    isCanonical: boolean("is_canonical").notNull().default(false),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("product_specs_project_id_idx").on(table.projectId),
+    projectVersionUnique: uniqueIndex("product_specs_project_id_version_key").on(
+      table.projectId,
+      table.version,
+    ),
+  }),
+);
+
 export const questionsTable = pgTable(
   "questions",
   {

@@ -2,13 +2,13 @@
 
 ## Active Target
 
-M2: Project Creation, Setup, Overview Document, and User Flows
+M2: Project Creation, Setup, Overview Document, Product Spec, and User Flows
 
 This is the active implementation target. Work beyond M2 requires an explicit request.
 
 ## Goal
 
-Deliver the scratch-path planning workflow: instance readiness, project creation, project setup, the 14-question questionnaire, LLM-assisted overview document generation, Mission Control, and user-flow generation/approval.
+Deliver the scratch-path planning workflow: instance readiness, project creation, project setup, the 14-question questionnaire, LLM-assisted overview document generation, Product Spec generation/approval, Mission Control, and user-flow generation/approval.
 
 ## In Scope
 
@@ -18,8 +18,9 @@ Deliver the scratch-path planning workflow: instance readiness, project creation
 - Project setup workflow:
   repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, and evidence policy
 - Questionnaire persistence with the refined 14-question M2 definition
-- Async job execution for project description, overview document generation, and user-flow generation/deduplication
+- Async job execution for project description, overview document generation, Product Spec generation, and user-flow generation/deduplication
 - Overview document canonical/version history plus approval
+- Product Spec canonical/version history plus approval
 - User-flow CRUD, coverage warnings, explicit warning acceptance, and approval snapshotting
 - Shared schemas for planning-phase resources and SSE-driven job refresh
 - User-facing and architecture docs that describe the M2 repo reality
@@ -41,8 +42,9 @@ The milestone is complete when the repo can support the following:
 - An authenticated user can view project setup readiness with concrete remediation text
 - A user can create a project, connect a repo with a GitHub PAT, verify the configured LLM, and verify sandbox startup
 - A user can save questionnaire answers, queue overview generation, inspect the canonical overview plus history, restore a version, and approve the current overview
+- After overview approval, a user can queue Product Spec generation, inspect the canonical Product Spec plus history, restore a version, edit it, and approve the current Product Spec
 - Mission Control is the project landing page and reflects phase gates and next actions
-- User flows can be generated, added manually, deduplicated, and approved only when warnings are resolved or explicitly accepted
+- User flows can be generated from the approved Product Spec, added manually, deduplicated, and approved only when warnings are resolved or explicitly accepted
 - Shared schema imports resolve across the workspace without TypeScript errors
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
 - Architecture and user docs describe the M2 repo behavior

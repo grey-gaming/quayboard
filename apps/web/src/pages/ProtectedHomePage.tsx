@@ -19,7 +19,7 @@ export const ProtectedHomePage = () => {
       <PageIntro
         eyebrow="Projects"
         title="Projects"
-        summary="View your projects, create a new one, and continue setup, overview, and user-flow planning."
+        summary="View your projects, create a new one, and continue setup, overview, Product Spec, and user-flow planning."
         actions={
           <Link className={primaryLinkClassName} to="/projects/new">
             New Project
@@ -59,7 +59,7 @@ export const ProtectedHomePage = () => {
                 <p className="text-lg font-semibold tracking-[-0.02em]">No projects yet.</p>
                 <p className="mt-2 text-sm text-secondary">
                   Create a project to connect a repository, complete setup, and continue
-                  overview and user-flow planning.
+                  overview, Product Spec, and user-flow planning.
                 </p>
               </div>
             ) : null}

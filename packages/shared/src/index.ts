@@ -12,6 +12,7 @@ export * from "./schemas/questionnaire.js";
 export * from "./schemas/readiness.js";
 export * from "./schemas/jobs.js";
 export * from "./schemas/one-pager.js";
+export * from "./schemas/product-spec.js";
 export * from "./schemas/user-flows.js";
 export * from "./schemas/workflow.js";
 export * from "./questionnaire-definition.js";

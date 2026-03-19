@@ -8,6 +8,8 @@ import {
   useLocation,
 } from "react-router-dom";
 
+import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
+import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
@@ -20,6 +22,7 @@ import { MissionControlPage } from "./pages/MissionControlPage.js";
 import { NewProjectPage } from "./pages/NewProjectPage.js";
 import { OnePagerOverviewPage } from "./pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "./pages/OnePagerQuestionsPage.js";
+import { ProductSpecPage } from "./pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
@@ -110,12 +113,26 @@ export const appRouter = createBrowserRouter([
             element: <OnePagerOverviewPage />,
           },
           {
-            path: "/projects/:id/user-flows",
-            element: <UserFlowsPage />,
-          },
-          {
             path: "/projects/:id/import",
             element: <ImportStubPage />,
+          },
+          {
+            element: <OverviewApprovalGate />,
+            children: [
+              {
+                path: "/projects/:id/product-spec",
+                element: <ProductSpecPage />,
+              },
+            ],
+          },
+          {
+            element: <ProductSpecApprovalGate />,
+            children: [
+              {
+                path: "/projects/:id/user-flows",
+                element: <UserFlowsPage />,
+              },
+            ],
           },
         ],
       },

@@ -16,6 +16,7 @@ import { healthRoute } from "./routes/health.js";
 import { milestoneRoutes } from "./routes/api/milestones.js";
 import { jobRoutes } from "./routes/api/jobs.js";
 import { onePagerRoutes } from "./routes/api/one-pager.js";
+import { productSpecRoutes } from "./routes/api/product-spec.js";
 import { projectsRoutes } from "./routes/api/projects.js";
 import { sandboxRoutes } from "./routes/api/sandbox.js";
 import { secretRoutes } from "./routes/api/secrets.js";
@@ -50,6 +51,7 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
     await apiApp.register(jobRoutes(services));
     await apiApp.register(secretRoutes(services));
     await apiApp.register(onePagerRoutes(services));
+    await apiApp.register(productSpecRoutes(services));
     await apiApp.register(userFlowRoutes(services));
     await apiApp.register(blueprintRoutes);
     await apiApp.register(milestoneRoutes);

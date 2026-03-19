@@ -22,6 +22,13 @@
       "when": 1760000002000,
       "tag": "0002_m2_project-setup-and-planning",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1760000003000,
+      "tag": "0003_product-spec-phase",
+      "breakpoints": true
     }
   ]
 }

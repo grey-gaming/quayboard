@@ -8,6 +8,7 @@ const projectNavItems = [
   { label: "Project Setup", suffix: "/setup", end: true },
   { label: "Questions", suffix: "/questions", end: true, requiresSetupCompletion: true },
   { label: "Overview", suffix: "/one-pager", end: true, requiresSetupCompletion: true },
+  { label: "Product Spec", suffix: "/product-spec", end: true, requiresSetupCompletion: true },
   { label: "User Flows", suffix: "/user-flows", end: true, requiresSetupCompletion: true },
   { label: "Import", suffix: "/import", end: true, requiresSetupCompletion: true },
 ];

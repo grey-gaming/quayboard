@@ -72,7 +72,7 @@ describe("API integration", () => {
 
   beforeEach(async () => {
     await sql.unsafe(
-      'TRUNCATE TABLE "encrypted_secrets", "llm_runs", "jobs", "use_cases", "questions", "one_pagers", "questionnaire_answers", "repos", "project_counters", "projects", "sessions", "settings", "users" RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE "encrypted_secrets", "llm_runs", "jobs", "use_cases", "questions", "product_specs", "one_pagers", "questionnaire_answers", "repos", "project_counters", "projects", "sessions", "settings", "users" RESTART IDENTITY CASCADE',
     );
   });
 
@@ -998,6 +998,152 @@ describe("API integration", () => {
 
       expect(projectStateResponse.statusCode).toBe(200);
       expect(projectStateResponse.json().state).toBe("READY_PARTIAL");
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("gates Product Spec behind overview approval and clears Product Spec approval on manual edit", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Product Spec Editor",
+          email: "product-spec-editor@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+
+      const meResponse = await server.inject({
+        method: "GET",
+        url: "/auth/me",
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(meResponse.statusCode).toBe(200);
+      const ownerUserId = meResponse.json().user.id as string;
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Editable Product Spec Project",
+        },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
+        state: "READY_PARTIAL",
+      });
+
+      const blockedProductSpecResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/product-spec`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(blockedProductSpecResponse.statusCode).toBe(409);
+      expect(blockedProductSpecResponse.json()).toEqual({
+        error: {
+          code: "overview_approval_required",
+          message: "Approve the overview document before using Product Spec.",
+        },
+      });
+
+      await appServices.services.onePagerService.createVersion({
+        projectId,
+        title: "Overview",
+        markdown: "# Overview\n\nApproved planning scope.",
+        source: "GenerateProjectOverview",
+        approve: true,
+      });
+
+      await appServices.services.productSpecService.createVersion({
+        projectId,
+        title: "Product Spec",
+        markdown: "# Product Spec\n\nApproved specification.",
+        source: "GenerateProductSpec",
+      });
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+
+      const updateResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/projects/${projectId}/product-spec`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          markdown: "# Product Spec\n\nUpdated specification after manual editing.",
+        },
+      });
+
+      expect(updateResponse.statusCode).toBe(200);
+      expect(updateResponse.json()).toEqual(
+        expect.objectContaining({
+          version: 2,
+          source: "ManualEdit",
+          approvedAt: null,
+          isCanonical: true,
+        }),
+      );
+
+      const productSpecResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/product-spec`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(productSpecResponse.statusCode).toBe(200);
+      expect(productSpecResponse.json().productSpec).toEqual(
+        expect.objectContaining({
+          version: 2,
+          markdown: "# Product Spec\n\nUpdated specification after manual editing.",
+          approvedAt: null,
+        }),
+      );
+
+      const versionsResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/product-spec/versions`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(versionsResponse.statusCode).toBe(200);
+      expect(versionsResponse.json().versions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            version: 2,
+            isCanonical: true,
+            approvedAt: null,
+            source: "ManualEdit",
+          }),
+          expect.objectContaining({
+            version: 1,
+            isCanonical: false,
+          }),
+        ]),
+      );
+
+      const blockedUserFlowsResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+      });
+
+      expect(blockedUserFlowsResponse.statusCode).toBe(409);
+      expect(blockedUserFlowsResponse.json()).toEqual({
+        error: {
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before using User Flows.",
+        },
+      });
     } finally {
       restoreReadiness();
     }

@@ -105,6 +105,18 @@ export const useOnePagerVersionsQuery = (projectId: string) =>
     queryFn: () => api.getOnePagerVersions(projectId),
   });
 
+export const useProductSpecQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "product-spec"],
+    queryFn: () => api.getProductSpec(projectId),
+  });
+
+export const useProductSpecVersionsQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "product-spec-versions"],
+    queryFn: () => api.getProductSpecVersions(projectId),
+  });
+
 export const useUserFlowsQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "user-flows"],
@@ -288,6 +300,72 @@ export const useUpdateOnePagerMutation = (projectId: string) => {
         queryClient.invalidateQueries({ queryKey: ["project", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager-versions"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
+export const useGenerateProductSpecMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (mode: "generate" | "regenerate" | "improve") =>
+      api.generateProductSpec(projectId, mode),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] });
+    },
+  });
+};
+
+export const useApproveProductSpecMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.approveProductSpec(projectId),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "product-spec"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", projectId, "product-spec-versions"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
+export const useRestoreProductSpecMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (version: number) => api.restoreProductSpecVersion(projectId, version),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "product-spec"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", projectId, "product-spec-versions"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
+export const useUpdateProductSpecMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { markdown: string }) => api.updateProductSpec(projectId, payload),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "product-spec"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", projectId, "product-spec-versions"],
+        }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
       ]);

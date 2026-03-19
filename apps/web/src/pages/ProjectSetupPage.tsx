@@ -285,8 +285,8 @@ export const ProjectSetupPage = () => {
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
       {redirectedFromLockedSection && !setupCompleted ? (
         <Alert tone="info">
-          Complete setup to unlock Questions, Overview, User Flows, and Import. You were
-          redirected from <span className="font-mono">{redirectedFromLockedSection}</span>.
+          Complete setup to unlock Questions, Overview, Product Spec, User Flows, and Import. You
+          were redirected from <span className="font-mono">{redirectedFromLockedSection}</span>.
         </Alert>
       ) : null}
       {setupReadyToComplete ? (
@@ -297,8 +297,8 @@ export const ProjectSetupPage = () => {
       ) : null}
       {setupCompleted ? (
         <Alert tone="success">
-          Setup is complete. Questions, Overview, User Flows, and Import are now available for
-          this project.
+          Setup is complete. Questions, Overview, Product Spec, User Flows, and Import are now
+          available for this project.
         </Alert>
       ) : null}
 

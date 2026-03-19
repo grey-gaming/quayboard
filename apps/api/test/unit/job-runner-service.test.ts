@@ -78,6 +78,7 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
+      productSpecService: {} as never,
       questionnaireService: {
         getAnswers,
         upsertAnswers,
@@ -142,6 +143,7 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
+      productSpecService: {} as never,
       questionnaireService: {
         getAnswers: vi.fn(async () => ({
           projectId,
@@ -170,6 +172,79 @@ describe("job runner service", () => {
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-overview",
       expect.objectContaining({ onePagerId: "one-pager-id" }),
+    );
+  });
+
+  it("stores a Product Spec version from the approved overview", async () => {
+    const db = createDbStub();
+    const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      db,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-product-spec",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateProductSpec",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate: vi.fn(async () => ({
+          content: JSON.stringify({
+            title: "Product Spec",
+            markdown: "# Product Spec\n\nDetailed planning contract.",
+          }),
+          promptTokens: 10,
+          completionTokens: 12,
+        })),
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "one-pager-id",
+          projectId,
+          version: 2,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved scope.",
+          source: "GenerateProjectOverview",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        createVersion,
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-product-spec");
+
+    expect(createVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        title: "Product Spec",
+        markdown: "# Product Spec\n\nDetailed planning contract.",
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-product-spec",
+      expect.objectContaining({ productSpecId: "product-spec-id" }),
     );
   });
 });

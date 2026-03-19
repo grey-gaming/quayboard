@@ -1,4 +1,5 @@
 import type { OnePagerService } from "./one-pager-service.js";
+import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
@@ -7,16 +8,19 @@ export const createNextActionsService = (
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
   onePagerService: OnePagerService,
+  productSpecService: ProductSpecService,
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [setupStatus, setupCompleted, questionnaire, onePager, userFlows] = await Promise.all([
-      projectSetupService.getSetupStatus(ownerUserId, projectId),
-      projectSetupService.isSetupCompleted(ownerUserId, projectId),
-      questionnaireService.getAnswers(projectId),
-      onePagerService.getCanonical(ownerUserId, projectId),
-      userFlowService.list(ownerUserId, projectId),
-    ]);
+    const [setupStatus, setupCompleted, questionnaire, onePager, productSpec, userFlows] =
+      await Promise.all([
+        projectSetupService.getSetupStatus(ownerUserId, projectId),
+        projectSetupService.isSetupCompleted(ownerUserId, projectId),
+        questionnaireService.getAnswers(projectId),
+        onePagerService.getCanonical(ownerUserId, projectId),
+        productSpecService.getCanonical(ownerUserId, projectId),
+        userFlowService.list(ownerUserId, projectId),
+      ]);
     const actions = [];
 
     if (!setupCompleted) {
@@ -45,6 +49,18 @@ export const createNextActionsService = (
         key: "overview_approval",
         label: "Approve the overview document",
         href: `/projects/${projectId}/one-pager`,
+      });
+    } else if (!productSpec) {
+      actions.push({
+        key: "product_spec",
+        label: "Generate the Product Spec",
+        href: `/projects/${projectId}/product-spec`,
+      });
+    } else if (!productSpec.approvedAt) {
+      actions.push({
+        key: "product_spec_approval",
+        label: "Approve the Product Spec",
+        href: `/projects/${projectId}/product-spec`,
       });
     } else if (!userFlows.approvedAt) {
       actions.push({

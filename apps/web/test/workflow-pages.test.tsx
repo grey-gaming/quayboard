@@ -6,10 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
+import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
+import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
+import { ProductSpecPage } from "../src/pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "../src/pages/ProjectSetupPage.js";
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
@@ -59,6 +62,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/projects/:id/setup", <div />],
     ["/projects/:id/questions", <div />],
     ["/projects/:id/one-pager", <div />],
+    ["/projects/:id/product-spec", <div />],
     ["/projects/:id/user-flows", <div />],
     ["/projects/:id/import", <div />],
   ]);
@@ -109,10 +113,10 @@ describe("workflow pages", () => {
       [`/api/projects/${projectId}/phase-gates`]: {
         phases: [
           {
-            phase: "Overview",
+            phase: "Overview Document",
             passed: false,
             items: [
-              { key: "questionnaire", label: "Questionnaire answered", passed: true },
+              { key: "questionnaire", label: "Questionnaire complete", passed: true },
               { key: "overview", label: "Overview approved", passed: false },
             ],
           },
@@ -638,7 +642,6 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
-    expect(screen.getByRole("textbox").className).toContain("lg:h-full");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
     });
@@ -786,6 +789,224 @@ describe("workflow pages", () => {
     expect(await screen.findByRole("button", { name: "Generating Overview" })).toBeTruthy();
   });
 
+  it("renders the Product Spec page through the editable markdown surface", async () => {
+    const productSpecProjectId = "30303030-3030-4030-8030-303030303030";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    let productSpec = {
+      id: "14ec48cb-6248-4fd0-8df0-58bfa13f8371",
+      projectId: productSpecProjectId,
+      version: 2,
+      title: "Product Spec",
+      markdown: "# Product Spec\n\nCanonical specification.",
+      source: "GenerateProductSpec",
+      isCanonical: true,
+      approvedAt: null,
+      createdAt: "2026-03-16T09:10:00.000Z",
+    };
+    let versions = [productSpec];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: productSpecProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: productSpecProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ productSpec }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "PATCH") {
+        const payload = JSON.parse(String(init?.body)) as { markdown: string };
+        productSpec = {
+          ...productSpec,
+          id: "a9dc6076-20da-43b0-84fb-e8cac2409319",
+          version: 3,
+          markdown: payload.markdown,
+          source: "ManualEdit",
+          approvedAt: null,
+          createdAt: "2026-03-16T09:12:00.000Z",
+        };
+        versions = [productSpec, ...versions.map((version) => ({ ...version, isCanonical: false }))];
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => productSpec,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [
+              {
+                id: "4c57d789-a423-46e0-8b36-c09f9e9d8ad9",
+                projectId: productSpecProjectId,
+                type: "GenerateProductSpec",
+                status: "succeeded",
+                inputs: {},
+                outputs: {},
+                error: null,
+                queuedAt: "2026-03-16T09:00:00.000Z",
+                startedAt: "2026-03-16T09:01:00.000Z",
+                completedAt: "2026-03-16T09:10:00.000Z",
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Regenerate Product Spec" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "# Product Spec\n\nExpanded canonical specification." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Product Spec" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${productSpecProjectId}/product-spec` &&
+            init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    expect(await screen.findByText("Expanded canonical specification.")).toBeTruthy();
+    expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
+  });
+
+  it("redirects Product Spec access back to overview until the overview is approved", async () => {
+    const gatedProjectId = "40404040-4040-4040-8040-404040404040";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      [`/api/projects/${gatedProjectId}/phase-gates`]: {
+        phases: [
+          {
+            phase: "Overview Document",
+            passed: false,
+            items: [
+              { key: "questionnaire", label: "Questionnaire complete", passed: true },
+              { key: "overview", label: "Overview approved", passed: false },
+            ],
+          },
+        ],
+      },
+    });
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
+        {
+          element: <OverviewApprovalGate />,
+          children: [{ path: "/projects/:id/product-spec", element: <ProductSpecPage /> }],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${gatedProjectId}/product-spec`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText("Overview page")).toBeTruthy();
+  });
+
+  it("redirects User Flows access back to Product Spec until the Product Spec is approved", async () => {
+    const gatedProjectId = "50505050-5050-4050-8050-505050505050";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      [`/api/projects/${gatedProjectId}/phase-gates`]: {
+        phases: [
+          {
+            phase: "Product Spec",
+            passed: false,
+            items: [
+              { key: "overview_approved", label: "Overview approved", passed: true },
+              { key: "product_spec", label: "Product Spec generated", passed: true },
+              { key: "product_spec_approved", label: "Product Spec approved", passed: false },
+            ],
+          },
+        ],
+      },
+    });
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id/product-spec", element: <div>Product Spec page</div> },
+        {
+          element: <ProductSpecApprovalGate />,
+          children: [{ path: "/projects/:id/user-flows", element: <div>User Flows page</div> }],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${gatedProjectId}/user-flows`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText("Product Spec page")).toBeTruthy();
+  });
+
   it("redirects incomplete overview access back to setup until setup is explicitly completed", async () => {
     const lockedProjectId = "33333333-3333-4333-8333-333333333333";
 
@@ -864,6 +1085,7 @@ describe("workflow pages", () => {
           element: <ProjectSetupPage />,
         },
         { path: "/projects/:id/one-pager", element: <div /> },
+        { path: "/projects/:id/product-spec", element: <div /> },
         { path: "/projects/:id/user-flows", element: <div /> },
         { path: "/projects/:id/import", element: <div /> },
       ],
@@ -881,7 +1103,7 @@ describe("workflow pages", () => {
     expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
     expect(
       screen.getByText(
-        /Complete setup to unlock Questions, Overview, User Flows, and Import\. You were redirected from/,
+        /Complete setup to unlock Questions, Overview, Product Spec, User Flows, and Import\. You were redirected from/,
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();

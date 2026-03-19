@@ -31,7 +31,7 @@ export const NewProjectPage = () => {
       <PageIntro
         eyebrow="Projects"
         title="Create Project"
-        summary="Create a project and move through setup, questions, overview, and user flows."
+        summary="Create a project and move through setup, questions, overview, Product Spec, and user flows."
       />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <Card surface="panel">
@@ -80,6 +80,10 @@ export const NewProjectPage = () => {
             </div>
             <div className="qb-kv">
               <p className="qb-meta-label">Step 3</p>
+              <p className="text-sm text-foreground">Product Spec generation, editing, approval</p>
+            </div>
+            <div className="qb-kv">
+              <p className="qb-meta-label">Step 4</p>
               <p className="text-sm text-foreground">User-flow generation and planning contract review</p>
             </div>
           </div>

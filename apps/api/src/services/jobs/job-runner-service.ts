@@ -7,6 +7,7 @@ import { llmRunsTable, useCasesTable } from "../../db/schema.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
 import type { OnePagerService } from "../one-pager-service.js";
+import type { ProductSpecService } from "../product-spec-service.js";
 import type { ProjectService } from "../project-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
@@ -15,6 +16,7 @@ import {
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
+  buildProductSpecPrompt,
   buildUserFlowPrompt,
 } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
@@ -32,6 +34,7 @@ export const createJobRunnerService = (input: {
   jobService: JobService;
   llmProviderService: LlmProviderService;
   onePagerService: OnePagerService;
+  productSpecService: ProductSpecService;
   projectService: ProjectService;
   projectSetupService: ProjectSetupService;
   questionnaireService: QuestionnaireService;
@@ -186,11 +189,70 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, { onePagerId: onePager.id });
       }
 
-      case "GenerateUseCases": {
+      case "GenerateProductSpec":
+      case "RegenerateProductSpec":
+      case "GenerateProductSpecImprovements": {
         const onePager = await input.onePagerService.getCanonical(ownerUserId, rawJob.projectId);
+
+        if (!onePager?.approvedAt) {
+          throw new Error(
+            "GenerateProductSpec requires an approved overview document before the Product Spec can be generated.",
+          );
+        }
+
+        const prompt = buildProductSpecPrompt({
+          projectName: project.name,
+          sourceMaterial: onePager.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt);
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseJson<{ markdown?: string; title?: string }>(generated.content);
+
+        if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+          throw new Error(
+            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+          );
+        }
+
+        const productSpec = await input.productSpecService.createVersion({
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          source: rawJob.type,
+          title: parsed.title.trim(),
+          markdown: parsed.markdown.trim(),
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, { productSpecId: productSpec.id });
+      }
+
+      case "GenerateUseCases": {
+        const productSpec = await input.productSpecService.getCanonical(
+          ownerUserId,
+          rawJob.projectId,
+        );
+
+        if (!productSpec?.approvedAt) {
+          throw new Error(
+            "GenerateUseCases requires an approved Product Spec before user flows can be generated.",
+          );
+        }
+
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
-          sourceMaterial: onePager?.markdown ?? project.description ?? project.name,
+          sourceMaterial: productSpec.markdown,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
@@ -245,7 +307,7 @@ export const createJobRunnerService = (input: {
               "The described flow can be completed.",
             ],
             coverageTags: flow.coverageTags ?? ["happy-path"],
-            doneCriteriaRefs: flow.doneCriteriaRefs ?? ["overview-document"],
+            doneCriteriaRefs: flow.doneCriteriaRefs ?? ["product-spec"],
             endState: flow.endState,
             entryPoint: flow.entryPoint,
             flowSteps: flow.flowSteps,

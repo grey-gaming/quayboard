@@ -6,6 +6,7 @@ import type {
   NextActionsResponse,
   OnePager,
   PhaseGatesResponse,
+  ProductSpec,
   Project,
   ProjectListResponse,
   ProjectSetupState,
@@ -128,6 +129,11 @@ export const api = {
       method: "POST",
     });
   },
+  approveProductSpec(projectId: string) {
+    return apiRequest<ProductSpec>(`/api/projects/${projectId}/product-spec/approve`, {
+      method: "POST",
+    });
+  },
   autoAnswerQuestionnaire(projectId: string) {
     return apiRequest<Job>(`/api/projects/${projectId}/questionnaire-answers/auto-answer`, {
       method: "POST",
@@ -178,6 +184,12 @@ export const api = {
       body: JSON.stringify({ mode }),
     });
   },
+  generateProductSpec(projectId: string, mode: "generate" | "regenerate" | "improve") {
+    return apiRequest<Job>(`/api/projects/${projectId}/product-spec`, {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    });
+  },
   generateUserFlows(projectId: string) {
     return apiRequest<Job>(`/api/projects/${projectId}/user-flows/generate`, {
       method: "POST",
@@ -197,6 +209,16 @@ export const api = {
   getOnePagerVersions(projectId: string) {
     return apiRequest<{ versions: OnePager[] }>(
       `/api/projects/${projectId}/one-pager/versions`,
+    );
+  },
+  getProductSpec(projectId: string) {
+    return apiRequest<{ productSpec: ProductSpec | null }>(
+      `/api/projects/${projectId}/product-spec`,
+    );
+  },
+  getProductSpecVersions(projectId: string) {
+    return apiRequest<{ versions: ProductSpec[] }>(
+      `/api/projects/${projectId}/product-spec/versions`,
     );
   },
   getPhaseGates(projectId: string) {
@@ -242,8 +264,22 @@ export const api = {
       method: "POST",
     });
   },
+  restoreProductSpecVersion(projectId: string, version: number) {
+    return apiRequest<ProductSpec>(
+      `/api/projects/${projectId}/product-spec/versions/${version}/restore`,
+      {
+        method: "POST",
+      },
+    );
+  },
   updateOnePager(projectId: string, payload: { markdown: string }) {
     return apiRequest<OnePager>(`/api/projects/${projectId}/one-pager`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateProductSpec(projectId: string, payload: { markdown: string }) {
+    return apiRequest<ProductSpec>(`/api/projects/${projectId}/product-spec`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });

@@ -9,6 +9,7 @@ import {
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
+import { HttpError } from "../../services/http-error.js";
 import { handleRouteError } from "../route-helpers.js";
 
 const projectParamsJsonSchema = {
@@ -32,6 +33,18 @@ const userFlowParamsJsonSchema = {
 export const userFlowRoutes = (
   services: AppServices,
 ): FastifyPluginAsync => async (app) => {
+  const assertApprovedProductSpec = async (ownerUserId: string, projectId: string) => {
+    const productSpec = await services.productSpecService.getCanonical(ownerUserId, projectId);
+
+    if (!productSpec?.approvedAt) {
+      throw new HttpError(
+        409,
+        "product_spec_approval_required",
+        "Approve the Product Spec before using User Flows.",
+      );
+    }
+  };
+
   app.get(
     "/projects/:id/user-flows",
     {
@@ -43,6 +56,7 @@ export const userFlowRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertApprovedProductSpec(request.user!.id, projectId);
         const response = await services.userFlowService.list(
           request.user!.id,
           projectId,
@@ -66,6 +80,7 @@ export const userFlowRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertApprovedProductSpec(request.user!.id, projectId);
         const userFlow = await services.userFlowService.create(
           request.user!.id,
           projectId,
@@ -136,6 +151,7 @@ export const userFlowRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertApprovedProductSpec(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
@@ -160,6 +176,7 @@ export const userFlowRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertApprovedProductSpec(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
@@ -184,6 +201,7 @@ export const userFlowRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertApprovedProductSpec(request.user!.id, projectId);
         const response = await services.userFlowService.approve(
           request.user!.id,
           projectId,

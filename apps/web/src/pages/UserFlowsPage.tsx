@@ -66,7 +66,7 @@ export const UserFlowsPage = () => {
       <PageIntro
         eyebrow="User Flows"
         title="User Flows"
-        summary="Generate, edit, and approve the user-facing journeys that become the planning contract for later stages."
+        summary="Generate, edit, and approve the user-facing journeys derived from the approved Product Spec."
         meta={
           <>
             <Badge tone="neutral">planning contract</Badge>

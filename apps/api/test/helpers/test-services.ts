@@ -93,6 +93,23 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
   },
+  productSpecService: {
+    approveCanonical: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getCanonical: async () => null,
+    getCanonicalRecord: async () => undefined,
+    listVersions: async () => [],
+    restoreVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
   phaseGateService: {
     build: async () => ({ phases: [] }),
   },

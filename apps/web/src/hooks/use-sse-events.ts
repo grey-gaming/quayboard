@@ -16,6 +16,10 @@ export const useSseEvents = (projectId?: string) => {
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
           queryClient.invalidateQueries({ queryKey: ["project", projectId, "one-pager"] }),
+          queryClient.invalidateQueries({ queryKey: ["project", projectId, "product-spec"] }),
+          queryClient.invalidateQueries({
+            queryKey: ["project", projectId, "product-spec-versions"],
+          }),
           queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] }),
           queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
           queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),

@@ -4,6 +4,7 @@ import {
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
+  buildProductSpecPrompt,
   buildUserFlowPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
@@ -66,6 +67,19 @@ describe("job prompts", () => {
     expect(prompt).toContain("Existing questionnaire answers:");
   });
 
+  it("wraps the Product Spec brief in a JSON contract for versioned storage", () => {
+    const prompt = buildProductSpecPrompt({
+      projectName: "Quayboard",
+      sourceMaterial: "# Overview\n\nPlanning control plane.",
+    });
+
+    expect(prompt).toContain('exactly two top-level string keys: "title" and "markdown"');
+    expect(prompt).toContain("full, comprehensive, implementation-grade product specification");
+    expect(prompt).toContain("Feature Catalogue");
+    expect(prompt).toContain("Specification Gaps");
+    expect(prompt).toContain("I will now provide the product information.");
+  });
+
   it("asks for broad, non-duplicative user-flow coverage", () => {
     const prompt = buildUserFlowPrompt({
       projectName: "Quayboard",
@@ -75,6 +89,7 @@ describe("job prompts", () => {
     expect(prompt).toContain('"title", "userStory", "entryPoint", "endState", "flowSteps"');
     expect(prompt).toContain("diverse and extensive set of flows");
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
+    expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
   });
 });

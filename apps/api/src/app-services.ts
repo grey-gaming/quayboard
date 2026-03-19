@@ -31,6 +31,10 @@ import {
   type OnePagerService,
 } from "./services/one-pager-service.js";
 import {
+  createProductSpecService,
+  type ProductSpecService,
+} from "./services/product-spec-service.js";
+import {
   createPhaseGateService,
   type PhaseGateService,
 } from "./services/phase-gate-service.js";
@@ -80,6 +84,7 @@ export type AppServices = {
   llmProviderService: LlmProviderService;
   nextActionsService: NextActionsService;
   onePagerService: OnePagerService;
+  productSpecService: ProductSpecService;
   phaseGateService: PhaseGateService;
   projectService: ProjectService;
   projectSetupService: ProjectSetupService;
@@ -112,6 +117,7 @@ export const createAppServices = (
   const dockerService = createDockerService(appConfig.dockerHost);
   const questionnaireService = createQuestionnaireService(db);
   const onePagerService = createOnePagerService(db);
+  const productSpecService = createProductSpecService(db);
   const userFlowService = createUserFlowService(db);
   const projectSetupService = createProjectSetupService(
     db,
@@ -142,6 +148,7 @@ export const createAppServices = (
   });
   const phaseGateService = createPhaseGateService(
     onePagerService,
+    productSpecService,
     projectSetupService,
     questionnaireService,
     userFlowService,
@@ -150,6 +157,7 @@ export const createAppServices = (
     projectSetupService,
     questionnaireService,
     onePagerService,
+    productSpecService,
     userFlowService,
   );
   const jobRunnerService = createJobRunnerService({
@@ -157,6 +165,7 @@ export const createAppServices = (
     jobService,
     llmProviderService,
     onePagerService,
+    productSpecService,
     projectService,
     projectSetupService,
     questionnaireService,
@@ -224,6 +233,7 @@ export const createAppServices = (
       llmProviderService,
       nextActionsService,
       onePagerService,
+      productSpecService,
       phaseGateService,
       projectService,
       projectSetupService,

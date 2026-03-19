@@ -603,6 +603,19 @@ describe("project setup page", () => {
           } satisfies Partial<Response>;
         }
 
+        if (path === `/api/projects/${projectId}/product-spec` && method === "GET") {
+          return {
+            ok: true,
+            status: 409,
+            json: async () => ({
+              error: {
+                code: "overview_approval_required",
+                message: "Approve the overview document before using Product Spec.",
+              },
+            }),
+          } satisfies Partial<Response>;
+        }
+
         if (path === `/api/projects/${projectId}/one-pager/versions` && method === "GET") {
           return {
             ok: true,

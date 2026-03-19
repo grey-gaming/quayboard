@@ -108,7 +108,7 @@ describe("project entry surfaces", () => {
     expect(await screen.findByText("No projects yet.")).toBeTruthy();
     expect(
       screen.getByText(
-        "Create a project to connect a repository, complete setup, and continue overview and user-flow planning.",
+        "Create a project to connect a repository, complete setup, and continue overview, Product Spec, and user-flow planning.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText("Empty workspace")).toBeNull();
@@ -126,7 +126,7 @@ describe("project entry surfaces", () => {
     expect(await screen.findByRole("heading", { name: "Create Project" })).toBeTruthy();
     expect(
       screen.getByText(
-        "Create a project and move through setup, questions, overview, and user flows.",
+        "Create a project and move through setup, questions, overview, Product Spec, and user flows.",
       ),
     ).toBeTruthy();
     expect(screen.getByText("What happens next")).toBeTruthy();
