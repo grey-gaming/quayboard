@@ -14,6 +14,7 @@ import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
 import { ProductSpecPage } from "../src/pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "../src/pages/ProjectSetupPage.js";
+import { UserFlowsPage } from "../src/pages/UserFlowsPage.js";
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
 const user: User = {
@@ -955,6 +956,235 @@ describe("workflow pages", () => {
     expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
     expect(screen.getByText("No Product Spec has been generated yet. Generate it from this screen after the overview is approved.")).toBeTruthy();
     expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
+  });
+
+  it("renders User Flows AI actions and posts both async job requests", async () => {
+    const userFlowsProjectId = "70707070-7070-4070-8070-707070707070";
+    const generateJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d1";
+    const dedupeJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d2";
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: userFlowsProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: userFlowsProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [],
+            coverage: {
+              warnings: [],
+              acceptedWarnings: [],
+            },
+            approvedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows/generate` && method === "POST") {
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: generateJobId,
+            projectId: userFlowsProjectId,
+            type: "GenerateUseCases",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T10:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${userFlowsProjectId}/user-flows/deduplicate` &&
+        method === "POST"
+      ) {
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: dedupeJobId,
+            projectId: userFlowsProjectId,
+            type: "DeduplicateUseCases",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T10:02:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Deduplicate" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate Flows" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deduplicate" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${userFlowsProjectId}/user-flows/generate` &&
+            init?.method === "POST",
+        ),
+      ).toBe(true);
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${userFlowsProjectId}/user-flows/deduplicate` &&
+            init?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("shows the generate flows AI button as active only for running generation jobs", async () => {
+    const userFlowsProjectId = "71717171-7171-4171-8171-717171717171";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${userFlowsProjectId}`]: {
+        id: userFlowsProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: userFlowsProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${userFlowsProjectId}/user-flows`]: {
+        userFlows: [],
+        coverage: {
+          warnings: [],
+          acceptedWarnings: [],
+        },
+        approvedAt: null,
+      },
+      [`/api/projects/${userFlowsProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "d3057770-eca1-417a-a1c6-c00bb83a47d3",
+            projectId: userFlowsProjectId,
+            type: "GenerateUseCases",
+            status: "running",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T10:00:00.000Z",
+            startedAt: "2026-03-16T10:01:00.000Z",
+            completedAt: null,
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(
+      (await screen.findByRole("button", { name: "Generating Flows" })) as HTMLButtonElement,
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Deduplicate" })).toHaveProperty("disabled", false);
+  });
+
+  it("shows the deduplicate AI button as active only for running dedupe jobs", async () => {
+    const userFlowsProjectId = "72727272-7272-4272-8272-727272727272";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${userFlowsProjectId}`]: {
+        id: userFlowsProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: userFlowsProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${userFlowsProjectId}/user-flows`]: {
+        userFlows: [],
+        coverage: {
+          warnings: [],
+          acceptedWarnings: [],
+        },
+        approvedAt: null,
+      },
+      [`/api/projects/${userFlowsProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "d3057770-eca1-417a-a1c6-c00bb83a47d4",
+            projectId: userFlowsProjectId,
+            type: "DeduplicateUseCases",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T10:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(
+      (await screen.findByRole("button", { name: "Deduplicating Flows" })) as HTMLButtonElement,
+    ).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Generate Flows" })).toHaveProperty("disabled", false);
   });
 
   it("redirects Product Spec access back to overview until the overview is approved", async () => {

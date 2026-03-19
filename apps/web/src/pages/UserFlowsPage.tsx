@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
@@ -6,6 +6,7 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { Alert } from "../components/ui/Alert.js";
+import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
@@ -18,11 +19,15 @@ import {
   useDeleteUserFlowMutation,
   useDedupeUserFlowsMutation,
   useGenerateUserFlowsMutation,
+  useProjectJobsQuery,
   useProjectQuery,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
+
+const generateUserFlowJobTypes = new Set(["GenerateUseCases"]);
+const dedupeUserFlowJobTypes = new Set(["DeduplicateUseCases"]);
 
 type FormValues = {
   acceptanceCriteria: string;
@@ -38,6 +43,7 @@ export const UserFlowsPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
   const userFlowsQuery = useUserFlowsQuery(id);
+  const jobsQuery = useProjectJobsQuery(id);
   const createUserFlowMutation = useCreateUserFlowMutation(id);
   const deleteUserFlowMutation = useDeleteUserFlowMutation(id);
   const generateUserFlowsMutation = useGenerateUserFlowsMutation(id);
@@ -57,6 +63,29 @@ export const UserFlowsPage = () => {
   });
 
   useSseEvents(id);
+
+  const activeGenerateUserFlowsJob = useMemo(
+    () =>
+      jobsQuery.data?.jobs.find(
+        (job) =>
+          generateUserFlowJobTypes.has(job.type) &&
+          (job.status === "queued" || job.status === "running"),
+      ) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const activeDedupeUserFlowsJob = useMemo(
+    () =>
+      jobsQuery.data?.jobs.find(
+        (job) =>
+          dedupeUserFlowJobTypes.has(job.type) &&
+          (job.status === "queued" || job.status === "running"),
+      ) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const generateFlowsButtonActive =
+    generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
+  const dedupeFlowsButtonActive =
+    dedupeUserFlowsMutation.isPending || Boolean(activeDedupeUserFlowsJob);
 
   return (
     <AppFrame>
@@ -87,23 +116,26 @@ export const UserFlowsPage = () => {
               </Badge>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                disabled={generateUserFlowsMutation.isPending}
+              <AiWorkflowButton
+                active={generateFlowsButtonActive}
+                disabled={generateFlowsButtonActive}
+                label="Generate Flows"
                 onClick={() => {
                   void generateUserFlowsMutation.mutateAsync();
                 }}
-              >
-                Generate Flows
-              </Button>
-              <Button
-                disabled={dedupeUserFlowsMutation.isPending}
+                runningLabel="Generating Flows"
+                variant="secondary"
+              />
+              <AiWorkflowButton
+                active={dedupeFlowsButtonActive}
+                disabled={dedupeFlowsButtonActive}
+                label="Deduplicate"
                 onClick={() => {
                   void dedupeUserFlowsMutation.mutateAsync();
                 }}
+                runningLabel="Deduplicating Flows"
                 variant="secondary"
-              >
-                Deduplicate
-              </Button>
+              />
               <Button
                 disabled={approveUserFlowsMutation.isPending}
                 onClick={() => {
