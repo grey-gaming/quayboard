@@ -638,6 +638,7 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
+    expect(screen.getByRole("textbox").className).toContain("lg:h-full");
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
     });

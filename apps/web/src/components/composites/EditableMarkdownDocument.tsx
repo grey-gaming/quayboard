@@ -78,22 +78,22 @@ export const EditableMarkdownDocument = ({
 
       {isEditing ? (
         <div
-          className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]"
+          className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-stretch"
           data-testid="editable-markdown-editor"
         >
-          <div className="grid self-start gap-2">
+          <div className="grid self-start gap-2 lg:h-full">
             <p className="qb-meta-label">Markdown</p>
             <Textarea
-              className="min-h-[26rem] font-mono text-[13px]"
+              className="min-h-[26rem] font-mono text-[13px] lg:h-full"
               onChange={(event) => {
                 setDraft(event.target.value);
               }}
               value={draft}
             />
           </div>
-          <div className="grid self-start gap-2">
+          <div className="grid self-start gap-2 lg:h-full">
             <p className="qb-meta-label">Preview</p>
-            <div className="border border-border/80 bg-panel px-4 py-4">
+            <div className="border border-border/80 bg-panel px-4 py-4 lg:h-full">
               <MarkdownDocument markdown={trimmedDraft || "_Add markdown to preview it here._"} />
             </div>
           </div>
