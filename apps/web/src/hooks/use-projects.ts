@@ -401,7 +401,11 @@ export const useCreateUserFlowMutation = (projectId: string) => {
   return useMutation({
     mutationFn: (payload: UpsertUseCaseRequest) => api.createUserFlow(projectId, payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
     },
   });
 };
@@ -413,7 +417,11 @@ export const useUpdateUserFlowMutation = (projectId: string) => {
     mutationFn: ({ payload, userFlowId }: { payload: UpsertUseCaseRequest; userFlowId: string }) =>
       api.updateUserFlow(userFlowId, payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
     },
   });
 };
@@ -424,7 +432,11 @@ export const useDeleteUserFlowMutation = (projectId: string) => {
   return useMutation({
     mutationFn: (userFlowId: string) => api.deleteUserFlow(userFlowId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] });
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
     },
   });
 };
@@ -460,6 +472,7 @@ export const useApproveUserFlowsMutation = (projectId: string) => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "user-flows"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
       ]);
     },
   });

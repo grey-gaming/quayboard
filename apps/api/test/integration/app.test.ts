@@ -1149,6 +1149,308 @@ describe("API integration", () => {
     }
   });
 
+  it("clears user-flow approval after create, update, and archive mutations", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+    const originalGetCanonical = appServices.services.productSpecService.getCanonical;
+    const originalGetOnePager = appServices.services.onePagerService.getCanonical;
+    const originalGetAnswers = appServices.services.questionnaireService.getAnswers;
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Flow Owner",
+          email: "flows@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+      expect(cookie?.value).toBeTruthy();
+
+      const meResponse = await server.inject({
+        method: "GET",
+        url: "/auth/me",
+        cookies: { qb_session: cookie!.value },
+      });
+      const ownerUserId = meResponse.json().user.id as string;
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Flow Ready Project",
+        },
+      });
+      const projectId = projectResponse.json().id as string;
+
+      await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
+        state: "READY_PARTIAL",
+      });
+
+      appServices.services.productSpecService.getCanonical = async () => ({
+        id: "product-spec-approved",
+        projectId,
+        version: 1,
+        title: "Product Spec",
+        markdown: "# Product Spec",
+        source: "ManualEdit",
+        isCanonical: true,
+        approvedAt: "2026-03-18T00:00:00.000Z",
+        createdAt: "2026-03-18T00:00:00.000Z",
+      });
+      appServices.services.onePagerService.getCanonical = async () => ({
+        id: "one-pager-approved",
+        projectId,
+        version: 1,
+        title: "Overview",
+        markdown: "# Overview",
+        source: "GenerateProjectOverview",
+        isCanonical: true,
+        approvedAt: "2026-03-17T00:00:00.000Z",
+        createdAt: "2026-03-17T00:00:00.000Z",
+      });
+      appServices.services.questionnaireService.getAnswers = async () => ({
+        projectId,
+        answers: {},
+        updatedAt: "2026-03-16T00:00:00.000Z",
+        completedAt: "2026-03-16T00:00:00.000Z",
+      });
+
+      const basePayload = {
+        acceptanceCriteria: ["The flow can be completed."],
+        coverageTags: ["happy-path", "onboarding"],
+        doneCriteriaRefs: ["manual"],
+        endState: "Journey complete",
+        entryPoint: "Mission Control",
+        flowSteps: ["Open page", "Complete action"],
+        source: "manual",
+        title: "Primary journey",
+        userStory: "As a user, I want to complete the primary journey.",
+      };
+
+      const firstCreateResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+        payload: basePayload,
+      });
+      expect(firstCreateResponse.statusCode).toBe(200);
+      const firstFlowId = firstCreateResponse.json().id as string;
+
+      const firstApproveResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows/approve`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          acceptedWarnings: [],
+        },
+      });
+      expect(firstApproveResponse.statusCode).toBe(200);
+      expect(firstApproveResponse.json().approvedAt).toBeTruthy();
+
+      const secondCreateResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          ...basePayload,
+          title: "Secondary journey",
+        },
+      });
+      expect(secondCreateResponse.statusCode).toBe(200);
+
+      const afterCreateResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(afterCreateResponse.statusCode).toBe(200);
+      expect(afterCreateResponse.json().approvedAt).toBeNull();
+      expect(afterCreateResponse.json().coverage.acceptedWarnings).toEqual([]);
+
+      await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows/approve`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          acceptedWarnings: [],
+        },
+      });
+
+      const updateResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/user-flows/${firstFlowId}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          ...basePayload,
+          title: "Primary journey updated",
+        },
+      });
+      expect(updateResponse.statusCode).toBe(200);
+
+      const afterUpdateResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(afterUpdateResponse.statusCode).toBe(200);
+      expect(afterUpdateResponse.json().approvedAt).toBeNull();
+      expect(afterUpdateResponse.json().userFlows[0].title).toBe("Primary journey updated");
+
+      await server.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/user-flows/approve`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          acceptedWarnings: [],
+        },
+      });
+
+      const archiveResponse = await server.inject({
+        method: "DELETE",
+        url: `/api/user-flows/${firstFlowId}`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(archiveResponse.statusCode).toBe(204);
+
+      const afterArchiveResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/user-flows`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(afterArchiveResponse.statusCode).toBe(200);
+      expect(afterArchiveResponse.json().approvedAt).toBeNull();
+      expect(afterArchiveResponse.json().userFlows).toHaveLength(1);
+
+      const phaseGatesResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/phase-gates`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(phaseGatesResponse.statusCode).toBe(200);
+      expect(phaseGatesResponse.json().phases).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            phase: "User Flows",
+            passed: false,
+          }),
+        ]),
+      );
+
+      const nextActionsResponse = await server.inject({
+        method: "GET",
+        url: `/api/projects/${projectId}/next-actions`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(nextActionsResponse.statusCode).toBe(200);
+      expect(nextActionsResponse.json().actions).toEqual([
+        expect.objectContaining({
+          key: "user_flows",
+          label: "Generate and approve user flows",
+        }),
+      ]);
+    } finally {
+      appServices.services.productSpecService.getCanonical = originalGetCanonical;
+      appServices.services.onePagerService.getCanonical = originalGetOnePager;
+      appServices.services.questionnaireService.getAnswers = originalGetAnswers;
+      restoreReadiness();
+    }
+  });
+
+  it("applies setup and Product Spec gates to user-flow update and archive routes", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Gate Owner",
+          email: "gates@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+      expect(cookie?.value).toBeTruthy();
+
+      const meResponse = await server.inject({
+        method: "GET",
+        url: "/auth/me",
+        cookies: { qb_session: cookie!.value },
+      });
+      const ownerUserId = meResponse.json().user.id as string;
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: "Flow Gate Project",
+        },
+      });
+      const projectId = projectResponse.json().id as string;
+
+      const flow = await appServices.services.userFlowService.create(ownerUserId, projectId, {
+        acceptanceCriteria: ["The flow can be completed."],
+        coverageTags: ["happy-path"],
+        doneCriteriaRefs: ["manual"],
+        endState: "Journey complete",
+        entryPoint: "Mission Control",
+        flowSteps: ["Open page", "Complete action"],
+        source: "manual",
+        title: "Primary journey",
+        userStory: "As a user, I want to complete the primary journey.",
+      });
+
+      const blockedBySetupResponse = await server.inject({
+        method: "PATCH",
+        url: `/api/user-flows/${flow.id}`,
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          acceptanceCriteria: ["The flow can be completed."],
+          coverageTags: ["happy-path"],
+          doneCriteriaRefs: ["manual"],
+          endState: "Journey complete",
+          entryPoint: "Mission Control",
+          flowSteps: ["Open page", "Complete action"],
+          source: "manual",
+          title: "Primary journey updated",
+          userStory: "As a user, I want to complete the primary journey.",
+        },
+      });
+      expect(blockedBySetupResponse.statusCode).toBe(409);
+      expect(blockedBySetupResponse.json()).toEqual({
+        error: {
+          code: "setup_incomplete",
+          message: "Complete project setup before accessing overview and user-flow planning.",
+        },
+      });
+
+      await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
+        state: "READY_PARTIAL",
+      });
+
+      const blockedByProductSpecResponse = await server.inject({
+        method: "DELETE",
+        url: `/api/user-flows/${flow.id}`,
+        cookies: { qb_session: cookie!.value },
+      });
+      expect(blockedByProductSpecResponse.statusCode).toBe(409);
+      expect(blockedByProductSpecResponse.json()).toEqual({
+        error: {
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before using User Flows.",
+        },
+      });
+    } finally {
+      restoreReadiness();
+    }
+  });
+
   it("rejects whitespace-only display names and project names before persistence", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 

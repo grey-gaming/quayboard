@@ -277,10 +277,14 @@ export const createStubServices = (): AppServices => ({
       },
       userFlows: [],
     }),
+    clearApproval: async () => undefined,
     archive: async () => undefined,
     create: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    getContext: async () => ({
+      projectId: "test-project-id",
+    }),
     list: async () => ({
       approvedAt: null,
       coverage: {

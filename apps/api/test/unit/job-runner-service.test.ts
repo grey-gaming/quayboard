@@ -446,4 +446,85 @@ describe("job runner service", () => {
     expect(createVersion).not.toHaveBeenCalled();
     expect(markSucceeded).not.toHaveBeenCalled();
   });
+
+  it("archives duplicate user flows through the service so approval reset stays centralized", async () => {
+    const db = createDbStub();
+    db.query.useCasesTable.findMany = vi.fn(async () => [
+      {
+        id: "flow-1",
+        projectId,
+        title: "Invite teammate",
+        userStory: "Story",
+        entryPoint: "Entry",
+        endState: "End",
+        flowSteps: ["Step"],
+        coverageTags: ["happy-path"],
+        acceptanceCriteria: ["Criterion"],
+        doneCriteriaRefs: ["manual"],
+        source: "generated",
+        archivedAt: null,
+        createdByJobId: null,
+        createdAt: new Date("2026-03-18T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-18T00:00:00.000Z"),
+      },
+      {
+        id: "flow-2",
+        projectId,
+        title: "invite teammate",
+        userStory: "Story",
+        entryPoint: "Entry",
+        endState: "End",
+        flowSteps: ["Step"],
+        coverageTags: ["happy-path"],
+        acceptanceCriteria: ["Criterion"],
+        doneCriteriaRefs: ["manual"],
+        source: "generated",
+        archivedAt: null,
+        createdByJobId: null,
+        createdAt: new Date("2026-03-18T00:00:00.000Z"),
+        updatedAt: new Date("2026-03-18T00:00:00.000Z"),
+      },
+    ]);
+    const archive = vi.fn(async () => undefined);
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-dedupe",
+          projectId,
+          createdByUserId: userId,
+          type: "DeduplicateUseCases",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {} as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        archive,
+      } as never,
+    });
+
+    await service.run("job-dedupe");
+
+    expect(archive).toHaveBeenCalledWith(userId, "flow-2");
+    expect(markSucceeded).toHaveBeenCalledWith("job-dedupe", {
+      archivedIds: ["flow-2"],
+    });
+  });
 });

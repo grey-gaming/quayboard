@@ -103,9 +103,19 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const userFlowId = (request.params as { id: string }).id;
+        const context = await services.userFlowService.getContext(
+          request.user!.id,
+          userFlowId,
+        );
+        await services.projectSetupService.assertSetupCompleted(
+          request.user!.id,
+          context.projectId,
+        );
+        await assertApprovedProductSpec(request.user!.id, context.projectId);
         const userFlow = await services.userFlowService.update(
           request.user!.id,
-          (request.params as { id: string }).id,
+          userFlowId,
           upsertUseCaseRequestSchema.parse(request.body),
         );
 
@@ -128,9 +138,19 @@ export const userFlowRoutes = (
     },
     async (request, reply) => {
       try {
+        const userFlowId = (request.params as { id: string }).id;
+        const context = await services.userFlowService.getContext(
+          request.user!.id,
+          userFlowId,
+        );
+        await services.projectSetupService.assertSetupCompleted(
+          request.user!.id,
+          context.projectId,
+        );
+        await assertApprovedProductSpec(request.user!.id, context.projectId);
         await services.userFlowService.archive(
           request.user!.id,
-          (request.params as { id: string }).id,
+          userFlowId,
         );
 
         return reply.status(204).send();

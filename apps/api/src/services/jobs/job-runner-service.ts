@@ -526,10 +526,7 @@ export const createJobRunnerService = (input: {
         for (const flow of activeFlows) {
           const normalized = flow.title.trim().toLowerCase();
           if (seen.has(normalized)) {
-            await input.db
-              .update(useCasesTable)
-              .set({ archivedAt: new Date(), updatedAt: new Date() })
-              .where(eq(useCasesTable.id, flow.id));
+            await input.userFlowService.archive(ownerUserId, flow.id);
             archivedIds.push(flow.id);
             continue;
           }

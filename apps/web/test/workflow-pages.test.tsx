@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { User } from "@quayboard/shared";
+import type { User, UseCaseListResponse } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
@@ -1185,6 +1185,273 @@ describe("workflow pages", () => {
       (await screen.findByRole("button", { name: "Deduplicating Flows" })) as HTMLButtonElement,
     ).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Generate Flows" })).toHaveProperty("disabled", false);
+  });
+
+  it("edits an existing user flow inline and preserves metadata", async () => {
+    const userFlowsProjectId = "73737373-7373-4373-8373-737373737373";
+    let userFlowsResponse: UseCaseListResponse = {
+      userFlows: [
+        {
+          id: "flow-edit-id",
+          projectId: userFlowsProjectId,
+          title: "Invite a teammate",
+          userStory: "As an admin, I want to invite a teammate so collaboration can start.",
+          entryPoint: "Workspace members panel",
+          endState: "The teammate receives an invitation email.",
+          flowSteps: ["Open members", "Enter teammate email", "Send invite"],
+          coverageTags: ["happy-path", "onboarding"],
+          acceptanceCriteria: ["Invitation can be sent successfully."],
+          doneCriteriaRefs: ["spec-1"],
+          source: "generated",
+          archivedAt: null,
+          createdAt: "2026-03-16T10:00:00.000Z",
+          updatedAt: "2026-03-16T10:00:00.000Z",
+        },
+      ],
+      coverage: {
+        warnings: [],
+        acceptedWarnings: [],
+      },
+      approvedAt: "2026-03-16T10:05:00.000Z",
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: userFlowsProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: userFlowsProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => userFlowsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/user-flows/flow-edit-id" && method === "PATCH") {
+        const payload = JSON.parse(String(init?.body)) as {
+          acceptanceCriteria: string[];
+          coverageTags: string[];
+          doneCriteriaRefs: string[];
+          endState: string;
+          entryPoint: string;
+          flowSteps: string[];
+          source: string;
+          title: string;
+          userStory: string;
+        };
+
+        expect(payload.doneCriteriaRefs).toEqual(["spec-1"]);
+        expect(payload.source).toBe("generated");
+
+        userFlowsResponse = {
+          userFlows: [
+            {
+              ...userFlowsResponse.userFlows[0],
+              title: payload.title,
+              userStory: payload.userStory,
+              entryPoint: payload.entryPoint,
+              endState: payload.endState,
+              flowSteps: payload.flowSteps,
+              coverageTags: payload.coverageTags,
+              acceptanceCriteria: payload.acceptanceCriteria,
+              updatedAt: "2026-03-16T10:10:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: null,
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => userFlowsResponse.userFlows[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(await screen.findByText("Invite a teammate")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getAllByLabelText("Title")[1], {
+      target: { value: "Invite and assign a teammate" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Flow steps")[1], {
+      target: { value: "Open members\nEnter teammate email\nAssign role\nSend invite" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) => path === "/api/user-flows/flow-edit-id" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    expect(await screen.findByText("Invite and assign a teammate")).toBeTruthy();
+    expect(await screen.findByText("Assign role")).toBeTruthy();
+    expect((await screen.findAllByText("Pending review")).length).toBeGreaterThan(0);
+  });
+
+  it("archives a user flow from the active catalogue", async () => {
+    const userFlowsProjectId = "74747474-7474-4474-8474-747474747474";
+    let userFlowsResponse: UseCaseListResponse = {
+      userFlows: [
+        {
+          id: "flow-archive-id",
+          projectId: userFlowsProjectId,
+          title: "Create first project",
+          userStory: "As a new user, I want to create a project so I can begin planning.",
+          entryPoint: "Projects home",
+          endState: "The new project appears in Mission Control.",
+          flowSteps: ["Click new project", "Enter details", "Create project"],
+          coverageTags: ["happy-path", "onboarding"],
+          acceptanceCriteria: ["Project is created."],
+          doneCriteriaRefs: ["manual"],
+          source: "manual",
+          archivedAt: null,
+          createdAt: "2026-03-16T10:00:00.000Z",
+          updatedAt: "2026-03-16T10:00:00.000Z",
+        },
+      ],
+      coverage: {
+        warnings: [],
+        acceptedWarnings: [],
+      },
+      approvedAt: "2026-03-16T10:05:00.000Z",
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: userFlowsProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: userFlowsProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => userFlowsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/user-flows/flow-archive-id" && method === "DELETE") {
+        userFlowsResponse = {
+          userFlows: [],
+          coverage: {
+            warnings: ["Add at least one active user flow."],
+            acceptedWarnings: [],
+          },
+          approvedAt: null,
+        };
+
+        return {
+          ok: true,
+          status: 204,
+          json: async () => undefined,
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(await screen.findByText("Create first project")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === "/api/user-flows/flow-archive-id" && init?.method === "DELETE",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Create first project")).toBeNull();
+    });
+    expect(await screen.findByText("0 items")).toBeTruthy();
+    expect((await screen.findAllByText("Pending review")).length).toBeGreaterThan(0);
   });
 
   it("redirects Product Spec access back to overview until the overview is approved", async () => {

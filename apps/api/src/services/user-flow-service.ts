@@ -49,6 +49,42 @@ const buildCoverageWarnings = (flows: ReturnType<typeof toUseCase>[]) => {
 };
 
 export const createUserFlowService = (db: AppDatabase) => ({
+  async clearApproval(projectId: string) {
+    await db
+      .update(projectsTable)
+      .set({
+        userFlowsApprovedAt: null,
+        userFlowsApprovalSnapshot: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, projectId));
+  },
+
+  async getContext(ownerUserId: string, userFlowId: string) {
+    const flow = await db
+      .select({
+        archivedAt: useCasesTable.archivedAt,
+        ownerUserId: projectsTable.ownerUserId,
+        projectId: useCasesTable.projectId,
+      })
+      .from(useCasesTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, useCasesTable.projectId))
+      .where(eq(useCasesTable.id, userFlowId))
+      .limit(1);
+
+    if (
+      !flow[0] ||
+      flow[0].ownerUserId !== ownerUserId ||
+      flow[0].archivedAt
+    ) {
+      throw new HttpError(404, "user_flow_not_found", "User flow not found.");
+    }
+
+    return {
+      projectId: flow[0].projectId,
+    };
+  },
+
   async list(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
@@ -119,23 +155,13 @@ export const createUserFlowService = (db: AppDatabase) => ({
       })
       .returning();
 
+    await this.clearApproval(projectId);
+
     return toUseCase(created);
   },
 
   async update(ownerUserId: string, userFlowId: string, input: unknown) {
-    const flow = await db
-      .select({
-        flow: useCasesTable,
-        ownerUserId: projectsTable.ownerUserId,
-      })
-      .from(useCasesTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, useCasesTable.projectId))
-      .where(eq(useCasesTable.id, userFlowId))
-      .limit(1);
-
-    if (!flow[0] || flow[0].ownerUserId !== ownerUserId) {
-      throw new HttpError(404, "user_flow_not_found", "User flow not found.");
-    }
+    const context = await this.getContext(ownerUserId, userFlowId);
 
     const payload = upsertUseCaseRequestSchema.parse(input);
     const [updated] = await db
@@ -155,28 +181,20 @@ export const createUserFlowService = (db: AppDatabase) => ({
       .where(eq(useCasesTable.id, userFlowId))
       .returning();
 
+    await this.clearApproval(context.projectId);
+
     return toUseCase(updated);
   },
 
   async archive(ownerUserId: string, userFlowId: string) {
-    const flow = await db
-      .select({
-        flowId: useCasesTable.id,
-        ownerUserId: projectsTable.ownerUserId,
-      })
-      .from(useCasesTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, useCasesTable.projectId))
-      .where(eq(useCasesTable.id, userFlowId))
-      .limit(1);
-
-    if (!flow[0] || flow[0].ownerUserId !== ownerUserId) {
-      throw new HttpError(404, "user_flow_not_found", "User flow not found.");
-    }
+    const context = await this.getContext(ownerUserId, userFlowId);
 
     await db
       .update(useCasesTable)
       .set({ archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(useCasesTable.id, userFlowId));
+
+    await this.clearApproval(context.projectId);
   },
 
   async approve(ownerUserId: string, projectId: string, input: unknown) {
