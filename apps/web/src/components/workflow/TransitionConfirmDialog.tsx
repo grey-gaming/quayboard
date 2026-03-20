@@ -28,7 +28,7 @@ export const TransitionConfirmDialog = ({
         <p className="qb-meta-label">Confirm transition</p>
         <p className="mt-2 text-xl font-semibold tracking-[-0.02em]">{title}</p>
         <p className="mt-3 text-sm text-secondary">
-          This approval is intended for the current canonical blueprint revision after review has
+          This approval is intended for the current canonical specification revision after review has
           completed.
         </p>
         <div className="mt-5 flex justify-end gap-2">
