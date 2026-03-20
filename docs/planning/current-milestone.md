@@ -2,22 +2,22 @@
 
 ## Active Target
 
-M3: Blueprint Builder
+M3: UX and Technical Spec Builder
 
 This is the active implementation target. Work beyond M3 requires an explicit request.
 
 ## Goal
 
-Deliver the Blueprint phase on top of the completed M2 planning workflow: decision deck generation, persisted user selections, deck-first UX/tech blueprint generation or manual save, review-item triage, approval, and Mission Control updates.
+Deliver the post-user-flow specification phases on top of the completed M2 planning workflow: UX decision tiles, UX Spec generation or manual save, Technical decision tiles, Technical Spec generation or manual save, review-item triage, approval, and Mission Control updates.
 
 ## In Scope
 
 - `decision_cards`, `project_blueprints`, `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` schema additions
-- Decision deck generation from approved planning artifacts, with persisted option or custom selections
-- UX and tech blueprint generation from the selected deck via a deck-first flow, plus manual-save support for direct authoring
-- Blueprint review jobs, review-item triage (`DONE`, `ACCEPTED`, `IGNORED`), and approval records
-- Blueprint-specific phase gates and Mission Control next-action updates
-- Shared schemas, API client contracts, and UI routes for Blueprint Builder and artifact review
+- Kind-specific decision-tile generation from approved planning artifacts, with persisted option or custom selections plus explicit decision acceptance
+- UX and Technical Spec generation from the accepted decision tiles, plus manual-save support for direct authoring and version history
+- UX/Technical Spec review jobs, review-item triage (`DONE`, `ACCEPTED`, `IGNORED`), and approval records
+- UX Spec and Technical Spec phase gates plus Mission Control next-action updates
+- Shared schemas, API client contracts, and UI routes for UX Spec, Technical Spec, and artifact review
 - User-facing and architecture docs that describe the M3 repo reality
 
 ## Out Of Scope
@@ -34,14 +34,15 @@ Deliver the Blueprint phase on top of the completed M2 planning workflow: decisi
 
 The milestone is complete when the repo can support the following:
 
-- A user with approved user flows can queue a decision deck and see recommendation-driven decision cards
-- Decision card selections persist, support custom choices, unlock the UX/tech views only after the deck is complete, and invalidate stale canonical blueprints when the deck changes
-- A user can generate UX and tech blueprints from the bottom of the completed decision deck or save them manually through the API/UI
+- A user with approved user flows can queue UX decision tiles, select options, accept them, and then generate or manually save the UX Spec
+- Technical decision tiles and the Technical Spec remain locked until the UX Spec is approved
+- Decision selections persist, support custom choices, require explicit acceptance before generation, and invalidate stale canonical specs when the decision set changes
+- A user can generate or manually save both UX and Technical Specs through the API/UI and restore older versions
 - Review jobs create structured review items with `BLOCKER`, `WARNING`, and `SUGGESTION` severities
 - Review items can be triaged to `DONE`, `ACCEPTED`, or `IGNORED`
-- A blueprint cannot be approved until review has completed and no blocker remains open
-- Approval writes an `artifact_approvals` record for the canonical blueprint revision
-- Mission Control includes the Blueprint phase plus blueprint-specific next actions
+- A UX or Technical Spec cannot be approved until review has completed and no blocker remains open
+- Approval writes an `artifact_approvals` record for the canonical spec revision
+- Mission Control includes separate UX Spec and Technical Spec phases plus spec-specific next actions
 - Shared schema imports resolve across the workspace without TypeScript errors
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
 - Architecture and user docs describe the M3 repo behavior

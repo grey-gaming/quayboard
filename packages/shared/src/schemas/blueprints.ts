@@ -15,6 +15,7 @@ export type DecisionCardOption = z.infer<typeof decisionCardOptionSchema>;
 export const decisionCardSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
+  kind: blueprintKindSchema,
   key: z.string().min(1),
   category: z.string().min(1),
   title: z.string().min(1),
@@ -23,6 +24,7 @@ export const decisionCardSchema = z.object({
   alternatives: z.array(decisionCardOptionSchema).min(1),
   selectedOptionId: z.string().min(1).nullable(),
   customSelection: z.string().min(1).nullable(),
+  acceptedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -61,6 +63,14 @@ export const updateDecisionCardsRequestSchema = z.object({
 
 export type UpdateDecisionCardsRequest = z.infer<typeof updateDecisionCardsRequestSchema>;
 
+export const queueDecisionDeckGenerationRequestSchema = z.object({
+  kind: blueprintKindSchema,
+});
+
+export type QueueDecisionDeckGenerationRequest = z.infer<
+  typeof queueDecisionDeckGenerationRequestSchema
+>;
+
 export const projectBlueprintSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
@@ -81,6 +91,20 @@ export const canonicalBlueprintsResponseSchema = z.object({
 });
 
 export type CanonicalBlueprintsResponse = z.infer<typeof canonicalBlueprintsResponseSchema>;
+
+export const projectBlueprintListResponseSchema = z.object({
+  blueprint: projectBlueprintSchema.nullable(),
+});
+
+export type ProjectBlueprintListResponse = z.infer<typeof projectBlueprintListResponseSchema>;
+
+export const projectBlueprintVersionListResponseSchema = z.object({
+  versions: z.array(projectBlueprintSchema),
+});
+
+export type ProjectBlueprintVersionListResponse = z.infer<
+  typeof projectBlueprintVersionListResponseSchema
+>;
 
 export const queueBlueprintGenerationRequestSchema = z.object({
   kind: blueprintKindSchema,

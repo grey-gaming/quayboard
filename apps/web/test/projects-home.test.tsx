@@ -126,7 +126,7 @@ describe("project entry surfaces", () => {
     expect(await screen.findByRole("heading", { name: "Create Project" })).toBeTruthy();
     expect(
       screen.getByText(
-        "Create the project record here, then move through setup, questions, overview, Product Spec, and user flows to shape the delivery plan.",
+        "Create the project record here, then move through setup, questions, overview, Product Spec, user flows, UX Spec, and Technical Spec to shape the delivery plan.",
       ),
     ).toBeTruthy();
     expect(screen.getByText("What happens next")).toBeTruthy();

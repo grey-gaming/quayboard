@@ -199,6 +199,7 @@ describe("job runner service", () => {
           projectId,
           createdByUserId: userId,
           type: "GenerateDecisionDeck",
+          inputs: { kind: "ux" },
         })),
         markSucceeded,
       } as never,
@@ -283,6 +284,7 @@ describe("job runner service", () => {
     expect(replaceDecisionDeck).toHaveBeenCalledWith(
       expect.objectContaining({
         projectId,
+        kind: "ux",
         cards: [
           expect.objectContaining({
             key: "architecture-style",
@@ -294,6 +296,7 @@ describe("job runner service", () => {
     );
     expect(markSucceeded).toHaveBeenCalledWith("job-decision-deck", {
       createdCount: 1,
+      kind: "ux",
     });
   });
 

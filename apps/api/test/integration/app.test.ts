@@ -1727,14 +1727,14 @@ describe("API integration", () => {
     }
   });
 
-  it("gates blueprint routes on user-flow approval and a complete decision deck", async () => {
+  it("gates UX and Technical Spec routes on the new decision acceptance flow", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
       const blockedProject = await registerAndSeedBlueprintProject({ approveUserFlows: false });
       const blockedDeckResponse = await server.inject({
         method: "POST",
-        url: `/api/projects/${blockedProject.projectId}/blueprints/generate-deck`,
+        url: `/api/projects/${blockedProject.projectId}/ux-spec/decision-tiles/generate`,
         cookies: { qb_session: blockedProject.cookieValue },
       });
 
@@ -1742,25 +1742,22 @@ describe("API integration", () => {
       expect(blockedDeckResponse.json()).toEqual({
         error: {
           code: "user_flows_approval_required",
-          message: "Approve user flows before using Blueprint Builder.",
+          message: "Approve user flows before using UX Spec.",
         },
       });
 
       const readyProject = await registerAndSeedBlueprintProject();
       const missingDeckResponse = await server.inject({
         method: "POST",
-        url: `/api/projects/${readyProject.projectId}/blueprints/generate`,
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
         cookies: { qb_session: readyProject.cookieValue },
-        payload: {
-          kind: "ux",
-        },
       });
 
       expect(missingDeckResponse.statusCode).toBe(409);
       expect(missingDeckResponse.json()).toEqual({
         error: {
           code: "decision_deck_required",
-          message: "Generate the decision deck before creating blueprints.",
+          message: "Generate the UX decision tiles before creating the UX Spec.",
         },
       });
 
@@ -1785,23 +1782,64 @@ describe("API integration", () => {
             ],
           },
         ],
+        kind: "ux",
         projectId: readyProject.projectId,
       });
 
       const incompleteDeckResponse = await server.inject({
         method: "POST",
-        url: `/api/projects/${readyProject.projectId}/blueprints/generate`,
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
         cookies: { qb_session: readyProject.cookieValue },
-        payload: {
-          kind: "ux",
-        },
       });
 
       expect(incompleteDeckResponse.statusCode).toBe(409);
       expect(incompleteDeckResponse.json()).toEqual({
         error: {
           code: "decision_selection_required",
-          message: "Select an option for every decision card before generating blueprints.",
+          message: "Select an option for every UX decision before creating the UX Spec.",
+        },
+      });
+
+      const [card] = await appServices.services.blueprintService.listDecisionCards(
+        readyProject.ownerUserId,
+        readyProject.projectId,
+        "ux",
+      ).then((result) => result.cards);
+
+      await appServices.services.blueprintService.updateDecisionCards(
+        readyProject.ownerUserId,
+        readyProject.projectId,
+        "ux",
+        {
+          cards: [{ id: card.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+
+      const unacceptedDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(unacceptedDeckResponse.statusCode).toBe(409);
+      expect(unacceptedDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_acceptance_required",
+          message: "Accept the UX decision tiles before creating the UX Spec.",
+        },
+      });
+
+      const technicalGateResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/technical-spec/decision-tiles/generate`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(technicalGateResponse.statusCode).toBe(409);
+      expect(technicalGateResponse.json()).toEqual({
+        error: {
+          code: "ux_spec_required",
+          message: "Generate the UX Spec before using Technical Spec.",
         },
       });
     } finally {
@@ -1835,12 +1873,14 @@ describe("API integration", () => {
             ],
           },
         ],
+        kind: "ux",
         projectId: project.projectId,
       });
 
       await appServices.services.blueprintService.updateDecisionCards(
         project.ownerUserId,
         project.projectId,
+        "ux",
         {
           cards: [{ id: card.id, selectedOptionId: "modular-monolith" }],
         },
@@ -1848,10 +1888,10 @@ describe("API integration", () => {
 
       const blueprint = await appServices.services.blueprintService.createBlueprintVersion({
         kind: "ux",
-        markdown: "# UX Blueprint\n\nCanonical blueprint.",
+        markdown: "# UX Spec\n\nCanonical specification.",
         projectId: project.projectId,
         source: "ManualSave",
-        title: "UX Blueprint",
+        title: "UX Spec",
       });
 
       const missingReviewResponse = await server.inject({

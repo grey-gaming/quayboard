@@ -16,26 +16,44 @@ export const createPhaseGateService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [onePager, productSpec, setupStatus, setupCompleted, questionnaire, userFlows, decisionCards, blueprints] =
-      await Promise.all([
-        onePagerService.getCanonical(ownerUserId, projectId),
-        productSpecService.getCanonical(ownerUserId, projectId),
-        projectSetupService.getSetupStatus(ownerUserId, projectId),
-        projectSetupService.isSetupCompleted(ownerUserId, projectId),
-        questionnaireService.getAnswers(projectId),
-        userFlowService.list(ownerUserId, projectId),
-        blueprintService.listDecisionCards(ownerUserId, projectId),
-        blueprintService.getCanonical(ownerUserId, projectId),
-      ]);
+    const [
+      onePager,
+      productSpec,
+      setupStatus,
+      setupCompleted,
+      questionnaire,
+      userFlows,
+      uxDecisionCards,
+      techDecisionCards,
+      blueprints,
+    ] = await Promise.all([
+      onePagerService.getCanonical(ownerUserId, projectId),
+      productSpecService.getCanonical(ownerUserId, projectId),
+      projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
+      questionnaireService.getAnswers(projectId),
+      userFlowService.list(ownerUserId, projectId),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "ux"),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "tech"),
+      blueprintService.getCanonical(ownerUserId, projectId),
+    ]);
 
     const setupPassed = setupCompleted;
     const overviewPassed = Boolean(onePager?.approvedAt);
     const productSpecPassed = overviewPassed && Boolean(productSpec?.approvedAt);
     const userFlowsPassed = Boolean(userFlows.approvedAt);
-    const decisionDeckGenerated = decisionCards.cards.length > 0;
-    const decisionDeckSelected =
-      decisionDeckGenerated &&
-      decisionCards.cards.every((card) => card.selectedOptionId || card.customSelection);
+    const uxDecisionGenerated = uxDecisionCards.cards.length > 0;
+    const uxDecisionSelected =
+      uxDecisionGenerated &&
+      uxDecisionCards.cards.every((card) => card.selectedOptionId || card.customSelection);
+    const uxDecisionAccepted =
+      uxDecisionSelected && uxDecisionCards.cards.every((card) => Boolean(card.acceptedAt));
+    const techDecisionGenerated = techDecisionCards.cards.length > 0;
+    const techDecisionSelected =
+      techDecisionGenerated &&
+      techDecisionCards.cards.every((card) => card.selectedOptionId || card.customSelection);
+    const techDecisionAccepted =
+      techDecisionSelected && techDecisionCards.cards.every((card) => Boolean(card.acceptedAt));
     const uxGenerated = Boolean(blueprints.uxBlueprint);
     const techGenerated = Boolean(blueprints.techBlueprint);
     const [uxState, techState] = await Promise.all([
@@ -138,17 +156,15 @@ export const createPhaseGateService = (
           ],
         },
         {
-          phase: "Blueprint",
+          phase: "UX Spec",
           passed:
             userFlowsPassed &&
-            decisionDeckGenerated &&
-            decisionDeckSelected &&
+            uxDecisionGenerated &&
+            uxDecisionSelected &&
+            uxDecisionAccepted &&
             uxGenerated &&
-            techGenerated &&
             uxBlockersResolved &&
-            techBlockersResolved &&
-            uxApproved &&
-            techApproved,
+            uxApproved,
           items: [
             {
               key: "user_flows_approved",
@@ -156,43 +172,81 @@ export const createPhaseGateService = (
               passed: userFlowsPassed,
             },
             {
-              key: "decision_deck",
-              label: "Decision deck generated",
-              passed: decisionDeckGenerated,
+              key: "ux_decision_tiles",
+              label: "UX decision tiles generated",
+              passed: uxDecisionGenerated,
             },
             {
-              key: "decision_selections",
-              label: "Decision selections complete",
-              passed: decisionDeckSelected,
+              key: "ux_decision_selections",
+              label: "UX decision selections complete",
+              passed: uxDecisionSelected,
             },
             {
-              key: "ux_blueprint",
-              label: "UX blueprint generated",
+              key: "ux_decision_acceptance",
+              label: "UX decisions accepted",
+              passed: uxDecisionAccepted,
+            },
+            {
+              key: "ux_spec_generated",
+              label: "UX Spec generated",
               passed: uxGenerated,
             },
             {
-              key: "tech_blueprint",
-              label: "Tech blueprint generated",
-              passed: techGenerated,
-            },
-            {
               key: "ux_blockers",
-              label: "UX blueprint blockers resolved",
+              label: "UX Spec blockers resolved",
               passed: uxBlockersResolved,
             },
             {
-              key: "tech_blockers",
-              label: "Tech blueprint blockers resolved",
-              passed: techBlockersResolved,
+              key: "ux_approved",
+              label: "UX Spec approved",
+              passed: uxApproved,
             },
+          ],
+        },
+        {
+          phase: "Technical Spec",
+          passed:
+            uxApproved &&
+            techDecisionGenerated &&
+            techDecisionSelected &&
+            techDecisionAccepted &&
+            techGenerated &&
+            techBlockersResolved &&
+            techApproved,
+          items: [
             {
               key: "ux_approved",
-              label: "UX blueprint approved",
+              label: "UX Spec approved",
               passed: uxApproved,
             },
             {
+              key: "tech_decision_tiles",
+              label: "Technical decision tiles generated",
+              passed: techDecisionGenerated,
+            },
+            {
+              key: "tech_decision_selections",
+              label: "Technical decision selections complete",
+              passed: techDecisionSelected,
+            },
+            {
+              key: "tech_decision_acceptance",
+              label: "Technical decisions accepted",
+              passed: techDecisionAccepted,
+            },
+            {
+              key: "tech_spec_generated",
+              label: "Technical Spec generated",
+              passed: techGenerated,
+            },
+            {
+              key: "tech_blockers",
+              label: "Technical Spec blockers resolved",
+              passed: techBlockersResolved,
+            },
+            {
               key: "tech_approved",
-              label: "Tech blueprint approved",
+              label: "Technical Spec approved",
               passed: techApproved,
             },
           ],

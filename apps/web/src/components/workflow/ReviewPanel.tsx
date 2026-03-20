@@ -76,7 +76,7 @@ export const ReviewPanel = ({ isUpdating = false, items, onUpdate }: ReviewPanel
       )}
       {items.length === 0 ? (
         <div className="border border-border/80 bg-panel-inset px-4 py-4 text-sm text-secondary">
-          No review items yet. Run review from the action bar when the blueprint is ready.
+          No review items yet. Run review from the action bar when the specification is ready.
         </div>
       ) : null}
     </div>

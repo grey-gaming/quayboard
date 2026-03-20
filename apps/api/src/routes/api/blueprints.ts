@@ -1,11 +1,14 @@
 import type { FastifyPluginAsync } from "fastify";
 
 import {
-  canonicalBlueprintsResponseSchema,
   decisionCardListResponseSchema,
   jobSchema,
-  queueBlueprintGenerationRequestSchema,
+  projectBlueprintListResponseSchema,
+  projectBlueprintSchema,
+  projectBlueprintVersionListResponseSchema,
   saveBlueprintRequestSchema,
+  updateDecisionCardsRequestSchema,
+  type BlueprintKind,
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
@@ -21,6 +24,18 @@ const projectParamsJsonSchema = {
   additionalProperties: false,
 } as const;
 
+const versionParamsJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+    version: { type: "integer", minimum: 1 },
+  },
+  required: ["id", "version"],
+  additionalProperties: false,
+} as const;
+
+const kindToDocumentLabel = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
+
 const assertApprovedUserFlows = async (
   services: AppServices,
   ownerUserId: string,
@@ -32,16 +47,82 @@ const assertApprovedUserFlows = async (
     throw new HttpError(
       409,
       "user_flows_approval_required",
-      "Approve user flows before using Blueprint Builder.",
+      "Approve user flows before using UX Spec.",
     );
   }
 };
 
-export const blueprintRoutes = (
+const assertApprovedUxSpec = async (
   services: AppServices,
-): FastifyPluginAsync => async (app) => {
+  ownerUserId: string,
+  projectId: string,
+) => {
+  const uxSpec = await services.blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux");
+
+  if (!uxSpec) {
+    throw new HttpError(
+      409,
+      "ux_spec_required",
+      "Generate the UX Spec before using Technical Spec.",
+    );
+  }
+
+  const artifactState = await services.artifactReviewService.getState(
+    ownerUserId,
+    projectId,
+    "blueprint_ux",
+    uxSpec.id,
+  );
+
+  if (!artifactState.approval) {
+    throw new HttpError(
+      409,
+      "ux_spec_approval_required",
+      "Approve the UX Spec before using Technical Spec.",
+    );
+  }
+};
+
+const registerSpecRoutes = (
+  app: Parameters<FastifyPluginAsync>[0],
+  services: AppServices,
+  input: {
+    kind: BlueprintKind;
+    routePrefix: "/projects/:id/ux-spec" | "/projects/:id/technical-spec";
+  },
+) => {
+  const { kind, routePrefix } = input;
+  const assertPhaseGate =
+    kind === "ux"
+      ? (ownerUserId: string, projectId: string) =>
+          assertApprovedUserFlows(services, ownerUserId, projectId)
+      : (ownerUserId: string, projectId: string) =>
+          assertApprovedUxSpec(services, ownerUserId, projectId);
+
+  app.get(
+    `${routePrefix}/decision-tiles`,
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
+
+        return decisionCardListResponseSchema.parse(
+          await services.blueprintService.listDecisionCards(request.user!.id, projectId, kind),
+        );
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
   app.post(
-    "/projects/:id/blueprints/generate-deck",
+    `${routePrefix}/decision-tiles/generate`,
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -52,11 +133,12 @@ export const blueprintRoutes = (
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
           type: "GenerateDecisionDeck",
+          inputs: { kind },
         });
 
         return reply.status(202).send(jobSchema.parse(job));
@@ -66,30 +148,8 @@ export const blueprintRoutes = (
     },
   );
 
-  app.get(
-    "/projects/:id/decision-cards",
-    {
-      schema: {
-        params: projectParamsJsonSchema,
-      },
-    },
-    async (request, reply) => {
-      try {
-        const projectId = (request.params as { id: string }).id;
-        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
-
-        return decisionCardListResponseSchema.parse(
-          await services.blueprintService.listDecisionCards(request.user!.id, projectId),
-        );
-      } catch (error) {
-        return handleRouteError(reply, error);
-      }
-    },
-  );
-
   app.patch(
-    "/projects/:id/decision-cards",
+    `${routePrefix}/decision-tiles`,
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -99,13 +159,15 @@ export const blueprintRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
+        const payload = updateDecisionCardsRequestSchema.parse(request.body);
 
         return decisionCardListResponseSchema.parse(
           await services.blueprintService.updateDecisionCards(
             request.user!.id,
             projectId,
-            request.body,
+            kind,
+            payload,
           ),
         );
       } catch (error) {
@@ -115,7 +177,7 @@ export const blueprintRoutes = (
   );
 
   app.post(
-    "/projects/:id/blueprints/generate",
+    `${routePrefix}/decision-tiles/accept`,
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -125,14 +187,60 @@ export const blueprintRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
-        await services.blueprintService.assertFullySelectedDecisionDeck(request.user!.id, projectId);
-        const payload = queueBlueprintGenerationRequestSchema.parse(request.body);
+        await assertPhaseGate(request.user!.id, projectId);
+
+        return decisionCardListResponseSchema.parse(
+          await services.blueprintService.acceptDecisionDeck(request.user!.id, projectId, kind),
+        );
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    routePrefix,
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
+        const blueprint = await services.blueprintService.getCanonicalByKind(
+          request.user!.id,
+          projectId,
+          kind,
+        );
+
+        return projectBlueprintListResponseSchema.parse({ blueprint });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    routePrefix,
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
+        await services.blueprintService.assertAcceptedDecisionDeck(request.user!.id, projectId, kind);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
           type: "GenerateProjectBlueprint",
-          inputs: payload,
+          inputs: { kind },
         });
 
         return reply.status(202).send(jobSchema.parse(job));
@@ -142,8 +250,8 @@ export const blueprintRoutes = (
     },
   );
 
-  app.post(
-    "/projects/:id/blueprints/save",
+  app.patch(
+    routePrefix,
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -153,18 +261,31 @@ export const blueprintRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
-        await services.blueprintService.assertFullySelectedDecisionDeck(request.user!.id, projectId);
-        const payload = saveBlueprintRequestSchema.parse(request.body);
+        await assertPhaseGate(request.user!.id, projectId);
+        const canonical = await services.blueprintService.getCanonicalByKind(
+          request.user!.id,
+          projectId,
+          kind,
+        );
+        await services.blueprintService.assertAcceptedDecisionDeck(request.user!.id, projectId, kind);
+        const requestBody =
+          typeof request.body === "object" && request.body !== null
+            ? (request.body as { markdown?: unknown; title?: unknown })
+            : {};
+        const payload = saveBlueprintRequestSchema.parse({
+          kind,
+          title: requestBody.title ?? canonical?.title ?? kindToDocumentLabel(kind),
+          markdown: requestBody.markdown,
+        });
         const blueprint = await services.blueprintService.createBlueprintVersion({
           projectId,
-          kind: payload.kind,
+          kind,
           title: payload.title,
           markdown: payload.markdown,
-          source: "ManualSave",
+          source: canonical ? "ManualEdit" : "ManualSave",
         });
 
-        return reply.send(blueprint);
+        return projectBlueprintSchema.parse(blueprint);
       } catch (error) {
         return handleRouteError(reply, error);
       }
@@ -172,7 +293,7 @@ export const blueprintRoutes = (
   );
 
   app.get(
-    "/projects/:id/blueprints/canonical",
+    `${routePrefix}/versions`,
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -182,13 +303,52 @@ export const blueprintRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await assertApprovedUserFlows(services, request.user!.id, projectId);
-        const blueprints = await services.blueprintService.getCanonical(request.user!.id, projectId);
+        await assertPhaseGate(request.user!.id, projectId);
+        const versions = await services.blueprintService.listVersions(request.user!.id, projectId, kind);
 
-        return canonicalBlueprintsResponseSchema.parse(blueprints);
+        return projectBlueprintVersionListResponseSchema.parse({ versions });
       } catch (error) {
         return handleRouteError(reply, error);
       }
     },
   );
+
+  app.post(
+    `${routePrefix}/versions/:version/restore`,
+    {
+      schema: {
+        params: versionParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const params = request.params as { id: string; version: number };
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, params.id);
+        await assertPhaseGate(request.user!.id, params.id);
+        const blueprint = await services.blueprintService.restoreVersion(
+          request.user!.id,
+          params.id,
+          kind,
+          Number(params.version),
+        );
+
+        return projectBlueprintSchema.parse(blueprint);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+};
+
+export const blueprintRoutes = (
+  services: AppServices,
+): FastifyPluginAsync => async (app) => {
+  registerSpecRoutes(app, services, {
+    kind: "ux",
+    routePrefix: "/projects/:id/ux-spec",
+  });
+  registerSpecRoutes(app, services, {
+    kind: "tech",
+    routePrefix: "/projects/:id/technical-spec",
+  });
 };

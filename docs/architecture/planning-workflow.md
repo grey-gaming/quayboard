@@ -13,8 +13,10 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - overview document generation, version history, restore, and approval
 - Product Spec generation, version history, restore, and approval
 - user-flow generation, manual editing, deduplication, and approval
-- decision deck generation and selection persistence
-- deck-first UX and tech blueprint generation, manual save, review-item triage, and approval
+- UX decision-tile generation, selection persistence, and acceptance
+- UX Spec generation, manual save, review-item triage, approval, and version history
+- Technical decision-tile generation, selection persistence, and acceptance
+- Technical Spec generation, manual save, review-item triage, approval, and version history
 
 ## Data Model
 
@@ -22,9 +24,9 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `one_pagers` stores immutable overview versions with a canonical flag
 - `product_specs` stores immutable Product Spec versions with a canonical flag
 - `use_cases` stores mutable user flows with archive support
-- `decision_cards` stores the Blueprint Builder decision deck and user selections
-- `project_blueprints` stores versioned UX and tech blueprint revisions with canonical pointers
-- `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` back blueprint review and approval
+- `decision_cards` stores kind-specific UX and technical decision tiles, selections, and acceptance state
+- `project_blueprints` stores versioned UX and technical spec revisions with canonical pointers
+- `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` back UX/Technical Spec review and approval
 - `projects` now stores overview approval time plus user-flow approval snapshot metadata
 - `settings` holds project-scoped setup state: LLM config, sandbox defaults, and evidence policy
 
@@ -33,7 +35,7 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `systemReadinessService` checks database access, encryption key presence, Docker access, artifact storage, and enabled provider adapters
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
 - `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, and `artifactReviewService` manage the planning artifacts
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including decision-deck generation, blueprint generation, and blueprint review
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including decision-tile generation, spec generation, and spec review
 
 ## External Adapters
 
@@ -52,5 +54,6 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `/projects/:id/one-pager`
 - `/projects/:id/product-spec`
 - `/projects/:id/user-flows`
-- `/projects/:id/blueprint`
+- `/projects/:id/ux-spec`
+- `/projects/:id/technical-spec`
 - `/projects/:id/import` as a future-release stub

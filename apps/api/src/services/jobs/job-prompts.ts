@@ -446,19 +446,23 @@ export const buildUserFlowPrompt = (input: {
   ].join("\n");
 
 export const buildDecisionDeckPrompt = (input: {
+  kind: "tech" | "ux";
   productSpec: string;
   projectName: string;
   userFlows: string;
+  uxSpec?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Generate a decision deck for "${input.projectName}".`,
+    `Generate the ${input.kind === "ux" ? "UX" : "technical"} decision tiles for "${input.projectName}".`,
     'Return valid JSON as an array of objects with these exact keys: "key", "category", "title", "prompt", "recommendation", and "alternatives".',
     'Each "recommendation" value must be an object with exactly "id", "label", and "description".',
     'Each "alternatives" value must be an array of at least two objects with exactly "id", "label", and "description".',
-    "Generate 5 to 8 cards that capture the most important architectural and UX choices needed before milestone and feature planning.",
+    input.kind === "ux"
+      ? "Generate 5 to 8 UX decision tiles that capture the most important navigation, interaction, information architecture, content, and state choices needed before UX specification."
+      : "Generate 5 to 8 technical decision tiles that capture the most important architecture, data, API, integration, and operational choices needed before technical specification.",
     "Each card must force a meaningful tradeoff rather than a cosmetic preference.",
     "Use short, stable kebab-case values for every option id and the card key.",
     "Do not set a user selection; the deck should present a recommendation and alternatives only.",
@@ -469,20 +473,29 @@ export const buildDecisionDeckPrompt = (input: {
     "",
     "Approved user flows:",
     input.userFlows,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
   ].join("\n");
 
 export const buildDecisionConsistencyPrompt = (input: {
   decisions: string;
+  kind: "tech" | "ux";
   projectName: string;
   userFlows: string;
+  uxSpec?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Validate the selected project decisions for "${input.projectName}".`,
+    `Validate the selected ${input.kind === "ux" ? "UX" : "technical"} decisions for "${input.projectName}".`,
     'Return valid JSON with exactly two keys: "ok" (boolean) and "issues" (array of strings).',
-    'Set "ok" to true only when the selected decisions form a coherent basis for blueprint generation.',
+    'Set "ok" to true only when the selected decisions form a coherent basis for specification generation.',
     "Report contradictions, missing selections, or major coverage gaps in the issues array.",
     "If the decisions are coherent, return an empty issues array.",
     "Do not wrap the JSON in code fences.",
@@ -492,6 +505,13 @@ export const buildDecisionConsistencyPrompt = (input: {
     "",
     "Approved user flows:",
     input.userFlows,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
   ].join("\n");
 
 export const buildProjectBlueprintPrompt = (input: {
@@ -500,26 +520,35 @@ export const buildProjectBlueprintPrompt = (input: {
   productSpec: string;
   projectName: string;
   userFlows: string;
+  uxSpec?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Create the ${input.kind === "ux" ? "UX" : "technical"} project blueprint for "${input.projectName}".`,
+    `Create the ${input.kind === "ux" ? "UX" : "technical"} specification for "${input.projectName}".`,
     'Return valid JSON with exactly two top-level string keys: "title" and "markdown".',
-    "The markdown must be a polished blueprint document suitable for later milestone and feature planning.",
+    "The markdown must be a polished specification document suitable for later milestone and feature planning.",
     "Use the selected decisions as hard constraints.",
+    "Explicitly document route or URL inventory, navigation labels, button and CTA labels, and relevant loading, empty, error, and success states where they apply.",
     "Do not wrap the JSON in code fences.",
     "",
     input.kind === "ux"
-      ? "Use these exact markdown section headings in order: Blueprint Summary, Experience Principles, Information Architecture, Primary Journeys, Key Screens and Surfaces, Interaction Patterns, Content and States, Risks and Open Questions."
-      : "Use these exact markdown section headings in order: Blueprint Summary, Architectural Principles, System Boundaries, Data Model Direction, API and Integration Direction, Operational Concerns, Implementation Risks, Assumptions and Proposed Defaults.",
+      ? "Use these exact markdown section headings in order: UX Spec Summary, Experience Principles, Information Architecture, Primary Journeys, Routes and Screens, Labels and Actions, Interaction Patterns and States, Risks and Open Questions."
+      : "Use these exact markdown section headings in order: Technical Spec Summary, Architectural Principles, System Boundaries, Route and Surface Contracts, Data Model Direction, API and Integration Direction, Operational Concerns, Implementation Risks and Defaults.",
     "",
     "Approved Product Spec:",
     input.productSpec,
     "",
     "Approved user flows:",
     input.userFlows,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
     "",
     "Selected decisions:",
     input.decisions,
@@ -535,16 +564,16 @@ export const buildBlueprintReviewPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Review the ${input.kind === "ux" ? "UX" : "technical"} blueprint for "${input.projectName}".`,
+    `Review the ${input.kind === "ux" ? "UX" : "technical"} specification for "${input.projectName}".`,
     'Return valid JSON as an array of objects with exactly these keys: "severity", "category", "title", and "details".',
     'Allowed severity values are "BLOCKER", "WARNING", and "SUGGESTION".',
     "Return an empty array if the blueprint is clear enough to approve.",
-    "Raise BLOCKER only for contradictions, missing core structure, or blueprint gaps that would make downstream planning unsafe.",
+    "Raise BLOCKER only for contradictions, missing core structure, or specification gaps that would make downstream planning unsafe.",
     "Do not wrap the JSON in code fences.",
     "",
-    "Blueprint title:",
+    "Specification title:",
     input.title,
     "",
-    "Blueprint markdown:",
+    "Specification markdown:",
     input.markdown,
   ].join("\n");

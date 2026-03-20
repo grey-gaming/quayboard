@@ -7,6 +7,7 @@ import {
   type BlueprintKind,
   type DecisionCardOption,
   projectBlueprintSchema,
+  projectBlueprintVersionListResponseSchema,
   updateDecisionCardsRequestSchema,
 } from "@quayboard/shared";
 
@@ -19,6 +20,7 @@ const toDecisionCard = (record: typeof decisionCardsTable.$inferSelect) =>
   decisionCardSchema.parse({
     id: record.id,
     projectId: record.projectId,
+    kind: record.kind,
     key: record.key,
     category: record.category,
     title: record.title,
@@ -27,6 +29,7 @@ const toDecisionCard = (record: typeof decisionCardsTable.$inferSelect) =>
     alternatives: record.alternatives as DecisionCardOption[],
     selectedOptionId: record.selectedOptionId,
     customSelection: record.customSelection,
+    acceptedAt: record.acceptedAt?.toISOString() ?? null,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   });
@@ -44,6 +47,12 @@ const toProjectBlueprint = (record: typeof projectBlueprintsTable.$inferSelect) 
     createdAt: record.createdAt.toISOString(),
   });
 
+const kindToDocumentLabel = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
+const kindToDecisionTilesLabel = (kind: BlueprintKind) =>
+  kind === "ux" ? "UX decision tiles" : "Technical decision tiles";
+const kindToDecisionItemLabel = (kind: BlueprintKind) =>
+  kind === "ux" ? "UX decision" : "Technical decision";
+
 export const createBlueprintService = (db: AppDatabase) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
@@ -57,11 +66,13 @@ export const createBlueprintService = (db: AppDatabase) => ({
     return project;
   },
 
-  async listDecisionCards(ownerUserId: string, projectId: string) {
+  async listDecisionCards(ownerUserId: string, projectId: string, kind?: BlueprintKind) {
     await this.assertOwnedProject(ownerUserId, projectId);
 
     const cards = await db.query.decisionCardsTable.findMany({
-      where: eq(decisionCardsTable.projectId, projectId),
+      where: kind
+        ? and(eq(decisionCardsTable.projectId, projectId), eq(decisionCardsTable.kind, kind))
+        : eq(decisionCardsTable.projectId, projectId),
       orderBy: [asc(decisionCardsTable.createdAt)],
     });
 
@@ -80,16 +91,29 @@ export const createBlueprintService = (db: AppDatabase) => ({
       alternatives: DecisionCardOption[];
     }>;
     jobId?: string;
+    kind: BlueprintKind;
     projectId: string;
   }) {
     const now = new Date();
 
     await db.transaction(async (tx) => {
-      await tx.delete(decisionCardsTable).where(eq(decisionCardsTable.projectId, input.projectId));
+      await tx
+        .delete(decisionCardsTable)
+        .where(
+          and(
+            eq(decisionCardsTable.projectId, input.projectId),
+            eq(decisionCardsTable.kind, input.kind),
+          ),
+        );
       await tx
         .update(projectBlueprintsTable)
         .set({ isCanonical: false })
-        .where(eq(projectBlueprintsTable.projectId, input.projectId));
+        .where(
+          and(
+            eq(projectBlueprintsTable.projectId, input.projectId),
+            eq(projectBlueprintsTable.kind, input.kind),
+          ),
+        );
 
       if (input.cards.length === 0) {
         return;
@@ -99,6 +123,7 @@ export const createBlueprintService = (db: AppDatabase) => ({
         input.cards.map((card) => ({
           id: generateId(),
           projectId: input.projectId,
+          kind: input.kind,
           key: card.key,
           category: card.category,
           title: card.title,
@@ -107,6 +132,7 @@ export const createBlueprintService = (db: AppDatabase) => ({
           alternatives: card.alternatives,
           selectedOptionId: null,
           customSelection: null,
+          acceptedAt: null,
           createdByJobId: input.jobId ?? null,
           createdAt: now,
           updatedAt: now,
@@ -115,23 +141,30 @@ export const createBlueprintService = (db: AppDatabase) => ({
     });
 
     const cards = await db.query.decisionCardsTable.findMany({
-      where: eq(decisionCardsTable.projectId, input.projectId),
+      where: and(
+        eq(decisionCardsTable.projectId, input.projectId),
+        eq(decisionCardsTable.kind, input.kind),
+      ),
       orderBy: [asc(decisionCardsTable.createdAt)],
     });
 
     return cards.map(toDecisionCard);
   },
 
-  async updateDecisionCards(ownerUserId: string, projectId: string, input: unknown) {
+  async updateDecisionCards(ownerUserId: string, projectId: string, kind: BlueprintKind, input: unknown) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const payload = updateDecisionCardsRequestSchema.parse(input);
     const ids = payload.cards.map((card) => card.id);
     const existingCards = await db.query.decisionCardsTable.findMany({
-      where: and(eq(decisionCardsTable.projectId, projectId), inArray(decisionCardsTable.id, ids)),
+      where: and(
+        eq(decisionCardsTable.projectId, projectId),
+        eq(decisionCardsTable.kind, kind),
+        inArray(decisionCardsTable.id, ids),
+      ),
     });
 
     if (existingCards.length !== ids.length) {
-      throw new HttpError(404, "decision_card_not_found", "Decision card not found.");
+      throw new HttpError(404, "decision_card_not_found", "Decision tile not found.");
     }
 
     const optionIdByCard = new Map(
@@ -149,7 +182,21 @@ export const createBlueprintService = (db: AppDatabase) => ({
       await tx
         .update(projectBlueprintsTable)
         .set({ isCanonical: false })
-        .where(eq(projectBlueprintsTable.projectId, projectId));
+        .where(
+          and(
+            eq(projectBlueprintsTable.projectId, projectId),
+            eq(projectBlueprintsTable.kind, kind),
+          ),
+        );
+      await tx
+        .update(decisionCardsTable)
+        .set({
+          acceptedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(decisionCardsTable.projectId, projectId), eq(decisionCardsTable.kind, kind)),
+        );
 
       for (const update of payload.cards) {
         if (update.selectedOptionId) {
@@ -158,7 +205,7 @@ export const createBlueprintService = (db: AppDatabase) => ({
             throw new HttpError(
               400,
               "invalid_decision_selection",
-              "Selected decision option is not valid for this card.",
+              "Selected decision option is not valid for this tile.",
             );
           }
         }
@@ -168,17 +215,31 @@ export const createBlueprintService = (db: AppDatabase) => ({
           .set({
             selectedOptionId: update.customSelection ? null : (update.selectedOptionId ?? null),
             customSelection: update.customSelection ?? null,
+            acceptedAt: null,
             updatedAt: new Date(),
           })
           .where(eq(decisionCardsTable.id, update.id));
       }
     });
 
-    return this.listDecisionCards(ownerUserId, projectId);
+    return this.listDecisionCards(ownerUserId, projectId, kind);
   },
 
-  async getDecisionSelections(ownerUserId: string, projectId: string) {
-    const { cards } = await this.listDecisionCards(ownerUserId, projectId);
+  async acceptDecisionDeck(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+    await this.assertFullySelectedDecisionDeck(ownerUserId, projectId, kind);
+    const now = new Date();
+
+    await db
+      .update(decisionCardsTable)
+      .set({ acceptedAt: now, updatedAt: now })
+      .where(and(eq(decisionCardsTable.projectId, projectId), eq(decisionCardsTable.kind, kind)));
+
+    return this.listDecisionCards(ownerUserId, projectId, kind);
+  },
+
+  async getDecisionSelections(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    const { cards } = await this.listDecisionCards(ownerUserId, projectId, kind);
 
     return cards.map((card) => {
       const selectedOption = card.selectedOptionId
@@ -195,14 +256,14 @@ export const createBlueprintService = (db: AppDatabase) => ({
     });
   },
 
-  async assertFullySelectedDecisionDeck(ownerUserId: string, projectId: string) {
-    const selections = await this.getDecisionSelections(ownerUserId, projectId);
+  async assertFullySelectedDecisionDeck(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    const selections = await this.getDecisionSelections(ownerUserId, projectId, kind);
 
     if (selections.length === 0) {
       throw new HttpError(
         409,
         "decision_deck_required",
-        "Generate the decision deck before creating blueprints.",
+        `Generate the ${kindToDecisionTilesLabel(kind)} before creating the ${kindToDocumentLabel(kind)}.`,
       );
     }
 
@@ -210,11 +271,41 @@ export const createBlueprintService = (db: AppDatabase) => ({
       throw new HttpError(
         409,
         "decision_selection_required",
-        "Select an option for every decision card before generating blueprints.",
+        `Select an option for every ${kindToDecisionItemLabel(kind)} before creating the ${kindToDocumentLabel(kind)}.`,
       );
     }
 
     return selections;
+  },
+
+  async assertAcceptedDecisionDeck(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    const { cards } = await this.listDecisionCards(ownerUserId, projectId, kind);
+
+    if (cards.length === 0) {
+      throw new HttpError(
+        409,
+        "decision_deck_required",
+        `Generate the ${kindToDecisionTilesLabel(kind)} before creating the ${kindToDocumentLabel(kind)}.`,
+      );
+    }
+
+    if (cards.some((card) => !card.selectedOptionId && !card.customSelection)) {
+      throw new HttpError(
+        409,
+        "decision_selection_required",
+        `Select an option for every ${kindToDecisionItemLabel(kind)} before creating the ${kindToDocumentLabel(kind)}.`,
+      );
+    }
+
+    if (cards.some((card) => !card.acceptedAt)) {
+      throw new HttpError(
+        409,
+        "decision_acceptance_required",
+        `Accept the ${kindToDecisionTilesLabel(kind)} before creating the ${kindToDocumentLabel(kind)}.`,
+      );
+    }
+
+    return cards;
   },
 
   async getCanonicalRecord(projectId: string, kind: BlueprintKind) {
@@ -239,6 +330,29 @@ export const createBlueprintService = (db: AppDatabase) => ({
       uxBlueprint: uxBlueprint ? toProjectBlueprint(uxBlueprint) : null,
       techBlueprint: techBlueprint ? toProjectBlueprint(techBlueprint) : null,
     });
+  },
+
+  async getCanonicalByKind(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+    const blueprint = await this.getCanonicalRecord(projectId, kind);
+
+    return blueprint ? toProjectBlueprint(blueprint) : null;
+  },
+
+  async listVersions(ownerUserId: string, projectId: string, kind: BlueprintKind) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+
+    const versions = await db.query.projectBlueprintsTable.findMany({
+      where: and(
+        eq(projectBlueprintsTable.projectId, projectId),
+        eq(projectBlueprintsTable.kind, kind),
+      ),
+      orderBy: [desc(projectBlueprintsTable.version)],
+    });
+
+    return projectBlueprintVersionListResponseSchema.parse({
+      versions: versions.map(toProjectBlueprint),
+    }).versions;
   },
 
   async createBlueprintVersion(input: {
@@ -288,12 +402,45 @@ export const createBlueprintService = (db: AppDatabase) => ({
     return toProjectBlueprint(created);
   },
 
+  async restoreVersion(ownerUserId: string, projectId: string, kind: BlueprintKind, version: number) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+
+    const versionRecord = await db.query.projectBlueprintsTable.findFirst({
+      where: and(
+        eq(projectBlueprintsTable.projectId, projectId),
+        eq(projectBlueprintsTable.kind, kind),
+        eq(projectBlueprintsTable.version, version),
+      ),
+    });
+
+    if (!versionRecord) {
+      throw new HttpError(404, "blueprint_not_found", `${kindToDocumentLabel(kind)} not found.`);
+    }
+
+    await db
+      .update(projectBlueprintsTable)
+      .set({ isCanonical: false })
+      .where(
+        and(
+          eq(projectBlueprintsTable.projectId, projectId),
+          eq(projectBlueprintsTable.kind, kind),
+        ),
+      );
+    const [updated] = await db
+      .update(projectBlueprintsTable)
+      .set({ isCanonical: true })
+      .where(eq(projectBlueprintsTable.id, versionRecord.id))
+      .returning();
+
+    return toProjectBlueprint(updated);
+  },
+
   async assertCanonicalBlueprint(ownerUserId: string, projectId: string, kind: BlueprintKind, blueprintId: string) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const canonical = await this.getCanonicalRecord(projectId, kind);
 
     if (!canonical || canonical.id !== blueprintId) {
-      throw new HttpError(404, "blueprint_not_found", "Blueprint not found.");
+      throw new HttpError(404, "blueprint_not_found", `${kindToDocumentLabel(kind)} not found.`);
     }
 
     return canonical;

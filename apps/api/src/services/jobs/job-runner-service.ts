@@ -710,6 +710,12 @@ export const createJobRunnerService = (input: {
       case "GenerateDecisionDeck": {
         const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
         const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const kind = jobInput?.kind;
+
+        if (!kind) {
+          throw new Error("GenerateDecisionDeck requires a decision kind.");
+        }
 
         if (!productSpec?.approvedAt || !userFlows.approvedAt) {
           throw new Error(
@@ -717,10 +723,21 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        const uxSpec =
+          kind === "tech"
+            ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
+            : null;
+
+        if (kind === "tech" && !uxSpec) {
+          throw new Error("GenerateDecisionDeck requires an approved UX Spec before technical decisions.");
+        }
+
         const prompt = buildDecisionDeckPrompt({
+          kind,
           projectName: project.name,
           productSpec: productSpec.markdown,
           userFlows: JSON.stringify(userFlows.userFlows, null, 2),
+          uxSpec: uxSpec?.markdown,
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
@@ -732,7 +749,7 @@ export const createJobRunnerService = (input: {
           provider: provider.provider,
           model: provider.model,
           templateId: rawJob.type,
-          parameters: {},
+          parameters: { kind },
           input: { prompt },
           output: { content: generated.content },
           promptTokens: generated.promptTokens,
@@ -760,10 +777,11 @@ export const createJobRunnerService = (input: {
         const persistedCards = await input.blueprintService.replaceDecisionDeck({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
+          kind,
           cards,
         });
 
-        return input.jobService.markSucceeded(rawJob.id, { createdCount: persistedCards.length });
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: persistedCards.length, kind });
       }
 
       case "GenerateProjectBlueprint": {
@@ -782,15 +800,27 @@ export const createJobRunnerService = (input: {
           );
         }
 
-        const selections = await input.blueprintService.assertFullySelectedDecisionDeck(
-          ownerUserId,
-          rawJob.projectId,
+        const uxSpec =
+          kind === "tech"
+            ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
+            : null;
+
+        if (kind === "tech" && !uxSpec) {
+          throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+        }
+
+        await input.blueprintService.assertAcceptedDecisionDeck(ownerUserId, rawJob.projectId, kind);
+        const serializedSelections = JSON.stringify(
+          await input.blueprintService.getDecisionSelections(ownerUserId, rawJob.projectId, kind),
+          null,
+          2,
         );
-        const serializedSelections = JSON.stringify(selections, null, 2);
         const consistencyPrompt = buildDecisionConsistencyPrompt({
+          kind,
           projectName: project.name,
           decisions: serializedSelections,
           userFlows: JSON.stringify(userFlows.userFlows, null, 2),
+          uxSpec: uxSpec?.markdown,
         });
         const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
           responseFormat: "json",
@@ -823,6 +853,7 @@ export const createJobRunnerService = (input: {
           productSpec: productSpec.markdown,
           userFlows: JSON.stringify(userFlows.userFlows, null, 2),
           decisions: serializedSelections,
+          uxSpec: uxSpec?.markdown,
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",

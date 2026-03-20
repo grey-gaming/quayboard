@@ -9,12 +9,13 @@ import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
-import { BlueprintBuilderPage } from "../src/pages/BlueprintBuilderPage.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
 import { ProductSpecPage } from "../src/pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "../src/pages/ProjectSetupPage.js";
+import { TechnicalSpecPage } from "../src/pages/TechnicalSpecPage.js";
+import { UxSpecPage } from "../src/pages/UxSpecPage.js";
 import { UserFlowsPage } from "../src/pages/UserFlowsPage.js";
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
@@ -99,7 +100,8 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/projects/:id/one-pager", <div />],
     ["/projects/:id/product-spec", <div />],
     ["/projects/:id/user-flows", <div />],
-    ["/projects/:id/blueprint", <div />],
+    ["/projects/:id/ux-spec", <div />],
+    ["/projects/:id/technical-spec", <div />],
     ["/projects/:id/import", <div />],
   ]);
   routeEntries.set(path, element);
@@ -1866,38 +1868,40 @@ describe("workflow pages", () => {
     expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
   });
 
-  it("keeps blueprint generation deck-first and locks blueprint tabs until the deck is complete", async () => {
-    const blueprintProjectId = "70707070-7070-4070-8070-707070707070";
+  it("keeps UX Spec generation locked until UX decisions are accepted", async () => {
+    const specProjectId = "70707070-7070-4070-8070-707070707070";
 
     vi.stubGlobal("EventSource", MockEventSource);
-    const generateBlueprintKinds: string[] = [];
+    const generateKinds: string[] = [];
     let cards: DecisionCard[] = [
       {
         id: "11111111-1111-4111-8111-111111111111",
-        projectId: blueprintProjectId,
-        key: "architecture-style",
-        category: "tech",
-        title: "Architecture style",
-        prompt: "Choose the primary service boundary model.",
+        projectId: specProjectId,
+        kind: "ux",
+        key: "primary-navigation",
+        category: "navigation",
+        title: "Primary navigation",
+        prompt: "Choose the primary navigation model.",
         recommendation: {
-          id: "modular-monolith",
-          label: "Modular monolith",
-          description: "Keep early delivery cohesive.",
+          id: "sidebar",
+          label: "Sidebar",
+          description: "Keep major areas always visible.",
         },
         alternatives: [
           {
-            id: "service-oriented",
-            label: "Service oriented",
-            description: "Split early into multiple services.",
+            id: "top-nav",
+            label: "Top nav",
+            description: "Use a horizontal top navigation.",
           },
           {
-            id: "event-first",
-            label: "Event first",
-            description: "Lead with events.",
+            id: "hub-pages",
+            label: "Hub pages",
+            description: "Drive navigation through contextual hub pages.",
           },
         ],
         selectedOptionId: null,
         customSelection: null,
+        acceptedAt: null,
         createdAt: "2026-03-18T00:00:00.000Z",
         updatedAt: "2026-03-18T00:00:00.000Z",
       },
@@ -1914,23 +1918,23 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}` && method === "GET") {
+      if (path === `/api/projects/${specProjectId}` && method === "GET") {
         return {
           ok: true,
           status: 200,
           json: async () => ({
-            id: blueprintProjectId,
+            id: specProjectId,
             name: "Quayboard",
             description: "Governed software delivery workspace.",
             state: "READY",
-            ownerUserId: blueprintProjectId,
+            ownerUserId: specProjectId,
             createdAt: "2026-03-15T00:00:00.000Z",
             updatedAt: "2026-03-16T10:00:00.000Z",
           }),
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/decision-cards` && method === "GET") {
+      if (path === `/api/projects/${specProjectId}/ux-spec/decision-tiles` && method === "GET") {
         return {
           ok: true,
           status: 200,
@@ -1938,7 +1942,7 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/decision-cards` && method === "PATCH") {
+      if (path === `/api/projects/${specProjectId}/ux-spec/decision-tiles` && method === "PATCH") {
         const payload = JSON.parse(String(init?.body)) as {
           cards: Array<{ customSelection?: string | null; id: string; selectedOptionId?: string | null }>;
         };
@@ -1954,6 +1958,7 @@ describe("workflow pages", () => {
             ...card,
             customSelection: update.customSelection ?? null,
             selectedOptionId: update.customSelection ? null : (update.selectedOptionId ?? null),
+            acceptedAt: null,
             updatedAt: "2026-03-19T00:00:00.000Z",
           };
         });
@@ -1965,18 +1970,40 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/blueprints/canonical` && method === "GET") {
+      if (
+        path === `/api/projects/${specProjectId}/ux-spec/decision-tiles/accept` &&
+        method === "POST"
+      ) {
+        cards = cards.map((card) => ({
+          ...card,
+          acceptedAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:01:00.000Z",
+        }));
+
         return {
           ok: true,
           status: 200,
-          json: async () => ({
-            uxBlueprint: null,
-            techBlueprint: null,
-          }),
+          json: async () => ({ cards }),
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/phase-gates` && method === "GET") {
+      if (path === `/api/projects/${specProjectId}/ux-spec` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ blueprint: null }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/phase-gates` && method === "GET") {
         return {
           ok: true,
           status: 200,
@@ -1986,13 +2013,14 @@ describe("workflow pages", () => {
               { phase: "Overview Document", passed: true, items: [] },
               { phase: "Product Spec", passed: true, items: [] },
               { phase: "User Flows", passed: true, items: [] },
-              { phase: "Blueprint", passed: false, items: [] },
+              { phase: "UX Spec", passed: false, items: [] },
+              { phase: "Technical Spec", passed: false, items: [] },
             ],
           }),
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/jobs` && method === "GET") {
+      if (path === `/api/projects/${specProjectId}/jobs` && method === "GET") {
         return {
           ok: true,
           status: 200,
@@ -2000,51 +2028,18 @@ describe("workflow pages", () => {
         } satisfies Partial<Response>;
       }
 
-      if (path === `/api/projects/${blueprintProjectId}/user-flows` && method === "GET") {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            userFlows: [
-              {
-                id: "flow-1",
-                projectId: blueprintProjectId,
-                title: "Create project",
-                userStory: "Story",
-                entryPoint: "Entry",
-                endState: "End",
-                flowSteps: ["Step"],
-                coverageTags: ["happy-path", "onboarding"],
-                acceptanceCriteria: ["Criterion"],
-                doneCriteriaRefs: ["manual"],
-                source: "generated",
-                archivedAt: null,
-                createdAt: "2026-03-18T00:00:00.000Z",
-                updatedAt: "2026-03-18T00:00:00.000Z",
-              },
-            ],
-            coverage: {
-              warnings: [],
-              acceptedWarnings: [],
-            },
-            approvedAt: "2026-03-18T00:00:00.000Z",
-          }),
-        } satisfies Partial<Response>;
-      }
-
-      if (path === `/api/projects/${blueprintProjectId}/blueprints/generate` && method === "POST") {
-        const payload = JSON.parse(String(init?.body)) as { kind: string };
-        generateBlueprintKinds.push(payload.kind);
+      if (path === `/api/projects/${specProjectId}/ux-spec` && method === "POST") {
+        generateKinds.push("ux");
 
         return {
           ok: true,
           status: 202,
           json: async () => ({
-            id: `job-generate-${payload.kind}`,
-            projectId: blueprintProjectId,
+            id: "job-generate-ux",
+            projectId: specProjectId,
             type: "GenerateProjectBlueprint",
             status: "queued",
-            inputs: payload,
+            inputs: { kind: "ux" },
             outputs: null,
             error: null,
             queuedAt: "2026-03-19T00:00:00.000Z",
@@ -2058,143 +2053,132 @@ describe("workflow pages", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    renderRoute("/projects/:id/blueprint", <BlueprintBuilderPage />, blueprintProjectId);
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "Blueprint Builder" })).toBeTruthy();
-    expect(screen.queryByText("Planning Loop")).toBeNull();
-    expect(screen.getByRole("button", { name: "Generate Decision Deck" })).toBeTruthy();
-    expect(await screen.findByText("Architecture style")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled).toBe(
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect(await screen.findByText("Primary navigation")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
       true,
     );
-    expect(
-      (screen.getByRole("button", { name: "Tech Blueprint" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByRole("button", { name: "Generate Blueprints" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Choose Option" })[0]!);
 
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled,
+        (screen.getByRole("button", { name: "Accept UX Decisions" }) as HTMLButtonElement).disabled,
       ).toBe(false);
     });
-    expect(
-      (screen.getByRole("button", { name: "Generate Blueprints" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate Blueprints" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept UX Decisions" }));
 
     await waitFor(() => {
-      expect(generateBlueprintKinds).toEqual(["ux", "tech"]);
+      expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate UX Spec" }));
+
+    await waitFor(() => {
+      expect(generateKinds).toEqual(["ux"]);
     });
   });
 
-  it("shows blueprint approval above the blueprint content and removes in-view generation", async () => {
-    const blueprintProjectId = "80808080-8080-4080-8080-808080808080";
-    const uxBlueprintId = "22222222-2222-4222-8222-222222222222";
+  it("shows Technical Spec approval above the document content and keeps decisions on the same page", async () => {
+    const specProjectId = "80808080-8080-4080-8080-808080808080";
+    const technicalSpecId = "22222222-2222-4222-8222-222222222222";
 
     vi.stubGlobal("EventSource", MockEventSource);
     installFetchStub({
-      [`/api/projects/${blueprintProjectId}`]: {
-        id: blueprintProjectId,
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
         name: "Quayboard",
         description: "Governed software delivery workspace.",
         state: "READY",
-        ownerUserId: blueprintProjectId,
+        ownerUserId: specProjectId,
         createdAt: "2026-03-15T00:00:00.000Z",
         updatedAt: "2026-03-16T10:00:00.000Z",
       },
-      [`/api/projects/${blueprintProjectId}/decision-cards`]: {
+      [`/api/projects/${specProjectId}/technical-spec/decision-tiles`]: {
         cards: [
           {
             id: "11111111-1111-4111-8111-111111111111",
-            projectId: blueprintProjectId,
-            key: "architecture-style",
-            category: "tech",
-            title: "Architecture style",
-            prompt: "Choose the primary service boundary model.",
+            projectId: specProjectId,
+            kind: "tech",
+            key: "api-shape",
+            category: "api",
+            title: "API shape",
+            prompt: "Choose the primary API style.",
             recommendation: {
-              id: "modular-monolith",
-              label: "Modular monolith",
-              description: "Keep early delivery cohesive.",
+              id: "rest",
+              label: "REST",
+              description: "Keep the service contract straightforward.",
             },
             alternatives: [
               {
-                id: "service-oriented",
-                label: "Service oriented",
-                description: "Split early into multiple services.",
+                id: "graphql",
+                label: "GraphQL",
+                description: "Expose a flexible graph endpoint.",
               },
             ],
-            selectedOptionId: "modular-monolith",
+            selectedOptionId: "rest",
             customSelection: null,
+            acceptedAt: "2026-03-19T00:00:00.000Z",
             createdAt: "2026-03-18T00:00:00.000Z",
             updatedAt: "2026-03-18T00:00:00.000Z",
           },
         ],
       },
-      [`/api/projects/${blueprintProjectId}/blueprints/canonical`]: {
-        uxBlueprint: {
-          id: uxBlueprintId,
-          projectId: blueprintProjectId,
-          kind: "ux",
+      [`/api/projects/${specProjectId}/technical-spec`]: {
+        blueprint: {
+          id: technicalSpecId,
+          projectId: specProjectId,
+          kind: "tech",
           version: 1,
-          title: "UX Blueprint",
-          markdown: "# UX Blueprint\n\nApproved blueprint.",
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved specification.",
           source: "GenerateProjectBlueprint",
           isCanonical: true,
           createdAt: "2026-03-19T00:00:00.000Z",
         },
-        techBlueprint: null,
       },
-      [`/api/projects/${blueprintProjectId}/phase-gates`]: {
+      [`/api/projects/${specProjectId}/technical-spec/versions`]: {
+        versions: [
+          {
+            id: technicalSpecId,
+            projectId: specProjectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec\n\nApproved specification.",
+            source: "GenerateProjectBlueprint",
+            isCanonical: true,
+            createdAt: "2026-03-19T00:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/phase-gates`]: {
         phases: [
           { phase: "Project Setup", passed: true, items: [] },
           { phase: "Overview Document", passed: true, items: [] },
           { phase: "Product Spec", passed: true, items: [] },
           { phase: "User Flows", passed: true, items: [] },
-          { phase: "Blueprint", passed: false, items: [] },
+          { phase: "UX Spec", passed: true, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
         ],
       },
-      [`/api/projects/${blueprintProjectId}/jobs`]: {
+      [`/api/projects/${specProjectId}/jobs`]: {
         jobs: [],
       },
-      [`/api/projects/${blueprintProjectId}/user-flows`]: {
-        userFlows: [
-          {
-            id: "flow-1",
-            projectId: blueprintProjectId,
-            title: "Create project",
-            userStory: "Story",
-            entryPoint: "Entry",
-            endState: "End",
-            flowSteps: ["Step"],
-            coverageTags: ["happy-path", "onboarding"],
-            acceptanceCriteria: ["Criterion"],
-            doneCriteriaRefs: ["manual"],
-            source: "generated",
-            archivedAt: null,
-            createdAt: "2026-03-18T00:00:00.000Z",
-            updatedAt: "2026-03-18T00:00:00.000Z",
-          },
-        ],
-        coverage: {
-          warnings: [],
-          acceptedWarnings: [],
-        },
-        approvedAt: "2026-03-18T00:00:00.000Z",
-      },
-      [`/api/projects/${blueprintProjectId}/artifacts/blueprint_ux/${uxBlueprintId}/state`]: {
-        artifactType: "blueprint_ux",
-        artifactId: uxBlueprintId,
+      [`/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/state`]: {
+        artifactType: "blueprint_tech",
+        artifactId: technicalSpecId,
         latestReviewRun: {
           id: "review-run-1",
-          projectId: blueprintProjectId,
-          artifactType: "blueprint_ux",
-          artifactId: uxBlueprintId,
-          jobId: "job-review-ux",
+          projectId: specProjectId,
+          artifactType: "blueprint_tech",
+          artifactId: technicalSpecId,
+          jobId: "job-review-tech",
           status: "succeeded",
           createdAt: "2026-03-19T00:00:00.000Z",
           completedAt: "2026-03-19T00:02:00.000Z",
@@ -2207,20 +2191,13 @@ describe("workflow pages", () => {
       },
     });
 
-    renderRoute("/projects/:id/blueprint", <BlueprintBuilderPage />, blueprintProjectId);
+    renderRoute("/projects/:id/technical-spec", <TechnicalSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "Blueprint Builder" })).toBeTruthy();
-    await waitFor(() => {
-      expect((screen.getByRole("button", { name: "UX Blueprint" }) as HTMLButtonElement).disabled).toBe(
-        false,
-      );
-    });
-    fireEvent.click(screen.getByRole("button", { name: "UX Blueprint" }));
-
-    const approveButton = await screen.findByRole("button", { name: "Approve Blueprint" });
+    expect(await screen.findByRole("heading", { name: "Technical Spec" })).toBeTruthy();
+    expect(await screen.findByText("Technical Decision Tiles")).toBeTruthy();
+    const approveButton = await screen.findByRole("button", { name: "Approve Technical Spec" });
     const reviewPanelHeading = await screen.findByText("Review Panel");
 
-    expect(screen.queryByText("Planning Loop")).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate Blueprints" })).toBeNull();
     expect(
       approveButton.compareDocumentPosition(reviewPanelHeading) & Node.DOCUMENT_POSITION_FOLLOWING,

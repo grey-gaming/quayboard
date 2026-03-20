@@ -3,7 +3,7 @@ import type {
   ArtifactReviewItem,
   ArtifactStateResponse,
   ArtifactType,
-  CanonicalBlueprintsResponse,
+  BlueprintKind,
   CreateProjectRequest,
   DecisionCardListResponse,
   Job,
@@ -12,14 +12,14 @@ import type {
   NextActionsResponse,
   OnePager,
   PhaseGatesResponse,
+  ProjectBlueprint,
+  ProjectBlueprintListResponse,
   ProductSpec,
   Project,
   ProjectListResponse,
   ProjectSetupState,
   ProjectSetupStatus,
   QuestionnaireAnswers,
-  QueueBlueprintGenerationRequest,
-  SaveBlueprintRequest,
   SecretMetadata,
   SystemReadiness,
   UpdateDecisionCardsRequest,
@@ -41,6 +41,7 @@ export class ApiError extends Error {
 }
 
 const apiRequestTimeoutMs = 10_000;
+const specPathSegment = (kind: BlueprintKind) => (kind === "ux" ? "ux-spec" : "technical-spec");
 
 const getErrorDetails = (json: unknown) => {
   if (typeof json !== "object" || json === null) {
@@ -207,15 +208,17 @@ export const api = {
       body: JSON.stringify({ mode }),
     });
   },
-  generateDecisionDeck(projectId: string) {
-    return apiRequest<Job>(`/api/projects/${projectId}/blueprints/generate-deck`, {
-      method: "POST",
-    });
+  generateSpecDecisionTiles(projectId: string, kind: BlueprintKind) {
+    return apiRequest<Job>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/decision-tiles/generate`,
+      {
+        method: "POST",
+      },
+    );
   },
-  generateBlueprint(projectId: string, payload: QueueBlueprintGenerationRequest) {
-    return apiRequest<Job>(`/api/projects/${projectId}/blueprints/generate`, {
+  generateProjectSpec(projectId: string, kind: BlueprintKind) {
+    return apiRequest<Job>(`/api/projects/${projectId}/${specPathSegment(kind)}`, {
       method: "POST",
-      body: JSON.stringify(payload),
     });
   },
   generateUserFlows(projectId: string) {
@@ -233,13 +236,20 @@ export const api = {
       `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/state`,
     );
   },
-  getBlueprints(projectId: string) {
-    return apiRequest<CanonicalBlueprintsResponse>(
-      `/api/projects/${projectId}/blueprints/canonical`,
+  getProjectSpec(projectId: string, kind: BlueprintKind) {
+    return apiRequest<ProjectBlueprintListResponse>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}`,
     );
   },
-  getDecisionCards(projectId: string) {
-    return apiRequest<DecisionCardListResponse>(`/api/projects/${projectId}/decision-cards`);
+  getProjectSpecVersions(projectId: string, kind: BlueprintKind) {
+    return apiRequest<{ versions: ProjectBlueprint[] }>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/versions`,
+    );
+  },
+  getSpecDecisionTiles(projectId: string, kind: BlueprintKind) {
+    return apiRequest<DecisionCardListResponse>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/decision-tiles`,
+    );
   },
   getJobs(projectId?: string) {
     return apiRequest<JobListResponse>(
@@ -318,6 +328,14 @@ export const api = {
       },
     );
   },
+  restoreProjectSpecVersion(projectId: string, kind: BlueprintKind, version: number) {
+    return apiRequest<ProjectBlueprint>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/versions/${version}/restore`,
+      {
+        method: "POST",
+      },
+    );
+  },
   updateOnePager(projectId: string, payload: { markdown: string }) {
     return apiRequest<OnePager>(`/api/projects/${projectId}/one-pager`, {
       method: "PATCH",
@@ -349,11 +367,15 @@ export const api = {
       },
     );
   },
-  saveBlueprint(projectId: string, payload: SaveBlueprintRequest) {
-    return apiRequest<CanonicalBlueprintsResponse["uxBlueprint"]>(
-      `/api/projects/${projectId}/blueprints/save`,
+  saveProjectSpec(
+    projectId: string,
+    kind: BlueprintKind,
+    payload: { markdown: string; title: string },
+  ) {
+    return apiRequest<ProjectBlueprint>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}`,
       {
-        method: "POST",
+        method: "PATCH",
         body: JSON.stringify(payload),
       },
     );
@@ -396,17 +418,28 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  updateDecisionCards(projectId: string, payload: UpdateDecisionCardsRequest) {
-    return apiRequest<DecisionCardListResponse>(`/api/projects/${projectId}/decision-cards`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
+  updateSpecDecisionTiles(projectId: string, kind: BlueprintKind, payload: UpdateDecisionCardsRequest) {
+    return apiRequest<DecisionCardListResponse>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/decision-tiles`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    );
   },
   updateReviewItem(reviewItemId: string, status: "DONE" | "ACCEPTED" | "IGNORED") {
     return apiRequest<ArtifactReviewItem>(`/api/artifact-review-items/${reviewItemId}`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
     });
+  },
+  acceptSpecDecisionTiles(projectId: string, kind: BlueprintKind) {
+    return apiRequest<DecisionCardListResponse>(
+      `/api/projects/${projectId}/${specPathSegment(kind)}/decision-tiles/accept`,
+      {
+        method: "POST",
+      },
+    );
   },
   validateGithubPat(projectId: string, payload: { pat: string }) {
     return apiRequest<ProjectSetupState>(`/api/projects/${projectId}/github-pat/validate`, {

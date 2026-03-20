@@ -16,17 +16,27 @@ export const createNextActionsService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [setupStatus, setupCompleted, questionnaire, onePager, productSpec, userFlows, decisionCards, blueprints] =
-      await Promise.all([
-        projectSetupService.getSetupStatus(ownerUserId, projectId),
-        projectSetupService.isSetupCompleted(ownerUserId, projectId),
-        questionnaireService.getAnswers(projectId),
-        onePagerService.getCanonical(ownerUserId, projectId),
-        productSpecService.getCanonical(ownerUserId, projectId),
-        userFlowService.list(ownerUserId, projectId),
-        blueprintService.listDecisionCards(ownerUserId, projectId),
-        blueprintService.getCanonical(ownerUserId, projectId),
-      ]);
+    const [
+      setupStatus,
+      setupCompleted,
+      questionnaire,
+      onePager,
+      productSpec,
+      userFlows,
+      uxDecisionCards,
+      techDecisionCards,
+      blueprints,
+    ] = await Promise.all([
+      projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
+      questionnaireService.getAnswers(projectId),
+      onePagerService.getCanonical(ownerUserId, projectId),
+      productSpecService.getCanonical(ownerUserId, projectId),
+      userFlowService.list(ownerUserId, projectId),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "ux"),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "tech"),
+      blueprintService.getCanonical(ownerUserId, projectId),
+    ]);
     const actions = [];
 
     if (!setupCompleted) {
@@ -74,82 +84,109 @@ export const createNextActionsService = (
         label: "Generate and approve user flows",
         href: `/projects/${projectId}/user-flows`,
       });
-    } else if (decisionCards.cards.length === 0) {
+    } else if (uxDecisionCards.cards.length === 0) {
       actions.push({
-        key: "blueprint_deck",
-        label: "Generate the decision deck",
-        href: `/projects/${projectId}/blueprint`,
+        key: "ux_decisions_generate",
+        label: "Generate the UX decision tiles",
+        href: `/projects/${projectId}/ux-spec`,
       });
-    } else if (decisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)) {
+    } else if (uxDecisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)) {
       actions.push({
-        key: "blueprint_decisions",
-        label: "Select every decision card",
-        href: `/projects/${projectId}/blueprint`,
+        key: "ux_decisions_select",
+        label: "Select every UX decision tile",
+        href: `/projects/${projectId}/ux-spec`,
+      });
+    } else if (uxDecisionCards.cards.some((card) => !card.acceptedAt)) {
+      actions.push({
+        key: "ux_decisions_accept",
+        label: "Accept the UX decisions",
+        href: `/projects/${projectId}/ux-spec`,
       });
     } else if (!blueprints.uxBlueprint) {
       actions.push({
-        key: "blueprint_ux",
-        label: "Generate the UX blueprint",
-        href: `/projects/${projectId}/blueprint`,
-      });
-    } else if (!blueprints.techBlueprint) {
-      actions.push({
-        key: "blueprint_tech",
-        label: "Generate the tech blueprint",
-        href: `/projects/${projectId}/blueprint`,
+        key: "ux_spec_generate",
+        label: "Generate the UX Spec",
+        href: `/projects/${projectId}/ux-spec`,
       });
     } else {
-      const [uxState, techState] = await Promise.all([
-        artifactReviewService.getState(
-          ownerUserId,
-          projectId,
-          "blueprint_ux",
-          blueprints.uxBlueprint.id,
-        ),
-        artifactReviewService.getState(
+      const uxState = await artifactReviewService.getState(
+        ownerUserId,
+        projectId,
+        "blueprint_ux",
+        blueprints.uxBlueprint.id,
+      );
+
+      if (!uxState.latestReviewRun || uxState.latestReviewRun.status !== "succeeded") {
+        actions.push({
+          key: "ux_spec_review",
+          label: "Run UX Spec review",
+          href: `/projects/${projectId}/ux-spec`,
+        });
+      } else if (uxState.openBlockerCount > 0) {
+        actions.push({
+          key: "ux_spec_blockers",
+          label: "Resolve UX Spec blockers",
+          href: `/projects/${projectId}/ux-spec`,
+        });
+      } else if (!uxState.approval) {
+        actions.push({
+          key: "ux_spec_approval",
+          label: "Approve the UX Spec",
+          href: `/projects/${projectId}/ux-spec`,
+        });
+      } else if (techDecisionCards.cards.length === 0) {
+        actions.push({
+          key: "tech_decisions_generate",
+          label: "Generate the Technical decision tiles",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (
+        techDecisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)
+      ) {
+        actions.push({
+          key: "tech_decisions_select",
+          label: "Select every Technical decision tile",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (techDecisionCards.cards.some((card) => !card.acceptedAt)) {
+        actions.push({
+          key: "tech_decisions_accept",
+          label: "Accept the Technical decisions",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (!blueprints.techBlueprint) {
+        actions.push({
+          key: "tech_spec_generate",
+          label: "Generate the Technical Spec",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else {
+        const techState = await artifactReviewService.getState(
           ownerUserId,
           projectId,
           "blueprint_tech",
           blueprints.techBlueprint.id,
-        ),
-      ]);
+        );
 
-      if (!uxState.latestReviewRun || uxState.latestReviewRun.status !== "succeeded") {
-        actions.push({
-          key: "blueprint_ux_review",
-          label: "Run UX blueprint review",
-          href: `/projects/${projectId}/blueprint`,
-        });
-      } else if (uxState.openBlockerCount > 0) {
-        actions.push({
-          key: "blueprint_ux_blockers",
-          label: "Resolve UX blueprint blockers",
-          href: `/projects/${projectId}/blueprint`,
-        });
-      } else if (!uxState.approval) {
-        actions.push({
-          key: "blueprint_ux_approval",
-          label: "Approve the UX blueprint",
-          href: `/projects/${projectId}/blueprint`,
-        });
-      } else if (!techState.latestReviewRun || techState.latestReviewRun.status !== "succeeded") {
-        actions.push({
-          key: "blueprint_tech_review",
-          label: "Run tech blueprint review",
-          href: `/projects/${projectId}/blueprint`,
-        });
-      } else if (techState.openBlockerCount > 0) {
-        actions.push({
-          key: "blueprint_tech_blockers",
-          label: "Resolve tech blueprint blockers",
-          href: `/projects/${projectId}/blueprint`,
-        });
-      } else if (!techState.approval) {
-        actions.push({
-          key: "blueprint_tech_approval",
-          label: "Approve the tech blueprint",
-          href: `/projects/${projectId}/blueprint`,
-        });
+        if (!techState.latestReviewRun || techState.latestReviewRun.status !== "succeeded") {
+          actions.push({
+            key: "tech_spec_review",
+            label: "Run Technical Spec review",
+            href: `/projects/${projectId}/technical-spec`,
+          });
+        } else if (techState.openBlockerCount > 0) {
+          actions.push({
+            key: "tech_spec_blockers",
+            label: "Resolve Technical Spec blockers",
+            href: `/projects/${projectId}/technical-spec`,
+          });
+        } else if (!techState.approval) {
+          actions.push({
+            key: "tech_spec_approval",
+            label: "Approve the Technical Spec",
+            href: `/projects/${projectId}/technical-spec`,
+          });
+        }
       }
     }
 

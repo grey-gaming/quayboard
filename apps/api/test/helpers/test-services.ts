@@ -47,6 +47,8 @@ export const createStubServices = (): AppServices => ({
     },
   },
   blueprintService: {
+    acceptDecisionDeck: async () => ({ cards: [] }),
+    assertAcceptedDecisionDeck: async () => [],
     assertCanonicalBlueprint: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -61,10 +63,15 @@ export const createStubServices = (): AppServices => ({
       uxBlueprint: null,
       techBlueprint: null,
     }),
+    getCanonicalByKind: async () => null,
     getCanonicalRecord: async () => undefined,
     getDecisionSelections: async () => [],
     listDecisionCards: async () => ({ cards: [] }),
+    listVersions: async () => [],
     replaceDecisionDeck: async () => [],
+    restoreVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     updateDecisionCards: async () => ({ cards: [] }),
   },
   db: {} as AppServices["db"],

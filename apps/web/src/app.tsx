@@ -11,12 +11,12 @@ import {
 import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
+import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
 import { UserFlowsApprovalGate } from "./components/layout/UserFlowsApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
 import { DocsHomePage } from "./pages/DocsHomePage.js";
-import { BlueprintBuilderPage } from "./pages/BlueprintBuilderPage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
 import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
@@ -29,6 +29,8 @@ import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { TechnicalSpecPage } from "./pages/TechnicalSpecPage.js";
+import { UxSpecPage } from "./pages/UxSpecPage.js";
 import { UserFlowsPage } from "./pages/UserFlowsPage.js";
 
 const queryClient = new QueryClient({
@@ -138,8 +140,17 @@ export const appRouter = createBrowserRouter([
                 element: <UserFlowsApprovalGate />,
                 children: [
                   {
-                    path: "/projects/:id/blueprint",
-                    element: <BlueprintBuilderPage />,
+                    path: "/projects/:id/ux-spec",
+                    element: <UxSpecPage />,
+                  },
+                  {
+                    element: <UxSpecApprovalGate />,
+                    children: [
+                      {
+                        path: "/projects/:id/technical-spec",
+                        element: <TechnicalSpecPage />,
+                      },
+                    ],
                   },
                 ],
               },

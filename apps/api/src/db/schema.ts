@@ -285,6 +285,7 @@ export const decisionCardsTable = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projectsTable.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().$type<(typeof blueprintKindValues)[number]>(),
     key: text("key").notNull(),
     category: text("category").notNull(),
     title: text("title").notNull(),
@@ -293,6 +294,7 @@ export const decisionCardsTable = pgTable(
     alternatives: jsonb("alternatives").notNull().default(sql`'[]'::jsonb`),
     selectedOptionId: text("selected_option_id"),
     customSelection: text("custom_selection"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
       onDelete: "set null",
     }),
@@ -305,7 +307,16 @@ export const decisionCardsTable = pgTable(
   },
   (table) => ({
     projectIndex: index("decision_cards_project_id_idx").on(table.projectId),
-    projectKeyUnique: uniqueIndex("decision_cards_project_id_key").on(table.projectId, table.key),
+    projectKindIndex: index("decision_cards_project_id_kind_idx").on(table.projectId, table.kind),
+    projectKindKeyUnique: uniqueIndex("decision_cards_project_id_kind_key").on(
+      table.projectId,
+      table.kind,
+      table.key,
+    ),
+    kindCheck: check(
+      "decision_cards_kind_check",
+      sql`${table.kind} in (${sql.join(blueprintKindValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
   }),
 );
 
