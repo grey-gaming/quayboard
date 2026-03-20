@@ -322,7 +322,7 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
         <Alert tone="info">
           {kind === "ux"
             ? "Approve the UX Spec on this page to continue to Technical Spec."
-            : `Complete ${title} prerequisites on this page.`}{" "}
+            : "Approve the Technical Spec on this page to continue to User Flows."}{" "}
           You were redirected from <span className="font-mono"> {redirectedFromLockedSection}</span>.
         </Alert>
       ) : null}

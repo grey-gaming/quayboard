@@ -12,11 +12,11 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - questionnaire persistence, autosave, and blank-answer auto-fill
 - overview document generation, version history, restore, and approval
 - Product Spec generation, version history, restore, and approval
-- user-flow generation, manual editing, deduplication, and approval
 - UX decision-tile generation, selection persistence, and acceptance
 - UX Spec generation, manual save, review-item triage, approval, and version history
 - Technical decision-tile generation, selection persistence, and acceptance
 - Technical Spec generation, manual save, review-item triage, approval, and version history
+- user-flow generation, manual editing, deduplication, and approval
 
 ## Data Model
 
@@ -53,7 +53,7 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `/projects/:id/questions`
 - `/projects/:id/one-pager`
 - `/projects/:id/product-spec`
-- `/projects/:id/user-flows`
 - `/projects/:id/ux-spec`
 - `/projects/:id/technical-spec`
+- `/projects/:id/user-flows`
 - `/projects/:id/import` as a future-release stub

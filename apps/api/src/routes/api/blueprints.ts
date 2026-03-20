@@ -36,18 +36,18 @@ const versionParamsJsonSchema = {
 
 const kindToDocumentLabel = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
 
-const assertApprovedUserFlows = async (
+const assertApprovedProductSpec = async (
   services: AppServices,
   ownerUserId: string,
   projectId: string,
 ) => {
-  const userFlows = await services.userFlowService.list(ownerUserId, projectId);
+  const productSpec = await services.productSpecService.getCanonical(ownerUserId, projectId);
 
-  if (!userFlows.approvedAt) {
+  if (!productSpec?.approvedAt) {
     throw new HttpError(
       409,
-      "user_flows_approval_required",
-      "Approve user flows before using UX Spec.",
+      "product_spec_approval_required",
+      "Approve the Product Spec before using UX Spec.",
     );
   }
 };
@@ -95,7 +95,7 @@ const registerSpecRoutes = (
   const assertPhaseGate =
     kind === "ux"
       ? (ownerUserId: string, projectId: string) =>
-          assertApprovedUserFlows(services, ownerUserId, projectId)
+          assertApprovedProductSpec(services, ownerUserId, projectId)
       : (ownerUserId: string, projectId: string) =>
           assertApprovedUxSpec(services, ownerUserId, projectId);
 

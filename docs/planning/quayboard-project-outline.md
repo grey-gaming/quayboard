@@ -136,9 +136,9 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/projects/:id/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
 | `/projects/:id/one-pager` | **Overview Document** | Generated overview review, history, restore, and approval |
 | `/projects/:id/product-spec` | **Product Spec** | Generated Product Spec review, history, restore, and approval |
-| `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
 | `/projects/:id/ux-spec` | **UX Spec** | UX decision tiles, UX specification review, history, and approval |
 | `/projects/:id/technical-spec` | **Technical Spec** | Technical decision tiles, Technical specification review, history, and approval |
+| `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
 | `/projects/:id/milestones` | **Milestones** | Create, edit, approve, complete milestone lifecycle |
 | `/projects/:id/features` | **Feature Builder** | Catalogue table view, intake drawer |
 | `/projects/:id/features/:fid` | **Feature Editor** | Product / UX / tech / user docs / architecture docs specification tabs, tasks tab, bugs tab, review panel, revision history |
@@ -197,29 +197,30 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 1. After the overview document is approved, user enters **Product Spec**.
 2. Quayboard generates the Product Spec from the approved overview using the Product Spec prompt.
-3. The Product Spec is versioned, editable, restorable, and must be approved before User Flows.
+3. The Product Spec is versioned, editable, restorable, and must be approved before UX Spec.
 
 #### Flow 3: User-flow coverage and approval
 
-1. After the Product Spec is approved, user enters **User Flows**.
-2. Quayboard can generate an initial set of user flows from the approved Product Spec, or the user can create flows manually.
+1. After the Technical Spec is approved, user enters **User Flows**.
+2. Quayboard can generate an initial set of user flows from the approved Product Spec and Technical Spec, or the user can create flows manually.
 3. Each flow captures title, user story, entry point, end state, flow steps, coverage tags, acceptance criteria, and done-criteria references.
 4. Quayboard computes a **coverage summary** over the active flow set and highlights warnings or missing journey areas.
 5. If coverage gaps remain, Quayboard can run a targeted gap-fill generation pass and a deterministic dedupe pass before approval.
-6. User reviews, edits, archives, or approves the user-flow set. UX Spec generation is gated on approved user flows.
+6. User reviews, edits, archives, or approves the user-flow set. Milestone planning uses the approved user-flow set as the release contract.
 
 #### Flow 4: UX and Technical Spec phase
 
-1. From Mission Control, user enters **UX Spec**.
+1. From Mission Control, user enters **UX Spec** after Product Spec approval.
 2. LLM generates **UX decision tiles** (UX-only decisions with recommendations and alternatives).
 3. User reviews each UX decision tile, selects an option or enters a custom choice, then accepts the full UX decision set.
 4. LLM generates the **UX Spec** or the user saves it manually.
 5. LLM review jobs surface BLOCKER / WARNING / SUGGESTION items. User triages review items and approves the UX Spec when clear.
 6. After the UX Spec is approved, user enters **Technical Spec**.
-7. LLM generates **Technical decision tiles** using the approved Product Spec, User Flows, and UX Spec.
+7. LLM generates **Technical decision tiles** using the approved Product Spec and UX Spec.
 8. User reviews each Technical decision tile, selects an option or enters a custom choice, then accepts the full Technical decision set.
 9. LLM generates the **Technical Spec** or the user saves it manually.
 10. LLM review jobs surface BLOCKER / WARNING / SUGGESTION items. User triages review items and approves the Technical Spec when clear.
+11. After the Technical Spec is approved, user enters **User Flows** to generate and approve the journey contract for milestone planning.
 
 #### Flow 4: Milestones and features
 
@@ -928,9 +929,9 @@ The phase gate system provides a structured checklist of what must be true befor
 | **Project Setup** | Repo connected and access verified; LLM provider configured and reachable; sandbox container startup verified |
 | **Overview Document** | Project Setup gate passed; questionnaire complete (scratch) or memory chunks built (import); overview document generated; all BLOCKER review items resolved; overview document approved |
 | **Product Spec** | Overview Document gate passed; Product Spec generated; Product Spec approved |
-| **User Flows** | Product Spec gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
-| **UX Spec** | User Flows gate passed; UX decision tiles generated; every UX decision has a user selection; UX decisions accepted; UX Spec generated; all BLOCKER review items on the UX Spec resolved; UX Spec approved |
+| **UX Spec** | Product Spec gate passed; UX decision tiles generated; every UX decision has a user selection; UX decisions accepted; UX Spec generated; all BLOCKER review items on the UX Spec resolved; UX Spec approved |
 | **Technical Spec** | UX Spec gate passed; Technical decision tiles generated; every Technical decision has a user selection; Technical decisions accepted; Technical Spec generated; all BLOCKER review items on the Technical Spec resolved; Technical Spec approved |
+| **User Flows** | Technical Spec gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
 | **Milestones** | Technical Spec gate passed; at least one milestone exists in `approved` state |
 | **Features** | Milestones gate passed; at least one feature exists with an approved product specification |
 | **Task Planning** | At least one feature has an approved tech specification and a generated, non-empty delivery task list |
@@ -1250,7 +1251,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - `TransitionConfirmDialog` — approval confirmation modal
 
 **Acceptance criteria**:
-- UX decision tiles generate only after user flows are approved; Technical decision tiles generate only after the UX Spec is approved
+- UX decision tiles generate only after the Product Spec is approved; Technical decision tiles generate only after the UX Spec is approved; User Flows generate only after the Technical Spec is approved
 - Decision selections persist, support custom choices, and require explicit acceptance before spec generation
 - UX and Technical Specs can be generated or saved directly via API/MCP for manual authoring paths
 - Review jobs surface BLOCKER/WARNING/SUGGESTION items in the review panel

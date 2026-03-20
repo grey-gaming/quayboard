@@ -449,7 +449,6 @@ export const buildDecisionDeckPrompt = (input: {
   kind: "tech" | "ux";
   productSpec: string;
   projectName: string;
-  userFlows: string;
   uxSpec?: string;
 }) =>
   [
@@ -470,9 +469,6 @@ export const buildDecisionDeckPrompt = (input: {
     "",
     "Approved Product Spec:",
     input.productSpec,
-    "",
-    "Approved user flows:",
-    input.userFlows,
     ...(input.uxSpec
       ? [
           "",
@@ -483,10 +479,10 @@ export const buildDecisionDeckPrompt = (input: {
   ].join("\n");
 
 export const buildDecisionConsistencyPrompt = (input: {
+  productSpec: string;
   decisions: string;
   kind: "tech" | "ux";
   projectName: string;
-  userFlows: string;
   uxSpec?: string;
 }) =>
   [
@@ -500,11 +496,11 @@ export const buildDecisionConsistencyPrompt = (input: {
     "If the decisions are coherent, return an empty issues array.",
     "Do not wrap the JSON in code fences.",
     "",
+    "Approved Product Spec:",
+    input.productSpec,
+    "",
     "Selected decisions:",
     input.decisions,
-    "",
-    "Approved user flows:",
-    input.userFlows,
     ...(input.uxSpec
       ? [
           "",
@@ -519,7 +515,6 @@ export const buildProjectBlueprintPrompt = (input: {
   kind: "tech" | "ux";
   productSpec: string;
   projectName: string;
-  userFlows: string;
   uxSpec?: string;
 }) =>
   [
@@ -539,9 +534,6 @@ export const buildProjectBlueprintPrompt = (input: {
     "",
     "Approved Product Spec:",
     input.productSpec,
-    "",
-    "Approved user flows:",
-    input.userFlows,
     ...(input.uxSpec
       ? [
           "",

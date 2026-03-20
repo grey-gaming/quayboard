@@ -94,14 +94,14 @@ describe("API integration", () => {
   };
 
   const registerAndSeedBlueprintProject = async ({
-    approveUserFlows = true,
-  }: { approveUserFlows?: boolean } = {}) => {
+    approveProductSpec = true,
+  }: { approveProductSpec?: boolean } = {}) => {
     const registerResponse = await server.inject({
       method: "POST",
       url: "/auth/register",
       payload: {
-        displayName: approveUserFlows ? "Blueprint Owner" : "Blueprint Gate Owner",
-        email: approveUserFlows ? "blueprint-owner@example.com" : "blueprint-gate@example.com",
+        displayName: approveProductSpec ? "Blueprint Owner" : "Blueprint Gate Owner",
+        email: approveProductSpec ? "blueprint-owner@example.com" : "blueprint-gate@example.com",
         password: "correct-horse-battery",
       },
     });
@@ -116,7 +116,7 @@ describe("API integration", () => {
       url: "/api/projects",
       cookies: { qb_session: cookie!.value },
       payload: {
-        name: approveUserFlows ? "Blueprint Project" : "Blueprint Gate Project",
+        name: approveProductSpec ? "Blueprint Project" : "Blueprint Gate Project",
       },
     });
 
@@ -136,23 +136,8 @@ describe("API integration", () => {
       source: "ManualSave",
       title: "Product Spec",
     });
-    await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
-    await appServices.services.userFlowService.create(ownerUserId, projectId, {
-      acceptanceCriteria: ["The flow can be completed."],
-      coverageTags: ["happy-path", "onboarding"],
-      doneCriteriaRefs: ["manual"],
-      endState: "Journey complete",
-      entryPoint: "Mission Control",
-      flowSteps: ["Open page", "Complete action"],
-      source: "manual",
-      title: "Primary journey",
-      userStory: "As a user, I want to complete the primary journey.",
-    });
-
-    if (approveUserFlows) {
-      await appServices.services.userFlowService.approve(ownerUserId, projectId, {
-        acceptedWarnings: [],
-      });
+    if (approveProductSpec) {
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
     }
 
     return {
@@ -160,6 +145,98 @@ describe("API integration", () => {
       ownerUserId,
       projectId,
     };
+  };
+
+  const approveSpecArtifact = async (
+    ownerUserId: string,
+    projectId: string,
+    input: {
+      kind: "ux" | "tech";
+      markdown: string;
+      title: string;
+    },
+  ) => {
+    const artifactType = input.kind === "ux" ? "blueprint_ux" : "blueprint_tech";
+    const [decisionCard] = await appServices.services.blueprintService.replaceDecisionDeck({
+      projectId,
+      kind: input.kind,
+      cards: [
+        {
+          key: `${input.kind}-decision`,
+          category: input.kind === "ux" ? "navigation" : "architecture",
+          title: input.kind === "ux" ? "Primary navigation model" : "Primary architecture model",
+          prompt:
+            input.kind === "ux"
+              ? "Choose the primary navigation model."
+              : "Choose the primary architecture model.",
+          recommendation: {
+            id: `${input.kind}-default`,
+            label: input.kind === "ux" ? "Workspace nav" : "Modular monolith",
+            description: "Use the default recommendation for the integration fixture.",
+          },
+          alternatives: [
+            {
+              id: `${input.kind}-alternative`,
+              label: input.kind === "ux" ? "Tab nav" : "Service split",
+              description: "Provide a second option for the integration fixture.",
+            },
+          ],
+        },
+      ],
+    });
+    await appServices.services.blueprintService.updateDecisionCards(ownerUserId, projectId, input.kind, {
+      cards: [{ id: decisionCard.id, selectedOptionId: `${input.kind}-default` }],
+    });
+    await appServices.services.blueprintService.acceptDecisionDeck(ownerUserId, projectId, input.kind);
+    const spec = await appServices.services.blueprintService.createBlueprintVersion({
+      projectId,
+      kind: input.kind,
+      title: input.title,
+      markdown: input.markdown,
+      source: "ManualSave",
+    });
+    const reviewJobId = crypto.randomUUID();
+    await sql`
+      insert into "jobs" (
+        "id",
+        "project_id",
+        "created_by_user_id",
+        "type",
+        "status",
+        "inputs",
+        "queued_at",
+        "started_at",
+        "completed_at"
+      )
+      values (
+        ${reviewJobId},
+        ${projectId},
+        ${ownerUserId},
+        ${input.kind === "ux" ? "ReviewBlueprintUX" : "ReviewBlueprintTech"},
+        ${"succeeded"},
+        ${JSON.stringify({ artifactId: spec.id })}::jsonb,
+        now(),
+        now(),
+        now()
+      )
+    `;
+    const run = await appServices.services.artifactReviewService.createRun(
+      ownerUserId,
+      projectId,
+      artifactType,
+      spec.id,
+      reviewJobId,
+    );
+    await appServices.services.artifactReviewService.replaceRunItems(run.id, []);
+    await appServices.services.artifactReviewService.markRunSucceeded(run.id);
+    await appServices.services.artifactReviewService.approve(
+      ownerUserId,
+      projectId,
+      artifactType,
+      spec.id,
+    );
+
+    return spec;
   };
 
   it("runs migrations successfully more than once", async () => {
@@ -1261,8 +1338,8 @@ describe("API integration", () => {
       expect(blockedUserFlowsResponse.statusCode).toBe(409);
       expect(blockedUserFlowsResponse.json()).toEqual({
         error: {
-          code: "product_spec_approval_required",
-          message: "Approve the Product Spec before using User Flows.",
+          code: "technical_spec_required",
+          message: "Generate the Technical Spec before using User Flows.",
         },
       });
     } finally {
@@ -1311,6 +1388,16 @@ describe("API integration", () => {
         state: "READY_PARTIAL",
       });
 
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "ux",
+        title: "UX Spec",
+        markdown: "# UX Spec\n\nApproved specification.",
+      });
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "tech",
+        title: "Technical Spec",
+        markdown: "# Technical Spec\n\nApproved specification.",
+      });
       appServices.services.productSpecService.getCanonical = async () => ({
         id: "product-spec-approved",
         projectId,
@@ -1522,6 +1609,11 @@ describe("API integration", () => {
         state: "READY_PARTIAL",
       });
 
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "tech",
+        title: "Technical Spec",
+        markdown: "# Technical Spec\n\nApproved specification.",
+      });
       appServices.services.productSpecService.getCanonical = async () => ({
         id: "product-spec-approved",
         projectId,
@@ -1583,7 +1675,7 @@ describe("API integration", () => {
     }
   });
 
-  it("applies setup and Product Spec gates to user-flow update and archive routes", async () => {
+  it("applies setup and Technical Spec gates to user-flow update and archive routes", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
@@ -1657,16 +1749,16 @@ describe("API integration", () => {
         state: "READY_PARTIAL",
       });
 
-      const blockedByProductSpecResponse = await server.inject({
+      const blockedByTechnicalSpecResponse = await server.inject({
         method: "DELETE",
         url: `/api/user-flows/${flow.id}`,
         cookies: { qb_session: cookie!.value },
       });
-      expect(blockedByProductSpecResponse.statusCode).toBe(409);
-      expect(blockedByProductSpecResponse.json()).toEqual({
+      expect(blockedByTechnicalSpecResponse.statusCode).toBe(409);
+      expect(blockedByTechnicalSpecResponse.json()).toEqual({
         error: {
-          code: "product_spec_approval_required",
-          message: "Approve the Product Spec before using User Flows.",
+          code: "technical_spec_required",
+          message: "Generate the Technical Spec before using User Flows.",
         },
       });
     } finally {
@@ -1731,7 +1823,7 @@ describe("API integration", () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
-      const blockedProject = await registerAndSeedBlueprintProject({ approveUserFlows: false });
+      const blockedProject = await registerAndSeedBlueprintProject({ approveProductSpec: false });
       const blockedDeckResponse = await server.inject({
         method: "POST",
         url: `/api/projects/${blockedProject.projectId}/ux-spec/decision-tiles/generate`,
@@ -1741,8 +1833,8 @@ describe("API integration", () => {
       expect(blockedDeckResponse.statusCode).toBe(409);
       expect(blockedDeckResponse.json()).toEqual({
         error: {
-          code: "user_flows_approval_required",
-          message: "Approve user flows before using UX Spec.",
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before using UX Spec.",
         },
       });
 

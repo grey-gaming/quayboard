@@ -83,7 +83,7 @@ export const ProductSpecPage = () => {
       <PageIntro
         eyebrow="Product Spec"
         title="Generated Product Spec"
-        summary="This page expands the approved overview into the working Product Spec. Review it, refine it, inspect version history, and approve the version that user flows should follow."
+        summary="This page expands the approved overview into the working Product Spec. Review it, refine it, inspect version history, and approve the version that UX specification should follow."
         meta={
           <>
             <Badge tone="success">overview approved</Badge>
@@ -97,7 +97,7 @@ export const ProductSpecPage = () => {
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
       {redirectedFromLockedSection ? (
         <Alert tone="info">
-          Approve the Product Spec on this page to continue to User Flows. You were redirected
+          Approve the Product Spec on this page to continue to UX Spec. You were redirected
           from <span className="font-mono"> {redirectedFromLockedSection}</span>.
         </Alert>
       ) : null}

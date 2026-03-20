@@ -11,8 +11,8 @@ import {
 import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
+import { TechnicalSpecApprovalGate } from "./components/layout/TechnicalSpecApprovalGate.js";
 import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
-import { UserFlowsApprovalGate } from "./components/layout/UserFlowsApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
@@ -133,22 +133,22 @@ export const appRouter = createBrowserRouter([
             element: <ProductSpecApprovalGate />,
             children: [
               {
-                path: "/projects/:id/user-flows",
-                element: <UserFlowsPage />,
+                path: "/projects/:id/ux-spec",
+                element: <UxSpecPage />,
               },
               {
-                element: <UserFlowsApprovalGate />,
+                element: <UxSpecApprovalGate />,
                 children: [
                   {
-                    path: "/projects/:id/ux-spec",
-                    element: <UxSpecPage />,
+                    path: "/projects/:id/technical-spec",
+                    element: <TechnicalSpecPage />,
                   },
                   {
-                    element: <UxSpecApprovalGate />,
+                    element: <TechnicalSpecApprovalGate />,
                     children: [
                       {
-                        path: "/projects/:id/technical-spec",
-                        element: <TechnicalSpecPage />,
+                        path: "/projects/:id/user-flows",
+                        element: <UserFlowsPage />,
                       },
                     ],
                   },

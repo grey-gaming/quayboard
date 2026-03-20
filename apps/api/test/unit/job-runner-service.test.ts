@@ -49,7 +49,19 @@ describe("job runner service", () => {
     }));
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -112,7 +124,19 @@ describe("job runner service", () => {
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -324,7 +348,19 @@ describe("job runner service", () => {
       });
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -418,7 +454,19 @@ describe("job runner service", () => {
       });
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -513,7 +561,19 @@ describe("job runner service", () => {
       });
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -616,7 +676,19 @@ describe("job runner service", () => {
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -663,7 +735,19 @@ describe("job runner service", () => {
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
@@ -743,7 +827,19 @@ describe("job runner service", () => {
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
       artifactReviewService: {} as never,
-      blueprintService: {} as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       db: db as never,
       jobService: {
         getRawJob: vi.fn(async () => ({

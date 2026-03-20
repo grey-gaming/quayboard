@@ -78,12 +78,6 @@ export const createNextActionsService = (
         label: "Approve the Product Spec",
         href: `/projects/${projectId}/product-spec`,
       });
-    } else if (!userFlows.approvedAt) {
-      actions.push({
-        key: "user_flows",
-        label: "Generate and approve user flows",
-        href: `/projects/${projectId}/user-flows`,
-      });
     } else if (uxDecisionCards.cards.length === 0) {
       actions.push({
         key: "ux_decisions_generate",
@@ -185,6 +179,12 @@ export const createNextActionsService = (
             key: "tech_spec_approval",
             label: "Approve the Technical Spec",
             href: `/projects/${projectId}/technical-spec`,
+          });
+        } else if (!userFlows.approvedAt) {
+          actions.push({
+            key: "user_flows",
+            label: "Generate and approve user flows",
+            href: `/projects/${projectId}/user-flows`,
           });
         }
       }

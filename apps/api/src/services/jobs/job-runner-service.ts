@@ -631,6 +631,11 @@ export const createJobRunnerService = (input: {
           ownerUserId,
           rawJob.projectId,
         );
+        const technicalSpec = await input.blueprintService.getCanonicalByKind(
+          ownerUserId,
+          rawJob.projectId,
+          "tech",
+        );
 
         if (!productSpec?.approvedAt) {
           throw new Error(
@@ -638,9 +643,15 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        if (!technicalSpec) {
+          throw new Error(
+            "GenerateUseCases requires an approved Technical Spec before user flows can be generated.",
+          );
+        }
+
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
-          sourceMaterial: productSpec.markdown,
+          sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
@@ -709,7 +720,6 @@ export const createJobRunnerService = (input: {
 
       case "GenerateDecisionDeck": {
         const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
-        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
         const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
         const kind = jobInput?.kind;
 
@@ -717,10 +727,8 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateDecisionDeck requires a decision kind.");
         }
 
-        if (!productSpec?.approvedAt || !userFlows.approvedAt) {
-          throw new Error(
-            "GenerateDecisionDeck requires approved Product Spec and approved user flows.",
-          );
+        if (!productSpec?.approvedAt) {
+          throw new Error("GenerateDecisionDeck requires an approved Product Spec.");
         }
 
         const uxSpec =
@@ -736,7 +744,6 @@ export const createJobRunnerService = (input: {
           kind,
           projectName: project.name,
           productSpec: productSpec.markdown,
-          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
           uxSpec: uxSpec?.markdown,
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {
@@ -786,7 +793,6 @@ export const createJobRunnerService = (input: {
 
       case "GenerateProjectBlueprint": {
         const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
-        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
         const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
         const kind = jobInput?.kind;
 
@@ -794,10 +800,8 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateProjectBlueprint requires a blueprint kind.");
         }
 
-        if (!productSpec?.approvedAt || !userFlows.approvedAt) {
-          throw new Error(
-            "GenerateProjectBlueprint requires approved Product Spec and approved user flows.",
-          );
+        if (!productSpec?.approvedAt) {
+          throw new Error("GenerateProjectBlueprint requires an approved Product Spec.");
         }
 
         const uxSpec =
@@ -818,8 +822,8 @@ export const createJobRunnerService = (input: {
         const consistencyPrompt = buildDecisionConsistencyPrompt({
           kind,
           projectName: project.name,
+          productSpec: productSpec.markdown,
           decisions: serializedSelections,
-          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
           uxSpec: uxSpec?.markdown,
         });
         const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
@@ -851,7 +855,6 @@ export const createJobRunnerService = (input: {
           kind,
           projectName: project.name,
           productSpec: productSpec.markdown,
-          userFlows: JSON.stringify(userFlows.userFlows, null, 2),
           decisions: serializedSelections,
           uxSpec: uxSpec?.markdown,
         });

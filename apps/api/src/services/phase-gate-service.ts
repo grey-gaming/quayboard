@@ -41,7 +41,6 @@ export const createPhaseGateService = (
     const setupPassed = setupCompleted;
     const overviewPassed = Boolean(onePager?.approvedAt);
     const productSpecPassed = overviewPassed && Boolean(productSpec?.approvedAt);
-    const userFlowsPassed = Boolean(userFlows.approvedAt);
     const uxDecisionGenerated = uxDecisionCards.cards.length > 0;
     const uxDecisionSelected =
       uxDecisionGenerated &&
@@ -78,6 +77,7 @@ export const createPhaseGateService = (
     const techBlockersResolved = techGenerated && (techState?.openBlockerCount ?? 0) === 0;
     const uxApproved = Boolean(uxState?.approval);
     const techApproved = Boolean(techState?.approval);
+    const userFlowsPassed = techApproved && Boolean(userFlows.approvedAt);
 
     return {
       phases: [
@@ -135,30 +135,9 @@ export const createPhaseGateService = (
           ],
         },
         {
-          phase: "User Flows",
-          passed: productSpecPassed && userFlowsPassed,
-          items: [
-            {
-              key: "product_spec_approved",
-              label: "Product Spec approved",
-              passed: productSpecPassed,
-            },
-            {
-              key: "flows_exist",
-              label: "At least one active user flow",
-              passed: userFlows.userFlows.length > 0,
-            },
-            {
-              key: "flows_approved",
-              label: "User flows approved",
-              passed: userFlowsPassed,
-            },
-          ],
-        },
-        {
           phase: "UX Spec",
           passed:
-            userFlowsPassed &&
+            productSpecPassed &&
             uxDecisionGenerated &&
             uxDecisionSelected &&
             uxDecisionAccepted &&
@@ -167,9 +146,9 @@ export const createPhaseGateService = (
             uxApproved,
           items: [
             {
-              key: "user_flows_approved",
-              label: "User flows approved",
-              passed: userFlowsPassed,
+              key: "product_spec_approved",
+              label: "Product Spec approved",
+              passed: productSpecPassed,
             },
             {
               key: "ux_decision_tiles",
@@ -248,6 +227,27 @@ export const createPhaseGateService = (
               key: "tech_approved",
               label: "Technical Spec approved",
               passed: techApproved,
+            },
+          ],
+        },
+        {
+          phase: "User Flows",
+          passed: techApproved && userFlowsPassed,
+          items: [
+            {
+              key: "technical_spec_approved",
+              label: "Technical Spec approved",
+              passed: techApproved,
+            },
+            {
+              key: "flows_exist",
+              label: "At least one active user flow",
+              passed: userFlows.userFlows.length > 0,
+            },
+            {
+              key: "flows_approved",
+              label: "User flows approved",
+              passed: Boolean(userFlows.approvedAt),
             },
           ],
         },

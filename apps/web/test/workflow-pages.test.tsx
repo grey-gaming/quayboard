@@ -9,6 +9,7 @@ import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
+import { TechnicalSpecApprovalGate } from "../src/components/layout/TechnicalSpecApprovalGate.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
@@ -1740,7 +1741,7 @@ describe("workflow pages", () => {
     expect(screen.getByText("/projects/40404040-4040-4040-8040-404040404040/product-spec")).toBeTruthy();
   });
 
-  it("redirects User Flows access back to Product Spec until the Product Spec is approved", async () => {
+  it("redirects UX Spec access back to Product Spec until the Product Spec is approved", async () => {
     const gatedProjectId = "50505050-5050-4050-8050-505050505050";
 
     vi.stubGlobal("EventSource", MockEventSource);
@@ -1798,6 +1799,87 @@ describe("workflow pages", () => {
         { path: "/projects/:id/product-spec", element: <ProductSpecPage /> },
         {
           element: <ProductSpecApprovalGate />,
+          children: [{ path: "/projects/:id/ux-spec", element: <div>UX Spec page</div> }],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${gatedProjectId}/ux-spec`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(
+      screen.getByText(/Approve the Product Spec on this page to continue to UX Spec\./),
+    ).toBeTruthy();
+    expect(screen.getByText("/projects/50505050-5050-4050-8050-505050505050/ux-spec")).toBeTruthy();
+  });
+
+  it("redirects User Flows access back to Technical Spec until the Technical Spec is approved", async () => {
+    const gatedProjectId = "51515151-5151-4151-8151-515151515151";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${gatedProjectId}`]: {
+        id: gatedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: gatedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec/decision-tiles`]: {
+        cards: [],
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec`]: {
+        blueprint: {
+          id: "technical-spec-id",
+          projectId: gatedProjectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec",
+          source: "GenerateProjectBlueprint",
+          isCanonical: true,
+          createdAt: "2026-03-16T09:30:00.000Z",
+        },
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${gatedProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${gatedProjectId}/artifacts/blueprint_tech/technical-spec-id/state`]: {
+        artifactType: "blueprint_tech",
+        artifactId: "technical-spec-id",
+        latestReviewRun: null,
+        reviewItems: [],
+        openBlockerCount: 0,
+        openWarningCount: 0,
+        openSuggestionCount: 0,
+        approval: null,
+      },
+    });
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id", element: <div /> },
+        { path: "/projects/:id/setup", element: <div /> },
+        { path: "/projects/:id/questions", element: <div /> },
+        { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
+        { path: "/projects/:id/product-spec", element: <div>Product Spec page</div> },
+        { path: "/projects/:id/ux-spec", element: <div>UX Spec page</div> },
+        { path: "/projects/:id/technical-spec", element: <TechnicalSpecPage /> },
+        {
+          element: <TechnicalSpecApprovalGate />,
           children: [{ path: "/projects/:id/user-flows", element: <div>User Flows page</div> }],
         },
       ],
@@ -1812,11 +1894,11 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "Technical Spec" })).length).toBeGreaterThan(0);
     expect(
-      screen.getByText(/Approve the Product Spec on this page to continue to User Flows\./),
+      screen.getByText(/Approve the Technical Spec on this page to continue to User Flows\./),
     ).toBeTruthy();
-    expect(screen.getByText("/projects/50505050-5050-4050-8050-505050505050/user-flows")).toBeTruthy();
+    expect(screen.getByText("/projects/51515151-5151-4151-8151-515151515151/user-flows")).toBeTruthy();
   });
 
   it("redirects incomplete overview access back to setup until setup is explicitly completed", async () => {
