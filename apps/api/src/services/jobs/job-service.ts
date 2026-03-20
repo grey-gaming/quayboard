@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { Job } from "@quayboard/shared";
 
@@ -26,6 +26,8 @@ export type JobCreateInput = {
   projectId: string | null;
   type: string;
 };
+
+type JobStatus = (typeof jobsTable.$inferSelect)["status"];
 
 type JobTerminalError = {
   message: string;
@@ -191,6 +193,29 @@ export const createJobService = (db: AppDatabase) => ({
       .orderBy(desc(jobsTable.queuedAt));
 
     return jobs.map(({ job }) => toJob(job));
+  },
+
+  async findActiveProjectJobByTypeAndKind(
+    projectId: string,
+    type: string,
+    kind: "ux" | "tech",
+    statuses: JobStatus[] = ["queued", "running"],
+  ) {
+    const [job] = await db
+      .select()
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.projectId, projectId),
+          eq(jobsTable.type, type),
+          inArray(jobsTable.status, statuses),
+          sql`${jobsTable.inputs} ->> 'kind' = ${kind}`,
+        ),
+      )
+      .orderBy(desc(jobsTable.queuedAt))
+      .limit(1);
+
+    return job ? toJob(job) : null;
   },
 
   async getRawJob(jobId: string) {

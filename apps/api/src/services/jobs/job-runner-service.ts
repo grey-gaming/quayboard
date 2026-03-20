@@ -4,6 +4,7 @@ import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboar
 
 import type { AppDatabase } from "../../db/client.js";
 import { llmRunsTable, useCasesTable } from "../../db/schema.js";
+import type { ArtifactApprovalService } from "../artifact-approval-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
@@ -66,8 +67,10 @@ const parseGeneratedUserFlowsResult = (
     return null;
   }
 
+  const parsedRecord = parsed as Record<string, unknown>;
+
   for (const key of ["userFlows", "flows", "useCases", "items"] as const) {
-    const candidate = parsed[key];
+    const candidate = parsedRecord[key];
     if (Array.isArray(candidate)) {
       return candidate;
     }
@@ -303,6 +306,7 @@ const parseDecisionValidationResult = (value: string) => {
 };
 
 export const createJobRunnerService = (input: {
+  artifactApprovalService: ArtifactApprovalService;
   blueprintService: BlueprintService;
   db: AppDatabase;
   jobService: JobService;
@@ -717,8 +721,24 @@ export const createJobRunnerService = (input: {
             ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
             : null;
 
-        if (kind === "tech" && !uxSpec) {
-          throw new Error("GenerateDecisionDeck requires an approved UX Spec before technical decisions.");
+        if (kind === "tech") {
+          if (!uxSpec) {
+            throw new Error(
+              "GenerateDecisionDeck requires an approved UX Spec before technical decisions.",
+            );
+          }
+
+          const uxApproval = await input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            uxSpec.id,
+          );
+
+          if (!uxApproval) {
+            throw new Error(
+              "GenerateDecisionDeck requires an approved UX Spec before technical decisions.",
+            );
+          }
         }
 
         const prompt = buildDecisionDeckPrompt({
@@ -790,8 +810,20 @@ export const createJobRunnerService = (input: {
             ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
             : null;
 
-        if (kind === "tech" && !uxSpec) {
-          throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+        if (kind === "tech") {
+          if (!uxSpec) {
+            throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+          }
+
+          const uxApproval = await input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            uxSpec.id,
+          );
+
+          if (!uxApproval) {
+            throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+          }
         }
 
         await input.blueprintService.assertAcceptedDecisionDeck(ownerUserId, rawJob.projectId, kind);

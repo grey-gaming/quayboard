@@ -35,6 +35,25 @@ const versionParamsJsonSchema = {
 } as const;
 
 const kindToDocumentLabel = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
+const kindToDecisionLabel = (kind: BlueprintKind) =>
+  kind === "ux" ? "UX decision tiles" : "Technical decision tiles";
+
+const assertNoActiveGenerationJob = async (
+  services: AppServices,
+  projectId: string,
+  type: "GenerateDecisionDeck" | "GenerateProjectBlueprint",
+  kind: BlueprintKind,
+) => {
+  const existingJob = await services.jobService.findActiveProjectJobByTypeAndKind(projectId, type, kind);
+
+  if (existingJob) {
+    throw new HttpError(
+      409,
+      "job_already_active",
+      `${type === "GenerateDecisionDeck" ? kindToDecisionLabel(kind) : kindToDocumentLabel(kind)} generation is already queued or running.`,
+    );
+  }
+};
 
 const assertApprovedProductSpec = async (
   services: AppServices,
@@ -134,6 +153,7 @@ const registerSpecRoutes = (
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(request.user!.id, projectId);
         await assertPhaseGate(request.user!.id, projectId);
+        await assertNoActiveGenerationJob(services, projectId, "GenerateDecisionDeck", kind);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
@@ -236,6 +256,7 @@ const registerSpecRoutes = (
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await assertPhaseGate(request.user!.id, projectId);
         await services.blueprintService.assertAcceptedDecisionDeck(request.user!.id, projectId, kind);
+        await assertNoActiveGenerationJob(services, projectId, "GenerateProjectBlueprint", kind);
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,

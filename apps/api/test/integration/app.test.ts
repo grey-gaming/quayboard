@@ -93,15 +93,19 @@ describe("API integration", () => {
     };
   };
 
+  let blueprintProjectCounter = 0;
+
   const registerAndSeedBlueprintProject = async ({
     approveProductSpec = true,
   }: { approveProductSpec?: boolean } = {}) => {
+    blueprintProjectCounter += 1;
+    const projectSuffix = `${approveProductSpec ? "ready" : "gate"}-${blueprintProjectCounter}`;
     const registerResponse = await server.inject({
       method: "POST",
       url: "/auth/register",
       payload: {
         displayName: approveProductSpec ? "Blueprint Owner" : "Blueprint Gate Owner",
-        email: approveProductSpec ? "blueprint-owner@example.com" : "blueprint-gate@example.com",
+        email: `blueprint-${projectSuffix}@example.com`,
         password: "correct-horse-battery",
       },
     });
@@ -116,7 +120,9 @@ describe("API integration", () => {
       url: "/api/projects",
       cookies: { qb_session: cookie!.value },
       payload: {
-        name: approveProductSpec ? "Blueprint Project" : "Blueprint Gate Project",
+        name: approveProductSpec
+          ? `Blueprint Project ${projectSuffix}`
+          : `Blueprint Gate Project ${projectSuffix}`,
       },
     });
 
@@ -1898,6 +1904,100 @@ describe("API integration", () => {
         error: {
           code: "ux_spec_required",
           message: "Generate the UX Spec before using Technical Spec.",
+        },
+      });
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("rejects duplicate active blueprint generation jobs", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const uxProject = await registerAndSeedBlueprintProject();
+      await appServices.services.jobService.createJob({
+        createdByUserId: uxProject.ownerUserId,
+        projectId: uxProject.projectId,
+        type: "GenerateDecisionDeck",
+        inputs: { kind: "ux" },
+      });
+
+      const duplicateDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
+        cookies: { qb_session: uxProject.cookieValue },
+      });
+
+      expect(duplicateDeckResponse.statusCode).toBe(409);
+      expect(duplicateDeckResponse.json()).toEqual({
+        error: {
+          code: "job_already_active",
+          message: "UX decision tiles generation is already queued or running.",
+        },
+      });
+
+      const technicalProject = await registerAndSeedBlueprintProject();
+      await approveSpecArtifact(technicalProject.ownerUserId, technicalProject.projectId, {
+        kind: "ux",
+        markdown: "# UX Spec\n\nApproved canonical UX blueprint.",
+        title: "UX Spec",
+      });
+      const [technicalDecision] = await appServices.services.blueprintService.replaceDecisionDeck({
+        projectId: technicalProject.projectId,
+        kind: "tech",
+        cards: [
+          {
+            key: "service-boundary",
+            category: "architecture",
+            title: "Service boundary",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+      });
+      await appServices.services.blueprintService.updateDecisionCards(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+        "tech",
+        {
+          cards: [{ id: technicalDecision.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+      await appServices.services.blueprintService.acceptDecisionDeck(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+        "tech",
+      );
+      await appServices.services.jobService.createJob({
+        createdByUserId: technicalProject.ownerUserId,
+        projectId: technicalProject.projectId,
+        type: "GenerateProjectBlueprint",
+        inputs: { kind: "tech" },
+      });
+
+      const duplicateBlueprintResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${technicalProject.projectId}/technical-spec`,
+        cookies: { qb_session: technicalProject.cookieValue },
+      });
+
+      expect(duplicateBlueprintResponse.statusCode).toBe(409);
+      expect(duplicateBlueprintResponse.json()).toEqual({
+        error: {
+          code: "job_already_active",
+          message: "Technical Spec generation is already queued or running.",
         },
       });
     } finally {

@@ -190,6 +190,7 @@ export const createAppServices = async (
     userFlowService,
   );
   const jobRunnerService = createJobRunnerService({
+    artifactApprovalService,
     db,
     blueprintService,
     jobService,
