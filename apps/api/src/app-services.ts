@@ -143,7 +143,11 @@ export const createAppServices = async (
   const productSpecService = createProductSpecService(db);
   const userFlowService = createUserFlowService(db);
   const blueprintService = createBlueprintService(db);
-  const artifactApprovalService = createArtifactApprovalService(db, blueprintService);
+  const artifactApprovalService = createArtifactApprovalService(
+    db,
+    blueprintService,
+    productSpecService,
+  );
   const projectSetupService = createProjectSetupService(
     db,
     projectService,

@@ -1359,6 +1359,20 @@ describe("API integration", () => {
       await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
         state: "READY_PARTIAL",
       });
+      await appServices.services.onePagerService.createVersion({
+        approve: true,
+        markdown: "# Overview\n\nApproved planning scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Overview",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nApproved scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
 
       await approveSpecArtifact(ownerUserId, projectId, {
         kind: "ux",
@@ -1579,6 +1593,25 @@ describe("API integration", () => {
 
       await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
         state: "READY_PARTIAL",
+      });
+      await appServices.services.onePagerService.createVersion({
+        approve: true,
+        markdown: "# Overview\n\nApproved planning scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Overview",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nApproved scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "ux",
+        title: "UX Spec",
+        markdown: "# UX Spec\n\nApproved specification.",
       });
 
       await approveSpecArtifact(ownerUserId, projectId, {
@@ -1916,26 +1949,41 @@ describe("API integration", () => {
 
     try {
       const uxProject = await registerAndSeedBlueprintProject();
-      await appServices.services.jobService.createJob({
-        createdByUserId: uxProject.ownerUserId,
-        projectId: uxProject.projectId,
-        type: "GenerateDecisionDeck",
-        inputs: { kind: "ux" },
-      });
+      const [deckResponseA, deckResponseB] = await Promise.all([
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
+          cookies: { qb_session: uxProject.cookieValue },
+        }),
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
+          cookies: { qb_session: uxProject.cookieValue },
+        }),
+      ]);
 
-      const duplicateDeckResponse = await server.inject({
-        method: "POST",
-        url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
-        cookies: { qb_session: uxProject.cookieValue },
-      });
-
-      expect(duplicateDeckResponse.statusCode).toBe(409);
+      const deckStatuses = [deckResponseA.statusCode, deckResponseB.statusCode].sort();
+      expect(deckStatuses).toEqual([202, 409]);
+      const duplicateDeckResponse =
+        deckResponseA.statusCode === 409 ? deckResponseA : deckResponseB;
       expect(duplicateDeckResponse.json()).toEqual({
         error: {
           code: "job_already_active",
           message: "UX decision tiles generation is already queued or running.",
         },
       });
+      const uxJobs = await appServices.services.jobService.listJobsForProject(
+        uxProject.ownerUserId,
+        uxProject.projectId,
+      );
+      expect(
+        uxJobs.filter(
+          (job) =>
+            job.type === "GenerateDecisionDeck" &&
+            job.status === "queued" &&
+            (job.inputs as { kind?: string }).kind === "ux",
+        ),
+      ).toHaveLength(1);
 
       const technicalProject = await registerAndSeedBlueprintProject();
       await approveSpecArtifact(technicalProject.ownerUserId, technicalProject.projectId, {
@@ -1980,24 +2028,111 @@ describe("API integration", () => {
         technicalProject.projectId,
         "tech",
       );
-      await appServices.services.jobService.createJob({
-        createdByUserId: technicalProject.ownerUserId,
-        projectId: technicalProject.projectId,
-        type: "GenerateProjectBlueprint",
-        inputs: { kind: "tech" },
-      });
+      const [blueprintResponseA, blueprintResponseB] = await Promise.all([
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${technicalProject.projectId}/technical-spec`,
+          cookies: { qb_session: technicalProject.cookieValue },
+        }),
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${technicalProject.projectId}/technical-spec`,
+          cookies: { qb_session: technicalProject.cookieValue },
+        }),
+      ]);
 
-      const duplicateBlueprintResponse = await server.inject({
-        method: "POST",
-        url: `/api/projects/${technicalProject.projectId}/technical-spec`,
-        cookies: { qb_session: technicalProject.cookieValue },
-      });
-
-      expect(duplicateBlueprintResponse.statusCode).toBe(409);
+      const blueprintStatuses = [blueprintResponseA.statusCode, blueprintResponseB.statusCode].sort();
+      expect(blueprintStatuses).toEqual([202, 409]);
+      const duplicateBlueprintResponse =
+        blueprintResponseA.statusCode === 409 ? blueprintResponseA : blueprintResponseB;
       expect(duplicateBlueprintResponse.json()).toEqual({
         error: {
           code: "job_already_active",
           message: "Technical Spec generation is already queued or running.",
+        },
+      });
+      const technicalJobs = await appServices.services.jobService.listJobsForProject(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+      );
+      expect(
+        technicalJobs.filter(
+          (job) =>
+            job.type === "GenerateProjectBlueprint" &&
+            job.status === "queued" &&
+            (job.inputs as { kind?: string }).kind === "tech",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("blocks blueprint approval when upstream phase gates are no longer satisfied", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const uxProject = await registerAndSeedBlueprintProject();
+      const uxBlueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Spec\n\nCanonical specification.",
+        projectId: uxProject.projectId,
+        source: "ManualSave",
+        title: "UX Spec",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nEdited canonical draft.",
+        projectId: uxProject.projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+
+      const blockedUxApprovalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${uxProject.projectId}/artifacts/blueprint_ux/${uxBlueprint.id}/approve`,
+        cookies: { qb_session: uxProject.cookieValue },
+      });
+
+      expect(blockedUxApprovalResponse.statusCode).toBe(409);
+      expect(blockedUxApprovalResponse.json()).toEqual({
+        error: {
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before approving the UX Spec.",
+        },
+      });
+
+      const techProject = await registerAndSeedBlueprintProject();
+      await approveSpecArtifact(techProject.ownerUserId, techProject.projectId, {
+        kind: "ux",
+        markdown: "# UX Spec\n\nApproved canonical UX blueprint.",
+        title: "UX Spec",
+      });
+      const technicalBlueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "tech",
+        markdown: "# Technical Spec\n\nCanonical specification.",
+        projectId: techProject.projectId,
+        source: "ManualSave",
+        title: "Technical Spec",
+      });
+      await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Spec\n\nEdited canonical draft.",
+        projectId: techProject.projectId,
+        source: "ManualSave",
+        title: "UX Spec",
+      });
+
+      const blockedTechnicalApprovalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${techProject.projectId}/artifacts/blueprint_tech/${technicalBlueprint.id}/approve`,
+        cookies: { qb_session: techProject.cookieValue },
+      });
+
+      expect(blockedTechnicalApprovalResponse.statusCode).toBe(409);
+      expect(blockedTechnicalApprovalResponse.json()).toEqual({
+        error: {
+          code: "ux_spec_approval_required",
+          message: "Approve the UX Spec before approving the Technical Spec.",
         },
       });
     } finally {

@@ -34,6 +34,17 @@ type JobTerminalError = {
   code?: string;
 };
 
+type ActiveJobConflict = {
+  code: string;
+  message: string;
+};
+
+type ScopedJobCreateInput = Omit<JobCreateInput, "projectId"> & {
+  activeConflict: ActiveJobConflict;
+  kind: "ux" | "tech";
+  projectId: string;
+};
+
 export const createJobService = (db: AppDatabase) => ({
   async createJob(input: JobCreateInput) {
     const now = new Date();
@@ -51,6 +62,48 @@ export const createJobService = (db: AppDatabase) => ({
       .returning();
 
     return toJob(job);
+  },
+
+  async createJobIfNoActiveProjectJobOfSameKind(input: ScopedJobCreateInput) {
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('jobs'), hashtext(${`${input.projectId}:${input.type}:${input.kind}`}))`,
+      );
+
+      const [existingJob] = await tx
+        .select()
+        .from(jobsTable)
+        .where(
+          and(
+            eq(jobsTable.projectId, input.projectId),
+            eq(jobsTable.type, input.type),
+            inArray(jobsTable.status, ["queued", "running"]),
+            sql`${jobsTable.inputs} ->> 'kind' = ${input.kind}`,
+          ),
+        )
+        .orderBy(desc(jobsTable.queuedAt))
+        .limit(1);
+
+      if (existingJob) {
+        throw new HttpError(409, input.activeConflict.code, input.activeConflict.message);
+      }
+
+      const now = new Date();
+      const [job] = await tx
+        .insert(jobsTable)
+        .values({
+          id: generateId(),
+          projectId: input.projectId,
+          createdByUserId: input.createdByUserId,
+          type: input.type,
+          status: "queued",
+          inputs: input.inputs ?? {},
+          queuedAt: now,
+        })
+        .returning();
+
+      return toJob(job);
+    });
   },
 
   async claimNextQueuedJob() {

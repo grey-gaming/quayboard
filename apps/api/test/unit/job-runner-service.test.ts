@@ -25,6 +25,17 @@ const createArtifactApprovalServiceStub = () => ({
   getApproval: vi.fn(async () => null),
 });
 
+const createApprovedArtifactApprovalServiceStub = () => ({
+  getApproval: vi.fn(async () => ({
+    id: "approval-id",
+    projectId,
+    artifactType: "blueprint_tech",
+    artifactId: "technical-spec-id",
+    approvedByUserId: userId,
+    createdAt: "2026-03-18T00:00:00.000Z",
+  })),
+});
+
 describe("job runner service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1091,7 +1102,7 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -1178,12 +1189,91 @@ describe("job runner service", () => {
     expect(markSucceeded).not.toHaveBeenCalled();
   });
 
+  it("rejects user-flow generation when the canonical Technical Spec is not approved", async () => {
+    const db = createDbStub();
+    const createMany = vi.fn(async () => []);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify([]),
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: {
+        getApproval: vi.fn(async () => null),
+      } as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nDraft canonical implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-use-cases",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateUseCases",
+        })),
+        markSucceeded: vi.fn(async () => undefined),
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        createMany,
+      } as never,
+    });
+
+    await expect(service.run("job-generate-use-cases")).rejects.toThrow(
+      "GenerateUseCases requires an approved Technical Spec before user flows can be generated.",
+    );
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
   it("creates generated user flows in a single batch after full validation", async () => {
     const db = createDbStub();
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -1299,7 +1389,7 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",

@@ -10,7 +10,9 @@ import {
 import type { AppDatabase } from "../db/client.js";
 import { artifactApprovalsTable } from "../db/schema.js";
 import { generateId } from "./ids.js";
+import { HttpError } from "./http-error.js";
 import { type BlueprintService } from "./blueprint-service.js";
+import { type ProductSpecService } from "./product-spec-service.js";
 
 const artifactTypeToBlueprintKind = (artifactType: ArtifactType): BlueprintKind =>
   artifactType === "blueprint_ux" ? "ux" : "tech";
@@ -28,6 +30,7 @@ const toApproval = (record: typeof artifactApprovalsTable.$inferSelect) =>
 export const createArtifactApprovalService = (
   db: AppDatabase,
   blueprintService: BlueprintService,
+  productSpecService: ProductSpecService,
 ) => ({
   async getApproval(projectId: string, artifactType: ArtifactType, artifactId: string) {
     const approval = await db.query.artifactApprovalsTable.findFirst({
@@ -56,6 +59,37 @@ export const createArtifactApprovalService = (
   async approve(ownerUserId: string, projectId: string, artifactType: ArtifactType, artifactId: string) {
     const kind = artifactTypeToBlueprintKind(artifactType);
     await blueprintService.assertCanonicalBlueprint(ownerUserId, projectId, kind, artifactId);
+
+    if (artifactType === "blueprint_ux") {
+      const productSpec = await productSpecService.getCanonical(ownerUserId, projectId);
+
+      if (!productSpec?.approvedAt) {
+        throw new HttpError(
+          409,
+          "product_spec_approval_required",
+          "Approve the Product Spec before approving the UX Spec.",
+        );
+      }
+    } else {
+      const uxSpec = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux");
+
+      if (!uxSpec) {
+        throw new HttpError(
+          409,
+          "ux_spec_required",
+          "Generate the UX Spec before approving the Technical Spec.",
+        );
+      }
+
+      const uxApproval = await this.getApproval(projectId, "blueprint_ux", uxSpec.id);
+      if (!uxApproval) {
+        throw new HttpError(
+          409,
+          "ux_spec_approval_required",
+          "Approve the UX Spec before approving the Technical Spec.",
+        );
+      }
+    }
 
     const existingApproval = await this.getApproval(projectId, artifactType, artifactId);
     if (existingApproval) {

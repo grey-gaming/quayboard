@@ -38,22 +38,26 @@ const kindToDocumentLabel = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" 
 const kindToDecisionLabel = (kind: BlueprintKind) =>
   kind === "ux" ? "UX decision tiles" : "Technical decision tiles";
 
-const assertNoActiveGenerationJob = async (
+const createGenerationJob = (
   services: AppServices,
-  projectId: string,
-  type: "GenerateDecisionDeck" | "GenerateProjectBlueprint",
-  kind: BlueprintKind,
-) => {
-  const existingJob = await services.jobService.findActiveProjectJobByTypeAndKind(projectId, type, kind);
-
-  if (existingJob) {
-    throw new HttpError(
-      409,
-      "job_already_active",
-      `${type === "GenerateDecisionDeck" ? kindToDecisionLabel(kind) : kindToDocumentLabel(kind)} generation is already queued or running.`,
-    );
-  }
-};
+  input: {
+    createdByUserId: string;
+    kind: BlueprintKind;
+    projectId: string;
+    type: "GenerateDecisionDeck" | "GenerateProjectBlueprint";
+  },
+) =>
+  services.jobService.createJobIfNoActiveProjectJobOfSameKind({
+    activeConflict: {
+      code: "job_already_active",
+      message: `${input.type === "GenerateDecisionDeck" ? kindToDecisionLabel(input.kind) : kindToDocumentLabel(input.kind)} generation is already queued or running.`,
+    },
+    createdByUserId: input.createdByUserId,
+    inputs: { kind: input.kind },
+    kind: input.kind,
+    projectId: input.projectId,
+    type: input.type,
+  });
 
 const assertApprovedProductSpec = async (
   services: AppServices,
@@ -153,12 +157,11 @@ const registerSpecRoutes = (
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await services.projectService.getOwnedProject(request.user!.id, projectId);
         await assertPhaseGate(request.user!.id, projectId);
-        await assertNoActiveGenerationJob(services, projectId, "GenerateDecisionDeck", kind);
-        const job = await services.jobService.createJob({
+        const job = await createGenerationJob(services, {
           createdByUserId: request.user!.id,
+          kind,
           projectId,
           type: "GenerateDecisionDeck",
-          inputs: { kind },
         });
 
         return reply.status(202).send(jobSchema.parse(job));
@@ -256,12 +259,11 @@ const registerSpecRoutes = (
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
         await assertPhaseGate(request.user!.id, projectId);
         await services.blueprintService.assertAcceptedDecisionDeck(request.user!.id, projectId, kind);
-        await assertNoActiveGenerationJob(services, projectId, "GenerateProjectBlueprint", kind);
-        const job = await services.jobService.createJob({
+        const job = await createGenerationJob(services, {
           createdByUserId: request.user!.id,
+          kind,
           projectId,
           type: "GenerateProjectBlueprint",
-          inputs: { kind },
         });
 
         return reply.status(202).send(jobSchema.parse(job));

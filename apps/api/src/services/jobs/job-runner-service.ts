@@ -646,6 +646,18 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        const technicalSpecApproval = await input.artifactApprovalService.getApproval(
+          rawJob.projectId,
+          "blueprint_tech",
+          technicalSpec.id,
+        );
+
+        if (!technicalSpecApproval) {
+          throw new Error(
+            "GenerateUseCases requires an approved Technical Spec before user flows can be generated.",
+          );
+        }
+
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
           sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
