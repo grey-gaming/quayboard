@@ -196,6 +196,59 @@ describe("workflow pages", () => {
     expect(screen.getByText("Recent Jobs")).toBeTruthy();
   });
 
+  it("orders mission control phases with user flows after the spec phases", async () => {
+    const orderedProjectId = "f0f0f0f0-f0f0-40f0-80f0-f0f0f0f0f0f0";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${orderedProjectId}`]: {
+        id: orderedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: orderedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${orderedProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "User Flows", passed: false, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "UX Spec", passed: false, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+        ],
+      },
+      [`/api/projects/${orderedProjectId}/next-actions`]: {
+        actions: [],
+      },
+      [`/api/projects/${orderedProjectId}/jobs`]: {
+        jobs: [],
+      },
+    });
+
+    renderRoute("/projects/:id", <MissionControlPage />, orderedProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
+    const phaseGates = screen.getByTestId("mission-control-phase-gates");
+
+    expect(
+      within(phaseGates)
+        .getAllByText(/Project Setup|Overview Document|Product Spec|UX Spec|Technical Spec|User Flows/)
+        .map((node) => node.textContent)
+        .slice(0, 6),
+    ).toEqual([
+      "Project Setup",
+      "Overview Document",
+      "Product Spec",
+      "UX Spec",
+      "Technical Spec",
+      "User Flows",
+    ]);
+  });
+
   it("renders the questionnaire page and autosaves answers", async () => {
     const autosaveProjectId = "11111111-1111-4111-8111-111111111111";
 

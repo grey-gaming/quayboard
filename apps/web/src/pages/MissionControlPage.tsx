@@ -14,6 +14,19 @@ import {
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 
+const phaseDisplayOrder = [
+  "Project Setup",
+  "Overview Document",
+  "Product Spec",
+  "UX Spec",
+  "Technical Spec",
+  "User Flows",
+] as const;
+
+const phaseOrderIndex = new Map<string, number>(
+  phaseDisplayOrder.map((phase, index) => [phase, index]),
+);
+
 export const MissionControlPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
@@ -30,6 +43,13 @@ export const MissionControlPage = () => {
       </AppFrame>
     );
   }
+
+  const phases = [...(phaseGatesQuery.data?.phases ?? [])].sort((left, right) => {
+    const leftIndex = phaseOrderIndex.get(left.phase) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = phaseOrderIndex.get(right.phase) ?? Number.MAX_SAFE_INTEGER;
+
+    return leftIndex - rightIndex;
+  });
 
   return (
     <AppFrame>
@@ -92,8 +112,8 @@ export const MissionControlPage = () => {
               </div>
               <Badge tone="warning">review states</Badge>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              {phaseGatesQuery.data?.phases.map((phase) => (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="mission-control-phase-gates">
+              {phases.map((phase) => (
                 <div key={phase.phase} className="border border-border/80 bg-panel-inset p-4">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium tracking-[-0.02em]">{phase.phase}</p>
