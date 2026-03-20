@@ -6,6 +6,7 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import {
+  findLatestFailedJob,
   findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
@@ -63,13 +64,7 @@ export const ProductSpecPage = () => {
     [jobsQuery.data?.jobs],
   );
   const latestFailedProductSpecJob = useMemo(
-    () =>
-      findLatestJob(
-        jobsQuery.data?.jobs,
-        (job) =>
-          productSpecJobTypes.has(job.type) &&
-          (job.status === "failed" || job.status === "cancelled"),
-      ),
+    () => findLatestFailedJob(jobsQuery.data?.jobs, (job) => productSpecJobTypes.has(job.type)),
     [jobsQuery.data?.jobs],
   );
   const redirectedFromLockedSection =

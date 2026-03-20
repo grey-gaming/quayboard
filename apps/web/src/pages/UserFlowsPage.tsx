@@ -7,6 +7,7 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import {
+  findLatestFailedJob,
   findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
@@ -175,12 +176,7 @@ export const UserFlowsPage = () => {
   );
   const latestFailedGenerateUserFlowsJob = useMemo(
     () =>
-      findLatestJob(
-        jobsQuery.data?.jobs,
-        (job) =>
-          generateUserFlowJobTypes.has(job.type) &&
-          (job.status === "failed" || job.status === "cancelled"),
-      ),
+      findLatestFailedJob(jobsQuery.data?.jobs, (job) => generateUserFlowJobTypes.has(job.type)),
     [jobsQuery.data?.jobs],
   );
   const generateFlowsButtonActive =

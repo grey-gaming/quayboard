@@ -1287,6 +1287,74 @@ describe("workflow pages", () => {
     ).toBeTruthy();
   });
 
+  it("hides a stale product spec failure after a newer successful job", async () => {
+    const productSpecProjectId = "62626262-6262-4262-8262-626262626262";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${productSpecProjectId}`]: {
+        id: productSpecProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: productSpecProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec`]: {
+        productSpec: {
+          id: "prod-spec-1",
+          projectId: productSpecProjectId,
+          markdown: "# Product Spec",
+          approvedAt: null,
+          createdAt: "2026-03-20T10:05:00.000Z",
+          updatedAt: "2026-03-20T10:05:00.000Z",
+        },
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${productSpecProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-product-spec-failed",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "failed",
+            inputs: {},
+            outputs: null,
+            error: {
+              message: "The configured model timed out before returning a Product Spec draft.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+          {
+            id: "job-product-spec-succeeded",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "succeeded",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-20T10:03:00.000Z",
+            startedAt: "2026-03-20T10:03:30.000Z",
+            completedAt: "2026-03-20T10:05:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByText("Product Spec generation failed.")).toBeNull();
+    });
+  });
+
   it("renders User Flows generation and approval actions", async () => {
     const userFlowsProjectId = "70707070-7070-4070-8070-707070707070";
     const generateJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d1";
@@ -2368,6 +2436,106 @@ describe("workflow pages", () => {
         "Review the accepted UX Decision Tiles against the approved Product Spec, update the conflicting selections, accept the deck again, then retry UX Spec generation.",
       ),
     ).toBeTruthy();
+  });
+
+  it("hides a stale UX spec failure after a newer successful generation", async () => {
+    const specProjectId = "91919191-9191-4191-8191-919191919191";
+    const uxSpecId = "33333333-3333-4333-8333-333333333333";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: specProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${specProjectId}/ux-spec/decision-tiles`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: specProjectId,
+            kind: "ux",
+            key: "spending-data-strategy",
+            category: "data",
+            title: "Spending data strategy",
+            prompt: "Choose how spending data is collected.",
+            recommendation: {
+              id: "open-banking",
+              label: "Open banking",
+              description: "Connect transaction accounts directly.",
+            },
+            alternatives: [],
+            selectedOptionId: "open-banking",
+            customSelection: null,
+            acceptedAt: "2026-03-20T10:00:00.000Z",
+            createdAt: "2026-03-20T09:00:00.000Z",
+            updatedAt: "2026-03-20T10:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/ux-spec`]: {
+        blueprint: {
+          id: uxSpecId,
+          projectId: specProjectId,
+          kind: "ux",
+          title: "UX Spec",
+          markdown: "# UX Spec",
+          isCanonical: true,
+          version: 2,
+          createdAt: "2026-03-20T10:05:00.000Z",
+          updatedAt: "2026-03-20T10:05:00.000Z",
+        },
+      },
+      [`/api/projects/${specProjectId}/ux-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${specProjectId}/artifact-approvals?artifactType=blueprint_ux&artifactId=${uxSpecId}`]: {
+        approval: null,
+      },
+      [`/api/projects/${specProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-blueprint-failed",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "failed",
+            inputs: { kind: "ux" },
+            outputs: null,
+            error: {
+              message:
+                "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+          {
+            id: "job-blueprint-succeeded",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "succeeded",
+            inputs: { kind: "ux" },
+            outputs: { blueprintId: uxSpecId },
+            error: null,
+            queuedAt: "2026-03-20T10:03:00.000Z",
+            startedAt: "2026-03-20T10:03:30.000Z",
+            completedAt: "2026-03-20T10:05:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByText("UX Spec generation failed.")).toBeNull();
+    });
   });
 
   it("minimizes Technical decisions once a spec exists and allows direct approval without review UI", async () => {

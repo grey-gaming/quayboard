@@ -4,6 +4,8 @@ import { formatDateTime } from "../../lib/format.js";
 import { Alert } from "../ui/Alert.js";
 
 const relevantJobTimestamp = (job: Job) => job.completedAt ?? job.startedAt ?? job.queuedAt;
+const terminalFailureStatuses = new Set(["failed", "cancelled"]);
+const terminalStatuses = new Set(["succeeded", "failed", "cancelled"]);
 
 export const findLatestJob = (
   jobs: Job[] | undefined,
@@ -12,6 +14,20 @@ export const findLatestJob = (
   (jobs ?? [])
     .filter(predicate)
     .sort((left, right) => relevantJobTimestamp(right).localeCompare(relevantJobTimestamp(left)))[0] ?? null;
+
+export const findLatestFailedJob = (
+  jobs: Job[] | undefined,
+  predicate: (job: Job) => boolean,
+) => {
+  const latestTerminalJob = findLatestJob(
+    jobs,
+    (job) => predicate(job) && terminalStatuses.has(job.status),
+  );
+
+  return latestTerminalJob && terminalFailureStatuses.has(latestTerminalJob.status)
+    ? latestTerminalJob
+    : null;
+};
 
 export const getJobErrorMessage = (job: Job) =>
   typeof job.error === "object" &&

@@ -7,6 +7,7 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import {
+  findLatestFailedJob,
   findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
@@ -316,22 +317,16 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     [jobsQuery.data?.jobs, kind],
   );
   const latestFailedSpecJob = useMemo(() => {
-    return findLatestJob(
+    return findLatestFailedJob(
       jobsQuery.data?.jobs,
-      (job) =>
-        job.type === "GenerateProjectBlueprint" &&
-        jobHasKind(job, kind) &&
-        (job.status === "failed" || job.status === "cancelled"),
+      (job) => job.type === "GenerateProjectBlueprint" && jobHasKind(job, kind),
     );
   }, [jobsQuery.data?.jobs, kind]);
   const latestFailedDecisionJob = useMemo(
     () =>
-      findLatestJob(
+      findLatestFailedJob(
         jobsQuery.data?.jobs,
-        (job) =>
-          job.type === "GenerateDecisionDeck" &&
-          jobHasKind(job, kind) &&
-          (job.status === "failed" || job.status === "cancelled"),
+        (job) => job.type === "GenerateDecisionDeck" && jobHasKind(job, kind),
       ),
     [jobsQuery.data?.jobs, kind],
   );
