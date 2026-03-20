@@ -321,6 +321,200 @@ describe("job runner service", () => {
     });
   });
 
+  it("stores a blueprint version after consistency validation passes", async () => {
+    const db = createDbStub();
+    const createBlueprintVersion = vi.fn(async () => ({ id: "ux-blueprint-id" }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: true,
+          issues: [],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "UX Spec",
+          markdown: "# UX Spec\n\n## UX Spec Summary\n\nAligned blueprint.",
+        }),
+        promptTokens: 14,
+        completionTokens: 16,
+      });
+    const service = createJobRunnerService({
+      blueprintService: {
+        assertAcceptedDecisionDeck: vi.fn(async () => undefined),
+        createBlueprintVersion,
+        getCanonicalByKind: vi.fn(async () => null),
+        getDecisionSelections: vi.fn(async () => [
+          {
+            key: "navigation-model",
+            title: "Navigation model",
+            category: "ux",
+            selection: "Single workspace shell",
+            rationale: "Keeps the main journeys coherent.",
+          },
+        ]),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-blueprint",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateProjectBlueprint",
+          inputs: { kind: "ux" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-blueprint");
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(db.values).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ templateId: "ValidateDecisionConsistency" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ templateId: "GenerateProjectBlueprint" }),
+    );
+    expect(createBlueprintVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        kind: "ux",
+        title: "UX Spec",
+        markdown: "# UX Spec\n\n## UX Spec Summary\n\nAligned blueprint.",
+        source: "GenerateProjectBlueprint",
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-blueprint",
+      expect.objectContaining({ blueprintId: "ux-blueprint-id", kind: "ux" }),
+    );
+  });
+
+  it("fails blueprint generation when consistency validation reports conflicts", async () => {
+    const db = createDbStub();
+    const createBlueprintVersion = vi.fn(async () => ({ id: "ux-blueprint-id" }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({
+        ok: false,
+        issues: ["Selected decision contradicts the approved Product Spec."],
+      }),
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
+    const service = createJobRunnerService({
+      blueprintService: {
+        assertAcceptedDecisionDeck: vi.fn(async () => undefined),
+        createBlueprintVersion,
+        getCanonicalByKind: vi.fn(async () => null),
+        getDecisionSelections: vi.fn(async () => [
+          {
+            key: "spending-data-strategy",
+            title: "Spending data strategy",
+            category: "ux",
+            selection: "No open banking",
+            rationale: "Reduce setup friction.",
+          },
+        ]),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-blueprint",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateProjectBlueprint",
+          inputs: { kind: "ux" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved scope with open banking.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-blueprint")).rejects.toThrow(
+      "ValidateDecisionConsistency found conflicts: Selected decision contradicts the approved Product Spec.",
+    );
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(db.insert).toHaveBeenCalledTimes(1);
+    expect(db.values).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "ValidateDecisionConsistency" }),
+    );
+    expect(createBlueprintVersion).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
   it("stores a Product Spec version from the approved overview", async () => {
     const db = createDbStub();
     const createVersion = vi.fn(async () => ({ id: "product-spec-id" }));
