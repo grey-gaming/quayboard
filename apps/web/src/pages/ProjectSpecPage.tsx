@@ -6,6 +6,12 @@ import { EditableMarkdownDocument } from "../components/composites/EditableMarkd
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import {
+  findLatestJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
 import { NextActionBar } from "../components/workflow/NextActionBar.js";
 import { TransitionConfirmDialog } from "../components/workflow/TransitionConfirmDialog.js";
 import { Alert } from "../components/ui/Alert.js";
@@ -247,28 +253,12 @@ const kindToArtifactType = (kind: BlueprintKind): ArtifactType =>
 const kindToTitle = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
 const kindToDecisionTitle = (kind: BlueprintKind) =>
   kind === "ux" ? "UX Decision Tiles" : "Technical Decision Tiles";
-const relevantJobTimestamp = (job: Job) => job.completedAt ?? job.startedAt ?? job.queuedAt;
-const getJobErrorMessage = (job: Job) =>
-  typeof job.error === "object" &&
-  job.error !== null &&
-  "message" in job.error &&
-  typeof job.error.message === "string"
-    ? job.error.message
-    : null;
 const getJobFailureHint = (message: string, title: string, decisionTitle: string) => {
   if (message.startsWith("ValidateDecisionConsistency found conflicts:")) {
     return `Review the accepted ${decisionTitle} against the approved Product Spec, update the conflicting selections, accept the deck again, then retry ${title} generation.`;
   }
 
-  if (message.includes("job_interrupted_by_server_restart")) {
-    return `The API restarted before ${title} generation finished. Restart the API, confirm it is healthy, then queue the job again.`;
-  }
-
-  if (message.includes("job_interrupted_by_server_shutdown")) {
-    return `The API shut down before ${title} generation finished. Start it again, confirm it is healthy, then queue the job again.`;
-  }
-
-  return `Review the failure details, adjust the source inputs if needed, then retry ${title} generation.`;
+  return getDefaultJobFailureHint(message, `${title} generation`);
 };
 
 export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
@@ -326,31 +316,25 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     [jobsQuery.data?.jobs, kind],
   );
   const latestFailedSpecJob = useMemo(() => {
-    const failedJobs =
-      jobsQuery.data?.jobs.filter(
-        (job) =>
-          job.type === "GenerateProjectBlueprint" &&
-          jobHasKind(job, kind) &&
-          (job.status === "failed" || job.status === "cancelled"),
-      ) ?? [];
-
-    return failedJobs.sort((left, right) =>
-      relevantJobTimestamp(right).localeCompare(relevantJobTimestamp(left)),
-    )[0] ?? null;
+    return findLatestJob(
+      jobsQuery.data?.jobs,
+      (job) =>
+        job.type === "GenerateProjectBlueprint" &&
+        jobHasKind(job, kind) &&
+        (job.status === "failed" || job.status === "cancelled"),
+    );
   }, [jobsQuery.data?.jobs, kind]);
-  const latestFailedDecisionJob = useMemo(() => {
-    const failedJobs =
-      jobsQuery.data?.jobs.filter(
+  const latestFailedDecisionJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
         (job) =>
           job.type === "GenerateDecisionDeck" &&
           jobHasKind(job, kind) &&
           (job.status === "failed" || job.status === "cancelled"),
-      ) ?? [];
-
-    return failedJobs.sort((left, right) =>
-      relevantJobTimestamp(right).localeCompare(relevantJobTimestamp(left)),
-    )[0] ?? null;
-  }, [jobsQuery.data?.jobs, kind]);
+      ),
+    [jobsQuery.data?.jobs, kind],
+  );
 
   const decisionsGenerated = cards.length > 0;
   const selectedCardCount = cards.filter((card) => card.selectedOptionId || card.customSelection).length;
@@ -438,25 +422,23 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
         <Alert tone="info">{decisionTitle} generation is {activeDecisionJob.status}.</Alert>
       ) : null}
       {activeSpecJob ? <Alert tone="info">{title} generation is {activeSpecJob.status}.</Alert> : null}
-      {!activeDecisionJob && latestFailedDecisionJob && latestFailedDecisionMessage ? (
-        <Alert tone="error">
-          <p className="font-medium">{decisionTitle} generation failed.</p>
-          <p className="mt-1">{latestFailedDecisionMessage}</p>
-          <p className="mt-1 text-secondary">
-            Last attempt {formatDateTime(relevantJobTimestamp(latestFailedDecisionJob))}.
-          </p>
-        </Alert>
+      {!activeDecisionJob ? (
+        <LatestJobFailureAlert
+          job={latestFailedDecisionJob}
+          workflowLabel={`${decisionTitle} generation`}
+        />
       ) : null}
-      {!activeSpecJob && latestFailedSpecJob && latestFailedSpecMessage ? (
-        <Alert tone="error">
-          <p className="font-medium">{title} generation failed.</p>
-          <p className="mt-1">{latestFailedSpecMessage}</p>
-          <p className="mt-1">{getJobFailureHint(latestFailedSpecMessage, title, decisionTitle)}</p>
-          <p className="mt-1 text-secondary">
-            Last attempt {formatDateTime(relevantJobTimestamp(latestFailedSpecJob))}.
-            {currentSpec ? ` The current canonical ${title} is still available below.` : ""}
-          </p>
-        </Alert>
+      {!activeSpecJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(currentSpec)}
+          hint={
+            latestFailedSpecMessage
+              ? getJobFailureHint(latestFailedSpecMessage, title, decisionTitle)
+              : null
+          }
+          job={latestFailedSpecJob}
+          workflowLabel={`${title} generation`}
+        />
       ) : null}
 
       <div className="grid gap-4">

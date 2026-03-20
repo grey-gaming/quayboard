@@ -5,6 +5,12 @@ import { EditableMarkdownDocument } from "../components/composites/EditableMarkd
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import {
+  findLatestJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -65,7 +71,17 @@ export const OnePagerOverviewPage = () => {
     [jobsQuery.data?.jobs],
   );
   const latestOverviewJob = useMemo(
-    () => jobsQuery.data?.jobs.find((job) => overviewJobTypes.has(job.type)) ?? null,
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => overviewJobTypes.has(job.type)),
+    [jobsQuery.data?.jobs],
+  );
+  const latestFailedOverviewJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) =>
+          overviewJobTypes.has(job.type) &&
+          (job.status === "failed" || job.status === "cancelled"),
+      ),
     [jobsQuery.data?.jobs],
   );
   const redirectedFromLockedSection =
@@ -146,6 +162,21 @@ export const OnePagerOverviewPage = () => {
           Overview generation is {activeOverviewJob.status}. The page will refresh automatically
           when the job completes.
         </Alert>
+      ) : null}
+      {!activeOverviewJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(onePagerQuery.data?.onePager)}
+          hint={
+            latestFailedOverviewJob && getJobErrorMessage(latestFailedOverviewJob)
+              ? getDefaultJobFailureHint(
+                  getJobErrorMessage(latestFailedOverviewJob)!,
+                  "Overview generation",
+                )
+              : null
+          }
+          job={latestFailedOverviewJob}
+          workflowLabel="Overview generation"
+        />
       ) : null}
 
       <div className="grid gap-4">

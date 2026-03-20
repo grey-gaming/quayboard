@@ -6,6 +6,12 @@ import { useParams } from "react-router-dom";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import {
+  findLatestJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -167,6 +173,16 @@ export const UserFlowsPage = () => {
       ) ?? null,
     [jobsQuery.data?.jobs],
   );
+  const latestFailedGenerateUserFlowsJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) =>
+          generateUserFlowJobTypes.has(job.type) &&
+          (job.status === "failed" || job.status === "cancelled"),
+      ),
+    [jobsQuery.data?.jobs],
+  );
   const generateFlowsButtonActive =
     generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
 
@@ -184,6 +200,21 @@ export const UserFlowsPage = () => {
           </>
         }
       />
+      {!activeGenerateUserFlowsJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(userFlowsQuery.data?.userFlows.length)}
+          hint={
+            latestFailedGenerateUserFlowsJob && getJobErrorMessage(latestFailedGenerateUserFlowsJob)
+              ? getDefaultJobFailureHint(
+                  getJobErrorMessage(latestFailedGenerateUserFlowsJob)!,
+                  "User Flow generation",
+                )
+              : null
+          }
+          job={latestFailedGenerateUserFlowsJob}
+          workflowLabel="User Flow generation"
+        />
+      ) : null}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.2fr)_22rem]">
         <div className="grid self-start gap-4">
           <Card surface="panel">

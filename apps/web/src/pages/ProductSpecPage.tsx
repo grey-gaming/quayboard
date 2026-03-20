@@ -5,6 +5,12 @@ import { EditableMarkdownDocument } from "../components/composites/EditableMarkd
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import {
+  findLatestJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -53,7 +59,17 @@ export const ProductSpecPage = () => {
     [jobsQuery.data?.jobs],
   );
   const latestProductSpecJob = useMemo(
-    () => jobsQuery.data?.jobs.find((job) => productSpecJobTypes.has(job.type)) ?? null,
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => productSpecJobTypes.has(job.type)),
+    [jobsQuery.data?.jobs],
+  );
+  const latestFailedProductSpecJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) =>
+          productSpecJobTypes.has(job.type) &&
+          (job.status === "failed" || job.status === "cancelled"),
+      ),
     [jobsQuery.data?.jobs],
   );
   const redirectedFromLockedSection =
@@ -107,6 +123,21 @@ export const ProductSpecPage = () => {
           depending on the quality and speed of the selected model, so please be patient. The page
           will refresh automatically when the job completes.
         </Alert>
+      ) : null}
+      {!activeProductSpecJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(productSpecQuery.data?.productSpec)}
+          hint={
+            latestFailedProductSpecJob && getJobErrorMessage(latestFailedProductSpecJob)
+              ? getDefaultJobFailureHint(
+                  getJobErrorMessage(latestFailedProductSpecJob)!,
+                  "Product Spec generation",
+                )
+              : null
+          }
+          job={latestFailedProductSpecJob}
+          workflowLabel="Product Spec generation"
+        />
       ) : null}
 
       <div className="grid gap-4">

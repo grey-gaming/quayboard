@@ -1232,6 +1232,61 @@ describe("workflow pages", () => {
     expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
   });
 
+  it("surfaces product spec job failures with shared guidance", async () => {
+    const productSpecProjectId = "61616161-6161-4161-8161-616161616161";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${productSpecProjectId}`]: {
+        id: productSpecProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: productSpecProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec`]: {
+        productSpec: null,
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${productSpecProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-product-spec-failed",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "failed",
+            inputs: {},
+            outputs: null,
+            error: {
+              message: "The configured model timed out before returning a Product Spec draft.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(await screen.findByText("Product Spec generation failed.")).toBeTruthy();
+    expect(
+      screen.getByText("The configured model timed out before returning a Product Spec draft."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Review the failure details, adjust the source inputs if needed, then retry Product Spec generation.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("renders User Flows generation and approval actions", async () => {
     const userFlowsProjectId = "70707070-7070-4070-8070-707070707070";
     const generateJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d1";
