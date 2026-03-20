@@ -2217,6 +2217,104 @@ describe("workflow pages", () => {
     });
   });
 
+  it("surfaces blueprint job failures with actionable guidance on the spec page", async () => {
+    const specProjectId = "90909090-9090-4090-8090-909090909090";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: specProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${specProjectId}/ux-spec/decision-tiles`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: specProjectId,
+            kind: "ux",
+            key: "spending-data-strategy",
+            category: "data",
+            title: "Spending data strategy",
+            prompt: "Choose how spending data is collected.",
+            recommendation: {
+              id: "open-banking",
+              label: "Open banking",
+              description: "Connect transaction accounts directly.",
+            },
+            alternatives: [
+              {
+                id: "manual-entry",
+                label: "Manual entry",
+                description: "Users enter spending data manually.",
+              },
+            ],
+            selectedOptionId: null,
+            customSelection: "No open banking",
+            acceptedAt: "2026-03-20T10:00:00.000Z",
+            createdAt: "2026-03-20T09:00:00.000Z",
+            updatedAt: "2026-03-20T10:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/ux-spec`]: {
+        blueprint: null,
+      },
+      [`/api/projects/${specProjectId}/ux-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${specProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "User Flows", passed: true, items: [] },
+          { phase: "UX Spec", passed: false, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
+        ],
+      },
+      [`/api/projects/${specProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-blueprint-failed",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "failed",
+            inputs: { kind: "ux" },
+            outputs: null,
+            error: {
+              message:
+                "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect(await screen.findByText("UX Spec generation failed.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Review the accepted UX Decision Tiles against the approved Product Spec, update the conflicting selections, accept the deck again, then retry UX Spec generation.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("minimizes Technical decisions once a spec exists and allows direct approval without review UI", async () => {
     const specProjectId = "80808080-8080-4080-8080-808080808080";
     const technicalSpecId = "22222222-2222-4222-8222-222222222222";

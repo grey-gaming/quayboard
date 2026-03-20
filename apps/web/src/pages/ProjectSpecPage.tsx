@@ -247,6 +247,29 @@ const kindToArtifactType = (kind: BlueprintKind): ArtifactType =>
 const kindToTitle = (kind: BlueprintKind) => (kind === "ux" ? "UX Spec" : "Technical Spec");
 const kindToDecisionTitle = (kind: BlueprintKind) =>
   kind === "ux" ? "UX Decision Tiles" : "Technical Decision Tiles";
+const relevantJobTimestamp = (job: Job) => job.completedAt ?? job.startedAt ?? job.queuedAt;
+const getJobErrorMessage = (job: Job) =>
+  typeof job.error === "object" &&
+  job.error !== null &&
+  "message" in job.error &&
+  typeof job.error.message === "string"
+    ? job.error.message
+    : null;
+const getJobFailureHint = (message: string, title: string, decisionTitle: string) => {
+  if (message.startsWith("ValidateDecisionConsistency found conflicts:")) {
+    return `Review the accepted ${decisionTitle} against the approved Product Spec, update the conflicting selections, accept the deck again, then retry ${title} generation.`;
+  }
+
+  if (message.includes("job_interrupted_by_server_restart")) {
+    return `The API restarted before ${title} generation finished. Restart the API, confirm it is healthy, then queue the job again.`;
+  }
+
+  if (message.includes("job_interrupted_by_server_shutdown")) {
+    return `The API shut down before ${title} generation finished. Start it again, confirm it is healthy, then queue the job again.`;
+  }
+
+  return `Review the failure details, adjust the source inputs if needed, then retry ${title} generation.`;
+};
 
 export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const { id = "" } = useParams();
@@ -302,6 +325,32 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
       ) ?? null,
     [jobsQuery.data?.jobs, kind],
   );
+  const latestFailedSpecJob = useMemo(() => {
+    const failedJobs =
+      jobsQuery.data?.jobs.filter(
+        (job) =>
+          job.type === "GenerateProjectBlueprint" &&
+          jobHasKind(job, kind) &&
+          (job.status === "failed" || job.status === "cancelled"),
+      ) ?? [];
+
+    return failedJobs.sort((left, right) =>
+      relevantJobTimestamp(right).localeCompare(relevantJobTimestamp(left)),
+    )[0] ?? null;
+  }, [jobsQuery.data?.jobs, kind]);
+  const latestFailedDecisionJob = useMemo(() => {
+    const failedJobs =
+      jobsQuery.data?.jobs.filter(
+        (job) =>
+          job.type === "GenerateDecisionDeck" &&
+          jobHasKind(job, kind) &&
+          (job.status === "failed" || job.status === "cancelled"),
+      ) ?? [];
+
+    return failedJobs.sort((left, right) =>
+      relevantJobTimestamp(right).localeCompare(relevantJobTimestamp(left)),
+    )[0] ?? null;
+  }, [jobsQuery.data?.jobs, kind]);
 
   const decisionsGenerated = cards.length > 0;
   const selectedCardCount = cards.filter((card) => card.selectedOptionId || card.customSelection).length;
@@ -332,6 +381,10 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     saveSpecMutation.error ||
     restoreSpecMutation.error ||
     approveArtifactMutation.error;
+  const latestFailedSpecMessage = latestFailedSpecJob ? getJobErrorMessage(latestFailedSpecJob) : null;
+  const latestFailedDecisionMessage = latestFailedDecisionJob
+    ? getJobErrorMessage(latestFailedDecisionJob)
+    : null;
 
   return (
     <AppFrame>
@@ -385,6 +438,26 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
         <Alert tone="info">{decisionTitle} generation is {activeDecisionJob.status}.</Alert>
       ) : null}
       {activeSpecJob ? <Alert tone="info">{title} generation is {activeSpecJob.status}.</Alert> : null}
+      {!activeDecisionJob && latestFailedDecisionJob && latestFailedDecisionMessage ? (
+        <Alert tone="error">
+          <p className="font-medium">{decisionTitle} generation failed.</p>
+          <p className="mt-1">{latestFailedDecisionMessage}</p>
+          <p className="mt-1 text-secondary">
+            Last attempt {formatDateTime(relevantJobTimestamp(latestFailedDecisionJob))}.
+          </p>
+        </Alert>
+      ) : null}
+      {!activeSpecJob && latestFailedSpecJob && latestFailedSpecMessage ? (
+        <Alert tone="error">
+          <p className="font-medium">{title} generation failed.</p>
+          <p className="mt-1">{latestFailedSpecMessage}</p>
+          <p className="mt-1">{getJobFailureHint(latestFailedSpecMessage, title, decisionTitle)}</p>
+          <p className="mt-1 text-secondary">
+            Last attempt {formatDateTime(relevantJobTimestamp(latestFailedSpecJob))}.
+            {currentSpec ? ` The current canonical ${title} is still available below.` : ""}
+          </p>
+        </Alert>
+      ) : null}
 
       <div className="grid gap-4">
         <Card surface="panel">
