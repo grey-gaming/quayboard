@@ -1,10 +1,12 @@
 # Current Milestone
 
-## Active Target
+## Status
 
 M3: UX and Technical Spec Builder
 
-This is the active implementation target. Work beyond M3 requires an explicit request.
+This milestone is complete.
+
+There is no new active implementation target yet. Work beyond M3 requires an explicit request.
 
 ## Goal
 
