@@ -3,17 +3,20 @@ import type { ReactNode } from "react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Job, User, UseCaseListResponse } from "@quayboard/shared";
+import type { DecisionCard, Job, User, UseCaseListResponse } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
 import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
+import { TechnicalSpecApprovalGate } from "../src/components/layout/TechnicalSpecApprovalGate.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
 import { ProductSpecPage } from "../src/pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "../src/pages/ProjectSetupPage.js";
+import { TechnicalSpecPage } from "../src/pages/TechnicalSpecPage.js";
+import { UxSpecPage } from "../src/pages/UxSpecPage.js";
 import { UserFlowsPage } from "../src/pages/UserFlowsPage.js";
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
@@ -98,6 +101,8 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/projects/:id/one-pager", <div />],
     ["/projects/:id/product-spec", <div />],
     ["/projects/:id/user-flows", <div />],
+    ["/projects/:id/ux-spec", <div />],
+    ["/projects/:id/technical-spec", <div />],
     ["/projects/:id/import", <div />],
   ]);
   routeEntries.set(path, element);
@@ -190,6 +195,59 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Recent Jobs")).toBeTruthy();
+  });
+
+  it("orders mission control phases with user flows after the spec phases", async () => {
+    const orderedProjectId = "f0f0f0f0-f0f0-40f0-80f0-f0f0f0f0f0f0";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${orderedProjectId}`]: {
+        id: orderedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: orderedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${orderedProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "User Flows", passed: false, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "UX Spec", passed: false, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+        ],
+      },
+      [`/api/projects/${orderedProjectId}/next-actions`]: {
+        actions: [],
+      },
+      [`/api/projects/${orderedProjectId}/jobs`]: {
+        jobs: [],
+      },
+    });
+
+    renderRoute("/projects/:id", <MissionControlPage />, orderedProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
+    const phaseGates = screen.getByTestId("mission-control-phase-gates");
+
+    expect(
+      within(phaseGates)
+        .getAllByText(/Project Setup|Overview Document|Product Spec|UX Spec|Technical Spec|User Flows/)
+        .map((node) => node.textContent)
+        .slice(0, 6),
+    ).toEqual([
+      "Project Setup",
+      "Overview Document",
+      "Product Spec",
+      "UX Spec",
+      "Technical Spec",
+      "User Flows",
+    ]);
   });
 
   it("renders the questionnaire page and autosaves answers", async () => {
@@ -1174,6 +1232,129 @@ describe("workflow pages", () => {
     expect(screen.queryByText("An unexpected error occurred.")).toBeNull();
   });
 
+  it("surfaces product spec job failures with shared guidance", async () => {
+    const productSpecProjectId = "61616161-6161-4161-8161-616161616161";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${productSpecProjectId}`]: {
+        id: productSpecProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: productSpecProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec`]: {
+        productSpec: null,
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${productSpecProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-product-spec-failed",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "failed",
+            inputs: {},
+            outputs: null,
+            error: {
+              message: "The configured model timed out before returning a Product Spec draft.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(await screen.findByText("Product Spec generation failed.")).toBeTruthy();
+    expect(
+      screen.getByText("The configured model timed out before returning a Product Spec draft."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Review the failure details, adjust the source inputs if needed, then retry Product Spec generation.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("hides a stale product spec failure after a newer successful job", async () => {
+    const productSpecProjectId = "62626262-6262-4262-8262-626262626262";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${productSpecProjectId}`]: {
+        id: productSpecProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: productSpecProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec`]: {
+        productSpec: {
+          id: "prod-spec-1",
+          projectId: productSpecProjectId,
+          markdown: "# Product Spec",
+          approvedAt: null,
+          createdAt: "2026-03-20T10:05:00.000Z",
+          updatedAt: "2026-03-20T10:05:00.000Z",
+        },
+      },
+      [`/api/projects/${productSpecProjectId}/product-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${productSpecProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-product-spec-failed",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "failed",
+            inputs: {},
+            outputs: null,
+            error: {
+              message: "The configured model timed out before returning a Product Spec draft.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+          {
+            id: "job-product-spec-succeeded",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "succeeded",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-20T10:03:00.000Z",
+            startedAt: "2026-03-20T10:03:30.000Z",
+            completedAt: "2026-03-20T10:05:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByText("Product Spec generation failed.")).toBeNull();
+    });
+  });
+
   it("renders User Flows generation and approval actions", async () => {
     const userFlowsProjectId = "70707070-7070-4070-8070-707070707070";
     const generateJobId = "d3057770-eca1-417a-a1c6-c00bb83a47d1";
@@ -1683,7 +1864,7 @@ describe("workflow pages", () => {
     expect(screen.getByText("/projects/40404040-4040-4040-8040-404040404040/product-spec")).toBeTruthy();
   });
 
-  it("redirects User Flows access back to Product Spec until the Product Spec is approved", async () => {
+  it("redirects UX Spec access back to Product Spec until the Product Spec is approved", async () => {
     const gatedProjectId = "50505050-5050-4050-8050-505050505050";
 
     vi.stubGlobal("EventSource", MockEventSource);
@@ -1741,6 +1922,82 @@ describe("workflow pages", () => {
         { path: "/projects/:id/product-spec", element: <ProductSpecPage /> },
         {
           element: <ProductSpecApprovalGate />,
+          children: [{ path: "/projects/:id/ux-spec", element: <div>UX Spec page</div> }],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${gatedProjectId}/ux-spec`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(
+      screen.getByText(/Approve the Product Spec on this page to continue to UX Spec\./),
+    ).toBeTruthy();
+    expect(screen.getByText("/projects/50505050-5050-4050-8050-505050505050/ux-spec")).toBeTruthy();
+  });
+
+  it("redirects User Flows access back to Technical Spec until the Technical Spec is approved", async () => {
+    const gatedProjectId = "51515151-5151-4151-8151-515151515151";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${gatedProjectId}`]: {
+        id: gatedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: gatedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec/decision-tiles`]: {
+        cards: [],
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec`]: {
+        blueprint: {
+          id: "technical-spec-id",
+          projectId: gatedProjectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec",
+          source: "GenerateProjectBlueprint",
+          isCanonical: true,
+          createdAt: "2026-03-16T09:30:00.000Z",
+        },
+      },
+      [`/api/projects/${gatedProjectId}/technical-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${gatedProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${gatedProjectId}/artifacts/blueprint_tech/technical-spec-id/approval`]: {
+        artifactType: "blueprint_tech",
+        artifactId: "technical-spec-id",
+        approval: null,
+      },
+    });
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id", element: <div /> },
+        { path: "/projects/:id/setup", element: <div /> },
+        { path: "/projects/:id/questions", element: <div /> },
+        { path: "/projects/:id/one-pager", element: <div>Overview page</div> },
+        { path: "/projects/:id/product-spec", element: <div>Product Spec page</div> },
+        { path: "/projects/:id/ux-spec", element: <div>UX Spec page</div> },
+        { path: "/projects/:id/technical-spec", element: <TechnicalSpecPage /> },
+        {
+          element: <TechnicalSpecApprovalGate />,
           children: [{ path: "/projects/:id/user-flows", element: <div>User Flows page</div> }],
         },
       ],
@@ -1755,11 +2012,11 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "Technical Spec" })).length).toBeGreaterThan(0);
     expect(
-      screen.getByText(/Approve the Product Spec on this page to continue to User Flows\./),
+      screen.getByText(/Approve the Technical Spec on this page to continue to User Flows\./),
     ).toBeTruthy();
-    expect(screen.getByText("/projects/50505050-5050-4050-8050-505050505050/user-flows")).toBeTruthy();
+    expect(screen.getByText("/projects/51515151-5151-4151-8151-515151515151/user-flows")).toBeTruthy();
   });
 
   it("redirects incomplete overview access back to setup until setup is explicitly completed", async () => {
@@ -1862,5 +2119,526 @@ describe("workflow pages", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
+  });
+
+  it("keeps UX Spec generation locked until UX decisions are accepted", async () => {
+    const specProjectId = "70707070-7070-4070-8070-707070707070";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const generateKinds: string[] = [];
+    let cards: DecisionCard[] = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        projectId: specProjectId,
+        kind: "ux",
+        key: "primary-navigation",
+        category: "navigation",
+        title: "Primary navigation",
+        prompt: "Choose the primary navigation model.",
+        recommendation: {
+          id: "sidebar",
+          label: "Sidebar",
+          description: "Keep major areas always visible.",
+        },
+        alternatives: [
+          {
+            id: "top-nav",
+            label: "Top nav",
+            description: "Use a horizontal top navigation.",
+          },
+          {
+            id: "hub-pages",
+            label: "Hub pages",
+            description: "Drive navigation through contextual hub pages.",
+          },
+        ],
+        selectedOptionId: null,
+        customSelection: null,
+        acceptedAt: null,
+        createdAt: "2026-03-18T00:00:00.000Z",
+        updatedAt: "2026-03-18T00:00:00.000Z",
+      },
+    ];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: specProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: specProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/decision-tiles` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cards }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/decision-tiles` && method === "PATCH") {
+        const payload = JSON.parse(String(init?.body)) as {
+          cards: Array<{ customSelection?: string | null; id: string; selectedOptionId?: string | null }>;
+        };
+
+        cards = cards.map((card) => {
+          const update = payload.cards.find((candidate) => candidate.id === card.id);
+
+          if (!update) {
+            return card;
+          }
+
+          return {
+            ...card,
+            customSelection: update.customSelection ?? null,
+            selectedOptionId: update.customSelection ? null : (update.selectedOptionId ?? null),
+            acceptedAt: null,
+            updatedAt: "2026-03-19T00:00:00.000Z",
+          };
+        });
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cards }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${specProjectId}/ux-spec/decision-tiles/accept` &&
+        method === "POST"
+      ) {
+        cards = cards.map((card) => ({
+          ...card,
+          acceptedAt: "2026-03-19T00:01:00.000Z",
+          updatedAt: "2026-03-19T00:01:00.000Z",
+        }));
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ cards }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ blueprint: null }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            phases: [
+              { phase: "Project Setup", passed: true, items: [] },
+              { phase: "Overview Document", passed: true, items: [] },
+              { phase: "Product Spec", passed: true, items: [] },
+              { phase: "User Flows", passed: true, items: [] },
+              { phase: "UX Spec", passed: false, items: [] },
+              { phase: "Technical Spec", passed: false, items: [] },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec` && method === "POST") {
+        generateKinds.push("ux");
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "job-generate-ux",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "queued",
+            inputs: { kind: "ux" },
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-19T00:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect(await screen.findByText("Primary navigation")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Choose Option" })[0]!);
+
+    expect(await screen.findByRole("button", { name: "Edit Decision" })).toBeTruthy();
+    expect(screen.getByText("option selected")).toBeTruthy();
+
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Accept UX Decisions" }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept UX Decisions" }));
+
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate UX Spec" }));
+
+    await waitFor(() => {
+      expect(generateKinds).toEqual(["ux"]);
+    });
+  });
+
+  it("surfaces blueprint job failures with actionable guidance on the spec page", async () => {
+    const specProjectId = "90909090-9090-4090-8090-909090909090";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: specProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${specProjectId}/ux-spec/decision-tiles`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: specProjectId,
+            kind: "ux",
+            key: "spending-data-strategy",
+            category: "data",
+            title: "Spending data strategy",
+            prompt: "Choose how spending data is collected.",
+            recommendation: {
+              id: "open-banking",
+              label: "Open banking",
+              description: "Connect transaction accounts directly.",
+            },
+            alternatives: [
+              {
+                id: "manual-entry",
+                label: "Manual entry",
+                description: "Users enter spending data manually.",
+              },
+            ],
+            selectedOptionId: null,
+            customSelection: "No open banking",
+            acceptedAt: "2026-03-20T10:00:00.000Z",
+            createdAt: "2026-03-20T09:00:00.000Z",
+            updatedAt: "2026-03-20T10:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/ux-spec`]: {
+        blueprint: null,
+      },
+      [`/api/projects/${specProjectId}/ux-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${specProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "User Flows", passed: true, items: [] },
+          { phase: "UX Spec", passed: false, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
+        ],
+      },
+      [`/api/projects/${specProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-blueprint-failed",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "failed",
+            inputs: { kind: "ux" },
+            outputs: null,
+            error: {
+              message:
+                "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect(await screen.findByText("UX Spec generation failed.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Review the accepted UX Decision Tiles against the approved Product Spec, update the conflicting selections, accept the deck again, then retry UX Spec generation.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("hides a stale UX spec failure after a newer successful generation", async () => {
+    const specProjectId = "91919191-9191-4191-8191-919191919191";
+    const uxSpecId = "33333333-3333-4333-8333-333333333333";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: specProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${specProjectId}/ux-spec/decision-tiles`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: specProjectId,
+            kind: "ux",
+            key: "spending-data-strategy",
+            category: "data",
+            title: "Spending data strategy",
+            prompt: "Choose how spending data is collected.",
+            recommendation: {
+              id: "open-banking",
+              label: "Open banking",
+              description: "Connect transaction accounts directly.",
+            },
+            alternatives: [],
+            selectedOptionId: "open-banking",
+            customSelection: null,
+            acceptedAt: "2026-03-20T10:00:00.000Z",
+            createdAt: "2026-03-20T09:00:00.000Z",
+            updatedAt: "2026-03-20T10:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/ux-spec`]: {
+        blueprint: {
+          id: uxSpecId,
+          projectId: specProjectId,
+          kind: "ux",
+          title: "UX Spec",
+          markdown: "# UX Spec",
+          isCanonical: true,
+          version: 2,
+          createdAt: "2026-03-20T10:05:00.000Z",
+          updatedAt: "2026-03-20T10:05:00.000Z",
+        },
+      },
+      [`/api/projects/${specProjectId}/ux-spec/versions`]: {
+        versions: [],
+      },
+      [`/api/projects/${specProjectId}/artifact-approvals?artifactType=blueprint_ux&artifactId=${uxSpecId}`]: {
+        approval: null,
+      },
+      [`/api/projects/${specProjectId}/jobs`]: {
+        jobs: [
+          {
+            id: "job-blueprint-failed",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "failed",
+            inputs: { kind: "ux" },
+            outputs: null,
+            error: {
+              message:
+                "ValidateDecisionConsistency found conflicts: The selected spending-data-strategy conflicts with the approved Product Spec.",
+            },
+            queuedAt: "2026-03-20T10:01:00.000Z",
+            startedAt: "2026-03-20T10:01:30.000Z",
+            completedAt: "2026-03-20T10:02:00.000Z",
+          },
+          {
+            id: "job-blueprint-succeeded",
+            projectId: specProjectId,
+            type: "GenerateProjectBlueprint",
+            status: "succeeded",
+            inputs: { kind: "ux" },
+            outputs: { blueprintId: uxSpecId },
+            error: null,
+            queuedAt: "2026-03-20T10:03:00.000Z",
+            startedAt: "2026-03-20T10:03:30.000Z",
+            completedAt: "2026-03-20T10:05:00.000Z",
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByText("UX Spec generation failed.")).toBeNull();
+    });
+  });
+
+  it("minimizes Technical decisions once a spec exists and allows direct approval without review UI", async () => {
+    const specProjectId = "80808080-8080-4080-8080-808080808080";
+    const technicalSpecId = "22222222-2222-4222-8222-222222222222";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      [`/api/projects/${specProjectId}`]: {
+        id: specProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: specProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${specProjectId}/technical-spec/decision-tiles`]: {
+        cards: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: specProjectId,
+            kind: "tech",
+            key: "api-shape",
+            category: "api",
+            title: "API shape",
+            prompt: "Choose the primary API style.",
+            recommendation: {
+              id: "rest",
+              label: "REST",
+              description: "Keep the service contract straightforward.",
+            },
+            alternatives: [
+              {
+                id: "graphql",
+                label: "GraphQL",
+                description: "Expose a flexible graph endpoint.",
+              },
+            ],
+            selectedOptionId: "rest",
+            customSelection: null,
+            acceptedAt: "2026-03-19T00:00:00.000Z",
+            createdAt: "2026-03-18T00:00:00.000Z",
+            updatedAt: "2026-03-18T00:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/technical-spec`]: {
+        blueprint: {
+          id: technicalSpecId,
+          projectId: specProjectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved specification.",
+          source: "GenerateProjectBlueprint",
+          isCanonical: true,
+          createdAt: "2026-03-19T00:00:00.000Z",
+        },
+      },
+      [`/api/projects/${specProjectId}/technical-spec/versions`]: {
+        versions: [
+          {
+            id: technicalSpecId,
+            projectId: specProjectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec\n\nApproved specification.",
+            source: "GenerateProjectBlueprint",
+            isCanonical: true,
+            createdAt: "2026-03-19T00:00:00.000Z",
+          },
+        ],
+      },
+      [`/api/projects/${specProjectId}/phase-gates`]: {
+        phases: [
+          { phase: "Project Setup", passed: true, items: [] },
+          { phase: "Overview Document", passed: true, items: [] },
+          { phase: "Product Spec", passed: true, items: [] },
+          { phase: "User Flows", passed: true, items: [] },
+          { phase: "UX Spec", passed: true, items: [] },
+          { phase: "Technical Spec", passed: false, items: [] },
+        ],
+      },
+      [`/api/projects/${specProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approval`]: {
+        artifactType: "blueprint_tech",
+        artifactId: technicalSpecId,
+        approval: null,
+      },
+    });
+
+    renderRoute("/projects/:id/technical-spec", <TechnicalSpecPage />, specProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Technical Spec" })).toBeTruthy();
+    expect(await screen.findByText("Technical Decision Tiles")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Review Decisions" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Approve Technical Spec" })).toBeTruthy();
+
+    expect(screen.queryByRole("button", { name: "Generate Blueprints" })).toBeNull();
+    expect(screen.queryByText("Review Panel")).toBeNull();
   });
 });

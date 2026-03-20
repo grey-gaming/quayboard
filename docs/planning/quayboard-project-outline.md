@@ -98,7 +98,8 @@ Home (project list)
     ├── Project Setup (repo access, LLM provider, sandbox defaults, evidence policy)
     ├── Overview Document (questionnaire -> document)
     ├── Product Spec (overview -> full specification)
-    ├── Blueprint (decision deck -> UX/tech project blueprints)
+    ├── UX Spec (UX decision tiles -> UX specification)
+    ├── Technical Spec (Technical decision tiles -> technical specification)
     ├── Milestones (lifecycle: draft -> approved -> completed)
     ├── Features (catalogue / editor)
     │   └── Feature Editor
@@ -135,8 +136,9 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 | `/projects/:id/questions` | **Questions** | Questionnaire editing, autosave, and LLM blank-answer generation |
 | `/projects/:id/one-pager` | **Overview Document** | Generated overview review, history, restore, and approval |
 | `/projects/:id/product-spec` | **Product Spec** | Generated Product Spec review, history, restore, and approval |
+| `/projects/:id/ux-spec` | **UX Spec** | UX decision tiles, UX specification generation/editing, history, and approval |
+| `/projects/:id/technical-spec` | **Technical Spec** | Technical decision tiles, Technical specification generation/editing, history, and approval |
 | `/projects/:id/user-flows` | **User Flows** | Generate, edit, deduplicate, and approve user journeys with coverage feedback |
-| `/projects/:id/blueprint` | **Blueprint Builder** | Decision deck, UX/tech project blueprint review |
 | `/projects/:id/milestones` | **Milestones** | Create, edit, approve, complete milestone lifecycle |
 | `/projects/:id/features` | **Feature Builder** | Catalogue table view, intake drawer |
 | `/projects/:id/features/:fid` | **Feature Editor** | Product / UX / tech / user docs / architecture docs specification tabs, tasks tab, bugs tab, review panel, revision history |
@@ -195,27 +197,30 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 
 1. After the overview document is approved, user enters **Product Spec**.
 2. Quayboard generates the Product Spec from the approved overview using the Product Spec prompt.
-3. The Product Spec is versioned, editable, restorable, and must be approved before User Flows.
+3. The Product Spec is versioned, editable, restorable, and must be approved before UX Spec.
 
 #### Flow 3: User-flow coverage and approval
 
-1. After the Product Spec is approved, user enters **User Flows**.
-2. Quayboard can generate an initial set of user flows from the approved Product Spec, or the user can create flows manually.
+1. After the Technical Spec is approved, user enters **User Flows**.
+2. Quayboard can generate an initial set of user flows from the approved Product Spec and Technical Spec, or the user can create flows manually.
 3. Each flow captures title, user story, entry point, end state, flow steps, coverage tags, acceptance criteria, and done-criteria references.
 4. Quayboard computes a **coverage summary** over the active flow set and highlights warnings or missing journey areas.
 5. If coverage gaps remain, Quayboard can run a targeted gap-fill generation pass and a deterministic dedupe pass before approval.
-6. User reviews, edits, archives, or approves the user-flow set. Blueprint generation is gated on approved user flows.
+6. User reviews, edits, archives, or approves the user-flow set. Milestone planning uses the approved user-flow set as the release contract.
 
-#### Flow 4: Blueprint phase
+#### Flow 4: UX and Technical Spec phase
 
-1. From Mission Control, user enters the Blueprint phase.
-2. LLM generates a **decision deck** (key architectural and UX decisions with recommendations and alternatives).
-3. User reviews each decision card and selects an option (or enters a custom choice).
-4. LLM generates **project blueprints** (UX and tech).
-5. LLM review jobs surface BLOCKER / WARNING / SUGGESTION items.
-6. User triages review items — sets to DONE, ACCEPTED, or IGNORED.
-7. Blueprints can also be saved directly through the API or MCP when manual authoring is preferable.
-8. All BLOCKERs resolved — user approves the project blueprints.
+1. From Mission Control, user enters **UX Spec** after Product Spec approval.
+2. LLM generates **UX decision tiles** (UX-only decisions with recommendations and alternatives).
+3. User reviews each UX decision tile, selects an option or enters a custom choice, then accepts the full UX decision set.
+4. LLM generates the **UX Spec** or the user saves it manually.
+5. User edits the UX Spec if needed and then approves the current canonical revision directly.
+6. After the UX Spec is approved, user enters **Technical Spec**.
+7. LLM generates **Technical decision tiles** using the approved Product Spec and UX Spec.
+8. User reviews each Technical decision tile, selects an option or enters a custom choice, then accepts the full Technical decision set.
+9. LLM generates the **Technical Spec** or the user saves it manually.
+10. User edits the Technical Spec if needed and then approves the current canonical revision directly.
+11. After the Technical Spec is approved, user enters **User Flows** to generate and approve the journey contract for milestone planning.
 
 #### Flow 4: Milestones and features
 
@@ -265,7 +270,7 @@ The frontend uses a layered, purpose-built design system:
 | **Composites** | `components/composites/` | `CenteredState` (loading/error/empty), `PageIntro` (section header), `WorkspaceTopBar` (sticky bar) |
 | **Templates** | `components/templates/` | `StandalonePage` (full-height single-column), `AppFrame` (shell wrapper) |
 | **Layout** | `components/layout/` | `Layout`, `PrimaryBar` (sidebar nav), `ProjectSubNav`, `GlobalHeader`, `DebugStatusBar` |
-| **Workflow** | `components/workflow/` | `ReviewPanel`, `WorkflowLoop`, `NextActionBar`, `TransitionConfirmDialog`, `PhaseGateChecklist`, `StateMachineVisualizer` |
+| **Workflow** | `components/workflow/` | `NextActionBar`, `TransitionConfirmDialog`, `PhaseGateChecklist`, `StateMachineVisualizer` |
 
 **Critical rule**: Page files (`pages/**`) must never use raw `<button>`, `<input>`, `<select>`, or `<textarea>` HTML elements. DS primitives are required throughout.
 
@@ -275,7 +280,7 @@ A compact, sticky header strip (`ProjectContextHeader`) is shown on every projec
 
 | Slot | Content |
 |---|---|
-| **Project state** | Current phase + phase gate status (e.g., "Blueprint — 2/3 gates passed") |
+| **Project state** | Current phase + phase gate status (e.g., "UX Spec — 5/7 gates passed") |
 | **Repository** | Connected repo name(s) + last-seen SHA (truncated) |
 | **Model profile** | Active LLM models (planning/review/coding) + provider status (`connected` / `degraded` / `offline`) |
 | **Sandbox policy** | Egress policy (`locked` / `allowlisted`), resource limits summary |
@@ -286,7 +291,7 @@ The header is part of the Layout layer (`components/layout/ProjectContextHeader`
 
 ### 2.7 Standardised review layout pattern
 
-All artifact types (overview document, project blueprint, feature specifications, user documentation, architecture documentation, delivery tasks) use a single, universal review layout:
+Feature and documentation workflows use a standard review layout when review-item triage is enabled:
 
 | Position | Component | Content |
 |---|---|---|
@@ -294,7 +299,7 @@ All artifact types (overview document, project blueprint, feature specifications
 | **Right** | `ReviewPanel` | Review items grouped by severity (`BLOCKER` → `WARNING` → `SUGGESTION`) and category |
 | **Bottom** | `NextActionBar` | Contextual actions: regenerate, refine from issues, approve, advance phase |
 
-The action verbs, status labels, and severity badges are identical across all artifact types. This consistency means users learn the review workflow once and apply it everywhere. The pattern is implemented in the Workflow layer (`components/workflow/`).
+The action verbs, status labels, and severity badges are identical across workflows that support review-item triage. The pattern is implemented in the Workflow layer (`components/workflow/`).
 
 Reference documentation:
 - `docs/design-system/ui-estate-catalogue.md` — full inventory of all pages and components
@@ -393,7 +398,7 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 | `one_pagers` | Versioned overview documents with canonical pointer |
 | `questionnaire_answers` | Persisted answers to the 14 questionnaire questions |
 | `use_cases` | Internal storage for user-facing user flows, including coverage tags, flow steps, and approval readiness |
-| `decision_cards` | Decision deck cards with LLM recommendations, alternatives, and user selections |
+| `decision_cards` | UX and Technical decision tiles with LLM recommendations, alternatives, selections, and acceptance state |
 | `project_blueprints` | UX and tech project blueprint documents (versioned, canonical pointer) |
 
 #### Workflow and planning tables
@@ -420,9 +425,7 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 | `feature_edges` | Rich typed relationships between features (`leads_to`, `depends_on`, `contains`) — used for graph visualisation and navigation. Distinct from `feature_dependencies`, which is the simpler direct-link table used by the build-order system and auto-advance. This table is populated automatically when `feature_dependencies` entries are created and is read-only via the API; all consumer graph reads use `GET /projects/:id/features/graph`. |
 | `feature_dependencies` | Simple, direct dependency links (feature A depends on feature B) — the primary table used by the build-order system, auto-advance, and dependency validation. This is the table the API and MCP tools read and write. |
 | `feature_issues` | Architectural review findings on features (severity, category, status) |
-| `artifact_issues` | Direct-create review findings for lightweight scenarios where a full review run is not required. New review findings from LLM review jobs are written to `artifact_review_items` via `artifact_review_runs`; this table covers manually filed findings. |
-| `artifact_review_runs` | Review job execution records with quality gate state |
-| `artifact_review_items` | Individual review findings from a review run (`BLOCKER / WARNING / SUGGESTION`). This is the primary table for the review workflow. |
+| `artifact_issues` | Direct-create review findings for lightweight scenarios where a full review run is not required. The current repo does not use blueprint-specific review-run tables. |
 | `artifact_approvals` | Approval records linking artifact to approver and timestamp |
 | `implementation_records` | Links a feature to the implemented tech revision and commit SHA |
 
@@ -564,12 +567,21 @@ The REST API is served by the Fastify backend under the `/api` prefix (except `/
 - `POST /projects/:id/user-flows/deduplicate` — run deterministic dedupe across active flows
 - `POST /projects/:id/user-flows/approve` — approve the current user-flow coverage set
 
-#### Blueprint
-- `POST /projects/:id/blueprints/generate-deck` — generate decision deck
-- `GET/PATCH /projects/:id/decision-cards` — list / update cards
-- `POST /projects/:id/blueprints/generate` — generate UX/tech project blueprints
-- `POST /projects/:id/blueprints/save` — save a UX or tech blueprint directly and promote it to canonical
-- `GET /projects/:id/blueprints/canonical` — current canonical project blueprints
+#### UX Spec
+- `POST /projects/:id/ux-spec/decision-tiles/generate` — generate UX decision tiles
+- `GET/PATCH /projects/:id/ux-spec/decision-tiles` — list / update UX decision tiles
+- `POST /projects/:id/ux-spec/decision-tiles/accept` — accept the selected UX decision set
+- `GET/POST/PATCH /projects/:id/ux-spec` — current canonical UX Spec, generate, or save
+- `GET /projects/:id/ux-spec/versions` — list UX Spec versions
+- `POST /projects/:id/ux-spec/versions/:version/restore` — restore a UX Spec version
+
+#### Technical Spec
+- `POST /projects/:id/technical-spec/decision-tiles/generate` — generate Technical decision tiles
+- `GET/PATCH /projects/:id/technical-spec/decision-tiles` — list / update Technical decision tiles
+- `POST /projects/:id/technical-spec/decision-tiles/accept` — accept the selected Technical decision set
+- `GET/POST/PATCH /projects/:id/technical-spec` — current canonical Technical Spec, generate, or save
+- `GET /projects/:id/technical-spec/versions` — list Technical Spec versions
+- `POST /projects/:id/technical-spec/versions/:version/restore` — restore a Technical Spec version
 
 #### Milestones
 - `GET/POST /projects/:id/milestones` — list / create
@@ -593,13 +605,10 @@ Full CRUD, revision history, all five specification tracks — product, UX, tech
 - `POST /bugs/:id/verify` — record verification evidence (sandbox run ID, test results, or reviewer sign-off)
 
 #### Artifact workflow
-- `GET /projects/:id/artifacts/:type/:aid/state` — workflow state
-- `GET /projects/:id/artifacts/:type/:aid/review-items` — review items
-- `POST /projects/:id/artifacts/:type/:aid/review/run` — trigger review job
-- `PATCH /artifact-review-items/:id` — triage item
+- `GET /projects/:id/artifacts/:type/:aid/approval` — approval state
 - `POST /projects/:id/artifacts/:type/:aid/approve` — approve
 
-The `:type` parameter covers all reviewable artifact types: `one_pager`, `blueprint_ux`, `blueprint_tech`, `product_spec`, `ux_spec`, `tech_spec`, `user_doc`, `arch_doc`, `feature`. For feature workstream specs, `:aid` is the spec identity ID (e.g., `product_spec_id`), not the revision ID. The `feature` type is used for top-level feature case reviews (cohesion, cross-spec consistency).
+In the current repo this approval workflow is implemented for `blueprint_ux` and `blueprint_tech`.
 
 #### Auto-advance / Mission Control
 - `POST /projects/:id/auto-advance/start` — start (with `creativityMode`, `autoApproveWhenClear`, `skipReviewSteps`)
@@ -652,7 +661,7 @@ The **JobScheduler** (`apps/api/src/services/job-scheduler.ts`) runs a 5-second 
 | Overview document | `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `SuggestExampleAnswer` |
 | Project description | `GenerateProjectDescription`, `SuggestProjectNames`, `AutoAnswerQuestionnaire` |
 | User flows | `GenerateUseCases`, `DeduplicateUseCases` |
-| Blueprint | `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency`, `ReviewBlueprintUX`, `ReviewBlueprintTech` |
+| UX / Technical Spec | `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency` |
 | Feature builder | `GenerateProductFromOnePager`, `GenerateUxFromProduct`, `GenerateTechFromProduct`, `AppendFeatureFromOnePager` |
 | Feature review/refine | `ReviewProductInContext`, `ReviewUxInContext`, `ReviewTechInContext`, `RefineProductFromIssues`, `RefineUxFromIssues`, `RefineTechFromIssues`, `ReviewFeatureInContext`, `RefineFeatureFromIssues` |
 | Milestones | `GenerateMilestones`, `GenerateMilestoneDesign` |
@@ -915,9 +924,10 @@ The phase gate system provides a structured checklist of what must be true befor
 | **Project Setup** | Repo connected and access verified; LLM provider configured and reachable; sandbox container startup verified |
 | **Overview Document** | Project Setup gate passed; questionnaire complete (scratch) or memory chunks built (import); overview document generated; all BLOCKER review items resolved; overview document approved |
 | **Product Spec** | Overview Document gate passed; Product Spec generated; Product Spec approved |
-| **User Flows** | Product Spec gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
-| **Blueprint** | User Flows gate passed; decision deck generated and all cards have a user selection; UX blueprint generated; tech blueprint generated; all BLOCKER review items on both blueprints resolved; both blueprints approved |
-| **Milestones** | Blueprint gate passed; at least one milestone exists in `approved` state |
+| **UX Spec** | Product Spec gate passed; UX decision tiles generated; every UX decision has a user selection; UX decisions accepted; UX Spec generated; UX Spec approved |
+| **Technical Spec** | UX Spec gate passed; Technical decision tiles generated; every Technical decision has a user selection; Technical decisions accepted; Technical Spec generated; Technical Spec approved |
+| **User Flows** | Technical Spec gate passed; at least one active user flow exists; coverage warnings are resolved or explicitly accepted; user-flow set approved |
+| **Milestones** | Technical Spec gate passed; at least one milestone exists in `approved` state |
 | **Features** | Milestones gate passed; at least one feature exists with an approved product specification |
 | **Task Planning** | At least one feature has an approved tech specification and a generated, non-empty delivery task list |
 | **Sandbox Execution** | Task Planning gate passed; at least one sandbox run in `succeeded` state with a linked PR |
@@ -998,8 +1008,7 @@ The system must handle failures gracefully at every layer. The following policie
 
 #### Concurrency guards
 - **One auto-advance session per project**: Starting a new auto-advance session while one is already `active` must return 409 Conflict.
-- **One active job per artifact**: Triggering a generation or review job for an artifact that already has a `running` job of the same type must return 409 Conflict.
-- **Approval race condition**: Approving an artifact while a review job is still running must return 409 Conflict. The user must wait for the review to complete or cancel the review job first.
+- **One active generation job per artifact kind**: Triggering a UX or Technical Spec generation job while one of the same type is already `running` must return 409 Conflict.
 
 #### Database and migration failures
 - Migration failures must halt server startup — the API must not serve requests against an outdated schema.
@@ -1201,7 +1210,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - Overview document versions are stored and restorable
 - Product Spec can be generated from the approved overview document, edited manually, versioned, restored, and approved
 - User flows can be generated from the approved Product Spec, edited manually, deduplicated, and approved only when coverage requirements are satisfied
-- Blueprint generation remains locked until user flows are approved
+- UX Spec generation remains locked until user flows are approved, and Technical Spec remains locked until the UX Spec is approved
 - SSE events cause the frontend to update job status in real time without polling
 - A guided onboarding scaffold exists introducing the workspace: account creation, instance readiness, project creation, repository connection, LLM verification, sandbox verification, and questionnaire completion. The full pipeline demo (sandbox run → PR → evidence bundle) is scoped to M8 once sandbox execution is available.
 - Repo PATs and LLM API keys are project-scoped only; no user-level or system-level secret defaults are introduced
@@ -1212,38 +1221,35 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 ---
 
-### M3 — Blueprint Builder
+### M3 — UX and Technical Spec Builder
 
-**Goal**: After approving user flows, a user can generate a decision deck, select options, generate UX and tech project blueprints, review LLM findings, and approve both blueprints.
+**Goal**: After approving user flows, a user can generate UX decision tiles, accept them, generate and approve the UX Spec, then generate Technical decision tiles, accept them, generate and approve the Technical Spec.
 
 **Deliverables**:
 
 **Schema additions** (new migrations):
-- `decision_cards`, `project_blueprints`, `artifact_review_runs`, `artifact_review_items`, `artifact_approvals`
+- `decision_cards`, `project_blueprints`, `artifact_approvals`
 
 **Backend**:
-- Blueprint routes (decision deck, cards CRUD, generate UX/tech, save direct, canonical)
-- LLM executors: `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency`, `ReviewBlueprintUX`, `ReviewBlueprintTech`
-- Artifact workflow routes: state, review items, triage, approval, transition check
-- `artifact_review_runs`, `artifact_review_items`, `artifact_approvals` table operations
+- UX Spec and Technical Spec routes (decision tiles CRUD, accept, generate, save, canonical, versions, restore)
+- LLM executors: `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency`
+- Artifact workflow routes: approval state, approval, transition check
+- `artifact_approvals` table operations
 
 **Frontend**:
-- `BlueprintBuilderPage` with two sub-views:
-  - `DecisionCardDeck` — card selection UI with recommendations and alternatives
-  - `BlueprintDocumentView` — markdown view with review panel
-- `ReviewPanel` component — review item triage (DONE / ACCEPTED / IGNORED)
-- `WorkflowLoop` component — phase progression visualiser
-- `NextActionBar` component — stage transition actions and approval CTA
+- `UxSpecPage` and `TechnicalSpecPage`
+- Decision-tile section plus spec document/editor and version history on the same route for each phase
+- Header AI action for decision-tile generation
+- `NextActionBar` component — decision acceptance CTA and spec approval CTA
 - `TransitionConfirmDialog` — approval confirmation modal
 
 **Acceptance criteria**:
-- Decision deck generates only after user flows are approved; cards are selectable and selections persist
-- Both UX and tech project blueprints generate from selected decisions
-- UX and tech blueprints can also be saved directly via API/MCP for manual authoring paths
-- Review jobs surface BLOCKER/WARNING/SUGGESTION items in the review panel
-- Approval button is disabled while any BLOCKER item remains OPEN
+- UX decision tiles generate only after the Product Spec is approved; Technical decision tiles generate only after the UX Spec is approved; User Flows generate only after the Technical Spec is approved
+- Decision selections persist, support custom choices, and require explicit acceptance before spec generation
+- UX and Technical Specs can be generated or saved directly via API/MCP for manual authoring paths
+- Approval button is surfaced at the top of each spec view after a canonical revision exists
 - Approval writes an `artifact_approvals` record and advances the project phase
-- Tests cover decision card update, blueprint generation trigger, review item triage, and approval flow
+- Tests cover decision-tile update, decision acceptance, spec generation trigger, direct approval, and shared UX/Technical page behavior
 - User-facing documentation exists for all new screens and flows introduced in this milestone
 - Internal architecture documentation exists for all new services, schema tables, and API routes
 
@@ -1762,7 +1768,7 @@ Before M12, project access is single-owner: the authenticated creating user is t
 **Backend**:
 - Export routes:
   - `GET /projects/:id/export/overview` — export overview document as markdown or PDF
-  - `GET /projects/:id/export/blueprint` — export project blueprints as markdown or PDF
+  - `GET /projects/:id/export/project-specs` — export UX and Technical Specs as markdown or PDF
   - `GET /features/:id/export` — export feature with all specifications as markdown or PDF
   - `GET /projects/:id/export/full` — combined export of all artifacts
 - PDF generation service (server-side markdown-to-PDF rendering using a headless browser or a library such as `puppeteer` or `md-to-pdf`)
@@ -1869,7 +1875,7 @@ Before M12, project access is single-owner: the authenticated creating user is t
 > | Bug report | Tables: `bug_reports`, `bug_fix_tasks`, routes: `/bugs` |
 > | Encrypted secret | Table: `encrypted_secrets`, routes: `/secrets` |
 > | Project blueprint | Table: `project_blueprints`, routes: `/blueprints/*` |
-> | Decision deck | Table: `decision_cards`, routes: `/decision-cards` |
+> | Decision tiles | Table: `decision_cards`, routes: `/ux-spec/decision-tiles` and `/technical-spec/decision-tiles` |
 > | Delivery task | Table: `feature_delivery_tasks` |
 > | Sandbox run | Table: `sandbox_runs`, routes: `/sandbox/runs` |
 >
@@ -1880,9 +1886,9 @@ Before M12, project access is single-owner: the authenticated creating user is t
 | **Overview document** | The canonical project overview document generated from questionnaire answers. Versioned as immutable snapshots. Stored in the `one_pagers` table. |
 | **Questionnaire** | The structured 14-question onboarding interview that seeds overview document generation. |
 | **User flow** | A user-facing journey definition derived from the approved overview document or authored manually. Stored internally in the `use_cases` table and used to drive coverage checks, blueprint gating, and milestone planning. |
-| **Decision deck** | A set of architectural and UX decision cards with LLM recommendations and alternatives. Generated after the user-flow set is approved. |
-| **Decision card** | A single card within the decision deck representing one key architectural or UX choice. |
-| **Project blueprint** | A high-level architecture document at the project level. Two types: **UX blueprint** (information architecture, flows, wireframes) and **tech blueprint** (stack, schema, API design, infrastructure). Generated from decision deck selections. |
+| **Decision tiles** | Kind-specific UX or Technical decision cards with LLM recommendations and alternatives. UX tiles generate after User Flows are approved; Technical tiles generate after the UX Spec is approved. |
+| **Decision card** | A single tile representing one key UX or technical choice that must be selected and accepted before spec generation. |
+| **Project spec** | A high-level project-level specification. Two types: **UX Spec** and **Technical Spec**. Each is generated or manually authored from the accepted decision tiles for that phase. |
 | **Feature** | A single unit of project scope (a screen, system, service, pipeline, etc.) within the feature catalogue. Has a canonical ID (e.g., "F-001"). |
 | **Feature specification** | A detailed specification for one workstream of a feature. Five types: **product specification** (what and why), **UX specification** (wireframes, flows, interaction), **tech specification** (implementation plan, data model, API), **user documentation** (user-facing guides and help text), **architecture documentation** (internal design rationale and data flow). Each is independently versioned and approvable. |
 | **Revision** | An immutable content snapshot. Feature specifications, features, and project blueprints all use revisions for version history. |

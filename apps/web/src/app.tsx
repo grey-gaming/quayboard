@@ -11,6 +11,8 @@ import {
 import { OverviewApprovalGate } from "./components/layout/OverviewApprovalGate.js";
 import { ProductSpecApprovalGate } from "./components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "./components/layout/SetupCompletionGate.js";
+import { TechnicalSpecApprovalGate } from "./components/layout/TechnicalSpecApprovalGate.js";
+import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
@@ -27,6 +29,8 @@ import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { TechnicalSpecPage } from "./pages/TechnicalSpecPage.js";
+import { UxSpecPage } from "./pages/UxSpecPage.js";
 import { UserFlowsPage } from "./pages/UserFlowsPage.js";
 
 const queryClient = new QueryClient({
@@ -129,8 +133,26 @@ export const appRouter = createBrowserRouter([
             element: <ProductSpecApprovalGate />,
             children: [
               {
-                path: "/projects/:id/user-flows",
-                element: <UserFlowsPage />,
+                path: "/projects/:id/ux-spec",
+                element: <UxSpecPage />,
+              },
+              {
+                element: <UxSpecApprovalGate />,
+                children: [
+                  {
+                    path: "/projects/:id/technical-spec",
+                    element: <TechnicalSpecPage />,
+                  },
+                  {
+                    element: <TechnicalSpecApprovalGate />,
+                    children: [
+                      {
+                        path: "/projects/:id/user-flows",
+                        element: <UserFlowsPage />,
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           },

@@ -5,6 +5,13 @@ import { EditableMarkdownDocument } from "../components/composites/EditableMarkd
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import {
+  findLatestFailedJob,
+  findLatestJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -53,7 +60,11 @@ export const ProductSpecPage = () => {
     [jobsQuery.data?.jobs],
   );
   const latestProductSpecJob = useMemo(
-    () => jobsQuery.data?.jobs.find((job) => productSpecJobTypes.has(job.type)) ?? null,
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => productSpecJobTypes.has(job.type)),
+    [jobsQuery.data?.jobs],
+  );
+  const latestFailedProductSpecJob = useMemo(
+    () => findLatestFailedJob(jobsQuery.data?.jobs, (job) => productSpecJobTypes.has(job.type)),
     [jobsQuery.data?.jobs],
   );
   const redirectedFromLockedSection =
@@ -83,7 +94,7 @@ export const ProductSpecPage = () => {
       <PageIntro
         eyebrow="Product Spec"
         title="Generated Product Spec"
-        summary="This page expands the approved overview into the working Product Spec. Review it, refine it, inspect version history, and approve the version that user flows should follow."
+        summary="This page expands the approved overview into the working Product Spec. Review it, refine it, inspect version history, and approve the version that UX specification should follow."
         meta={
           <>
             <Badge tone="success">overview approved</Badge>
@@ -97,7 +108,7 @@ export const ProductSpecPage = () => {
       {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
       {redirectedFromLockedSection ? (
         <Alert tone="info">
-          Approve the Product Spec on this page to continue to User Flows. You were redirected
+          Approve the Product Spec on this page to continue to UX Spec. You were redirected
           from <span className="font-mono"> {redirectedFromLockedSection}</span>.
         </Alert>
       ) : null}
@@ -107,6 +118,21 @@ export const ProductSpecPage = () => {
           depending on the quality and speed of the selected model, so please be patient. The page
           will refresh automatically when the job completes.
         </Alert>
+      ) : null}
+      {!activeProductSpecJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(productSpecQuery.data?.productSpec)}
+          hint={
+            latestFailedProductSpecJob && getJobErrorMessage(latestFailedProductSpecJob)
+              ? getDefaultJobFailureHint(
+                  getJobErrorMessage(latestFailedProductSpecJob)!,
+                  "Product Spec generation",
+                )
+              : null
+          }
+          job={latestFailedProductSpecJob}
+          workflowLabel="Product Spec generation"
+        />
       ) : null}
 
       <div className="grid gap-4">

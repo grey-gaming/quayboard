@@ -31,6 +31,8 @@ const jobStatusValues = [
 const secretTypeValues = ["github_pat", "llm_api_key", "oauth_token"] as const;
 
 const settingScopeValues = ["system", "user", "org", "project"] as const;
+const blueprintKindValues = ["ux", "tech"] as const;
+const artifactTypeValues = ["blueprint_ux", "blueprint_tech"] as const;
 
 const now = () => sql`now()`;
 
@@ -270,6 +272,116 @@ export const useCasesTable = pgTable(
   },
   (table) => ({
     projectIndex: index("use_cases_project_id_idx").on(table.projectId),
+  }),
+);
+
+export const decisionCardsTable = pgTable(
+  "decision_cards",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().$type<(typeof blueprintKindValues)[number]>(),
+    key: text("key").notNull(),
+    category: text("category").notNull(),
+    title: text("title").notNull(),
+    prompt: text("prompt").notNull(),
+    recommendation: jsonb("recommendation").notNull(),
+    alternatives: jsonb("alternatives").notNull().default(sql`'[]'::jsonb`),
+    selectedOptionId: text("selected_option_id"),
+    customSelection: text("custom_selection"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("decision_cards_project_id_idx").on(table.projectId),
+    projectKindIndex: index("decision_cards_project_id_kind_idx").on(table.projectId, table.kind),
+    projectKindKeyUnique: uniqueIndex("decision_cards_project_id_kind_key").on(
+      table.projectId,
+      table.kind,
+      table.key,
+    ),
+    kindCheck: check(
+      "decision_cards_kind_check",
+      sql`${table.kind} in (${sql.join(blueprintKindValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const projectBlueprintsTable = pgTable(
+  "project_blueprints",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().$type<(typeof blueprintKindValues)[number]>(),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    isCanonical: boolean("is_canonical").notNull().default(false),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("project_blueprints_project_id_idx").on(table.projectId),
+    projectKindIndex: index("project_blueprints_project_id_kind_idx").on(table.projectId, table.kind),
+    projectKindVersionUnique: uniqueIndex("project_blueprints_project_id_kind_version_key").on(
+      table.projectId,
+      table.kind,
+      table.version,
+    ),
+    kindCheck: check(
+      "project_blueprints_kind_check",
+      sql`${table.kind} in (${sql.join(blueprintKindValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const artifactApprovalsTable = pgTable(
+  "artifact_approvals",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    artifactType: text("artifact_type").notNull().$type<(typeof artifactTypeValues)[number]>(),
+    artifactId: text("artifact_id").notNull(),
+    approvedByUserId: text("approved_by_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    artifactIndex: index("artifact_approvals_artifact_idx").on(
+      table.projectId,
+      table.artifactType,
+      table.artifactId,
+    ),
+    artifactTypeCheck: check(
+      "artifact_approvals_artifact_type_check",
+      sql`${table.artifactType} in (${sql.join(artifactTypeValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    approverUnique: uniqueIndex("artifact_approvals_artifact_id_approved_by_user_id_key").on(
+      table.artifactId,
+      table.approvedByUserId,
+    ),
   }),
 );
 

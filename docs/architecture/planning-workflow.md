@@ -1,10 +1,10 @@
 # Planning Workflow
 
-This document describes the M2 planning workflow as it exists in the repository.
+This document describes the M3 planning workflow as it exists in the repository.
 
 ## Scope
 
-M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
+The current planning workflow builds on the M1 foundation and M2 onboarding flow:
 
 - instance readiness checks
 - project creation and Mission Control
@@ -12,6 +12,10 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - questionnaire persistence, autosave, and blank-answer auto-fill
 - overview document generation, version history, restore, and approval
 - Product Spec generation, version history, restore, and approval
+- UX decision-tile generation, selection persistence, and acceptance
+- UX Spec generation, manual save, direct approval, and version history
+- Technical decision-tile generation, selection persistence, and acceptance
+- Technical Spec generation, manual save, direct approval, and version history
 - user-flow generation, manual editing, deduplication, and approval
 
 ## Data Model
@@ -20,6 +24,9 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `one_pagers` stores immutable overview versions with a canonical flag
 - `product_specs` stores immutable Product Spec versions with a canonical flag
 - `use_cases` stores mutable user flows with archive support
+- `decision_cards` stores kind-specific UX and technical decision tiles, selections, and acceptance state
+- `project_blueprints` stores versioned UX and technical spec revisions with canonical pointers
+- `artifact_approvals` backs UX/Technical Spec approval records
 - `projects` now stores overview approval time plus user-flow approval snapshot metadata
 - `settings` holds project-scoped setup state: LLM config, sandbox defaults, and evidence policy
 
@@ -27,8 +34,8 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 
 - `systemReadinessService` checks database access, encryption key presence, Docker access, artifact storage, and enabled provider adapters
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
-- `questionnaireService`, `onePagerService`, `productSpecService`, and `userFlowService` manage the planning artifacts
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including questionnaire auto-answer, overview generation, and Product Spec generation
+- `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, and `artifactApprovalService` manage the planning artifacts
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including decision-tile generation and spec generation
 
 ## External Adapters
 
@@ -46,5 +53,7 @@ M2 adds the scratch-path onboarding flow on top of the M1 auth/API foundation:
 - `/projects/:id/questions`
 - `/projects/:id/one-pager`
 - `/projects/:id/product-spec`
+- `/projects/:id/ux-spec`
+- `/projects/:id/technical-spec`
 - `/projects/:id/user-flows`
 - `/projects/:id/import` as a future-release stub

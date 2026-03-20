@@ -93,6 +93,124 @@ describe("API integration", () => {
     };
   };
 
+  let blueprintProjectCounter = 0;
+
+  const registerAndSeedBlueprintProject = async ({
+    approveProductSpec = true,
+  }: { approveProductSpec?: boolean } = {}) => {
+    blueprintProjectCounter += 1;
+    const projectSuffix = `${approveProductSpec ? "ready" : "gate"}-${blueprintProjectCounter}`;
+    const registerResponse = await server.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        displayName: approveProductSpec ? "Blueprint Owner" : "Blueprint Gate Owner",
+        email: `blueprint-${projectSuffix}@example.com`,
+        password: "correct-horse-battery",
+      },
+    });
+
+    expect(registerResponse.statusCode).toBe(200);
+    const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+    expect(cookie?.value).toBeTruthy();
+
+    const ownerUserId = registerResponse.json().user.id as string;
+    const projectResponse = await server.inject({
+      method: "POST",
+      url: "/api/projects",
+      cookies: { qb_session: cookie!.value },
+      payload: {
+        name: approveProductSpec
+          ? `Blueprint Project ${projectSuffix}`
+          : `Blueprint Gate Project ${projectSuffix}`,
+      },
+    });
+
+    expect(projectResponse.statusCode).toBe(200);
+    const projectId = projectResponse.json().id as string;
+
+    await appServices.services.onePagerService.createVersion({
+      approve: true,
+      markdown: "# Overview\n\nApproved planning scope.",
+      projectId,
+      source: "ManualSave",
+      title: "Overview",
+    });
+    await appServices.services.productSpecService.createVersion({
+      markdown: "# Product Spec\n\nApproved scope.",
+      projectId,
+      source: "ManualSave",
+      title: "Product Spec",
+    });
+    if (approveProductSpec) {
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+    }
+
+    return {
+      cookieValue: cookie!.value,
+      ownerUserId,
+      projectId,
+    };
+  };
+
+  const approveSpecArtifact = async (
+    ownerUserId: string,
+    projectId: string,
+    input: {
+      kind: "ux" | "tech";
+      markdown: string;
+      title: string;
+    },
+  ) => {
+    const artifactType = input.kind === "ux" ? "blueprint_ux" : "blueprint_tech";
+    const [decisionCard] = await appServices.services.blueprintService.replaceDecisionDeck({
+      projectId,
+      kind: input.kind,
+      cards: [
+        {
+          key: `${input.kind}-decision`,
+          category: input.kind === "ux" ? "navigation" : "architecture",
+          title: input.kind === "ux" ? "Primary navigation model" : "Primary architecture model",
+          prompt:
+            input.kind === "ux"
+              ? "Choose the primary navigation model."
+              : "Choose the primary architecture model.",
+          recommendation: {
+            id: `${input.kind}-default`,
+            label: input.kind === "ux" ? "Workspace nav" : "Modular monolith",
+            description: "Use the default recommendation for the integration fixture.",
+          },
+          alternatives: [
+            {
+              id: `${input.kind}-alternative`,
+              label: input.kind === "ux" ? "Tab nav" : "Service split",
+              description: "Provide a second option for the integration fixture.",
+            },
+          ],
+        },
+      ],
+    });
+    await appServices.services.blueprintService.updateDecisionCards(ownerUserId, projectId, input.kind, {
+      cards: [{ id: decisionCard.id, selectedOptionId: `${input.kind}-default` }],
+    });
+    await appServices.services.blueprintService.acceptDecisionDeck(ownerUserId, projectId, input.kind);
+    const spec = await appServices.services.blueprintService.createBlueprintVersion({
+      projectId,
+      kind: input.kind,
+      title: input.title,
+      markdown: input.markdown,
+      source: "ManualSave",
+    });
+    await appServices.services.artifactApprovalService.approve(
+      ownerUserId,
+      projectId,
+      artifactType,
+      spec.id,
+    );
+
+    return spec;
+  };
+
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
@@ -1192,8 +1310,8 @@ describe("API integration", () => {
       expect(blockedUserFlowsResponse.statusCode).toBe(409);
       expect(blockedUserFlowsResponse.json()).toEqual({
         error: {
-          code: "product_spec_approval_required",
-          message: "Approve the Product Spec before using User Flows.",
+          code: "technical_spec_required",
+          message: "Generate the Technical Spec before using User Flows.",
         },
       });
     } finally {
@@ -1241,7 +1359,31 @@ describe("API integration", () => {
       await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
         state: "READY_PARTIAL",
       });
+      await appServices.services.onePagerService.createVersion({
+        approve: true,
+        markdown: "# Overview\n\nApproved planning scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Overview",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nApproved scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
 
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "ux",
+        title: "UX Spec",
+        markdown: "# UX Spec\n\nApproved specification.",
+      });
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "tech",
+        title: "Technical Spec",
+        markdown: "# Technical Spec\n\nApproved specification.",
+      });
       appServices.services.productSpecService.getCanonical = async () => ({
         id: "product-spec-approved",
         projectId,
@@ -1452,7 +1594,31 @@ describe("API integration", () => {
       await appServices.services.projectService.updateOwnedProject(ownerUserId, projectId, {
         state: "READY_PARTIAL",
       });
+      await appServices.services.onePagerService.createVersion({
+        approve: true,
+        markdown: "# Overview\n\nApproved planning scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Overview",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nApproved scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "ux",
+        title: "UX Spec",
+        markdown: "# UX Spec\n\nApproved specification.",
+      });
 
+      await approveSpecArtifact(ownerUserId, projectId, {
+        kind: "tech",
+        title: "Technical Spec",
+        markdown: "# Technical Spec\n\nApproved specification.",
+      });
       appServices.services.productSpecService.getCanonical = async () => ({
         id: "product-spec-approved",
         projectId,
@@ -1514,7 +1680,7 @@ describe("API integration", () => {
     }
   });
 
-  it("applies setup and Product Spec gates to user-flow update and archive routes", async () => {
+  it("applies setup and Technical Spec gates to user-flow update and archive routes", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
@@ -1588,16 +1754,16 @@ describe("API integration", () => {
         state: "READY_PARTIAL",
       });
 
-      const blockedByProductSpecResponse = await server.inject({
+      const blockedByTechnicalSpecResponse = await server.inject({
         method: "DELETE",
         url: `/api/user-flows/${flow.id}`,
         cookies: { qb_session: cookie!.value },
       });
-      expect(blockedByProductSpecResponse.statusCode).toBe(409);
-      expect(blockedByProductSpecResponse.json()).toEqual({
+      expect(blockedByTechnicalSpecResponse.statusCode).toBe(409);
+      expect(blockedByTechnicalSpecResponse.json()).toEqual({
         error: {
-          code: "product_spec_approval_required",
-          message: "Approve the Product Spec before using User Flows.",
+          code: "technical_spec_required",
+          message: "Generate the Technical Spec before using User Flows.",
         },
       });
     } finally {
@@ -1653,6 +1819,396 @@ describe("API integration", () => {
 
       expect(listProjectsResponse.statusCode).toBe(200);
       expect(listProjectsResponse.json().projects).toHaveLength(0);
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("gates UX and Technical Spec routes on the new decision acceptance flow", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const blockedProject = await registerAndSeedBlueprintProject({ approveProductSpec: false });
+      const blockedDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${blockedProject.projectId}/ux-spec/decision-tiles/generate`,
+        cookies: { qb_session: blockedProject.cookieValue },
+      });
+
+      expect(blockedDeckResponse.statusCode).toBe(409);
+      expect(blockedDeckResponse.json()).toEqual({
+        error: {
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before using UX Spec.",
+        },
+      });
+
+      const readyProject = await registerAndSeedBlueprintProject();
+      const missingDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(missingDeckResponse.statusCode).toBe(409);
+      expect(missingDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_deck_required",
+          message: "Generate the UX decision tiles before creating the UX Spec.",
+        },
+      });
+
+      await appServices.services.blueprintService.replaceDecisionDeck({
+        cards: [
+          {
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+        kind: "ux",
+        projectId: readyProject.projectId,
+      });
+
+      const incompleteDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(incompleteDeckResponse.statusCode).toBe(409);
+      expect(incompleteDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_selection_required",
+          message: "Select an option for every UX decision before creating the UX Spec.",
+        },
+      });
+
+      const [card] = await appServices.services.blueprintService.listDecisionCards(
+        readyProject.ownerUserId,
+        readyProject.projectId,
+        "ux",
+      ).then((result) => result.cards);
+
+      await appServices.services.blueprintService.updateDecisionCards(
+        readyProject.ownerUserId,
+        readyProject.projectId,
+        "ux",
+        {
+          cards: [{ id: card.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+
+      const unacceptedDeckResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/ux-spec`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(unacceptedDeckResponse.statusCode).toBe(409);
+      expect(unacceptedDeckResponse.json()).toEqual({
+        error: {
+          code: "decision_acceptance_required",
+          message: "Accept the UX decision tiles before creating the UX Spec.",
+        },
+      });
+
+      const technicalGateResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${readyProject.projectId}/technical-spec/decision-tiles/generate`,
+        cookies: { qb_session: readyProject.cookieValue },
+      });
+
+      expect(technicalGateResponse.statusCode).toBe(409);
+      expect(technicalGateResponse.json()).toEqual({
+        error: {
+          code: "ux_spec_required",
+          message: "Generate the UX Spec before using Technical Spec.",
+        },
+      });
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("rejects duplicate active blueprint generation jobs", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const uxProject = await registerAndSeedBlueprintProject();
+      const [deckResponseA, deckResponseB] = await Promise.all([
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
+          cookies: { qb_session: uxProject.cookieValue },
+        }),
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${uxProject.projectId}/ux-spec/decision-tiles/generate`,
+          cookies: { qb_session: uxProject.cookieValue },
+        }),
+      ]);
+
+      const deckStatuses = [deckResponseA.statusCode, deckResponseB.statusCode].sort();
+      expect(deckStatuses).toEqual([202, 409]);
+      const duplicateDeckResponse =
+        deckResponseA.statusCode === 409 ? deckResponseA : deckResponseB;
+      expect(duplicateDeckResponse.json()).toEqual({
+        error: {
+          code: "job_already_active",
+          message: "UX decision tiles generation is already queued or running.",
+        },
+      });
+      const uxJobs = await appServices.services.jobService.listJobsForProject(
+        uxProject.ownerUserId,
+        uxProject.projectId,
+      );
+      expect(
+        uxJobs.filter(
+          (job) =>
+            job.type === "GenerateDecisionDeck" &&
+            job.status === "queued" &&
+            (job.inputs as { kind?: string }).kind === "ux",
+        ),
+      ).toHaveLength(1);
+
+      const technicalProject = await registerAndSeedBlueprintProject();
+      await approveSpecArtifact(technicalProject.ownerUserId, technicalProject.projectId, {
+        kind: "ux",
+        markdown: "# UX Spec\n\nApproved canonical UX blueprint.",
+        title: "UX Spec",
+      });
+      const [technicalDecision] = await appServices.services.blueprintService.replaceDecisionDeck({
+        projectId: technicalProject.projectId,
+        kind: "tech",
+        cards: [
+          {
+            key: "service-boundary",
+            category: "architecture",
+            title: "Service boundary",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+      });
+      await appServices.services.blueprintService.updateDecisionCards(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+        "tech",
+        {
+          cards: [{ id: technicalDecision.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+      await appServices.services.blueprintService.acceptDecisionDeck(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+        "tech",
+      );
+      const [blueprintResponseA, blueprintResponseB] = await Promise.all([
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${technicalProject.projectId}/technical-spec`,
+          cookies: { qb_session: technicalProject.cookieValue },
+        }),
+        server.inject({
+          method: "POST",
+          url: `/api/projects/${technicalProject.projectId}/technical-spec`,
+          cookies: { qb_session: technicalProject.cookieValue },
+        }),
+      ]);
+
+      const blueprintStatuses = [blueprintResponseA.statusCode, blueprintResponseB.statusCode].sort();
+      expect(blueprintStatuses).toEqual([202, 409]);
+      const duplicateBlueprintResponse =
+        blueprintResponseA.statusCode === 409 ? blueprintResponseA : blueprintResponseB;
+      expect(duplicateBlueprintResponse.json()).toEqual({
+        error: {
+          code: "job_already_active",
+          message: "Technical Spec generation is already queued or running.",
+        },
+      });
+      const technicalJobs = await appServices.services.jobService.listJobsForProject(
+        technicalProject.ownerUserId,
+        technicalProject.projectId,
+      );
+      expect(
+        technicalJobs.filter(
+          (job) =>
+            job.type === "GenerateProjectBlueprint" &&
+            job.status === "queued" &&
+            (job.inputs as { kind?: string }).kind === "tech",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("blocks blueprint approval when upstream phase gates are no longer satisfied", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const uxProject = await registerAndSeedBlueprintProject();
+      const uxBlueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Spec\n\nCanonical specification.",
+        projectId: uxProject.projectId,
+        source: "ManualSave",
+        title: "UX Spec",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nEdited canonical draft.",
+        projectId: uxProject.projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+
+      const blockedUxApprovalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${uxProject.projectId}/artifacts/blueprint_ux/${uxBlueprint.id}/approve`,
+        cookies: { qb_session: uxProject.cookieValue },
+      });
+
+      expect(blockedUxApprovalResponse.statusCode).toBe(409);
+      expect(blockedUxApprovalResponse.json()).toEqual({
+        error: {
+          code: "product_spec_approval_required",
+          message: "Approve the Product Spec before approving the UX Spec.",
+        },
+      });
+
+      const techProject = await registerAndSeedBlueprintProject();
+      await approveSpecArtifact(techProject.ownerUserId, techProject.projectId, {
+        kind: "ux",
+        markdown: "# UX Spec\n\nApproved canonical UX blueprint.",
+        title: "UX Spec",
+      });
+      const technicalBlueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "tech",
+        markdown: "# Technical Spec\n\nCanonical specification.",
+        projectId: techProject.projectId,
+        source: "ManualSave",
+        title: "Technical Spec",
+      });
+      await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Spec\n\nEdited canonical draft.",
+        projectId: techProject.projectId,
+        source: "ManualSave",
+        title: "UX Spec",
+      });
+
+      const blockedTechnicalApprovalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${techProject.projectId}/artifacts/blueprint_tech/${technicalBlueprint.id}/approve`,
+        cookies: { qb_session: techProject.cookieValue },
+      });
+
+      expect(blockedTechnicalApprovalResponse.statusCode).toBe(409);
+      expect(blockedTechnicalApprovalResponse.json()).toEqual({
+        error: {
+          code: "ux_spec_approval_required",
+          message: "Approve the UX Spec before approving the Technical Spec.",
+        },
+      });
+    } finally {
+      restoreReadiness();
+    }
+  });
+
+  it("allows blueprint approval without a review run", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const project = await registerAndSeedBlueprintProject();
+      const [card] = await appServices.services.blueprintService.replaceDecisionDeck({
+        cards: [
+          {
+            key: "architecture-style",
+            category: "tech",
+            title: "Architecture style",
+            prompt: "Choose the primary service boundary model.",
+            recommendation: {
+              id: "modular-monolith",
+              label: "Modular monolith",
+              description: "Keep early delivery cohesive.",
+            },
+            alternatives: [
+              {
+                id: "service-oriented",
+                label: "Service oriented",
+                description: "Split early into multiple services.",
+              },
+            ],
+          },
+        ],
+        kind: "ux",
+        projectId: project.projectId,
+      });
+
+      await appServices.services.blueprintService.updateDecisionCards(
+        project.ownerUserId,
+        project.projectId,
+        "ux",
+        {
+          cards: [{ id: card.id, selectedOptionId: "modular-monolith" }],
+        },
+      );
+
+      const blueprint = await appServices.services.blueprintService.createBlueprintVersion({
+        kind: "ux",
+        markdown: "# UX Spec\n\nCanonical specification.",
+        projectId: project.projectId,
+        source: "ManualSave",
+        title: "UX Spec",
+      });
+
+      const missingReviewResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
+        cookies: { qb_session: project.cookieValue },
+      });
+
+      const approvalResponse = await server.inject({
+        method: "POST",
+        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
+        cookies: { qb_session: project.cookieValue },
+      });
+
+      expect(missingReviewResponse.statusCode).toBe(200);
+      expect(approvalResponse.statusCode).toBe(200);
+      expect(approvalResponse.json()).toEqual(
+        expect.objectContaining({
+          artifactId: blueprint.id,
+          artifactType: "blueprint_ux",
+          approvedByUserId: project.ownerUserId,
+          projectId: project.projectId,
+        }),
+      );
     } finally {
       restoreReadiness();
     }

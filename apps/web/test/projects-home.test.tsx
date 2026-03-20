@@ -126,7 +126,7 @@ describe("project entry surfaces", () => {
     expect(await screen.findByRole("heading", { name: "Create Project" })).toBeTruthy();
     expect(
       screen.getByText(
-        "Create the project record here, then move through setup, questions, overview, Product Spec, and user flows to shape the delivery plan.",
+        "Create the project record here, then move through setup, questions, overview, Product Spec, UX Spec, Technical Spec, and user flows to shape the delivery plan.",
       ),
     ).toBeTruthy();
     expect(screen.getByText("What happens next")).toBeTruthy();
@@ -139,7 +139,7 @@ describe("project entry surfaces", () => {
       id: "91a28b19-825c-496f-bc99-205d02664a2e",
       name: "Harbor Console",
       description: null,
-      state: "EMPTY",
+      state: "READY_PARTIAL",
       ownerUserId: user.id,
       createdAt: "2026-03-15T00:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z",
@@ -154,6 +154,21 @@ describe("project entry surfaces", () => {
     expect(screen.getByText("Harbor Console")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link")
+        .map((link) => link.textContent)
+        .slice(0, 8),
+    ).toEqual([
+      "Mission Control",
+      "Project Setup",
+      "Questions",
+      "Overview",
+      "Product Spec",
+      "UX Spec",
+      "Technical Spec",
+      "User Flows",
+    ]);
     expect(screen.queryByText("Project setup and planning for the current delivery phase.")).toBeNull();
     expect(screen.queryByText("Active Project")).toBeNull();
   });

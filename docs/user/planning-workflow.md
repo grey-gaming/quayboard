@@ -25,5 +25,12 @@ Quayboard's current UI supports the scratch-path planning workflow:
 13. Edit the Product Spec markdown if needed, then save to create a new version.
 14. Approve the current Product Spec.
 15. Generate, edit, deduplicate, and approve user flows.
+16. Open **UX Spec** and use the header action to generate the **UX Decision Tiles** once the Product Spec is approved.
+17. Review each UX decision tile, choose the recommended or alternative option, or save a custom choice.
+18. After every UX decision is selected, click **Accept UX Decisions**.
+19. Generate or manually save the **UX Spec**, edit it if needed, then approve the current UX Spec.
+20. Open **Technical Spec** after the UX Spec is approved, generate the **Technical Decision Tiles**, select and accept them, then generate or manually save the **Technical Spec**.
+21. Edit the Technical Spec if needed, then approve the current Technical Spec.
+22. Open **User Flows** after the Technical Spec is approved, generate or refine the journey set, resolve or accept coverage warnings, and approve the current user-flow set.
 
 The import path remains a stub for now, and Quayboard does not yet execute sandbox implementation runs or create pull requests.

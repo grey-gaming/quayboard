@@ -1,3 +1,5 @@
+import type { ArtifactApprovalService } from "./artifact-approval-service.js";
+import type { BlueprintService } from "./blueprint-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
@@ -5,6 +7,8 @@ import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 export const createPhaseGateService = (
+  artifactApprovalService: ArtifactApprovalService,
+  blueprintService: BlueprintService,
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
   projectSetupService: ProjectSetupService,
@@ -12,20 +16,66 @@ export const createPhaseGateService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [onePager, productSpec, setupStatus, setupCompleted, questionnaire, userFlows] =
-      await Promise.all([
-        onePagerService.getCanonical(ownerUserId, projectId),
-        productSpecService.getCanonical(ownerUserId, projectId),
-        projectSetupService.getSetupStatus(ownerUserId, projectId),
-        projectSetupService.isSetupCompleted(ownerUserId, projectId),
-        questionnaireService.getAnswers(projectId),
-        userFlowService.list(ownerUserId, projectId),
-      ]);
+    const [
+      onePager,
+      productSpec,
+      setupStatus,
+      setupCompleted,
+      questionnaire,
+      userFlows,
+      uxDecisionCards,
+      techDecisionCards,
+      blueprints,
+    ] = await Promise.all([
+      onePagerService.getCanonical(ownerUserId, projectId),
+      productSpecService.getCanonical(ownerUserId, projectId),
+      projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
+      questionnaireService.getAnswers(projectId),
+      userFlowService.list(ownerUserId, projectId),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "ux"),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "tech"),
+      blueprintService.getCanonical(ownerUserId, projectId),
+    ]);
 
     const setupPassed = setupCompleted;
     const overviewPassed = Boolean(onePager?.approvedAt);
     const productSpecPassed = overviewPassed && Boolean(productSpec?.approvedAt);
-    const userFlowsPassed = Boolean(userFlows.approvedAt);
+    const uxDecisionGenerated = uxDecisionCards.cards.length > 0;
+    const uxDecisionSelected =
+      uxDecisionGenerated &&
+      uxDecisionCards.cards.every((card) => card.selectedOptionId || card.customSelection);
+    const uxDecisionAccepted =
+      uxDecisionSelected && uxDecisionCards.cards.every((card) => Boolean(card.acceptedAt));
+    const techDecisionGenerated = techDecisionCards.cards.length > 0;
+    const techDecisionSelected =
+      techDecisionGenerated &&
+      techDecisionCards.cards.every((card) => card.selectedOptionId || card.customSelection);
+    const techDecisionAccepted =
+      techDecisionSelected && techDecisionCards.cards.every((card) => Boolean(card.acceptedAt));
+    const uxGenerated = Boolean(blueprints.uxBlueprint);
+    const techGenerated = Boolean(blueprints.techBlueprint);
+    const [uxState, techState] = await Promise.all([
+      blueprints.uxBlueprint
+        ? artifactApprovalService.getState(
+            ownerUserId,
+            projectId,
+            "blueprint_ux",
+            blueprints.uxBlueprint.id,
+          )
+        : null,
+      blueprints.techBlueprint
+        ? artifactApprovalService.getState(
+            ownerUserId,
+            projectId,
+            "blueprint_tech",
+            blueprints.techBlueprint.id,
+          )
+        : null,
+    ]);
+    const uxApproved = Boolean(uxState?.approval);
+    const techApproved = Boolean(techState?.approval);
+    const userFlowsPassed = techApproved && Boolean(userFlows.approvedAt);
 
     return {
       phases: [
@@ -83,13 +133,97 @@ export const createPhaseGateService = (
           ],
         },
         {
-          phase: "User Flows",
-          passed: productSpecPassed && userFlowsPassed,
+          phase: "UX Spec",
+          passed:
+            productSpecPassed &&
+            uxDecisionGenerated &&
+            uxDecisionSelected &&
+            uxDecisionAccepted &&
+            uxGenerated &&
+            uxApproved,
           items: [
             {
               key: "product_spec_approved",
               label: "Product Spec approved",
               passed: productSpecPassed,
+            },
+            {
+              key: "ux_decision_tiles",
+              label: "UX decision tiles generated",
+              passed: uxDecisionGenerated,
+            },
+            {
+              key: "ux_decision_selections",
+              label: "UX decision selections complete",
+              passed: uxDecisionSelected,
+            },
+            {
+              key: "ux_decision_acceptance",
+              label: "UX decisions accepted",
+              passed: uxDecisionAccepted,
+            },
+            {
+              key: "ux_spec_generated",
+              label: "UX Spec generated",
+              passed: uxGenerated,
+            },
+            {
+              key: "ux_approved",
+              label: "UX Spec approved",
+              passed: uxApproved,
+            },
+          ],
+        },
+        {
+          phase: "Technical Spec",
+          passed:
+            uxApproved &&
+            techDecisionGenerated &&
+            techDecisionSelected &&
+            techDecisionAccepted &&
+            techGenerated &&
+            techApproved,
+          items: [
+            {
+              key: "ux_approved",
+              label: "UX Spec approved",
+              passed: uxApproved,
+            },
+            {
+              key: "tech_decision_tiles",
+              label: "Technical decision tiles generated",
+              passed: techDecisionGenerated,
+            },
+            {
+              key: "tech_decision_selections",
+              label: "Technical decision selections complete",
+              passed: techDecisionSelected,
+            },
+            {
+              key: "tech_decision_acceptance",
+              label: "Technical decisions accepted",
+              passed: techDecisionAccepted,
+            },
+            {
+              key: "tech_spec_generated",
+              label: "Technical Spec generated",
+              passed: techGenerated,
+            },
+            {
+              key: "tech_approved",
+              label: "Technical Spec approved",
+              passed: techApproved,
+            },
+          ],
+        },
+        {
+          phase: "User Flows",
+          passed: techApproved && userFlowsPassed,
+          items: [
+            {
+              key: "technical_spec_approved",
+              label: "Technical Spec approved",
+              passed: techApproved,
             },
             {
               key: "flows_exist",
@@ -99,7 +233,7 @@ export const createPhaseGateService = (
             {
               key: "flows_approved",
               label: "User flows approved",
-              passed: userFlowsPassed,
+              passed: Boolean(userFlows.approvedAt),
             },
           ],
         },

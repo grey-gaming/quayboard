@@ -2,6 +2,17 @@ import type { AppServices } from "../../src/app-services.js";
 import { createSseHub } from "../../src/services/sse.js";
 
 export const createStubServices = (): AppServices => ({
+  artifactApprovalService: {
+    approve: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getApproval: async () => null,
+    getState: async () => ({
+      artifactId: "00000000-0000-4000-8000-000000000000",
+      artifactType: "blueprint_ux",
+      approval: null,
+    }),
+  },
   authService: {
     authenticate: async () => null,
     createSession: async () => {
@@ -17,6 +28,34 @@ export const createStubServices = (): AppServices => ({
     register: async () => {
       throw new Error("Not implemented in test stub.");
     },
+  },
+  blueprintService: {
+    acceptDecisionDeck: async () => ({ cards: [] }),
+    assertAcceptedDecisionDeck: async () => [],
+    assertCanonicalBlueprint: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertFullySelectedDecisionDeck: async () => [],
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createBlueprintVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getCanonical: async () => ({
+      uxBlueprint: null,
+      techBlueprint: null,
+    }),
+    getCanonicalByKind: async () => null,
+    getCanonicalRecord: async () => undefined,
+    getDecisionSelections: async () => [],
+    listDecisionCards: async () => ({ cards: [] }),
+    listVersions: async () => [],
+    replaceDecisionDeck: async () => [],
+    restoreVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    updateDecisionCards: async () => ({ cards: [] }),
   },
   db: {} as AppServices["db"],
   dockerService: {
@@ -45,6 +84,10 @@ export const createStubServices = (): AppServices => ({
     createJob: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    createJobIfNoActiveProjectJobOfSameKind: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    findActiveProjectJobByTypeAndKind: async () => null,
     getOwnedJob: async () => {
       throw new Error("Not implemented in test stub.");
     },

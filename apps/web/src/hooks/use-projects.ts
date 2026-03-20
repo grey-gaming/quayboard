@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
+  ArtifactType,
+  BlueprintKind,
   CreateProjectRequest,
   ProjectSetupState,
   ProjectSetupStatus,
+  UpdateDecisionCardsRequest,
   UpsertUseCaseRequest,
 } from "@quayboard/shared";
 
@@ -121,6 +124,53 @@ export const useUserFlowsQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "user-flows"],
     queryFn: () => api.getUserFlows(projectId),
+  });
+
+const specQueryKey = (projectId: string, kind: BlueprintKind) => [
+  "project",
+  projectId,
+  `${kind}-spec`,
+] as const;
+
+const specVersionsQueryKey = (projectId: string, kind: BlueprintKind) => [
+  "project",
+  projectId,
+  `${kind}-spec-versions`,
+] as const;
+
+const specDecisionTilesQueryKey = (projectId: string, kind: BlueprintKind) => [
+  "project",
+  projectId,
+  `${kind}-decision-tiles`,
+] as const;
+
+export const useSpecDecisionTilesQuery = (projectId: string, kind: BlueprintKind) =>
+  useQuery({
+    queryKey: specDecisionTilesQueryKey(projectId, kind),
+    queryFn: () => api.getSpecDecisionTiles(projectId, kind),
+  });
+
+export const useProjectSpecQuery = (projectId: string, kind: BlueprintKind) =>
+  useQuery({
+    queryKey: specQueryKey(projectId, kind),
+    queryFn: () => api.getProjectSpec(projectId, kind),
+  });
+
+export const useProjectSpecVersionsQuery = (projectId: string, kind: BlueprintKind) =>
+  useQuery({
+    queryKey: specVersionsQueryKey(projectId, kind),
+    queryFn: () => api.getProjectSpecVersions(projectId, kind),
+  });
+
+export const useArtifactApprovalQuery = (
+  projectId: string,
+  artifactType: ArtifactType,
+  artifactId?: string | null,
+) =>
+  useQuery({
+    enabled: Boolean(artifactId),
+    queryKey: ["project", projectId, "artifact-approval", artifactType, artifactId],
+    queryFn: () => api.getArtifactApprovalState(projectId, artifactType, artifactId!),
   });
 
 export const usePhaseGatesQuery = (projectId: string) =>
@@ -474,6 +524,112 @@ export const useApproveUserFlowsMutation = (projectId: string) => {
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
       ]);
+    },
+  });
+};
+
+const invalidateProjectSpecQueries = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: string,
+  kind?: BlueprintKind,
+) =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
+    ...(kind
+      ? [
+          queryClient.invalidateQueries({ queryKey: specDecisionTilesQueryKey(projectId, kind) }),
+          queryClient.invalidateQueries({ queryKey: specQueryKey(projectId, kind) }),
+          queryClient.invalidateQueries({ queryKey: specVersionsQueryKey(projectId, kind) }),
+        ]
+      : [
+          queryClient.invalidateQueries({ queryKey: specDecisionTilesQueryKey(projectId, "ux") }),
+          queryClient.invalidateQueries({ queryKey: specDecisionTilesQueryKey(projectId, "tech") }),
+          queryClient.invalidateQueries({ queryKey: specQueryKey(projectId, "ux") }),
+          queryClient.invalidateQueries({ queryKey: specQueryKey(projectId, "tech") }),
+          queryClient.invalidateQueries({ queryKey: specVersionsQueryKey(projectId, "ux") }),
+          queryClient.invalidateQueries({ queryKey: specVersionsQueryKey(projectId, "tech") }),
+        ]),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-approval"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+  ]);
+
+export const useGenerateSpecDecisionTilesMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.generateSpecDecisionTiles(projectId, kind),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useUpdateSpecDecisionTilesMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: UpdateDecisionCardsRequest) =>
+      api.updateSpecDecisionTiles(projectId, kind, payload),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useAcceptSpecDecisionTilesMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.acceptSpecDecisionTiles(projectId, kind),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useGenerateProjectSpecMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.generateProjectSpec(projectId, kind),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useRestoreProjectSpecMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (version: number) => api.restoreProjectSpecVersion(projectId, kind, version),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useSaveProjectSpecMutation = (projectId: string, kind: BlueprintKind) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { markdown: string; title: string }) =>
+      api.saveProjectSpec(projectId, kind, payload),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId, kind);
+    },
+  });
+};
+
+export const useApproveArtifactMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ artifactId, artifactType }: { artifactId: string; artifactType: ArtifactType }) =>
+      api.approveArtifact(projectId, artifactType, artifactId),
+    onSuccess: () => {
+      void invalidateProjectSpecQueries(queryClient, projectId);
     },
   });
 };

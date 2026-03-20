@@ -1,3 +1,5 @@
+import type { ArtifactApprovalService } from "./artifact-approval-service.js";
+import type { BlueprintService } from "./blueprint-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
@@ -5,6 +7,8 @@ import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 export const createNextActionsService = (
+  artifactApprovalService: ArtifactApprovalService,
+  blueprintService: BlueprintService,
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
   onePagerService: OnePagerService,
@@ -12,15 +16,27 @@ export const createNextActionsService = (
   userFlowService: UserFlowService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
-    const [setupStatus, setupCompleted, questionnaire, onePager, productSpec, userFlows] =
-      await Promise.all([
-        projectSetupService.getSetupStatus(ownerUserId, projectId),
-        projectSetupService.isSetupCompleted(ownerUserId, projectId),
-        questionnaireService.getAnswers(projectId),
-        onePagerService.getCanonical(ownerUserId, projectId),
-        productSpecService.getCanonical(ownerUserId, projectId),
-        userFlowService.list(ownerUserId, projectId),
-      ]);
+    const [
+      setupStatus,
+      setupCompleted,
+      questionnaire,
+      onePager,
+      productSpec,
+      userFlows,
+      uxDecisionCards,
+      techDecisionCards,
+      blueprints,
+    ] = await Promise.all([
+      projectSetupService.getSetupStatus(ownerUserId, projectId),
+      projectSetupService.isSetupCompleted(ownerUserId, projectId),
+      questionnaireService.getAnswers(projectId),
+      onePagerService.getCanonical(ownerUserId, projectId),
+      productSpecService.getCanonical(ownerUserId, projectId),
+      userFlowService.list(ownerUserId, projectId),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "ux"),
+      blueprintService.listDecisionCards(ownerUserId, projectId, "tech"),
+      blueprintService.getCanonical(ownerUserId, projectId),
+    ]);
     const actions = [];
 
     if (!setupCompleted) {
@@ -62,12 +78,92 @@ export const createNextActionsService = (
         label: "Approve the Product Spec",
         href: `/projects/${projectId}/product-spec`,
       });
-    } else if (!userFlows.approvedAt) {
+    } else if (uxDecisionCards.cards.length === 0) {
       actions.push({
-        key: "user_flows",
-        label: "Generate and approve user flows",
-        href: `/projects/${projectId}/user-flows`,
+        key: "ux_decisions_generate",
+        label: "Generate the UX decision tiles",
+        href: `/projects/${projectId}/ux-spec`,
       });
+    } else if (uxDecisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)) {
+      actions.push({
+        key: "ux_decisions_select",
+        label: "Select every UX decision tile",
+        href: `/projects/${projectId}/ux-spec`,
+      });
+    } else if (uxDecisionCards.cards.some((card) => !card.acceptedAt)) {
+      actions.push({
+        key: "ux_decisions_accept",
+        label: "Accept the UX decisions",
+        href: `/projects/${projectId}/ux-spec`,
+      });
+    } else if (!blueprints.uxBlueprint) {
+      actions.push({
+        key: "ux_spec_generate",
+        label: "Generate the UX Spec",
+        href: `/projects/${projectId}/ux-spec`,
+      });
+    } else {
+      const uxState = await artifactApprovalService.getState(
+        ownerUserId,
+        projectId,
+        "blueprint_ux",
+        blueprints.uxBlueprint.id,
+      );
+
+      if (!uxState.approval) {
+        actions.push({
+          key: "ux_spec_approval",
+          label: "Approve the UX Spec",
+          href: `/projects/${projectId}/ux-spec`,
+        });
+      } else if (techDecisionCards.cards.length === 0) {
+        actions.push({
+          key: "tech_decisions_generate",
+          label: "Generate the Technical decision tiles",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (
+        techDecisionCards.cards.some((card) => !card.selectedOptionId && !card.customSelection)
+      ) {
+        actions.push({
+          key: "tech_decisions_select",
+          label: "Select every Technical decision tile",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (techDecisionCards.cards.some((card) => !card.acceptedAt)) {
+        actions.push({
+          key: "tech_decisions_accept",
+          label: "Accept the Technical decisions",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else if (!blueprints.techBlueprint) {
+        actions.push({
+          key: "tech_spec_generate",
+          label: "Generate the Technical Spec",
+          href: `/projects/${projectId}/technical-spec`,
+        });
+      } else {
+        const techState = await artifactApprovalService.getState(
+          ownerUserId,
+          projectId,
+          "blueprint_tech",
+          blueprints.techBlueprint.id,
+        );
+
+        if (!techState.approval) {
+          actions.push({
+            key: "tech_spec_approval",
+            label: "Approve the Technical Spec",
+            href: `/projects/${projectId}/technical-spec`,
+          });
+        } else if (!userFlows.approvedAt) {
+          actions.push({
+            key: "user_flows",
+            label: "Generate and approve user flows",
+            href: `/projects/${projectId}/user-flows`,
+          });
+        }
+      }
     }
 
     return { actions };

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { Job } from "@quayboard/shared";
 
@@ -27,9 +27,22 @@ export type JobCreateInput = {
   type: string;
 };
 
+type JobStatus = (typeof jobsTable.$inferSelect)["status"];
+
 type JobTerminalError = {
   message: string;
   code?: string;
+};
+
+type ActiveJobConflict = {
+  code: string;
+  message: string;
+};
+
+type ScopedJobCreateInput = Omit<JobCreateInput, "projectId"> & {
+  activeConflict: ActiveJobConflict;
+  kind: "ux" | "tech";
+  projectId: string;
 };
 
 export const createJobService = (db: AppDatabase) => ({
@@ -49,6 +62,48 @@ export const createJobService = (db: AppDatabase) => ({
       .returning();
 
     return toJob(job);
+  },
+
+  async createJobIfNoActiveProjectJobOfSameKind(input: ScopedJobCreateInput) {
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('jobs'), hashtext(${`${input.projectId}:${input.type}:${input.kind}`}))`,
+      );
+
+      const [existingJob] = await tx
+        .select()
+        .from(jobsTable)
+        .where(
+          and(
+            eq(jobsTable.projectId, input.projectId),
+            eq(jobsTable.type, input.type),
+            inArray(jobsTable.status, ["queued", "running"]),
+            sql`${jobsTable.inputs} ->> 'kind' = ${input.kind}`,
+          ),
+        )
+        .orderBy(desc(jobsTable.queuedAt))
+        .limit(1);
+
+      if (existingJob) {
+        throw new HttpError(409, input.activeConflict.code, input.activeConflict.message);
+      }
+
+      const now = new Date();
+      const [job] = await tx
+        .insert(jobsTable)
+        .values({
+          id: generateId(),
+          projectId: input.projectId,
+          createdByUserId: input.createdByUserId,
+          type: input.type,
+          status: "queued",
+          inputs: input.inputs ?? {},
+          queuedAt: now,
+        })
+        .returning();
+
+      return toJob(job);
+    });
   },
 
   async claimNextQueuedJob() {
@@ -191,6 +246,29 @@ export const createJobService = (db: AppDatabase) => ({
       .orderBy(desc(jobsTable.queuedAt));
 
     return jobs.map(({ job }) => toJob(job));
+  },
+
+  async findActiveProjectJobByTypeAndKind(
+    projectId: string,
+    type: string,
+    kind: "ux" | "tech",
+    statuses: JobStatus[] = ["queued", "running"],
+  ) {
+    const [job] = await db
+      .select()
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.projectId, projectId),
+          eq(jobsTable.type, type),
+          inArray(jobsTable.status, statuses),
+          sql`${jobsTable.inputs} ->> 'kind' = ${kind}`,
+        ),
+      )
+      .orderBy(desc(jobsTable.queuedAt))
+      .limit(1);
+
+    return job ? toJob(job) : null;
   },
 
   async getRawJob(jobId: string) {

@@ -444,3 +444,104 @@ export const buildUserFlowPrompt = (input: {
     "Approved Product Spec:",
     input.sourceMaterial,
   ].join("\n");
+
+export const buildDecisionDeckPrompt = (input: {
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate the ${input.kind === "ux" ? "UX" : "technical"} decision tiles for "${input.projectName}".`,
+    'Return valid JSON as an array of objects with these exact keys: "key", "category", "title", "prompt", "recommendation", and "alternatives".',
+    'Each "recommendation" value must be an object with exactly "id", "label", and "description".',
+    'Each "alternatives" value must be an array of at least two objects with exactly "id", "label", and "description".',
+    input.kind === "ux"
+      ? "Generate 5 to 8 UX decision tiles that capture the most important navigation, interaction, information architecture, content, and state choices needed before UX specification."
+      : "Generate 5 to 8 technical decision tiles that capture the most important architecture, data, API, integration, and operational choices needed before technical specification.",
+    "Each card must force a meaningful tradeoff rather than a cosmetic preference.",
+    "Use short, stable kebab-case values for every option id and the card key.",
+    "Do not set a user selection; the deck should present a recommendation and alternatives only.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+  ].join("\n");
+
+export const buildDecisionConsistencyPrompt = (input: {
+  productSpec: string;
+  decisions: string;
+  kind: "tech" | "ux";
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Validate the selected ${input.kind === "ux" ? "UX" : "technical"} decisions for "${input.projectName}".`,
+    'Return valid JSON with exactly two keys: "ok" (boolean) and "issues" (array of strings).',
+    'Set "ok" to true only when the selected decisions form a coherent basis for specification generation.',
+    "Report contradictions, missing selections, or major coverage gaps in the issues array.",
+    "If the decisions are coherent, return an empty issues array.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    "",
+    "Selected decisions:",
+    input.decisions,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+  ].join("\n");
+
+export const buildProjectBlueprintPrompt = (input: {
+  decisions: string;
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Create the ${input.kind === "ux" ? "UX" : "technical"} specification for "${input.projectName}".`,
+    'Return valid JSON with exactly two top-level string keys: "title" and "markdown".',
+    "The markdown must be a polished specification document suitable for later milestone and feature planning.",
+    "Use the selected decisions as hard constraints.",
+    "Explicitly document route or URL inventory, navigation labels, button and CTA labels, and relevant loading, empty, error, and success states where they apply.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    input.kind === "ux"
+      ? "Use these exact markdown section headings in order: UX Spec Summary, Experience Principles, Information Architecture, Primary Journeys, Routes and Screens, Labels and Actions, Interaction Patterns and States, Risks and Open Questions."
+      : "Use these exact markdown section headings in order: Technical Spec Summary, Architectural Principles, System Boundaries, Route and Surface Contracts, Data Model Direction, API and Integration Direction, Operational Concerns, Implementation Risks and Defaults.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+    "",
+    "Selected decisions:",
+    input.decisions,
+  ].join("\n");

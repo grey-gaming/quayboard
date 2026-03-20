@@ -4,6 +4,8 @@ import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboar
 
 import type { AppDatabase } from "../../db/client.js";
 import { llmRunsTable, useCasesTable } from "../../db/schema.js";
+import type { ArtifactApprovalService } from "../artifact-approval-service.js";
+import type { BlueprintService } from "../blueprint-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
 import type { OnePagerService } from "../one-pager-service.js";
@@ -13,6 +15,9 @@ import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import {
+  buildDecisionConsistencyPrompt,
+  buildDecisionDeckPrompt,
+  buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
@@ -35,6 +40,43 @@ const parseJson = <T>(value: string): T | null => {
   } catch {
     return null;
   }
+};
+
+const parseGeneratedUserFlowsResult = (
+  value: string,
+):
+  | Array<{
+      acceptanceCriteria?: string[];
+      coverageTags?: string[];
+      doneCriteriaRefs?: string[];
+      endState?: string;
+      entryPoint?: string;
+      flowSteps?: string[];
+      source?: string;
+      title?: string;
+      userStory?: string;
+    }>
+  | null => {
+  const parsed = parseJson<unknown>(value);
+
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  const parsedRecord = parsed as Record<string, unknown>;
+
+  for (const key of ["userFlows", "flows", "useCases", "items"] as const) {
+    const candidate = parsedRecord[key];
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 };
 
 const estimatePromptTokens = (prompt: string) => Math.ceil(prompt.length / 4);
@@ -162,7 +204,110 @@ const validateGeneratedUserFlows = (
   });
 };
 
+const validateGeneratedDecisionDeck = (
+  cards: Array<{
+    alternatives?: Array<{
+      description?: string;
+      id?: string;
+      label?: string;
+    }>;
+    category?: string;
+    key?: string;
+    prompt?: string;
+    recommendation?: {
+      description?: string;
+      id?: string;
+      label?: string;
+    };
+    title?: string;
+  }>,
+) => {
+  if (cards.length === 0) {
+    throw new Error(
+      "GenerateDecisionDeck returned invalid content. Expected a non-empty JSON array of decision cards.",
+    );
+  }
+
+  return cards.map((card) => {
+    if (
+      !card.key?.trim() ||
+      !card.category?.trim() ||
+      !card.title?.trim() ||
+      !card.prompt?.trim() ||
+      !card.recommendation?.id?.trim() ||
+      !card.recommendation.label?.trim() ||
+      !card.recommendation.description?.trim()
+    ) {
+      throw new Error(
+        "GenerateDecisionDeck returned an incomplete decision card. Each card must include key, category, title, prompt, and a full recommendation.",
+      );
+    }
+
+    if (!card.alternatives || card.alternatives.length < 2) {
+      throw new Error(
+        "GenerateDecisionDeck returned a card without at least two alternatives.",
+      );
+    }
+
+    const alternatives = card.alternatives.map((option) => {
+      if (!option.id?.trim() || !option.label?.trim() || !option.description?.trim()) {
+        throw new Error(
+          "GenerateDecisionDeck returned an alternative without id, label, and description.",
+        );
+      }
+
+      return {
+        id: option.id.trim(),
+        label: option.label.trim(),
+        description: option.description.trim(),
+      };
+    });
+
+    return {
+      key: card.key.trim(),
+      category: card.category.trim(),
+      title: card.title.trim(),
+      prompt: card.prompt.trim(),
+      recommendation: {
+        id: card.recommendation.id.trim(),
+        label: card.recommendation.label.trim(),
+        description: card.recommendation.description.trim(),
+      },
+      alternatives,
+    };
+  });
+};
+
+const parseBlueprintResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{ markdown?: string; title?: string }>(value);
+
+  if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+    );
+  }
+
+  return {
+    title: parsed.title.trim(),
+    markdown: parsed.markdown.trim(),
+  };
+};
+
+const parseDecisionValidationResult = (value: string) => {
+  const parsed = parseJson<{ issues?: string[]; ok?: boolean }>(value);
+
+  if (!parsed || typeof parsed.ok !== "boolean" || !Array.isArray(parsed.issues)) {
+    throw new Error(
+      "ValidateDecisionConsistency returned invalid content. Expected JSON with boolean ok and string-array issues.",
+    );
+  }
+
+  return parsed;
+};
+
 export const createJobRunnerService = (input: {
+  artifactApprovalService: ArtifactApprovalService;
+  blueprintService: BlueprintService;
   db: AppDatabase;
   jobService: JobService;
   llmProviderService: LlmProviderService;
@@ -181,10 +326,11 @@ export const createJobRunnerService = (input: {
     }
 
     const ownerUserId = rawJob.createdByUserId;
-    const project = await input.projectService.getOwnedProject(ownerUserId, rawJob.projectId);
+    const projectId = rawJob.projectId;
+    const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
       ownerUserId,
-      rawJob.projectId,
+      projectId,
     );
 
     switch (rawJob.type) {
@@ -482,6 +628,11 @@ export const createJobRunnerService = (input: {
           ownerUserId,
           rawJob.projectId,
         );
+        const technicalSpec = await input.blueprintService.getCanonicalByKind(
+          ownerUserId,
+          rawJob.projectId,
+          "tech",
+        );
 
         if (!productSpec?.approvedAt) {
           throw new Error(
@@ -489,9 +640,27 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        if (!technicalSpec) {
+          throw new Error(
+            "GenerateUseCases requires an approved Technical Spec before user flows can be generated.",
+          );
+        }
+
+        const technicalSpecApproval = await input.artifactApprovalService.getApproval(
+          rawJob.projectId,
+          "blueprint_tech",
+          technicalSpec.id,
+        );
+
+        if (!technicalSpecApproval) {
+          throw new Error(
+            "GenerateUseCases requires an approved Technical Spec before user flows can be generated.",
+          );
+        }
+
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
-          sourceMaterial: productSpec.markdown,
+          sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
@@ -508,19 +677,7 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const parsed = parseJson<
-          Array<{
-            acceptanceCriteria?: string[];
-            coverageTags?: string[];
-            doneCriteriaRefs?: string[];
-            endState?: string;
-            entryPoint?: string;
-            flowSteps?: string[];
-            source?: string;
-            title?: string;
-            userStory?: string;
-          }>
-        >(generated.content);
+        const parsed = parseGeneratedUserFlowsResult(generated.content);
 
         if (!parsed || parsed.length === 0) {
           throw new Error(
@@ -556,6 +713,207 @@ export const createJobRunnerService = (input: {
         }
 
         return input.jobService.markSucceeded(rawJob.id, { archivedIds });
+      }
+
+      case "GenerateDecisionDeck": {
+        const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
+        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const kind = jobInput?.kind;
+
+        if (!kind) {
+          throw new Error("GenerateDecisionDeck requires a decision kind.");
+        }
+
+        if (!productSpec?.approvedAt) {
+          throw new Error("GenerateDecisionDeck requires an approved Product Spec.");
+        }
+
+        const uxSpec =
+          kind === "tech"
+            ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
+            : null;
+
+        if (kind === "tech") {
+          if (!uxSpec) {
+            throw new Error(
+              "GenerateDecisionDeck requires an approved UX Spec before technical decisions.",
+            );
+          }
+
+          const uxApproval = await input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            uxSpec.id,
+          );
+
+          if (!uxApproval) {
+            throw new Error(
+              "GenerateDecisionDeck requires an approved UX Spec before technical decisions.",
+            );
+          }
+        }
+
+        const prompt = buildDecisionDeckPrompt({
+          kind,
+          projectName: project.name,
+          productSpec: productSpec.markdown,
+          uxSpec: uxSpec?.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { kind },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseJson<
+          Array<{
+            alternatives?: Array<{ description?: string; id?: string; label?: string }>;
+            category?: string;
+            key?: string;
+            prompt?: string;
+            recommendation?: { description?: string; id?: string; label?: string };
+            title?: string;
+          }>
+        >(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "GenerateDecisionDeck returned invalid content. Expected a JSON array of decision cards.",
+          );
+        }
+
+        const cards = validateGeneratedDecisionDeck(parsed);
+        const persistedCards = await input.blueprintService.replaceDecisionDeck({
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          kind,
+          cards,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: persistedCards.length, kind });
+      }
+
+      case "GenerateProjectBlueprint": {
+        const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
+        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const kind = jobInput?.kind;
+
+        if (!kind) {
+          throw new Error("GenerateProjectBlueprint requires a blueprint kind.");
+        }
+
+        if (!productSpec?.approvedAt) {
+          throw new Error("GenerateProjectBlueprint requires an approved Product Spec.");
+        }
+
+        const uxSpec =
+          kind === "tech"
+            ? await input.blueprintService.getCanonicalByKind(ownerUserId, rawJob.projectId, "ux")
+            : null;
+
+        if (kind === "tech") {
+          if (!uxSpec) {
+            throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+          }
+
+          const uxApproval = await input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            uxSpec.id,
+          );
+
+          if (!uxApproval) {
+            throw new Error("GenerateProjectBlueprint requires an approved UX Spec.");
+          }
+        }
+
+        await input.blueprintService.assertAcceptedDecisionDeck(ownerUserId, rawJob.projectId, kind);
+        const serializedSelections = JSON.stringify(
+          await input.blueprintService.getDecisionSelections(ownerUserId, rawJob.projectId, kind),
+          null,
+          2,
+        );
+        const consistencyPrompt = buildDecisionConsistencyPrompt({
+          kind,
+          projectName: project.name,
+          productSpec: productSpec.markdown,
+          decisions: serializedSelections,
+          uxSpec: uxSpec?.markdown,
+        });
+        const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: "ValidateDecisionConsistency",
+          parameters: { kind },
+          input: { prompt: consistencyPrompt },
+          output: { content: consistency.content },
+          promptTokens: consistency.promptTokens,
+          completionTokens: consistency.completionTokens,
+          createdAt: new Date(),
+        });
+        const consistencyResult = parseDecisionValidationResult(consistency.content);
+
+        if (!consistencyResult.ok) {
+          throw new Error(
+            `ValidateDecisionConsistency found conflicts: ${(consistencyResult.issues ?? []).join("; ") || "unknown issue"}`,
+          );
+        }
+
+        const prompt = buildProjectBlueprintPrompt({
+          kind,
+          projectName: project.name,
+          productSpec: productSpec.markdown,
+          decisions: serializedSelections,
+          uxSpec: uxSpec?.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { kind },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const blueprintPayload = parseBlueprintResult(generated.content, rawJob.type);
+        const blueprint = await input.blueprintService.createBlueprintVersion({
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          kind,
+          title: blueprintPayload.title,
+          markdown: blueprintPayload.markdown,
+          source: rawJob.type,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          blueprintId: blueprint.id,
+          kind,
+        });
       }
 
       default:

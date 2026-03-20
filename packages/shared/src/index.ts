@@ -15,4 +15,6 @@ export * from "./schemas/one-pager.js";
 export * from "./schemas/product-spec.js";
 export * from "./schemas/user-flows.js";
 export * from "./schemas/workflow.js";
+export * from "./schemas/blueprints.js";
+export * from "./schemas/artifacts.js";
 export * from "./questionnaire-definition.js";

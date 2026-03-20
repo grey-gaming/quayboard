@@ -39,6 +39,12 @@ export const useSseEvents = (projectId?: string) => {
         ["project", activeProjectId, "product-spec"],
         ["project", activeProjectId, "product-spec-versions"],
         ["project", activeProjectId, "user-flows"],
+        ["project", activeProjectId, "ux-decision-tiles"],
+        ["project", activeProjectId, "tech-decision-tiles"],
+        ["project", activeProjectId, "ux-spec"],
+        ["project", activeProjectId, "ux-spec-versions"],
+        ["project", activeProjectId, "tech-spec"],
+        ["project", activeProjectId, "tech-spec-versions"],
         ["project", activeProjectId, "phase-gates"],
         ["project", activeProjectId, "next-actions"],
       ] as const;
@@ -52,6 +58,11 @@ export const useSseEvents = (projectId?: string) => {
           }),
         ),
       );
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "artifact-approval"],
+        }),
+      ]);
     };
 
     const handleJobUpdated = (event: Event) => {

@@ -1,53 +1,51 @@
 # Current Milestone
 
-## Active Target
+## Status
 
-M2: Project Creation, Setup, Overview Document, Product Spec, and User Flows
+M3: UX and Technical Spec Builder
 
-This is the active implementation target. Work beyond M2 requires an explicit request.
+This milestone is complete.
+
+There is no new active implementation target yet. Work beyond M3 requires an explicit request.
 
 ## Goal
 
-Deliver the scratch-path planning workflow: instance readiness, project creation, project setup, the 14-question questionnaire, LLM-assisted overview document generation, Product Spec generation/approval, Mission Control, and user-flow generation/approval.
+Deliver the post-product-spec planning workflow on top of the completed M2 planning workflow: UX decision tiles, UX Spec generation or manual save, Technical decision tiles, Technical Spec generation or manual save, direct spec approval, User Flows generation and approval, and Mission Control updates.
 
 ## In Scope
 
-- `GET /api/system/readiness` with deployment prerequisite checks and remediation text
-- pre-auth readiness gating on register/sign-in until all instance checks pass
-- Project list/create/update flow with project-scoped setup status and Mission Control landing page
-- Project setup workflow:
-  repository verification via GitHub PAT, project-scoped LLM provider selection, sandbox defaults, and evidence policy
-- Questionnaire persistence with the refined 14-question M2 definition
-- Async job execution for project description, overview document generation, Product Spec generation, and user-flow generation/deduplication
-- Overview document canonical/version history plus approval
-- Product Spec canonical/version history plus approval
-- User-flow CRUD, coverage warnings, explicit warning acceptance, and approval snapshotting
-- Shared schemas for planning-phase resources and SSE-driven job refresh
-- User-facing and architecture docs that describe the M2 repo reality
+- `decision_cards`, `project_blueprints`, and `artifact_approvals` schema additions, plus cleanup of obsolete blueprint review tables
+- Kind-specific decision-tile generation from approved planning artifacts, with persisted option or custom selections plus explicit decision acceptance
+- UX and Technical Spec generation from the accepted decision tiles, plus manual-save support for direct authoring and version history
+- UX/Technical Spec approval records and direct approval flow after generation or manual save
+- UX Spec, Technical Spec, and User Flows phase gates plus Mission Control next-action updates
+- Shared schemas, API client contracts, and UI routes for UX Spec, Technical Spec, and artifact approval
+- User-facing and architecture docs that describe the M3 repo reality
 
 ## Out Of Scope
 
 - import workflow execution beyond the future-release stub page
+- milestone, feature, documentation, bug, and sandbox execution workflows
 - OAuth, RBAC, API keys, or other M12 auth extensions
 - Anthropic provider support
 - full tool-policy enforcement and tool audit tables
 - sandbox execution, PR creation, or evidence bundle generation
-- blueprint, milestone, feature, and implementation workflows
+- generic artifact workflow support beyond blueprint artifacts
 
 ## Acceptance Criteria
 
 The milestone is complete when the repo can support the following:
 
-- A visitor can view instance readiness with concrete remediation text, and register/sign-in stay blocked until all instance checks pass
-- An authenticated user can view project setup readiness with concrete remediation text
-- A user can create a project, connect a repo with a GitHub PAT, verify the configured LLM, and verify sandbox startup
-- A user can save questionnaire answers, queue overview generation, inspect the canonical overview plus history, restore a version, and approve the current overview
-- After overview approval, a user can queue Product Spec generation, inspect the canonical Product Spec plus history, restore a version, edit it, and approve the current Product Spec
-- Mission Control is the project landing page and reflects phase gates and next actions
-- User flows can be generated from the approved Product Spec, added manually, deduplicated, and approved only when warnings are resolved or explicitly accepted
+- A user with an approved Product Spec can queue UX decision tiles, select options, accept them, and then generate or manually save the UX Spec
+- Technical decision tiles and the Technical Spec remain locked until the UX Spec is approved
+- User Flows remain locked until the Technical Spec is approved
+- Decision selections persist, support custom choices, require explicit acceptance before generation, and invalidate stale canonical specs when the decision set changes
+- A user can generate or manually save both UX and Technical Specs through the API/UI and restore older versions
+- A UX or Technical Spec can be approved directly after generation or manual save, and approval writes an `artifact_approvals` record for the canonical spec revision
+- Mission Control includes separate UX Spec, Technical Spec, and User Flows phases plus workflow-specific next actions
 - Shared schema imports resolve across the workspace without TypeScript errors
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
-- Architecture and user docs describe the M2 repo behavior
+- Architecture and user docs describe the M3 repo behavior
 
 ## Relevant ADRs
 
@@ -56,7 +54,8 @@ The milestone is complete when the repo can support the following:
 
 ## Working Rules
 
-- Keep the M2 import path as an explicit stub page rather than partial execution.
+- Keep the import path as an explicit stub page rather than partial execution.
 - Use project-scoped settings and secrets for setup state; do not introduce user-level or system-level PAT/API-key defaults.
+- Limit the artifact workflow implementation to `blueprint_ux` and `blueprint_tech` in M3.
 - Keep OAuth, full tool-policy enforcement, and sandbox execution deferred to their later milestones.
 - If implementation needs to deviate from the outline’s cookie-session, SSE, or project-scoped secret model, capture that in an ADR first.
