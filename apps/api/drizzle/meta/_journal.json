@@ -43,6 +43,13 @@
       "when": 1760000005000,
       "tag": "0005_spec-flow-split",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1760000006000,
+      "tag": "0006_remove-blueprint-review-flow",
+      "breakpoints": true
     }
   ]
 }

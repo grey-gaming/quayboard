@@ -33,9 +33,6 @@ const secretTypeValues = ["github_pat", "llm_api_key", "oauth_token"] as const;
 const settingScopeValues = ["system", "user", "org", "project"] as const;
 const blueprintKindValues = ["ux", "tech"] as const;
 const artifactTypeValues = ["blueprint_ux", "blueprint_tech"] as const;
-const artifactReviewRunStatusValues = ["queued", "running", "succeeded", "failed"] as const;
-const reviewItemSeverityValues = ["BLOCKER", "WARNING", "SUGGESTION"] as const;
-const reviewItemStatusValues = ["OPEN", "DONE", "ACCEPTED", "IGNORED"] as const;
 
 const now = () => sql`now()`;
 
@@ -351,86 +348,6 @@ export const projectBlueprintsTable = pgTable(
     kindCheck: check(
       "project_blueprints_kind_check",
       sql`${table.kind} in (${sql.join(blueprintKindValues.map((value) => sql`${value}`), sql`, `)})`,
-    ),
-  }),
-);
-
-export const artifactReviewRunsTable = pgTable(
-  "artifact_review_runs",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projectsTable.id, { onDelete: "cascade" }),
-    artifactType: text("artifact_type").notNull().$type<(typeof artifactTypeValues)[number]>(),
-    artifactId: text("artifact_id").notNull(),
-    jobId: text("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
-    status: text("status").notNull().$type<(typeof artifactReviewRunStatusValues)[number]>(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now()),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-  },
-  (table) => ({
-    projectIndex: index("artifact_review_runs_project_id_idx").on(table.projectId),
-    artifactIndex: index("artifact_review_runs_artifact_idx").on(
-      table.projectId,
-      table.artifactType,
-      table.artifactId,
-    ),
-    artifactTypeCheck: check(
-      "artifact_review_runs_artifact_type_check",
-      sql`${table.artifactType} in (${sql.join(artifactTypeValues.map((value) => sql`${value}`), sql`, `)})`,
-    ),
-    statusCheck: check(
-      "artifact_review_runs_status_check",
-      sql`${table.status} in (${sql.join(artifactReviewRunStatusValues.map((value) => sql`${value}`), sql`, `)})`,
-    ),
-  }),
-);
-
-export const artifactReviewItemsTable = pgTable(
-  "artifact_review_items",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projectsTable.id, { onDelete: "cascade" }),
-    reviewRunId: text("review_run_id")
-      .notNull()
-      .references(() => artifactReviewRunsTable.id, { onDelete: "cascade" }),
-    artifactType: text("artifact_type").notNull().$type<(typeof artifactTypeValues)[number]>(),
-    artifactId: text("artifact_id").notNull(),
-    severity: text("severity").notNull().$type<(typeof reviewItemSeverityValues)[number]>(),
-    category: text("category").notNull(),
-    title: text("title").notNull(),
-    details: text("details").notNull(),
-    status: text("status").notNull().$type<(typeof reviewItemStatusValues)[number]>(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now()),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .default(now()),
-  },
-  (table) => ({
-    reviewRunIndex: index("artifact_review_items_review_run_id_idx").on(table.reviewRunId),
-    artifactIndex: index("artifact_review_items_artifact_idx").on(
-      table.projectId,
-      table.artifactType,
-      table.artifactId,
-    ),
-    severityCheck: check(
-      "artifact_review_items_severity_check",
-      sql`${table.severity} in (${sql.join(reviewItemSeverityValues.map((value) => sql`${value}`), sql`, `)})`,
-    ),
-    statusCheck: check(
-      "artifact_review_items_status_check",
-      sql`${table.status} in (${sql.join(reviewItemStatusValues.map((value) => sql`${value}`), sql`, `)})`,
-    ),
-    artifactTypeCheck: check(
-      "artifact_review_items_artifact_type_check",
-      sql`${table.artifactType} in (${sql.join(artifactTypeValues.map((value) => sql`${value}`), sql`, `)})`,
     ),
   }),
 );

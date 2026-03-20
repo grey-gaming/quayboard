@@ -48,7 +48,7 @@ export const userFlowRoutes = (
       );
     }
 
-    const artifactState = await services.artifactReviewService.getState(
+    const artifactState = await services.artifactApprovalService.getState(
       ownerUserId,
       projectId,
       "blueprint_tech",

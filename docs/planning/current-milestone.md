@@ -8,16 +8,16 @@ This is the active implementation target. Work beyond M3 requires an explicit re
 
 ## Goal
 
-Deliver the post-product-spec planning workflow on top of the completed M2 planning workflow: UX decision tiles, UX Spec generation or manual save, Technical decision tiles, Technical Spec generation or manual save, User Flows generation and approval, review-item triage, approval, and Mission Control updates.
+Deliver the post-product-spec planning workflow on top of the completed M2 planning workflow: UX decision tiles, UX Spec generation or manual save, Technical decision tiles, Technical Spec generation or manual save, direct spec approval, User Flows generation and approval, and Mission Control updates.
 
 ## In Scope
 
-- `decision_cards`, `project_blueprints`, `artifact_review_runs`, `artifact_review_items`, and `artifact_approvals` schema additions
+- `decision_cards`, `project_blueprints`, and `artifact_approvals` schema additions, plus cleanup of obsolete blueprint review tables
 - Kind-specific decision-tile generation from approved planning artifacts, with persisted option or custom selections plus explicit decision acceptance
 - UX and Technical Spec generation from the accepted decision tiles, plus manual-save support for direct authoring and version history
-- UX/Technical Spec review jobs, review-item triage (`DONE`, `ACCEPTED`, `IGNORED`), and approval records
+- UX/Technical Spec approval records and direct approval flow after generation or manual save
 - UX Spec, Technical Spec, and User Flows phase gates plus Mission Control next-action updates
-- Shared schemas, API client contracts, and UI routes for UX Spec, Technical Spec, and artifact review
+- Shared schemas, API client contracts, and UI routes for UX Spec, Technical Spec, and artifact approval
 - User-facing and architecture docs that describe the M3 repo reality
 
 ## Out Of Scope
@@ -39,10 +39,7 @@ The milestone is complete when the repo can support the following:
 - User Flows remain locked until the Technical Spec is approved
 - Decision selections persist, support custom choices, require explicit acceptance before generation, and invalidate stale canonical specs when the decision set changes
 - A user can generate or manually save both UX and Technical Specs through the API/UI and restore older versions
-- Review jobs create structured review items with `BLOCKER`, `WARNING`, and `SUGGESTION` severities
-- Review items can be triaged to `DONE`, `ACCEPTED`, or `IGNORED`
-- A UX or Technical Spec cannot be approved until review has completed and no blocker remains open
-- Approval writes an `artifact_approvals` record for the canonical spec revision
+- A UX or Technical Spec can be approved directly after generation or manual save, and approval writes an `artifact_approvals` record for the canonical spec revision
 - Mission Control includes separate UX Spec, Technical Spec, and User Flows phases plus workflow-specific next actions
 - Shared schema imports resolve across the workspace without TypeScript errors
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass

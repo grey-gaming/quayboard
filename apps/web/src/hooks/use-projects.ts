@@ -162,26 +162,15 @@ export const useProjectSpecVersionsQuery = (projectId: string, kind: BlueprintKi
     queryFn: () => api.getProjectSpecVersions(projectId, kind),
   });
 
-export const useArtifactStateQuery = (
+export const useArtifactApprovalQuery = (
   projectId: string,
   artifactType: ArtifactType,
   artifactId?: string | null,
 ) =>
   useQuery({
     enabled: Boolean(artifactId),
-    queryKey: ["project", projectId, "artifact-state", artifactType, artifactId],
-    queryFn: () => api.getArtifactState(projectId, artifactType, artifactId!),
-  });
-
-export const useArtifactReviewItemsQuery = (
-  projectId: string,
-  artifactType: ArtifactType,
-  artifactId?: string | null,
-) =>
-  useQuery({
-    enabled: Boolean(artifactId),
-    queryKey: ["project", projectId, "artifact-review-items", artifactType, artifactId],
-    queryFn: () => api.getArtifactReviewItems(projectId, artifactType, artifactId!),
+    queryKey: ["project", projectId, "artifact-approval", artifactType, artifactId],
+    queryFn: () => api.getArtifactApprovalState(projectId, artifactType, artifactId!),
   });
 
 export const usePhaseGatesQuery = (projectId: string) =>
@@ -560,8 +549,7 @@ const invalidateProjectSpecQueries = (
           queryClient.invalidateQueries({ queryKey: specVersionsQueryKey(projectId, "ux") }),
           queryClient.invalidateQueries({ queryKey: specVersionsQueryKey(projectId, "tech") }),
         ]),
-    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-state"] }),
-    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-review-items"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "artifact-approval"] }),
     queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
     queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
   ]);
@@ -630,30 +618,6 @@ export const useSaveProjectSpecMutation = (projectId: string, kind: BlueprintKin
       api.saveProjectSpec(projectId, kind, payload),
     onSuccess: () => {
       void invalidateProjectSpecQueries(queryClient, projectId, kind);
-    },
-  });
-};
-
-export const useRunArtifactReviewMutation = (projectId: string) => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ artifactId, artifactType }: { artifactId: string; artifactType: ArtifactType }) =>
-      api.runArtifactReview(projectId, artifactType, artifactId),
-    onSuccess: () => {
-      void invalidateProjectSpecQueries(queryClient, projectId);
-    },
-  });
-};
-
-export const useUpdateArtifactReviewItemMutation = (projectId: string) => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ reviewItemId, status }: { reviewItemId: string; status: "DONE" | "ACCEPTED" | "IGNORED" }) =>
-      api.updateReviewItem(reviewItemId, status),
-    onSuccess: () => {
-      void invalidateProjectSpecQueries(queryClient, projectId);
     },
   });
 };

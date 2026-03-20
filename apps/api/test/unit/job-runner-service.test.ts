@@ -48,7 +48,6 @@ describe("job runner service", () => {
       completedAt: null,
     }));
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -123,7 +122,6 @@ describe("job runner service", () => {
     const createVersion = vi.fn(async () => ({ id: "one-pager-id" }));
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -212,7 +210,6 @@ describe("job runner service", () => {
     const replaceDecisionDeck = vi.fn(async () => [{ id: "card-1" }]);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         replaceDecisionDeck,
       } as never,
@@ -347,7 +344,6 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -453,7 +449,6 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -560,7 +555,6 @@ describe("job runner service", () => {
         completionTokens: 16,
       });
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -675,7 +669,6 @@ describe("job runner service", () => {
     const archive = vi.fn(async () => undefined);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -734,7 +727,6 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",
@@ -826,7 +818,6 @@ describe("job runner service", () => {
     const createMany = vi.fn(async () => []);
     const markSucceeded = vi.fn(async () => undefined);
     const service = createJobRunnerService({
-      artifactReviewService: {} as never,
       blueprintService: {
         getCanonicalByKind: vi.fn(async () => ({
           id: "technical-spec-id",

@@ -195,41 +195,7 @@ describe("API integration", () => {
       markdown: input.markdown,
       source: "ManualSave",
     });
-    const reviewJobId = crypto.randomUUID();
-    await sql`
-      insert into "jobs" (
-        "id",
-        "project_id",
-        "created_by_user_id",
-        "type",
-        "status",
-        "inputs",
-        "queued_at",
-        "started_at",
-        "completed_at"
-      )
-      values (
-        ${reviewJobId},
-        ${projectId},
-        ${ownerUserId},
-        ${input.kind === "ux" ? "ReviewBlueprintUX" : "ReviewBlueprintTech"},
-        ${"succeeded"},
-        ${JSON.stringify({ artifactId: spec.id })}::jsonb,
-        now(),
-        now(),
-        now()
-      )
-    `;
-    const run = await appServices.services.artifactReviewService.createRun(
-      ownerUserId,
-      projectId,
-      artifactType,
-      spec.id,
-      reviewJobId,
-    );
-    await appServices.services.artifactReviewService.replaceRunItems(run.id, []);
-    await appServices.services.artifactReviewService.markRunSucceeded(run.id);
-    await appServices.services.artifactReviewService.approve(
+    await appServices.services.artifactApprovalService.approve(
       ownerUserId,
       projectId,
       artifactType,
@@ -1939,7 +1905,7 @@ describe("API integration", () => {
     }
   });
 
-  it("requires completed review and cleared blockers before blueprint approval", async () => {
+  it("allows blueprint approval without a review run", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
@@ -1992,77 +1958,13 @@ describe("API integration", () => {
         cookies: { qb_session: project.cookieValue },
       });
 
-      expect(missingReviewResponse.statusCode).toBe(409);
-      expect(missingReviewResponse.json()).toEqual({
-        error: {
-          code: "artifact_review_required",
-          message: "Run and complete artifact review before approval.",
-        },
-      });
-
-      const reviewJob = await appServices.services.jobService.createJob({
-        createdByUserId: project.ownerUserId,
-        projectId: project.projectId,
-        type: "ReviewBlueprintUX",
-        inputs: {
-          artifactId: blueprint.id,
-          artifactType: "blueprint_ux",
-        },
-      });
-      const run = await appServices.services.artifactReviewService.createRun(
-        project.ownerUserId,
-        project.projectId,
-        "blueprint_ux",
-        blueprint.id,
-        reviewJob.id,
-      );
-
-      await appServices.services.artifactReviewService.replaceRunItems(run.id, [
-        {
-          artifactId: blueprint.id,
-          artifactType: "blueprint_ux",
-          category: "navigation",
-          details: "The primary path is missing a blocker review.",
-          projectId: project.projectId,
-          severity: "BLOCKER",
-          title: "Resolve blocker before approval",
-        },
-      ]);
-      await appServices.services.artifactReviewService.markRunSucceeded(run.id);
-
-      const blockedApprovalResponse = await server.inject({
-        method: "POST",
-        url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
-        cookies: { qb_session: project.cookieValue },
-      });
-
-      expect(blockedApprovalResponse.statusCode).toBe(409);
-      expect(blockedApprovalResponse.json()).toEqual({
-        error: {
-          code: "artifact_blockers_open",
-          message: "Resolve or accept all blocker review items before approval.",
-        },
-      });
-
-      const reviewItems = await appServices.services.artifactReviewService.listItems(
-        project.ownerUserId,
-        project.projectId,
-        "blueprint_ux",
-        blueprint.id,
-      );
-
-      await appServices.services.artifactReviewService.updateReviewItem(
-        project.ownerUserId,
-        reviewItems.items[0]!.id,
-        "ACCEPTED",
-      );
-
       const approvalResponse = await server.inject({
         method: "POST",
         url: `/api/projects/${project.projectId}/artifacts/blueprint_ux/${blueprint.id}/approve`,
         cookies: { qb_session: project.cookieValue },
       });
 
+      expect(missingReviewResponse.statusCode).toBe(200);
       expect(approvalResponse.statusCode).toBe(200);
       expect(approvalResponse.json()).toEqual(
         expect.objectContaining({

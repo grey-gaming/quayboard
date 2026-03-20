@@ -1,5 +1,5 @@
-import type { ArtifactType, BlueprintKind, DecisionCard, Job, ProjectBlueprint } from "@quayboard/shared";
-import { useMemo, useState } from "react";
+import type { ArtifactType, BlueprintKind, DecisionCard, Job } from "@quayboard/shared";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
@@ -7,7 +7,6 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { NextActionBar } from "../components/workflow/NextActionBar.js";
-import { ReviewPanel } from "../components/workflow/ReviewPanel.js";
 import { TransitionConfirmDialog } from "../components/workflow/TransitionConfirmDialog.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
@@ -20,7 +19,7 @@ import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAcceptSpecDecisionTilesMutation,
   useApproveArtifactMutation,
-  useArtifactStateQuery,
+  useArtifactApprovalQuery,
   useGenerateProjectSpecMutation,
   useGenerateSpecDecisionTilesMutation,
   useProjectJobsQuery,
@@ -28,10 +27,8 @@ import {
   useProjectSpecQuery,
   useProjectSpecVersionsQuery,
   useRestoreProjectSpecMutation,
-  useRunArtifactReviewMutation,
   useSaveProjectSpecMutation,
   useSpecDecisionTilesQuery,
-  useUpdateArtifactReviewItemMutation,
   useUpdateSpecDecisionTilesMutation,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
@@ -45,10 +42,11 @@ const DecisionTiles = ({
 }: {
   cards: DecisionCard[];
   isUpdating: boolean;
-  onSaveCustomSelection: (card: DecisionCard, customSelection: string) => void;
-  onSelectOption: (card: DecisionCard, optionId: string) => void;
+  onSaveCustomSelection: (card: DecisionCard, customSelection: string) => Promise<unknown>;
+  onSelectOption: (card: DecisionCard, optionId: string) => Promise<unknown>;
 }) => {
   const [customSelections, setCustomSelections] = useState<Record<string, string>>({});
+  const [expandedTileIds, setExpandedTileIds] = useState<Record<string, boolean>>({});
 
   return (
     <div className="grid gap-4">
@@ -56,6 +54,39 @@ const DecisionTiles = ({
         const options = [card.recommendation, ...card.alternatives];
         const selectedOptionId = card.selectedOptionId;
         const customSelection = customSelections[card.id] ?? card.customSelection ?? "";
+        const hasSelection = Boolean(card.selectedOptionId || card.customSelection);
+        const isCollapsed = hasSelection && !expandedTileIds[card.id];
+
+        if (isCollapsed) {
+          return (
+            <Card key={card.id} surface="panel">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="qb-meta-label">{card.category}</p>
+                  <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{card.title}</p>
+                  <p className="mt-3 text-sm text-secondary">{card.prompt}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="success">
+                    {card.customSelection ? "custom choice selected" : "option selected"}
+                  </Badge>
+                  <Button
+                    disabled={isUpdating}
+                    onClick={() => {
+                      setExpandedTileIds((current) => ({
+                        ...current,
+                        [card.id]: true,
+                      }));
+                    }}
+                    variant="ghost"
+                  >
+                    Edit Decision
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          );
+        }
 
         return (
           <Card key={card.id} surface="panel">
@@ -93,7 +124,17 @@ const DecisionTiles = ({
                       className="mt-4"
                       disabled={isUpdating}
                       onClick={() => {
-                        onSelectOption(card, option.id);
+                        void onSelectOption(card, option.id).then(() => {
+                          setExpandedTileIds((current) => {
+                            if (!current[card.id]) {
+                              return current;
+                            }
+
+                            const next = { ...current };
+                            delete next[card.id];
+                            return next;
+                          });
+                        });
                       }}
                       variant={isSelected ? "primary" : "secondary"}
                     >
@@ -119,7 +160,17 @@ const DecisionTiles = ({
                 <Button
                   disabled={isUpdating || !customSelection.trim()}
                   onClick={() => {
-                    onSaveCustomSelection(card, customSelection.trim());
+                    void onSaveCustomSelection(card, customSelection.trim()).then(() => {
+                      setExpandedTileIds((current) => {
+                        if (!current[card.id]) {
+                          return current;
+                        }
+
+                        const next = { ...current };
+                        delete next[card.id];
+                        return next;
+                      });
+                    });
                   }}
                   variant="ghost"
                 >
@@ -201,6 +252,7 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const { id = "" } = useParams();
   const location = useLocation();
   const [confirmApproval, setConfirmApproval] = useState(false);
+  const [decisionSectionExpanded, setDecisionSectionExpanded] = useState(false);
   const projectQuery = useProjectQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
   const decisionTilesQuery = useSpecDecisionTilesQuery(id, kind);
@@ -212,8 +264,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const generateSpecMutation = useGenerateProjectSpecMutation(id, kind);
   const saveSpecMutation = useSaveProjectSpecMutation(id, kind);
   const restoreSpecMutation = useRestoreProjectSpecMutation(id, kind);
-  const runArtifactReviewMutation = useRunArtifactReviewMutation(id);
-  const updateArtifactReviewItemMutation = useUpdateArtifactReviewItemMutation(id);
   const approveArtifactMutation = useApproveArtifactMutation(id);
 
   useSseEvents(id);
@@ -223,7 +273,7 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const artifactType = kindToArtifactType(kind);
   const currentSpec = specQuery.data?.blueprint ?? null;
   const cards = decisionTilesQuery.data?.cards ?? [];
-  const artifactStateQuery = useArtifactStateQuery(id, artifactType, currentSpec?.id ?? null);
+  const artifactApprovalQuery = useArtifactApprovalQuery(id, artifactType, currentSpec?.id ?? null);
   const redirectedFromLockedSection =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -252,34 +302,35 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
       ) ?? null,
     [jobsQuery.data?.jobs, kind],
   );
-  const activeReviewJob = useMemo(
-    () =>
-      jobsQuery.data?.jobs.find(
-        (job) =>
-          job.type === (kind === "ux" ? "ReviewBlueprintUX" : "ReviewBlueprintTech") &&
-          (job.status === "queued" || job.status === "running"),
-      ) ?? null,
-    [jobsQuery.data?.jobs, kind],
-  );
 
   const decisionsGenerated = cards.length > 0;
-  const decisionsComplete = decisionsGenerated && cards.every((card) => card.selectedOptionId || card.customSelection);
+  const selectedCardCount = cards.filter((card) => card.selectedOptionId || card.customSelection).length;
+  const customSelectionCount = cards.filter((card) => Boolean(card.customSelection)).length;
+  const decisionsComplete = decisionsGenerated && selectedCardCount === cards.length;
   const decisionsAccepted = decisionsComplete && cards.every((card) => Boolean(card.acceptedAt));
+  const specApproved = Boolean(artifactApprovalQuery.data?.approval);
+  const shouldAutoCollapseDecisionSection = Boolean(currentSpec || activeSpecJob);
+  const decisionSectionCollapsed = shouldAutoCollapseDecisionSection && !decisionSectionExpanded;
+
+  useEffect(() => {
+    if (!shouldAutoCollapseDecisionSection) {
+      setDecisionSectionExpanded(false);
+    }
+  }, [shouldAutoCollapseDecisionSection]);
+
   const activeError =
     projectQuery.error ||
     decisionTilesQuery.error ||
     specQuery.error ||
     specVersionsQuery.error ||
     jobsQuery.error ||
-    artifactStateQuery.error ||
+    artifactApprovalQuery.error ||
     generateDecisionTilesMutation.error ||
     updateDecisionTilesMutation.error ||
     acceptDecisionTilesMutation.error ||
     generateSpecMutation.error ||
     saveSpecMutation.error ||
     restoreSpecMutation.error ||
-    runArtifactReviewMutation.error ||
-    updateArtifactReviewItemMutation.error ||
     approveArtifactMutation.error;
 
   return (
@@ -302,16 +353,20 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
         title={title}
         summary={
           kind === "ux"
-            ? "Select and accept UX decisions, then generate, refine, review, and approve the UX Spec."
-            : "Use the approved UX Spec to drive technical decisions, then generate, refine, review, and approve the Technical Spec."
+            ? "Select and accept UX decisions, then generate, refine, and approve the UX Spec."
+            : "Use the approved UX Spec to drive technical decisions, then generate, refine, and approve the Technical Spec."
         }
         meta={
           <>
             <Badge tone={decisionsAccepted ? "success" : "warning"}>
               {decisionsAccepted ? "decisions accepted" : "decision acceptance required"}
             </Badge>
-            <Badge tone={currentSpec ? "success" : "warning"}>
-              {currentSpec ? `${title} present` : `${title} pending`}
+            <Badge
+              tone={
+                !currentSpec ? "warning" : specApproved ? "success" : "info"
+              }
+            >
+              {!currentSpec ? `${title} pending` : specApproved ? `${title} approved` : `${title} ready`}
             </Badge>
           </>
         }
@@ -330,7 +385,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
         <Alert tone="info">{decisionTitle} generation is {activeDecisionJob.status}.</Alert>
       ) : null}
       {activeSpecJob ? <Alert tone="info">{title} generation is {activeSpecJob.status}.</Alert> : null}
-      {activeReviewJob ? <Alert tone="info">{title} review is {activeReviewJob.status}.</Alert> : null}
 
       <div className="grid gap-4">
         <Card surface="panel">
@@ -339,23 +393,54 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
               <p className="qb-meta-label">Decisions</p>
               <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{decisionTitle}</p>
             </div>
-            <Badge tone="neutral">{cards.length} tiles</Badge>
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="neutral">{cards.length} tiles</Badge>
+              {decisionSectionCollapsed ? (
+                <Button
+                  onClick={() => {
+                    setDecisionSectionExpanded(true);
+                  }}
+                  variant="ghost"
+                >
+                  Review Decisions
+                </Button>
+              ) : null}
+            </div>
           </div>
           <div className="mt-4">
-            {cards.length > 0 ? (
+            {decisionSectionCollapsed ? (
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="grid gap-2">
+                  <p className="text-sm text-secondary">
+                    {activeSpecJob
+                      ? `${title} generation is in progress.`
+                      : `${title} is active, so the decision deck is minimized to keep focus on the document.`}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone="success">{selectedCardCount}/{cards.length} selected</Badge>
+                    <Badge tone={decisionsAccepted ? "success" : "warning"}>
+                      {decisionsAccepted ? "decision set accepted" : "acceptance required"}
+                    </Badge>
+                    {customSelectionCount > 0 ? (
+                      <Badge tone="info">{customSelectionCount} custom</Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : cards.length > 0 ? (
               <DecisionTiles
                 cards={cards}
                 isUpdating={updateDecisionTilesMutation.isPending}
-                onSaveCustomSelection={(card, customSelection) => {
-                  void updateDecisionTilesMutation.mutateAsync({
+                onSaveCustomSelection={(card, customSelection) =>
+                  updateDecisionTilesMutation.mutateAsync({
                     cards: [{ id: card.id, customSelection }],
-                  });
-                }}
-                onSelectOption={(card, optionId) => {
-                  void updateDecisionTilesMutation.mutateAsync({
+                  })
+                }
+                onSelectOption={(card, optionId) =>
+                  updateDecisionTilesMutation.mutateAsync({
                     cards: [{ id: card.id, selectedOptionId: optionId }],
-                  });
-                }}
+                  })
+                }
               />
             ) : (
               <p className="text-sm text-secondary">
@@ -366,24 +451,28 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
           </div>
         </Card>
 
-        <NextActionBar
-          summary={`Select every ${decisionTitle.toLowerCase()} option, then accept the full set before ${title} generation or manual authoring is enabled.`}
-          title={`${title} decisions`}
-        >
-          <Button
-            disabled={
-              !decisionsComplete ||
-              decisionsAccepted ||
-              acceptDecisionTilesMutation.isPending
-            }
-            onClick={() => {
-              void acceptDecisionTilesMutation.mutateAsync();
-            }}
-            variant="secondary"
+        {!decisionSectionCollapsed ? (
+          <NextActionBar
+            summary={`Select every ${decisionTitle.toLowerCase()} option, then accept the full set before ${title} generation or manual authoring is enabled.`}
+            title={`${title} decisions`}
           >
-            {acceptDecisionTilesMutation.isPending ? "Accepting..." : `Accept ${kind === "ux" ? "UX" : "Technical"} Decisions`}
-          </Button>
-        </NextActionBar>
+            <Button
+              disabled={
+                !decisionsComplete ||
+                decisionsAccepted ||
+                acceptDecisionTilesMutation.isPending
+              }
+              onClick={() => {
+                void acceptDecisionTilesMutation.mutateAsync();
+              }}
+              variant="secondary"
+            >
+              {acceptDecisionTilesMutation.isPending
+                ? "Accepting..."
+                : `Accept ${kind === "ux" ? "UX" : "Technical"} Decisions`}
+            </Button>
+          </NextActionBar>
+        ) : null}
 
         <Card surface="panel">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-3">
@@ -410,9 +499,7 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
                 disabled={
                   approveArtifactMutation.isPending ||
                   !currentSpec ||
-                  !artifactStateQuery.data?.latestReviewRun ||
-                  artifactStateQuery.data.latestReviewRun.status !== "succeeded" ||
-                  (artifactStateQuery.data.openBlockerCount ?? 0) > 0
+                  specApproved
                 }
                 onClick={() => {
                   setConfirmApproval(true);
@@ -420,7 +507,7 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
                 type="button"
                 variant="secondary"
               >
-                {`Approve ${title}`}
+                {specApproved ? `${title} Approved` : `Approve ${title}`}
               </Button>
             </div>
           </div>
@@ -438,6 +525,10 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
                 }}
                 saveLabel={`Save ${title}`}
               />
+            ) : activeSpecJob ? (
+              <p className="text-sm text-secondary">
+                {title} generation is in progress. The editor will unlock when the canonical draft is available.
+              </p>
             ) : decisionsAccepted ? (
               <ManualSpecComposer
                 defaultTitle={title}
@@ -454,84 +545,49 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
           </div>
         </Card>
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.15fr)_22rem]">
-          <Card surface="rail">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">History</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{title} Versions</p>
-              </div>
-              <Badge tone="neutral">{specVersionsQuery.data?.versions.length ?? 0} versions</Badge>
+        <Card surface="rail">
+          <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+            <div>
+              <p className="qb-meta-label">History</p>
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{title} Versions</p>
             </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {specVersionsQuery.data?.versions.length ? (
-                specVersionsQuery.data.versions.map((version) => (
-                  <div
-                    key={version.id}
-                    className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          Version {version.version} {version.isCanonical ? "(canonical)" : ""}
-                        </p>
-                        <p className="qb-meta-label">{formatDateTime(version.createdAt)}</p>
-                      </div>
-                      <Button
-                        disabled={restoreSpecMutation.isPending}
-                        onClick={() => {
-                          void restoreSpecMutation.mutateAsync(version.version);
-                        }}
-                        type="button"
-                        variant="ghost"
-                      >
-                        Restore
-                      </Button>
+            <Badge tone="neutral">{specVersionsQuery.data?.versions.length ?? 0} versions</Badge>
+          </div>
+          <div className="mt-4 grid gap-0 border border-border/80">
+            {specVersionsQuery.data?.versions.length ? (
+              specVersionsQuery.data.versions.map((version) => (
+                <div
+                  key={version.id}
+                  className="grid gap-2 border-t border-border/80 bg-panel-inset px-4 py-4 first:border-t-0"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        Version {version.version} {version.isCanonical ? "(canonical)" : ""}
+                      </p>
+                      <p className="qb-meta-label">{formatDateTime(version.createdAt)}</p>
                     </div>
-                    <p className="text-sm text-secondary">{version.source}</p>
+                    <Button
+                      disabled={restoreSpecMutation.isPending}
+                      onClick={() => {
+                        void restoreSpecMutation.mutateAsync(version.version);
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      Restore
+                    </Button>
                   </div>
-                ))
-              ) : (
-                <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
-                  No {title} versions yet.
+                  <p className="text-sm text-secondary">{version.source}</p>
                 </div>
-              )}
-            </div>
-          </Card>
-          <ReviewPanel
-            isUpdating={updateArtifactReviewItemMutation.isPending}
-            items={artifactStateQuery.data?.reviewItems ?? []}
-            onUpdate={(reviewItemId, status) => {
-              void updateArtifactReviewItemMutation.mutateAsync({ reviewItemId, status });
-            }}
-          />
-        </div>
-
-        <NextActionBar
-          summary={`Run review on the current canonical ${title} when you are ready to validate it.`}
-          title={`${title} review`}
-        >
-          <Button
-            disabled={
-              runArtifactReviewMutation.isPending ||
-              Boolean(activeReviewJob) ||
-              !currentSpec
-            }
-            onClick={() => {
-              if (!currentSpec) {
-                return;
-              }
-
-              void runArtifactReviewMutation.mutateAsync({
-                artifactId: currentSpec.id,
-                artifactType,
-              });
-            }}
-            variant="ghost"
-          >
-            {activeReviewJob ? "Running Review" : "Run Review"}
-          </Button>
-        </NextActionBar>
+              ))
+            ) : (
+              <div className="bg-panel-inset px-4 py-4 text-sm text-secondary">
+                No {title} versions yet.
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
       <TransitionConfirmDialog

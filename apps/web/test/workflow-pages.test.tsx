@@ -1857,14 +1857,9 @@ describe("workflow pages", () => {
       [`/api/projects/${gatedProjectId}/jobs`]: {
         jobs: [],
       },
-      [`/api/projects/${gatedProjectId}/artifacts/blueprint_tech/technical-spec-id/state`]: {
+      [`/api/projects/${gatedProjectId}/artifacts/blueprint_tech/technical-spec-id/approval`]: {
         artifactType: "blueprint_tech",
         artifactId: "technical-spec-id",
-        latestReviewRun: null,
-        reviewItems: [],
-        openBlockerCount: 0,
-        openWarningCount: 0,
-        openSuggestionCount: 0,
         approval: null,
       },
     });
@@ -2198,6 +2193,9 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Choose Option" })[0]!);
 
+    expect(await screen.findByRole("button", { name: "Edit Decision" })).toBeTruthy();
+    expect(screen.getByText("option selected")).toBeTruthy();
+
     await waitFor(() => {
       expect(
         (screen.getByRole("button", { name: "Accept UX Decisions" }) as HTMLButtonElement).disabled,
@@ -2219,7 +2217,7 @@ describe("workflow pages", () => {
     });
   });
 
-  it("shows Technical Spec approval above the document content and keeps decisions on the same page", async () => {
+  it("minimizes Technical decisions once a spec exists and allows direct approval without review UI", async () => {
     const specProjectId = "80808080-8080-4080-8080-808080808080";
     const technicalSpecId = "22222222-2222-4222-8222-222222222222";
 
@@ -2305,23 +2303,9 @@ describe("workflow pages", () => {
       [`/api/projects/${specProjectId}/jobs`]: {
         jobs: [],
       },
-      [`/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/state`]: {
+      [`/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approval`]: {
         artifactType: "blueprint_tech",
         artifactId: technicalSpecId,
-        latestReviewRun: {
-          id: "review-run-1",
-          projectId: specProjectId,
-          artifactType: "blueprint_tech",
-          artifactId: technicalSpecId,
-          jobId: "job-review-tech",
-          status: "succeeded",
-          createdAt: "2026-03-19T00:00:00.000Z",
-          completedAt: "2026-03-19T00:02:00.000Z",
-        },
-        reviewItems: [],
-        openBlockerCount: 0,
-        openWarningCount: 0,
-        openSuggestionCount: 0,
         approval: null,
       },
     });
@@ -2330,12 +2314,10 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Technical Spec" })).toBeTruthy();
     expect(await screen.findByText("Technical Decision Tiles")).toBeTruthy();
-    const approveButton = await screen.findByRole("button", { name: "Approve Technical Spec" });
-    const reviewPanelHeading = await screen.findByText("Review Panel");
+    expect(await screen.findByRole("button", { name: "Review Decisions" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Approve Technical Spec" })).toBeTruthy();
 
     expect(screen.queryByRole("button", { name: "Generate Blueprints" })).toBeNull();
-    expect(
-      approveButton.compareDocumentPosition(reviewPanelHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByText("Review Panel")).toBeNull();
   });
 });

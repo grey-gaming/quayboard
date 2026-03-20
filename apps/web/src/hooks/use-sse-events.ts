@@ -60,10 +60,7 @@ export const useSseEvents = (projectId?: string) => {
       );
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["project", activeProjectId, "artifact-state"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["project", activeProjectId, "artifact-review-items"],
+          queryKey: ["project", activeProjectId, "artifact-approval"],
         }),
       ]);
     };

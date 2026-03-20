@@ -4,7 +4,6 @@ import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboar
 
 import type { AppDatabase } from "../../db/client.js";
 import { llmRunsTable, useCasesTable } from "../../db/schema.js";
-import type { ArtifactReviewService } from "../artifact-review-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
@@ -15,7 +14,6 @@ import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import {
-  buildBlueprintReviewPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
   buildProjectBlueprintPrompt,
@@ -269,47 +267,7 @@ const parseDecisionValidationResult = (value: string) => {
   return parsed;
 };
 
-const parseBlueprintReviewItems = (
-  value: string,
-  templateId: string,
-) => {
-  const parsed = parseJson<
-    Array<{
-      category?: string;
-      details?: string;
-      severity?: "BLOCKER" | "SUGGESTION" | "WARNING";
-      title?: string;
-    }>
-  >(value);
-
-  if (!parsed) {
-    throw new Error(`${templateId} returned invalid content. Expected a JSON array.`);
-  }
-
-  return parsed.map((item) => {
-    if (
-      !item.category?.trim() ||
-      !item.details?.trim() ||
-      !item.title?.trim() ||
-      !item.severity ||
-      !["BLOCKER", "WARNING", "SUGGESTION"].includes(item.severity)
-    ) {
-      throw new Error(
-        `${templateId} returned a review item without severity, category, title, and details.`,
-      );
-    }
-
-    return {
-      severity: item.severity,
-      category: item.category.trim(),
-      title: item.title.trim(),
-      details: item.details.trim(),
-    };
-  });
-};
-
 export const createJobRunnerService = (input: {
-  artifactReviewService: ArtifactReviewService;
   blueprintService: BlueprintService;
   db: AppDatabase;
   jobService: JobService;
@@ -888,75 +846,6 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, {
           blueprintId: blueprint.id,
           kind,
-        });
-      }
-
-      case "ReviewBlueprintUX":
-      case "ReviewBlueprintTech": {
-        const artifactType = rawJob.type === "ReviewBlueprintUX" ? "blueprint_ux" : "blueprint_tech";
-        const kind = artifactType === "blueprint_ux" ? "ux" : "tech";
-        const jobInputs = parseJson<{ artifactId?: string }>(JSON.stringify(rawJob.inputs));
-        const artifactId = jobInputs?.artifactId;
-
-        if (!artifactId) {
-          throw new Error(`${rawJob.type} requires an artifactId.`);
-        }
-
-        await input.artifactReviewService.markRunRunning(rawJob.id);
-        const blueprintRecord = await input.blueprintService.assertCanonicalBlueprint(
-          ownerUserId,
-          rawJob.projectId,
-          kind,
-          artifactId,
-        );
-        const prompt = buildBlueprintReviewPrompt({
-          kind,
-          projectName: project.name,
-          title: blueprintRecord.title,
-          markdown: blueprintRecord.markdown,
-        });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: rawJob.type,
-          parameters: { artifactId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const items = parseBlueprintReviewItems(generated.content, rawJob.type);
-        const run = await input.artifactReviewService.getLatestRun(
-          rawJob.projectId,
-          artifactType,
-          artifactId,
-        );
-
-        if (!run) {
-          throw new Error("Artifact review run not found.");
-        }
-
-        await input.artifactReviewService.replaceRunItems(
-          run.id,
-          items.map((item) => ({
-            ...item,
-            projectId,
-            artifactType,
-            artifactId,
-          })),
-        );
-        await input.artifactReviewService.markRunSucceeded(run.id);
-
-        return input.jobService.markSucceeded(rawJob.id, {
-          reviewRunId: run.id,
-          reviewItemCount: items.length,
         });
       }
 

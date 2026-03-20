@@ -545,27 +545,3 @@ export const buildProjectBlueprintPrompt = (input: {
     "Selected decisions:",
     input.decisions,
   ].join("\n");
-
-export const buildBlueprintReviewPrompt = (input: {
-  kind: "tech" | "ux";
-  markdown: string;
-  projectName: string;
-  title: string;
-}) =>
-  [
-    qualityCharter,
-    "",
-    "Task:",
-    `Review the ${input.kind === "ux" ? "UX" : "technical"} specification for "${input.projectName}".`,
-    'Return valid JSON as an array of objects with exactly these keys: "severity", "category", "title", and "details".',
-    'Allowed severity values are "BLOCKER", "WARNING", and "SUGGESTION".',
-    "Return an empty array if the blueprint is clear enough to approve.",
-    "Raise BLOCKER only for contradictions, missing core structure, or specification gaps that would make downstream planning unsafe.",
-    "Do not wrap the JSON in code fences.",
-    "",
-    "Specification title:",
-    input.title,
-    "",
-    "Specification markdown:",
-    input.markdown,
-  ].join("\n");

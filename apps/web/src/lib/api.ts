@@ -1,7 +1,6 @@
 import type {
   ArtifactApproval,
-  ArtifactReviewItem,
-  ArtifactStateResponse,
+  ArtifactApprovalStateResponse,
   ArtifactType,
   BlueprintKind,
   CreateProjectRequest,
@@ -226,14 +225,9 @@ export const api = {
       method: "POST",
     });
   },
-  getArtifactReviewItems(projectId: string, artifactType: ArtifactType, artifactId: string) {
-    return apiRequest<{ items: ArtifactReviewItem[] }>(
-      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/review-items`,
-    );
-  },
-  getArtifactState(projectId: string, artifactType: ArtifactType, artifactId: string) {
-    return apiRequest<ArtifactStateResponse>(
-      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/state`,
+  getArtifactApprovalState(projectId: string, artifactType: ArtifactType, artifactId: string) {
+    return apiRequest<ArtifactApprovalStateResponse>(
+      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/approval`,
     );
   },
   getProjectSpec(projectId: string, kind: BlueprintKind) {
@@ -359,14 +353,6 @@ export const api = {
       method: "POST",
     });
   },
-  runArtifactReview(projectId: string, artifactType: ArtifactType, artifactId: string) {
-    return apiRequest<Job>(
-      `/api/projects/${projectId}/artifacts/${artifactType}/${artifactId}/review/run`,
-      {
-        method: "POST",
-      },
-    );
-  },
   saveProjectSpec(
     projectId: string,
     kind: BlueprintKind,
@@ -426,12 +412,6 @@ export const api = {
         body: JSON.stringify(payload),
       },
     );
-  },
-  updateReviewItem(reviewItemId: string, status: "DONE" | "ACCEPTED" | "IGNORED") {
-    return apiRequest<ArtifactReviewItem>(`/api/artifact-review-items/${reviewItemId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    });
   },
   acceptSpecDecisionTiles(projectId: string, kind: BlueprintKind) {
     return apiRequest<DecisionCardListResponse>(

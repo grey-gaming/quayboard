@@ -1,4 +1,4 @@
-import type { ArtifactReviewService } from "./artifact-review-service.js";
+import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
@@ -7,7 +7,7 @@ import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 export const createNextActionsService = (
-  artifactReviewService: ArtifactReviewService,
+  artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
@@ -103,26 +103,14 @@ export const createNextActionsService = (
         href: `/projects/${projectId}/ux-spec`,
       });
     } else {
-      const uxState = await artifactReviewService.getState(
+      const uxState = await artifactApprovalService.getState(
         ownerUserId,
         projectId,
         "blueprint_ux",
         blueprints.uxBlueprint.id,
       );
 
-      if (!uxState.latestReviewRun || uxState.latestReviewRun.status !== "succeeded") {
-        actions.push({
-          key: "ux_spec_review",
-          label: "Run UX Spec review",
-          href: `/projects/${projectId}/ux-spec`,
-        });
-      } else if (uxState.openBlockerCount > 0) {
-        actions.push({
-          key: "ux_spec_blockers",
-          label: "Resolve UX Spec blockers",
-          href: `/projects/${projectId}/ux-spec`,
-        });
-      } else if (!uxState.approval) {
+      if (!uxState.approval) {
         actions.push({
           key: "ux_spec_approval",
           label: "Approve the UX Spec",
@@ -155,26 +143,14 @@ export const createNextActionsService = (
           href: `/projects/${projectId}/technical-spec`,
         });
       } else {
-        const techState = await artifactReviewService.getState(
+        const techState = await artifactApprovalService.getState(
           ownerUserId,
           projectId,
           "blueprint_tech",
           blueprints.techBlueprint.id,
         );
 
-        if (!techState.latestReviewRun || techState.latestReviewRun.status !== "succeeded") {
-          actions.push({
-            key: "tech_spec_review",
-            label: "Run Technical Spec review",
-            href: `/projects/${projectId}/technical-spec`,
-          });
-        } else if (techState.openBlockerCount > 0) {
-          actions.push({
-            key: "tech_spec_blockers",
-            label: "Resolve Technical Spec blockers",
-            href: `/projects/${projectId}/technical-spec`,
-          });
-        } else if (!techState.approval) {
+        if (!techState.approval) {
           actions.push({
             key: "tech_spec_approval",
             label: "Approve the Technical Spec",

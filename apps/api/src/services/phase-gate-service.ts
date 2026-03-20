@@ -1,4 +1,4 @@
-import type { ArtifactReviewService } from "./artifact-review-service.js";
+import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
@@ -7,7 +7,7 @@ import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 export const createPhaseGateService = (
-  artifactReviewService: ArtifactReviewService,
+  artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
@@ -57,7 +57,7 @@ export const createPhaseGateService = (
     const techGenerated = Boolean(blueprints.techBlueprint);
     const [uxState, techState] = await Promise.all([
       blueprints.uxBlueprint
-        ? artifactReviewService.getState(
+        ? artifactApprovalService.getState(
             ownerUserId,
             projectId,
             "blueprint_ux",
@@ -65,7 +65,7 @@ export const createPhaseGateService = (
           )
         : null,
       blueprints.techBlueprint
-        ? artifactReviewService.getState(
+        ? artifactApprovalService.getState(
             ownerUserId,
             projectId,
             "blueprint_tech",
@@ -73,8 +73,6 @@ export const createPhaseGateService = (
           )
         : null,
     ]);
-    const uxBlockersResolved = uxGenerated && (uxState?.openBlockerCount ?? 0) === 0;
-    const techBlockersResolved = techGenerated && (techState?.openBlockerCount ?? 0) === 0;
     const uxApproved = Boolean(uxState?.approval);
     const techApproved = Boolean(techState?.approval);
     const userFlowsPassed = techApproved && Boolean(userFlows.approvedAt);
@@ -142,7 +140,6 @@ export const createPhaseGateService = (
             uxDecisionSelected &&
             uxDecisionAccepted &&
             uxGenerated &&
-            uxBlockersResolved &&
             uxApproved,
           items: [
             {
@@ -171,11 +168,6 @@ export const createPhaseGateService = (
               passed: uxGenerated,
             },
             {
-              key: "ux_blockers",
-              label: "UX Spec blockers resolved",
-              passed: uxBlockersResolved,
-            },
-            {
               key: "ux_approved",
               label: "UX Spec approved",
               passed: uxApproved,
@@ -190,7 +182,6 @@ export const createPhaseGateService = (
             techDecisionSelected &&
             techDecisionAccepted &&
             techGenerated &&
-            techBlockersResolved &&
             techApproved,
           items: [
             {
@@ -217,11 +208,6 @@ export const createPhaseGateService = (
               key: "tech_spec_generated",
               label: "Technical Spec generated",
               passed: techGenerated,
-            },
-            {
-              key: "tech_blockers",
-              label: "Technical Spec blockers resolved",
-              passed: techBlockersResolved,
             },
             {
               key: "tech_approved",
