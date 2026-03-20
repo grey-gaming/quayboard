@@ -41,6 +41,41 @@ const parseJson = <T>(value: string): T | null => {
   }
 };
 
+const parseGeneratedUserFlowsResult = (
+  value: string,
+):
+  | Array<{
+      acceptanceCriteria?: string[];
+      coverageTags?: string[];
+      doneCriteriaRefs?: string[];
+      endState?: string;
+      entryPoint?: string;
+      flowSteps?: string[];
+      source?: string;
+      title?: string;
+      userStory?: string;
+    }>
+  | null => {
+  const parsed = parseJson<unknown>(value);
+
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+
+  for (const key of ["userFlows", "flows", "useCases", "items"] as const) {
+    const candidate = parsed[key];
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
 const estimatePromptTokens = (prompt: string) => Math.ceil(prompt.length / 4);
 
 const logProductSpecGeneration = (
@@ -626,19 +661,7 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const parsed = parseJson<
-          Array<{
-            acceptanceCriteria?: string[];
-            coverageTags?: string[];
-            doneCriteriaRefs?: string[];
-            endState?: string;
-            entryPoint?: string;
-            flowSteps?: string[];
-            source?: string;
-            title?: string;
-            userStory?: string;
-          }>
-        >(generated.content);
+        const parsed = parseGeneratedUserFlowsResult(generated.content);
 
         if (!parsed || parsed.length === 0) {
           throw new Error(

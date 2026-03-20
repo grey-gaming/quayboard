@@ -1121,4 +1121,102 @@ describe("job runner service", () => {
       createdCount: 2,
     });
   });
+
+  it("accepts generated user flows wrapped in a top-level userFlows object", async () => {
+    const db = createDbStub();
+    const createMany = vi.fn(async () => []);
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => ({
+          id: "technical-spec-id",
+          projectId,
+          kind: "tech",
+          version: 1,
+          title: "Technical Spec",
+          markdown: "# Technical Spec\n\nApproved implementation direction.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-use-cases",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateUseCases",
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate: vi.fn(async () => ({
+          content: JSON.stringify({
+            userFlows: [
+              {
+                title: "Invite teammate",
+                userStory: "As an admin, I want to invite a teammate.",
+                entryPoint: "Team settings",
+                endState: "The teammate receives an invite.",
+                flowSteps: ["Open settings", "Send invite"],
+              },
+            ],
+          }),
+          promptTokens: 10,
+          completionTokens: 12,
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        createMany,
+      } as never,
+    });
+
+    await service.run("job-generate-use-cases");
+
+    expect(createMany).toHaveBeenCalledWith(userId, projectId, [
+      {
+        acceptanceCriteria: ["The described flow can be completed."],
+        coverageTags: ["happy-path"],
+        doneCriteriaRefs: ["product-spec"],
+        endState: "The teammate receives an invite.",
+        entryPoint: "Team settings",
+        flowSteps: ["Open settings", "Send invite"],
+        source: "generated",
+        title: "Invite teammate",
+        userStory: "As an admin, I want to invite a teammate.",
+      },
+    ]);
+    expect(markSucceeded).toHaveBeenCalledWith("job-generate-use-cases", {
+      createdCount: 1,
+    });
+  });
 });
