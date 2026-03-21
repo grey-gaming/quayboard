@@ -1,11 +1,18 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import type { Job } from "@quayboard/shared";
 
 import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
-import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
+import {
+  findLatestFailedJob,
+  getDefaultJobFailureHint,
+  getJobErrorMessage,
+  LatestJobFailureAlert,
+} from "../components/workflow/LatestJobFailureAlert.js";
+import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
@@ -14,7 +21,6 @@ import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
 import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
-import { usePhaseGates } from "../hooks/use-phase-gates.js";
 import {
   useApproveMilestoneDesignMutation,
   useCreateMilestoneMutation,
@@ -22,6 +28,7 @@ import {
   useGenerateMilestonesMutation,
   useMilestoneDesignDocsQuery,
   useMilestonesQuery,
+  useProjectJobsQuery,
   useProjectQuery,
   useTransitionMilestoneMutation,
   useUpdateMilestoneMutation,
@@ -32,12 +39,19 @@ import { useSseEvents } from "../hooks/use-sse-events.js";
 const readSelectedValues = (select: HTMLSelectElement) =>
   [...select.selectedOptions].map((option) => option.value);
 
+const isActiveJob = (job: Job) => job.status === "queued" || job.status === "running";
+const jobTargetsMilestone = (job: Job, milestoneId: string) =>
+  typeof job.inputs === "object" &&
+  job.inputs !== null &&
+  "milestoneId" in job.inputs &&
+  job.inputs.milestoneId === milestoneId;
+
 export const MilestonesPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
-  const phaseGatesQuery = usePhaseGates(id);
   const userFlowsQuery = useUserFlowsQuery(id);
   const milestonesQuery = useMilestonesQuery(id);
+  const jobsQuery = useProjectJobsQuery(id);
   const createMilestoneMutation = useCreateMilestoneMutation(id);
   const updateMilestoneMutation = useUpdateMilestoneMutation(id);
   const transitionMilestoneMutation = useTransitionMilestoneMutation(id);
@@ -57,9 +71,6 @@ export const MilestonesPage = () => {
   const designDocsQuery = useMilestoneDesignDocsQuery(selectedMilestone?.id ?? null);
   const generateDesignMutation = useGenerateMilestoneDesignMutation(id, selectedMilestone?.id ?? "");
   const approveDesignMutation = useApproveMilestoneDesignMutation(id, selectedMilestone?.id ?? "");
-  const milestonePhases = phaseGatesQuery.data?.phases.filter(
-    (phase) => phase.phase === "Milestones" || phase.phase === "Features",
-  ) ?? [];
 
   const resetForm = () => {
     setEditingMilestoneId(null);
@@ -76,11 +87,73 @@ export const MilestonesPage = () => {
     () => new Set(selectedMilestone?.linkedUserFlows.map((flow) => flow.title) ?? []),
     [selectedMilestone?.linkedUserFlows],
   );
+  const activeMilestonePlanJob = useMemo(
+    () =>
+      jobsQuery.data?.jobs.find(
+        (job) => job.type === "GenerateMilestones" && isActiveJob(job),
+      ) ?? null,
+    [jobsQuery.data?.jobs],
+  );
+  const latestFailedMilestonePlanJob = useMemo(
+    () => findLatestFailedJob(jobsQuery.data?.jobs, (job) => job.type === "GenerateMilestones"),
+    [jobsQuery.data?.jobs],
+  );
+  const activeMilestoneDesignJob = useMemo(
+    () =>
+      selectedMilestone
+        ? jobsQuery.data?.jobs.find(
+            (job) =>
+              job.type === "GenerateMilestoneDesign" &&
+              jobTargetsMilestone(job, selectedMilestone.id) &&
+              isActiveJob(job),
+          ) ?? null
+        : null,
+    [jobsQuery.data?.jobs, selectedMilestone],
+  );
+  const latestFailedMilestoneDesignJob = useMemo(
+    () =>
+      selectedMilestone
+        ? findLatestFailedJob(
+            jobsQuery.data?.jobs,
+            (job) =>
+              job.type === "GenerateMilestoneDesign" &&
+              jobTargetsMilestone(job, selectedMilestone.id),
+          )
+        : null,
+    [jobsQuery.data?.jobs, selectedMilestone],
+  );
+  const activeError =
+    projectQuery.error ||
+    userFlowsQuery.error ||
+    milestonesQuery.error ||
+    jobsQuery.error ||
+    designDocsQuery.error ||
+    createMilestoneMutation.error ||
+    updateMilestoneMutation.error ||
+    transitionMilestoneMutation.error ||
+    generateMilestonesMutation.error ||
+    generateDesignMutation.error ||
+    approveDesignMutation.error;
+  const milestonePlanButtonActive =
+    generateMilestonesMutation.isPending || Boolean(activeMilestonePlanJob);
+  const milestoneDesignButtonActive =
+    generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
 
   return (
     <AppFrame>
       {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
       <PageIntro
+        actions={
+          <AiWorkflowButton
+            active={milestonePlanButtonActive}
+            disabled={milestonePlanButtonActive || activeMilestones.length > 0}
+            label="Generate Milestones"
+            onClick={() => {
+              void generateMilestonesMutation.mutateAsync();
+            }}
+            runningLabel="Generating milestones..."
+          />
+        }
         eyebrow="Milestones"
         title="Milestones"
         summary="Plan releasable increments from the approved user-flow contract, then generate and approve a design document for each approved milestone."
@@ -94,27 +167,29 @@ export const MilestonesPage = () => {
           </>
         }
       />
+      {activeError ? <Alert tone="error">{activeError.message}</Alert> : null}
+      {activeMilestonePlanJob ? (
+        <Alert tone="info">
+          Milestone generation is {activeMilestonePlanJob.status}. The page will refresh
+          automatically when the job completes.
+        </Alert>
+      ) : null}
+      {!activeMilestonePlanJob ? (
+        <LatestJobFailureAlert
+          currentVersionStillAvailable={Boolean(activeMilestones.length)}
+          hint={
+            latestFailedMilestonePlanJob && getJobErrorMessage(latestFailedMilestonePlanJob)
+              ? getDefaultJobFailureHint(
+                  getJobErrorMessage(latestFailedMilestonePlanJob)!,
+                  "milestone generation",
+                )
+              : null
+          }
+          job={latestFailedMilestonePlanJob}
+          workflowLabel="Milestone generation"
+        />
+      ) : null}
       <div className="grid gap-4">
-        <Card surface="panel">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="qb-meta-label">Phase status</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Milestone Gates</p>
-            </div>
-            <AiWorkflowButton
-              active={generateMilestonesMutation.isPending}
-              disabled={generateMilestonesMutation.isPending || activeMilestones.length > 0}
-              label="Generate Milestones"
-              onClick={() => {
-                void generateMilestonesMutation.mutateAsync();
-              }}
-              runningLabel="Generating milestones..."
-            />
-          </div>
-          <div className="mt-4">
-            <PhaseGateChecklist phases={milestonePhases} />
-          </div>
-        </Card>
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_24rem]">
           <div className="grid gap-4">
             <Card surface="panel">
@@ -272,6 +347,28 @@ export const MilestonesPage = () => {
             </div>
           </div>
           <div className="grid gap-4">
+            {activeMilestoneDesignJob ? (
+              <Alert tone="info">
+                Milestone design doc generation is {activeMilestoneDesignJob.status}. The selected
+                milestone will refresh automatically when the job completes.
+              </Alert>
+            ) : null}
+            {!activeMilestoneDesignJob ? (
+              <LatestJobFailureAlert
+                currentVersionStillAvailable={Boolean(designDocsQuery.data?.designDocs[0])}
+                hint={
+                  latestFailedMilestoneDesignJob &&
+                  getJobErrorMessage(latestFailedMilestoneDesignJob)
+                    ? getDefaultJobFailureHint(
+                        getJobErrorMessage(latestFailedMilestoneDesignJob)!,
+                        "milestone design doc generation",
+                      )
+                    : null
+                }
+                job={latestFailedMilestoneDesignJob}
+                workflowLabel="Milestone design doc generation"
+              />
+            ) : null}
             <Card surface="rail">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -282,7 +379,7 @@ export const MilestonesPage = () => {
                 </div>
                 {selectedMilestone?.status === "approved" ? (
                   <AiWorkflowButton
-                    active={generateDesignMutation.isPending}
+                    active={milestoneDesignButtonActive}
                     label="Generate"
                     onClick={() => {
                       if (!selectedMilestone) {
@@ -291,6 +388,7 @@ export const MilestonesPage = () => {
                       void generateDesignMutation.mutateAsync();
                     }}
                     runningLabel="Generating..."
+                    disabled={milestoneDesignButtonActive}
                     variant="secondary"
                   />
                 ) : null}

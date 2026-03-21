@@ -200,6 +200,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Recent Jobs")).toBeTruthy();
+    expect(screen.queryByText("Pipeline map")).toBeNull();
   });
 
   it("orders mission control phases with user flows after the spec phases", async () => {
@@ -352,8 +353,326 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
-    expect(screen.getByText("Milestone Gates")).toBeTruthy();
+    expect(screen.queryByText("Milestone Gates")).toBeNull();
     expect(screen.getByText("Coverage check")).toBeTruthy();
+  });
+
+  it("tracks milestone generation jobs and surfaces failures", async () => {
+    const milestoneProjectId = "84848484-8484-4484-8484-848484848484";
+    let jobsResponse: { jobs: Job[] } = { jobs: [] };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const path = typeof input === "string" ? input : input.toString();
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-1",
+                projectId: milestoneProjectId,
+                title: "Approve roadmap",
+                userStory: "As a planner, I want milestones so I can sequence delivery.",
+                entryPoint: "Mission Control",
+                endState: "Milestones exist",
+                flowSteps: ["Open milestones", "Generate milestones"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Milestones are created."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 0,
+              uncoveredUserFlowIds: ["flow-1"],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => jobsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    jobsResponse = {
+      jobs: [
+        {
+          id: "job-milestones-running",
+          projectId: milestoneProjectId,
+          type: "GenerateMilestones",
+          status: "running",
+          inputs: {},
+          outputs: null,
+          error: null,
+          queuedAt: "2026-03-20T10:00:00.000Z",
+          startedAt: "2026-03-20T10:00:30.000Z",
+          completedAt: null,
+        },
+      ],
+    };
+    MockEventSource.emit("job:updated", {
+      jobId: "job-milestones-running",
+      projectId: milestoneProjectId,
+      status: "running",
+    });
+    expect(
+      await screen.findByText(
+        "Milestone generation is running. The page will refresh automatically when the job completes.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generating milestones..." })).toBeTruthy();
+
+    jobsResponse = {
+      jobs: [
+        {
+          id: "job-milestones-failed",
+          projectId: milestoneProjectId,
+          type: "GenerateMilestones",
+          status: "failed",
+          inputs: {},
+          outputs: null,
+          error: {
+            message: "GenerateMilestones returned invalid content. Expected a JSON array of milestones.",
+          },
+          queuedAt: "2026-03-20T10:00:00.000Z",
+          startedAt: "2026-03-20T10:00:30.000Z",
+          completedAt: "2026-03-20T10:01:00.000Z",
+        },
+      ],
+    };
+
+    MockEventSource.emit("job:updated", {
+      jobId: "job-milestones-failed",
+      projectId: milestoneProjectId,
+      status: "failed",
+    });
+
+    expect(await screen.findByText("Milestone generation failed.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "GenerateMilestones returned invalid content. Expected a JSON array of milestones.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
+  });
+
+  it("tracks milestone design doc jobs for the selected milestone and surfaces failures", async () => {
+    const milestoneProjectId = "85858585-8585-4585-8585-858585858585";
+    const milestoneId = "95959595-9595-4595-8595-959595959595";
+    let jobsResponse: { jobs: Job[] } = { jobs: [] };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const path = typeof input === "string" ? input : input.toString();
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-2",
+                projectId: milestoneProjectId,
+                title: "Ship first release",
+                userStory: "As a planner, I want a release milestone so delivery can start.",
+                entryPoint: "Milestones",
+                endState: "Milestone approved",
+                flowSteps: ["Open milestones", "Review design doc"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Design doc exists."],
+                doneCriteriaRefs: ["DC-2"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: milestoneId,
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Prepare the first releasable increment.",
+                status: "approved",
+                linkedUserFlows: [{ id: "flow-2", title: "Ship first release" }],
+                featureCount: 0,
+                approvedAt: "2026-03-20T10:00:00.000Z",
+                completedAt: null,
+                createdAt: "2026-03-20T09:45:00.000Z",
+                updatedAt: "2026-03-20T10:00:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => jobsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/milestones/${milestoneId}/design-docs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ designDocs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    jobsResponse = {
+      jobs: [
+        {
+          id: "job-design-running",
+          projectId: milestoneProjectId,
+          type: "GenerateMilestoneDesign",
+          status: "running",
+          inputs: { milestoneId },
+          outputs: null,
+          error: null,
+          queuedAt: "2026-03-20T11:00:00.000Z",
+          startedAt: "2026-03-20T11:00:30.000Z",
+          completedAt: null,
+        },
+      ],
+    };
+    MockEventSource.emit("job:updated", {
+      jobId: "job-design-running",
+      projectId: milestoneProjectId,
+      status: "running",
+    });
+    expect(
+      await screen.findByText(
+        "Milestone design doc generation is running. The selected milestone will refresh automatically when the job completes.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generating..." })).toBeTruthy();
+
+    jobsResponse = {
+      jobs: [
+        {
+          id: "job-design-failed",
+          projectId: milestoneProjectId,
+          type: "GenerateMilestoneDesign",
+          status: "failed",
+          inputs: { milestoneId },
+          outputs: null,
+          error: {
+            message: "GenerateMilestoneDesign requires an approved milestone.",
+          },
+          queuedAt: "2026-03-20T11:00:00.000Z",
+          startedAt: "2026-03-20T11:00:30.000Z",
+          completedAt: "2026-03-20T11:01:00.000Z",
+        },
+      ],
+    };
+
+    MockEventSource.emit("job:updated", {
+      jobId: "job-design-failed",
+      projectId: milestoneProjectId,
+      status: "failed",
+    });
+
+    expect(await screen.findByText("Milestone design doc generation failed.")).toBeTruthy();
+    expect(screen.getByText("GenerateMilestoneDesign requires an approved milestone.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate" })).toBeTruthy();
   });
 
   it("gates feature builder behind approved user flows and renders the catalogue once unlocked", async () => {
@@ -2859,7 +3178,9 @@ describe("workflow pages", () => {
       [`/api/projects/${specProjectId}/ux-spec/versions`]: {
         versions: [],
       },
-      [`/api/projects/${specProjectId}/artifact-approvals?artifactType=blueprint_ux&artifactId=${uxSpecId}`]: {
+      [`/api/projects/${specProjectId}/artifacts/blueprint_ux/${uxSpecId}/approval`]: {
+        artifactType: "blueprint_ux",
+        artifactId: uxSpecId,
         approval: null,
       },
       [`/api/projects/${specProjectId}/jobs`]: {
@@ -2901,6 +3222,350 @@ describe("workflow pages", () => {
     await waitFor(() => {
       expect(screen.queryByText("UX Spec generation failed.")).toBeNull();
     });
+  });
+
+  it("approves the UX spec without a confirmation dialog and navigates to Technical Spec", async () => {
+    const specProjectId = "83838383-8383-4383-8383-838383838383";
+    const uxSpecId = "73737373-7373-4373-8373-737373737373";
+    let approvalState = {
+      artifactType: "blueprint_ux",
+      artifactId: uxSpecId,
+      approval: null as null | { approvedAt: string },
+    };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: specProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: specProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/decision-tiles`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            cards: [
+              {
+                id: "decision-1",
+                projectId: specProjectId,
+                kind: "ux",
+                key: "layout",
+                category: "navigation",
+                title: "Primary navigation",
+                prompt: "Choose the primary navigation approach.",
+                recommendation: {
+                  id: "sidebar",
+                  label: "Sidebar",
+                  description: "Persistent section switching.",
+                },
+                alternatives: [],
+                selectedOptionId: "sidebar",
+                customSelection: null,
+                acceptedAt: "2026-03-20T10:00:00.000Z",
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T10:00:00.000Z",
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            blueprint: {
+              id: uxSpecId,
+              projectId: specProjectId,
+              kind: "ux",
+              version: 1,
+              title: "UX Spec",
+              markdown: "# UX Spec",
+              source: "GenerateProjectBlueprint",
+              isCanonical: true,
+              createdAt: "2026-03-20T10:00:00.000Z",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/ux-spec/versions`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/artifacts/blueprint_ux/${uxSpecId}/approval`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => approvalState,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/artifacts/blueprint_ux/${uxSpecId}/approve`) {
+        approvalState = {
+          ...approvalState,
+          approval: {
+            approvedAt: "2026-03-20T10:05:00.000Z",
+          },
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            artifactType: "blueprint_ux",
+            artifactId: uxSpecId,
+            approvedAt: "2026-03-20T10:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id/ux-spec", element: <UxSpecPage /> },
+        { path: "/projects/:id/technical-spec", element: <div>Technical page</div> },
+      ],
+      {
+        initialEntries: [`/projects/${specProjectId}/ux-spec`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const approveButton = await screen.findByRole("button", { name: "Approve UX Spec" });
+    await waitFor(() => {
+      expect(approveButton.hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.queryByText("Confirm transition")).toBeNull();
+
+    fireEvent.click(approveButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/projects/${specProjectId}/artifacts/blueprint_ux/${uxSpecId}/approve`,
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/projects/${specProjectId}/artifacts/blueprint_ux/${uxSpecId}/approval`,
+        expect.anything(),
+      );
+    });
+    expect(await screen.findByText("Technical page")).toBeTruthy();
+    expect(screen.queryByText("Confirm transition")).toBeNull();
+  });
+
+  it("approves the Technical Spec without a confirmation dialog and navigates to User Flows", async () => {
+    const specProjectId = "82828282-8282-4282-8282-828282828282";
+    const technicalSpecId = "72727272-7272-4272-8272-727272727272";
+    let approvalState = {
+      artifactType: "blueprint_tech",
+      artifactId: technicalSpecId,
+      approval: null as null | { approvedAt: string },
+    };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: specProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: specProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/technical-spec/decision-tiles`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            cards: [
+              {
+                id: "decision-2",
+                projectId: specProjectId,
+                kind: "tech",
+                key: "api",
+                category: "api",
+                title: "API shape",
+                prompt: "Choose the primary API shape.",
+                recommendation: {
+                  id: "rest",
+                  label: "REST",
+                  description: "Straightforward server contracts.",
+                },
+                alternatives: [],
+                selectedOptionId: "rest",
+                customSelection: null,
+                acceptedAt: "2026-03-20T10:00:00.000Z",
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T10:00:00.000Z",
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/technical-spec`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            blueprint: {
+              id: technicalSpecId,
+              projectId: specProjectId,
+              kind: "tech",
+              version: 1,
+              title: "Technical Spec",
+              markdown: "# Technical Spec",
+              source: "GenerateProjectBlueprint",
+              isCanonical: true,
+              createdAt: "2026-03-20T10:00:00.000Z",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/technical-spec/versions`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approval`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => approvalState,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approve`) {
+        approvalState = {
+          ...approvalState,
+          approval: {
+            approvedAt: "2026-03-20T10:05:00.000Z",
+          },
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            artifactType: "blueprint_tech",
+            artifactId: technicalSpecId,
+            approvedAt: "2026-03-20T10:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [
+        { path: "/projects/:id/technical-spec", element: <TechnicalSpecPage /> },
+        { path: "/projects/:id/user-flows", element: <div>User Flows page</div> },
+      ],
+      {
+        initialEntries: [`/projects/${specProjectId}/technical-spec`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const approveButton = await screen.findByRole("button", { name: "Approve Technical Spec" });
+    await waitFor(() => {
+      expect(approveButton.hasAttribute("disabled")).toBe(false);
+    });
+    expect(screen.queryByText("Confirm transition")).toBeNull();
+
+    fireEvent.click(approveButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approve`,
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/projects/${specProjectId}/artifacts/blueprint_tech/${technicalSpecId}/approval`,
+        expect.anything(),
+      );
+    });
+    expect(await screen.findByText("User Flows page")).toBeTruthy();
+    expect(screen.queryByText("Confirm transition")).toBeNull();
   });
 
   it("minimizes Technical decisions once a spec exists and allows direct approval without review UI", async () => {

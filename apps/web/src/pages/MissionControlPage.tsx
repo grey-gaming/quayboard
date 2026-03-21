@@ -5,7 +5,6 @@ import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
 import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
-import { StateMachineVisualizer } from "../components/workflow/StateMachineVisualizer.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Card } from "../components/ui/Card.js";
 import {
@@ -103,18 +102,6 @@ export const MissionControlPage = () => {
                   No next actions are queued for this project yet.
                 </div>
               ) : null}
-            </div>
-          </Card>
-          <Card surface="panel">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Pipeline map</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">State Machine</p>
-              </div>
-              <Badge tone="info">live</Badge>
-            </div>
-            <div className="mt-4">
-              <StateMachineVisualizer phases={phases} />
             </div>
           </Card>
           <Card surface="panel">
