@@ -1,5 +1,7 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
+import type { FeatureService } from "./feature-service.js";
+import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
@@ -9,6 +11,8 @@ import type { UserFlowService } from "./user-flow-service.js";
 export const createPhaseGateService = (
   artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
+  featureService: FeatureService,
+  milestoneService: MilestoneService,
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
   projectSetupService: ProjectSetupService,
@@ -76,6 +80,16 @@ export const createPhaseGateService = (
     const uxApproved = Boolean(uxState?.approval);
     const techApproved = Boolean(techState?.approval);
     const userFlowsPassed = techApproved && Boolean(userFlows.approvedAt);
+    const [milestones, features] = await Promise.all([
+      userFlowsPassed
+        ? milestoneService.list(ownerUserId, projectId)
+        : Promise.resolve({ milestones: [], coverage: { approvedUserFlowCount: 0, coveredUserFlowCount: 0, uncoveredUserFlowIds: [] } }),
+      userFlowsPassed
+        ? featureService.list(ownerUserId, projectId)
+        : Promise.resolve({ features: [] }),
+    ]);
+    const hasApprovedMilestone = milestones.milestones.some((milestone) => milestone.status === "approved");
+    const hasFeatures = features.features.length > 0;
 
     return {
       phases: [
@@ -234,6 +248,43 @@ export const createPhaseGateService = (
               key: "flows_approved",
               label: "User flows approved",
               passed: Boolean(userFlows.approvedAt),
+            },
+          ],
+        },
+        {
+          phase: "Milestones",
+          passed: userFlowsPassed && hasApprovedMilestone,
+          items: [
+            {
+              key: "user_flows_approved",
+              label: "User flows approved",
+              passed: userFlowsPassed,
+            },
+            {
+              key: "milestones_exist",
+              label: "At least one milestone exists",
+              passed: milestones.milestones.length > 0,
+            },
+            {
+              key: "milestone_approved",
+              label: "At least one milestone approved",
+              passed: hasApprovedMilestone,
+            },
+          ],
+        },
+        {
+          phase: "Features",
+          passed: hasApprovedMilestone && hasFeatures,
+          items: [
+            {
+              key: "milestone_approved",
+              label: "At least one milestone approved",
+              passed: hasApprovedMilestone,
+            },
+            {
+              key: "features_exist",
+              label: "At least one active feature exists",
+              passed: hasFeatures,
             },
           ],
         },

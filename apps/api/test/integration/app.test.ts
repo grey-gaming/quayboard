@@ -211,9 +211,231 @@ describe("API integration", () => {
     return spec;
   };
 
+  const registerAndSeedMilestoneProject = async () => {
+    const seeded = await registerAndSeedBlueprintProject();
+    await approveSpecArtifact(seeded.ownerUserId, seeded.projectId, {
+      kind: "ux",
+      markdown: "# UX Spec\n\nApproved UX scope.",
+      title: "UX Spec",
+    });
+    await approveSpecArtifact(seeded.ownerUserId, seeded.projectId, {
+      kind: "tech",
+      markdown: "# Technical Spec\n\nApproved technical scope.",
+      title: "Technical Spec",
+    });
+
+    const flow = await appServices.services.userFlowService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Plan delivery milestones",
+        userStory: "As a planner, I want a releasable roadmap so implementation can start.",
+        entryPoint: "Mission Control",
+        endState: "The project has approved milestones and features.",
+        flowSteps: ["Review approved specs", "Create milestones", "Approve the roadmap"],
+        coverageTags: ["happy-path", "onboarding"],
+        acceptanceCriteria: ["Milestones cover the core delivery path."],
+        doneCriteriaRefs: ["DC-M4-1"],
+        source: "ManualSave",
+      },
+    );
+
+    await appServices.services.userFlowService.approve(seeded.ownerUserId, seeded.projectId, {
+      acceptedWarnings: [],
+    });
+
+    return {
+      ...seeded,
+      flow,
+    };
+  };
+
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
+  });
+
+  it("creates milestones, features, dependencies, graph nodes, and rollups for milestone planning", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+
+    const createMilestoneResponse = await server.inject({
+      method: "POST",
+      url: `/api/projects/${seeded.projectId}/milestones`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        title: "Foundations",
+        summary: "Establish the first releasable increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    });
+
+    expect(createMilestoneResponse.statusCode).toBe(200);
+    expect(createMilestoneResponse.json().status).toBe("draft");
+
+    const milestoneId = createMilestoneResponse.json().id as string;
+
+    const approveMilestoneResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestoneId}`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: { action: "approve" },
+    });
+
+    expect(approveMilestoneResponse.statusCode).toBe(200);
+    expect(approveMilestoneResponse.json().status).toBe("approved");
+
+    const createFirstFeatureResponse = await server.inject({
+      method: "POST",
+      url: `/api/projects/${seeded.projectId}/features`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        milestoneId,
+        kind: "screen",
+        priority: "must_have",
+        title: "Planning dashboard",
+        summary: "Show the roadmap and milestone coverage.",
+        acceptanceCriteria: ["Displays approved milestones", "Shows journey coverage"],
+      },
+    });
+
+    expect(createFirstFeatureResponse.statusCode).toBe(200);
+    expect(createFirstFeatureResponse.json().featureKey).toBe("F-001");
+
+    const createSecondFeatureResponse = await server.inject({
+      method: "POST",
+      url: `/api/projects/${seeded.projectId}/features`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        milestoneId,
+        kind: "service",
+        priority: "should_have",
+        title: "Milestone planner service",
+        summary: "Coordinate milestone generation and ordering.",
+        acceptanceCriteria: ["Persists approved milestones"],
+      },
+    });
+
+    expect(createSecondFeatureResponse.statusCode).toBe(200);
+
+    const firstFeatureId = createFirstFeatureResponse.json().id as string;
+    const secondFeatureId = createSecondFeatureResponse.json().id as string;
+
+    const dependencyResponse = await server.inject({
+      method: "POST",
+      url: `/api/features/${firstFeatureId}/dependencies`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        dependsOnFeatureId: secondFeatureId,
+      },
+    });
+
+    expect(dependencyResponse.statusCode).toBe(200);
+    expect(dependencyResponse.json()).toEqual({
+      dependencies: [{ featureId: firstFeatureId, dependsOnFeatureId: secondFeatureId }],
+    });
+
+    const graphResponse = await server.inject({
+      method: "GET",
+      url: `/api/projects/${seeded.projectId}/features/graph`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(graphResponse.statusCode).toBe(200);
+    expect(graphResponse.json()).toMatchObject({
+      nodes: [
+        { featureId: firstFeatureId, title: "Planning dashboard" },
+        { featureId: secondFeatureId, title: "Milestone planner service" },
+      ],
+      edges: [
+        {
+          featureId: firstFeatureId,
+          dependsOnFeatureId: secondFeatureId,
+          type: "depends_on",
+        },
+      ],
+    });
+
+    const rollupResponse = await server.inject({
+      method: "GET",
+      url: `/api/projects/${seeded.projectId}/features/rollup`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(rollupResponse.statusCode).toBe(200);
+    expect(rollupResponse.json()).toMatchObject({
+      totals: {
+        active: 2,
+        archived: 0,
+      },
+    });
+
+    expect(rollupResponse.json().byPriority).toEqual(
+      expect.arrayContaining([
+        { key: "must_have", count: 1 },
+        { key: "should_have", count: 1 },
+      ]),
+    );
+  });
+
+  it("approves the canonical milestone design document through the API", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone alpha",
+        summary: "The first approved increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const designDoc = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone alpha design",
+      markdown: "# Milestone alpha\n\nDesign details.",
+      source: "ManualSave",
+    });
+
+    const approvalResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestone.id}/design-docs/${designDoc.id}/approve`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(approvalResponse.statusCode).toBe(200);
+    expect(approvalResponse.json()).toMatchObject({
+      id: designDoc.id,
+      milestoneId: milestone.id,
+      approval: {
+        artifactId: designDoc.id,
+        artifactType: "milestone_design_doc",
+        projectId: seeded.projectId,
+      },
+    });
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          id: designDoc.id,
+          title: "Milestone alpha design",
+          approval: {
+            artifactId: designDoc.id,
+            artifactType: "milestone_design_doc",
+          },
+        },
+      ],
+    });
   });
 
   it("cancels running jobs that were interrupted by a server restart", async () => {

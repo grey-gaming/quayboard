@@ -8,14 +8,24 @@ import {
 } from "@quayboard/shared";
 
 import type { AppDatabase } from "../db/client.js";
-import { artifactApprovalsTable } from "../db/schema.js";
+import { artifactApprovalsTable, milestoneDesignDocsTable } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import { type MilestoneService } from "./milestone-service.js";
 import { type BlueprintService } from "./blueprint-service.js";
 import { type ProductSpecService } from "./product-spec-service.js";
 
-const artifactTypeToBlueprintKind = (artifactType: ArtifactType): BlueprintKind =>
-  artifactType === "blueprint_ux" ? "ux" : "tech";
+const artifactTypeToBlueprintKind = (artifactType: ArtifactType): BlueprintKind | null => {
+  if (artifactType === "blueprint_ux") {
+    return "ux";
+  }
+
+  if (artifactType === "blueprint_tech") {
+    return "tech";
+  }
+
+  return null;
+};
 
 const toApproval = (record: typeof artifactApprovalsTable.$inferSelect) =>
   artifactApprovalSchema.parse({
@@ -30,6 +40,7 @@ const toApproval = (record: typeof artifactApprovalsTable.$inferSelect) =>
 export const createArtifactApprovalService = (
   db: AppDatabase,
   blueprintService: BlueprintService,
+  milestoneService: MilestoneService,
   productSpecService: ProductSpecService,
 ) => ({
   async getApproval(projectId: string, artifactType: ArtifactType, artifactId: string) {
@@ -58,7 +69,9 @@ export const createArtifactApprovalService = (
 
   async approve(ownerUserId: string, projectId: string, artifactType: ArtifactType, artifactId: string) {
     const kind = artifactTypeToBlueprintKind(artifactType);
-    await blueprintService.assertCanonicalBlueprint(ownerUserId, projectId, kind, artifactId);
+    if (kind) {
+      await blueprintService.assertCanonicalBlueprint(ownerUserId, projectId, kind, artifactId);
+    }
 
     if (artifactType === "blueprint_ux") {
       const productSpec = await productSpecService.getCanonical(ownerUserId, projectId);
@@ -70,7 +83,7 @@ export const createArtifactApprovalService = (
           "Approve the Product Spec before approving the UX Spec.",
         );
       }
-    } else {
+    } else if (artifactType === "blueprint_tech") {
       const uxSpec = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux");
 
       if (!uxSpec) {
@@ -89,6 +102,33 @@ export const createArtifactApprovalService = (
           "Approve the UX Spec before approving the Technical Spec.",
         );
       }
+    } else {
+      const designDocs = await db.query.milestoneDesignDocsTable.findFirst({
+        where: eq(milestoneDesignDocsTable.id, artifactId),
+      });
+
+      if (!designDocs) {
+        throw new HttpError(
+          404,
+          "milestone_design_doc_not_found",
+          "Milestone design document not found.",
+        );
+      }
+
+      const milestone = await milestoneService.getContext(ownerUserId, designDocs.milestoneId);
+      if (milestone.status !== "approved") {
+        throw new HttpError(
+          409,
+          "milestone_approval_required",
+          "Approve the milestone before approving its design document.",
+        );
+      }
+
+      await milestoneService.assertCanonicalDesignDoc(
+        ownerUserId,
+        designDocs.milestoneId,
+        artifactId,
+      );
     }
 
     const existingApproval = await this.getApproval(projectId, artifactType, artifactId);

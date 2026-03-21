@@ -2,50 +2,47 @@
 
 ## Status
 
-M3: UX and Technical Spec Builder
+M4: Milestones and Feature Builder
 
-This milestone is complete.
-
-There is no new active implementation target yet. Work beyond M3 requires an explicit request.
+This milestone is the active implementation target.
 
 ## Goal
 
-Deliver the post-product-spec planning workflow on top of the completed M2 planning workflow: UX decision tiles, UX Spec generation or manual save, Technical decision tiles, Technical Spec generation or manual save, direct spec approval, User Flows generation and approval, and Mission Control updates.
+Deliver the post-blueprint planning workflow on top of the completed M3 planning pipeline: milestone planning, milestone design docs, feature catalogue management, dependency graphing, and Mission Control updates for the new milestone and feature gates.
 
 ## In Scope
 
-- `decision_cards`, `project_blueprints`, and `artifact_approvals` schema additions, plus cleanup of obsolete blueprint review tables
-- Kind-specific decision-tile generation from approved planning artifacts, with persisted option or custom selections plus explicit decision acceptance
-- UX and Technical Spec generation from the accepted decision tiles, plus manual-save support for direct authoring and version history
-- UX/Technical Spec approval records and direct approval flow after generation or manual save
-- UX Spec, Technical Spec, and User Flows phase gates plus Mission Control next-action updates
-- Shared schemas, API client contracts, and UI routes for UX Spec, Technical Spec, and artifact approval
-- User-facing and architecture docs that describe the M3 repo reality
+- `milestones`, `milestone_use_cases`, `milestone_design_docs`, `feature_cases`, `feature_revisions`, `feature_dependencies`, and `feature_edges` schema additions
+- milestone CRUD, lifecycle transitions, approved-user-flow coverage tracking, and milestone design doc approval
+- `GenerateMilestones`, `GenerateMilestoneDesign`, and `AppendFeatureFromOnePager` job support with explicit validation before persistence
+- feature CRUD, revision history, dependency wiring, project-scoped graph reads, and feature rollups
+- Mission Control phase-gate and next-action updates for Milestones and Features
+- frontend routes for `/projects/:id/milestones` and `/projects/:id/features`, including the milestone design doc panel, feature intake drawer, dependency graph, and approved-user-flows gate
+- user-facing and architecture docs that describe the M4 repo reality
 
 ## Out Of Scope
 
-- import workflow execution beyond the future-release stub page
-- milestone, feature, documentation, bug, and sandbox execution workflows
+- feature workstream editors (`/projects/:id/features/:fid`) and standalone task planning
+- feature-level product, UX, tech, user-doc, and architecture-doc specification workflows
+- bug report workflows, milestone execution sessions, or sandbox implementation runs
+- generic graph editing beyond direct `depends_on` dependencies
+- manual milestone design doc editing
 - OAuth, RBAC, API keys, or other M12 auth extensions
-- Anthropic provider support
-- full tool-policy enforcement and tool audit tables
-- sandbox execution, PR creation, or evidence bundle generation
-- generic artifact workflow support beyond blueprint artifacts
 
 ## Acceptance Criteria
 
 The milestone is complete when the repo can support the following:
 
-- A user with an approved Product Spec can queue UX decision tiles, select options, accept them, and then generate or manually save the UX Spec
-- Technical decision tiles and the Technical Spec remain locked until the UX Spec is approved
-- User Flows remain locked until the Technical Spec is approved
-- Decision selections persist, support custom choices, require explicit acceptance before generation, and invalidate stale canonical specs when the decision set changes
-- A user can generate or manually save both UX and Technical Specs through the API/UI and restore older versions
-- A UX or Technical Spec can be approved directly after generation or manual save, and approval writes an `artifact_approvals` record for the canonical spec revision
-- Mission Control includes separate UX Spec, Technical Spec, and User Flows phases plus workflow-specific next actions
-- Shared schema imports resolve across the workspace without TypeScript errors
+- A user with approved user flows can create milestones manually and queue milestone generation
+- Milestones store linked user-flow coverage, enforce `draft -> approved -> completed`, and expose coverage summary in the API/UI
+- A design document can be generated for an approved milestone and approved independently through `artifact_approvals`
+- A user can create and revise features only against approved milestones
+- Features can be seeded from the approved overview document through the append job
+- Feature dependencies remain acyclic and are exposed through project-scoped graph and rollup endpoints
+- Mission Control includes Milestones and Features phases, plus next actions that reflect the new planning state
+- The Milestones and Feature Builder pages stay gated behind approved user flows
 - `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
-- Architecture and user docs describe the M3 repo behavior
+- Architecture and user docs describe the M4 repo behavior
 
 ## Relevant ADRs
 
@@ -54,8 +51,8 @@ The milestone is complete when the repo can support the following:
 
 ## Working Rules
 
-- Keep the import path as an explicit stub page rather than partial execution.
-- Use project-scoped settings and secrets for setup state; do not introduce user-level or system-level PAT/API-key defaults.
-- Limit the artifact workflow implementation to `blueprint_ux` and `blueprint_tech` in M3.
-- Keep OAuth, full tool-policy enforcement, and sandbox execution deferred to their later milestones.
+- Keep milestone planning tied to approved user flows; do not introduce detached roadmap objects.
+- Keep feature dependencies limited to direct `depends_on` links in M4; richer edge editing remains later-milestone work.
+- Use `artifact_approvals` for milestone design doc approvals rather than inventing a new review table.
+- Do not add the M5 Feature Editor, feature task routes, or later-milestone documentation workflows in production code.
 - If implementation needs to deviate from the outline’s cookie-session, SSE, or project-scoped secret model, capture that in an ADR first.

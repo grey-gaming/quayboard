@@ -10,6 +10,9 @@ import { OverviewApprovalGate } from "../src/components/layout/OverviewApprovalG
 import { ProductSpecApprovalGate } from "../src/components/layout/ProductSpecApprovalGate.js";
 import { SetupCompletionGate } from "../src/components/layout/SetupCompletionGate.js";
 import { TechnicalSpecApprovalGate } from "../src/components/layout/TechnicalSpecApprovalGate.js";
+import { UserFlowsApprovalGate } from "../src/components/layout/UserFlowsApprovalGate.js";
+import { FeatureBuilderPage } from "../src/pages/FeatureBuilderPage.js";
+import { MilestonesPage } from "../src/pages/MilestonesPage.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
@@ -103,6 +106,8 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/projects/:id/user-flows", <div />],
     ["/projects/:id/ux-spec", <div />],
     ["/projects/:id/technical-spec", <div />],
+    ["/projects/:id/milestones", <div />],
+    ["/projects/:id/features", <div />],
     ["/projects/:id/import", <div />],
   ]);
   routeEntries.set(path, element);
@@ -248,6 +253,366 @@ describe("workflow pages", () => {
       "Technical Spec",
       "User Flows",
     ]);
+  });
+
+  it("renders milestone planning with design-doc approval controls", async () => {
+    const milestoneProjectId = "92929292-9292-4292-8292-929292929292";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${milestoneProjectId}`]: {
+        id: milestoneProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: milestoneProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${milestoneProjectId}/phase-gates`]: {
+        phases: [
+          {
+            phase: "Milestones",
+            passed: false,
+            items: [{ key: "approved-user-flows", label: "Approved user flows", passed: true }],
+          },
+          {
+            phase: "Features",
+            passed: false,
+            items: [{ key: "approved-milestone", label: "Approved milestone exists", passed: true }],
+          },
+        ],
+      },
+      [`/api/projects/${milestoneProjectId}/user-flows`]: {
+        userFlows: [
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            projectId: milestoneProjectId,
+            title: "Plan delivery milestones",
+            userStory: "As a planner, I want a roadmap so delivery can start.",
+            entryPoint: "Mission Control",
+            endState: "The roadmap is approved.",
+            flowSteps: ["Open Mission Control", "Create milestones"],
+            coverageTags: ["happy-path", "onboarding"],
+            acceptanceCriteria: ["A first increment exists."],
+            doneCriteriaRefs: ["DC-1"],
+            source: "ManualSave",
+            archivedAt: null,
+            createdAt: "2026-03-16T10:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          },
+        ],
+        coverage: { warnings: [], acceptedWarnings: [] },
+        approvedAt: "2026-03-16T10:01:00.000Z",
+      } satisfies UseCaseListResponse,
+      [`/api/projects/${milestoneProjectId}/milestones`]: {
+        milestones: [
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            projectId: milestoneProjectId,
+            position: 1,
+            title: "Foundations",
+            summary: "Establish the first releasable increment.",
+            status: "approved",
+            linkedUserFlows: [
+              { id: "11111111-1111-4111-8111-111111111111", title: "Plan delivery milestones" },
+            ],
+            featureCount: 2,
+            approvedAt: "2026-03-16T10:02:00.000Z",
+            completedAt: null,
+            createdAt: "2026-03-16T10:00:00.000Z",
+            updatedAt: "2026-03-16T10:02:00.000Z",
+          },
+        ],
+        coverage: {
+          approvedUserFlowCount: 1,
+          coveredUserFlowCount: 1,
+          uncoveredUserFlowIds: [],
+        },
+      },
+      "/api/milestones/22222222-2222-4222-8222-222222222222/design-docs": {
+        designDocs: [
+          {
+            id: "33333333-3333-4333-8333-333333333333",
+            milestoneId: "22222222-2222-4222-8222-222222222222",
+            version: 1,
+            title: "Foundations design",
+            markdown: "# Foundations\n\nRoadmap details.",
+            source: "GenerateMilestoneDesign",
+            isCanonical: true,
+            createdAt: "2026-03-16T10:03:00.000Z",
+            approval: null,
+          },
+        ],
+      },
+    });
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
+    expect(screen.getByText("Milestone Gates")).toBeTruthy();
+    expect(screen.getByText("Coverage check")).toBeTruthy();
+  });
+
+  it("gates feature builder behind approved user flows and renders the catalogue once unlocked", async () => {
+    const featureProjectId = "93939393-9393-4393-8393-939393939393";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: featureProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: featureProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "44444444-4444-4444-8444-444444444444",
+                projectId: featureProjectId,
+                title: "Plan delivery milestones",
+                userStory: "As a planner, I want a roadmap so delivery can start.",
+                entryPoint: "Mission Control",
+                endState: "The roadmap is approved.",
+                flowSteps: ["Open Mission Control", "Create milestones"],
+                coverageTags: ["happy-path", "onboarding"],
+                acceptanceCriteria: ["A first increment exists."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: method === "GET" ? "2026-03-16T10:01:00.000Z" : null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: "55555555-5555-4555-8555-555555555555",
+                projectId: featureProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Establish the first releasable increment.",
+                status: "approved",
+                linkedUserFlows: [
+                  { id: "44444444-4444-4444-8444-444444444444", title: "Plan delivery milestones" },
+                ],
+                featureCount: 2,
+                approvedAt: "2026-03-16T10:02:00.000Z",
+                completedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:02:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}/features`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            features: [
+              {
+                id: "66666666-6666-4666-8666-666666666666",
+                projectId: featureProjectId,
+                milestoneId: "55555555-5555-4555-8555-555555555555",
+                milestoneTitle: "Foundations",
+                featureKey: "F-001",
+                kind: "screen",
+                priority: "must_have",
+                status: "draft",
+                headRevision: {
+                  id: "77777777-7777-4777-8777-777777777777",
+                  featureId: "66666666-6666-4666-8666-666666666666",
+                  version: 1,
+                  title: "Planning dashboard",
+                  summary: "Show roadmap and coverage.",
+                  acceptanceCriteria: ["Shows milestones"],
+                  source: "ManualSave",
+                  createdAt: "2026-03-16T10:03:00.000Z",
+                },
+                dependencyIds: ["88888888-8888-4888-8888-888888888888"],
+                createdAt: "2026-03-16T10:03:00.000Z",
+                updatedAt: "2026-03-16T10:03:00.000Z",
+                archivedAt: null,
+              },
+              {
+                id: "88888888-8888-4888-8888-888888888888",
+                projectId: featureProjectId,
+                milestoneId: "55555555-5555-4555-8555-555555555555",
+                milestoneTitle: "Foundations",
+                featureKey: "F-002",
+                kind: "service",
+                priority: "should_have",
+                status: "approved",
+                headRevision: {
+                  id: "99999999-9999-4999-8999-999999999999",
+                  featureId: "88888888-8888-4888-8888-888888888888",
+                  version: 1,
+                  title: "Milestone planner service",
+                  summary: "Persist roadmap state.",
+                  acceptanceCriteria: ["Stores milestones"],
+                  source: "ManualSave",
+                  createdAt: "2026-03-16T10:03:00.000Z",
+                },
+                dependencyIds: [],
+                createdAt: "2026-03-16T10:03:00.000Z",
+                updatedAt: "2026-03-16T10:03:00.000Z",
+                archivedAt: null,
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}/features/graph`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            nodes: [
+              {
+                featureId: "66666666-6666-4666-8666-666666666666",
+                featureKey: "F-001",
+                milestoneId: "55555555-5555-4555-8555-555555555555",
+                title: "Planning dashboard",
+                milestoneTitle: "Foundations",
+                kind: "screen",
+                priority: "must_have",
+                status: "draft",
+              },
+              {
+                featureId: "88888888-8888-4888-8888-888888888888",
+                featureKey: "F-002",
+                milestoneId: "55555555-5555-4555-8555-555555555555",
+                title: "Milestone planner service",
+                milestoneTitle: "Foundations",
+                kind: "service",
+                priority: "should_have",
+                status: "approved",
+              },
+            ],
+            edges: [
+              {
+                featureId: "66666666-6666-4666-8666-666666666666",
+                dependsOnFeatureId: "88888888-8888-4888-8888-888888888888",
+                type: "depends_on",
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${featureProjectId}/features/rollup`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            totals: { active: 2, archived: 0 },
+            byPriority: [
+              { key: "must_have", count: 1 },
+              { key: "should_have", count: 1 },
+            ],
+            byStatus: [
+              { key: "draft", count: 1 },
+              { key: "approved", count: 1 },
+            ],
+            byKind: [
+              { key: "screen", count: 1 },
+              { key: "service", count: 1 },
+            ],
+            byMilestone: [
+              {
+                milestoneId: "55555555-5555-4555-8555-555555555555",
+                milestoneTitle: "Foundations",
+                count: 2,
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/features/66666666-6666-4666-8666-666666666666` && method === "PATCH") {
+        return { ok: true, status: 200, json: async () => ({}) } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const router = createMemoryRouter(
+      [
+        { path: "/", element: <div /> },
+        { path: "/docs", element: <div /> },
+        { path: "/settings", element: <div /> },
+        { path: "/projects/:id", element: <div /> },
+        { path: "/projects/:id/setup", element: <div /> },
+        { path: "/projects/:id/questions", element: <div /> },
+        { path: "/projects/:id/one-pager", element: <div /> },
+        { path: "/projects/:id/product-spec", element: <div /> },
+        { path: "/projects/:id/user-flows", element: <div>User Flows Page</div> },
+        { path: "/projects/:id/ux-spec", element: <div /> },
+        { path: "/projects/:id/technical-spec", element: <div /> },
+        {
+          path: "/projects/:id",
+          element: <UserFlowsApprovalGate />,
+          children: [{ path: "features", element: <FeatureBuilderPage /> }],
+        },
+      ],
+      {
+        initialEntries: [`/projects/${featureProjectId}/features`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Feature Builder" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New feature" })).toBeTruthy();
+    expect(screen.getByText("Dependency graph")).toBeTruthy();
+    expect(screen.getByText("Wire dependency")).toBeTruthy();
   });
 
   it("renders the questionnaire page and autosaves answers", async () => {

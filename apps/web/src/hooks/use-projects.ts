@@ -192,6 +192,37 @@ export const useProjectJobsQuery = (projectId: string) =>
     refetchInterval: 5_000,
   });
 
+export const useMilestonesQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "milestones"],
+    queryFn: () => api.getMilestones(projectId),
+  });
+
+export const useMilestoneDesignDocsQuery = (milestoneId?: string | null) =>
+  useQuery({
+    enabled: Boolean(milestoneId),
+    queryKey: ["milestone", milestoneId, "design-docs"],
+    queryFn: () => api.getMilestoneDesignDocs(milestoneId!),
+  });
+
+export const useFeaturesQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "features"],
+    queryFn: () => api.getFeatures(projectId),
+  });
+
+export const useFeatureGraphQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "features-graph"],
+    queryFn: () => api.getFeatureGraph(projectId),
+  });
+
+export const useFeatureRollupQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "features-rollup"],
+    queryFn: () => api.getFeatureRollup(projectId),
+  });
+
 export const useUpdateProjectMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
@@ -630,6 +661,212 @@ export const useApproveArtifactMutation = (projectId: string) => {
       api.approveArtifact(projectId, artifactType, artifactId),
     onSuccess: () => {
       void invalidateProjectSpecQueries(queryClient, projectId);
+    },
+  });
+};
+
+const invalidateMilestoneFeatureQueries = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: string,
+  milestoneId?: string | null,
+) =>
+  Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "milestones"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "features"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "features-graph"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "features-rollup"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "phase-gates"] }),
+    queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+    ...(milestoneId
+      ? [queryClient.invalidateQueries({ queryKey: ["milestone", milestoneId, "design-docs"] })]
+      : []),
+  ]);
+
+export const useCreateMilestoneMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof api.createMilestone>[1]) =>
+      api.createMilestone(projectId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useUpdateMilestoneMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      milestoneId,
+      payload,
+    }: {
+      milestoneId: string;
+      payload: Parameters<typeof api.updateMilestone>[1];
+    }) => api.updateMilestone(milestoneId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useTransitionMilestoneMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      milestoneId,
+      action,
+    }: {
+      milestoneId: string;
+      action: "approve" | "complete";
+    }) => api.transitionMilestone(milestoneId, action),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useGenerateMilestonesMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.generateMilestones(projectId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useGenerateMilestoneDesignMutation = (
+  projectId: string,
+  milestoneId: string,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.generateMilestoneDesignDoc(milestoneId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
+    },
+  });
+};
+
+export const useApproveMilestoneDesignMutation = (
+  projectId: string,
+  milestoneId: string,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (revisionId: string) => api.approveMilestoneDesignDoc(milestoneId, revisionId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
+    },
+  });
+};
+
+export const useCreateFeatureMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof api.createFeature>[1]) =>
+      api.createFeature(projectId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useAppendFeaturesFromOnePagerMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: Parameters<typeof api.appendFeaturesFromOnePager>[1]) =>
+      api.appendFeaturesFromOnePager(projectId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useUpdateFeatureMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      payload,
+    }: {
+      featureId: string;
+      payload: Parameters<typeof api.updateFeature>[1];
+    }) => api.updateFeature(featureId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useArchiveFeatureMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (featureId: string) => api.archiveFeature(featureId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useCreateFeatureRevisionMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      payload,
+    }: {
+      featureId: string;
+      payload: Parameters<typeof api.createFeatureRevision>[1];
+    }) => api.createFeatureRevision(featureId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useAddFeatureDependencyMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      payload,
+    }: {
+      featureId: string;
+      payload: Parameters<typeof api.addFeatureDependency>[1];
+    }) => api.addFeatureDependency(featureId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useRemoveFeatureDependencyMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      dependsOnFeatureId,
+    }: {
+      featureId: string;
+      dependsOnFeatureId: string;
+    }) => api.removeFeatureDependency(featureId, dependsOnFeatureId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
     },
   });
 };

@@ -9,6 +9,11 @@ type JobUpdatedEventPayload = {
   status?: string;
 };
 
+type ProjectUpdatedEventPayload = {
+  projectId?: string;
+  resource?: "feature" | "milestone" | "phase_gates";
+};
+
 const isJobUpdatedEventPayload = (value: unknown): value is JobUpdatedEventPayload => {
   if (!value || typeof value !== "object") {
     return false;
@@ -21,6 +26,22 @@ const isJobUpdatedEventPayload = (value: unknown): value is JobUpdatedEventPaylo
       ? candidate.projectId === null || typeof candidate.projectId === "string"
       : true) &&
     ("status" in candidate ? typeof candidate.status === "string" : true)
+  );
+};
+
+const isProjectUpdatedEventPayload = (value: unknown): value is ProjectUpdatedEventPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    ("projectId" in candidate ? typeof candidate.projectId === "string" : true) &&
+    ("resource" in candidate
+      ? candidate.resource === "feature" ||
+        candidate.resource === "milestone" ||
+        candidate.resource === "phase_gates"
+      : true)
   );
 };
 
@@ -47,6 +68,10 @@ export const useSseEvents = (projectId?: string) => {
         ["project", activeProjectId, "tech-spec-versions"],
         ["project", activeProjectId, "phase-gates"],
         ["project", activeProjectId, "next-actions"],
+        ["project", activeProjectId, "milestones"],
+        ["project", activeProjectId, "features"],
+        ["project", activeProjectId, "features-graph"],
+        ["project", activeProjectId, "features-rollup"],
       ] as const;
 
       await Promise.all(
@@ -65,13 +90,15 @@ export const useSseEvents = (projectId?: string) => {
       ]);
     };
 
-    const handleJobUpdated = (event: Event) => {
+    const handleProjectEvent = (event: Event) => {
       let eventProjectId: string | null | undefined;
 
       if ("data" in event && typeof event.data === "string" && event.data) {
         try {
           const parsed = JSON.parse(event.data) as unknown;
           if (isJobUpdatedEventPayload(parsed)) {
+            eventProjectId = parsed.projectId;
+          } else if (isProjectUpdatedEventPayload(parsed)) {
             eventProjectId = parsed.projectId;
           }
         } catch {
@@ -95,10 +122,12 @@ export const useSseEvents = (projectId?: string) => {
       });
     };
 
-    source.addEventListener("job:updated", handleJobUpdated);
+    source.addEventListener("job:updated", handleProjectEvent);
+    source.addEventListener("project:updated", handleProjectEvent);
 
     return () => {
-      source.removeEventListener("job:updated", handleJobUpdated);
+      source.removeEventListener("job:updated", handleProjectEvent);
+      source.removeEventListener("project:updated", handleProjectEvent);
       source.close();
     };
   }, [projectId, queryClient]);

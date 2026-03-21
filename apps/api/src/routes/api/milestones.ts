@@ -1,13 +1,302 @@
 import type { FastifyPluginAsync } from "fastify";
 
-import { registerNotImplementedRoutes } from "../route-helpers.js";
+import {
+  jobSchema,
+  milestoneActionRequestSchema,
+  milestoneDesignDocListResponseSchema,
+  milestoneDesignDocSchema,
+  milestoneListResponseSchema,
+  milestoneSchema,
+} from "@quayboard/shared";
 
-export const milestoneRoutes: FastifyPluginAsync = async (app) => {
-  registerNotImplementedRoutes(app, [
-    { method: "GET", url: "/projects/:id/milestones" },
-    { method: "POST", url: "/projects/:id/milestones" },
-    { method: "POST", url: "/projects/:id/milestones/generate" },
-    { method: "PATCH", url: "/milestones/:id" },
-    { method: "POST", url: "/milestones/:id" },
-  ]);
+import type { AppServices } from "../../app-services.js";
+import { handleRouteError } from "../route-helpers.js";
+
+const projectParamsJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+  },
+  required: ["id"],
+  additionalProperties: false,
+} as const;
+
+const milestoneParamsJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+  },
+  required: ["id"],
+  additionalProperties: false,
+} as const;
+
+const designDocParamsJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+    revisionId: { type: "string", format: "uuid" },
+  },
+  required: ["id", "revisionId"],
+  additionalProperties: false,
+} as const;
+
+const publishProjectUpdate = (
+  services: AppServices,
+  ownerUserId: string,
+  projectId: string,
+  resource: "feature" | "milestone" | "phase_gates",
+) => {
+  services.sseHub.publish(ownerUserId, "project:updated", {
+    type: "project:updated",
+    projectId,
+    resource,
+  });
+};
+
+export const milestoneRoutes = (
+  services: AppServices,
+): FastifyPluginAsync => async (app) => {
+  app.get(
+    "/projects/:id/milestones",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+
+        return milestoneListResponseSchema.parse(
+          await services.milestoneService.list(request.user!.id, projectId),
+        );
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/projects/:id/milestones",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        const milestone = await services.milestoneService.create(
+          request.user!.id,
+          projectId,
+          request.body,
+        );
+        publishProjectUpdate(services, request.user!.id, projectId, "milestone");
+
+        return milestoneSchema.parse(milestone);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/projects/:id/milestones/generate",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        const existing = await services.milestoneService.list(request.user!.id, projectId);
+        if (existing.milestones.length > 0) {
+          return reply.status(409).send({
+            error: {
+              code: "milestones_already_seeded",
+              message: "Milestones already exist for this project.",
+            },
+          });
+        }
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId,
+          type: "GenerateMilestones",
+        });
+
+        return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.patch(
+    "/milestones/:id",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const milestone = await services.milestoneService.update(
+          request.user!.id,
+          milestoneId,
+          request.body,
+        );
+        publishProjectUpdate(services, request.user!.id, context.projectId, "milestone");
+
+        return milestoneSchema.parse(milestone);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/milestones/:id",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const milestone = await services.milestoneService.transition(
+          request.user!.id,
+          milestoneId,
+          milestoneActionRequestSchema.parse(request.body),
+        );
+        publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
+
+        return milestoneSchema.parse(milestone);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/milestones/:id/design-docs",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        const docs = await services.milestoneService.listDesignDocs(request.user!.id, milestoneId);
+        const approvals = await Promise.all(
+          docs.map((doc) =>
+            services.artifactApprovalService.getApproval(
+              context.projectId,
+              "milestone_design_doc",
+              doc.id,
+            ),
+          ),
+        );
+
+        return milestoneDesignDocListResponseSchema.parse({
+          designDocs: docs.map((doc, index) => ({
+            id: doc.id,
+            milestoneId: doc.milestoneId,
+            version: doc.version,
+            title: doc.title,
+            markdown: doc.markdown,
+            source: doc.source,
+            isCanonical: doc.isCanonical,
+            createdAt: doc.createdAt.toISOString(),
+            approval: approvals[index],
+          })),
+        });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/milestones/:id/design-docs",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId: context.projectId,
+          type: "GenerateMilestoneDesign",
+          inputs: {
+            milestoneId,
+          },
+        });
+
+        return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/milestones/:id/design-docs/:revisionId/approve",
+    {
+      schema: {
+        params: designDocParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const params = request.params as { id: string; revisionId: string };
+        const context = await services.milestoneService.getContext(request.user!.id, params.id);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const approval = await services.artifactApprovalService.approve(
+          request.user!.id,
+          context.projectId,
+          "milestone_design_doc",
+          params.revisionId,
+        );
+        const docs = await services.milestoneService.listDesignDocs(request.user!.id, params.id);
+        const approvedDoc = docs.find((doc) => doc.id === params.revisionId);
+
+        if (!approvedDoc) {
+          throw new Error("Failed to load approved milestone design document.");
+        }
+
+        publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
+
+        return milestoneDesignDocSchema.parse({
+          id: approvedDoc.id,
+          milestoneId: approvedDoc.milestoneId,
+          version: approvedDoc.version,
+          title: approvedDoc.title,
+          markdown: approvedDoc.markdown,
+          source: approvedDoc.source,
+          isCanonical: approvedDoc.isCanonical,
+          createdAt: approvedDoc.createdAt.toISOString(),
+          approval,
+        });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
 };

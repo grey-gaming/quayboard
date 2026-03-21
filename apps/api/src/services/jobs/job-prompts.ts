@@ -545,3 +545,105 @@ export const buildProjectBlueprintPrompt = (input: {
     "Selected decisions:",
     input.decisions,
   ].join("\n");
+
+export const buildMilestonePlanPrompt = (input: {
+  projectName: string;
+  uxSpec: string;
+  technicalSpec: string;
+  userFlows: Array<{
+    id: string;
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Propose an initial milestone plan for "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
+    "title must be short and specific.",
+    "summary must explain the release intent and scope for the milestone.",
+    "useCaseIds must be a non-empty array of approved user-flow IDs covered by the milestone.",
+    "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
+    "Create milestones in execution order, from foundational work to higher-level capability.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+    "",
+    "Approved user flows:",
+    JSON.stringify(input.userFlows, null, 2),
+  ].join("\n");
+
+export const buildMilestoneDesignPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  uxSpec: string;
+  technicalSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Create a milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly two string keys: "title" and "markdown".',
+    "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
+    "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+  ].join("\n");
+
+export const buildAppendFeaturesFromOnePagerPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  overviewDocument: string;
+  existingFeatures: Array<{
+    title: string;
+    summary: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Append implementation-ready feature candidates for milestone "${input.milestoneTitle}" in "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "acceptanceCriteria must be a non-empty array of concrete strings.",
+    "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    "priority must be one of: must_have, should_have, could_have, wont_have.",
+    "Do not repeat or lightly rename an existing feature.",
+    "Prefer concrete vertical slices over vague epics.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Overview document:",
+    input.overviewDocument,
+    "",
+    "Existing feature catalogue summary:",
+    JSON.stringify(input.existingFeatures, null, 2),
+  ].join("\n");

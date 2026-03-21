@@ -8,6 +8,10 @@ import type {
   Job,
   JobListResponse,
   LoadLlmModelsResponse,
+  Milestone,
+  MilestoneDesignDoc,
+  MilestoneDesignDocListResponse,
+  MilestoneListResponse,
   NextActionsResponse,
   OnePager,
   PhaseGatesResponse,
@@ -23,6 +27,12 @@ import type {
   SystemReadiness,
   UpdateDecisionCardsRequest,
   UpdateQuestionnaireAnswersRequest,
+  Feature,
+  FeatureDependencyListResponse,
+  FeatureGraphResponse,
+  FeatureListResponse,
+  FeatureRevisionListResponse,
+  FeatureRollupResponse,
   UpsertUseCaseRequest,
   UseCase,
   UseCaseListResponse,
@@ -252,6 +262,134 @@ export const api = {
   },
   getNextActions(projectId: string) {
     return apiRequest<NextActionsResponse>(`/api/projects/${projectId}/next-actions`);
+  },
+  getMilestones(projectId: string) {
+    return apiRequest<MilestoneListResponse>(`/api/projects/${projectId}/milestones`);
+  },
+  createMilestone(
+    projectId: string,
+    payload: { summary: string; title: string; useCaseIds: string[] },
+  ) {
+    return apiRequest<Milestone>(`/api/projects/${projectId}/milestones`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateMilestone(
+    milestoneId: string,
+    payload: { summary?: string; title?: string; useCaseIds?: string[] },
+  ) {
+    return apiRequest<Milestone>(`/api/milestones/${milestoneId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  transitionMilestone(milestoneId: string, action: "approve" | "complete") {
+    return apiRequest<Milestone>(`/api/milestones/${milestoneId}`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+  },
+  generateMilestones(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/milestones/generate`, {
+      method: "POST",
+    });
+  },
+  getMilestoneDesignDocs(milestoneId: string) {
+    return apiRequest<MilestoneDesignDocListResponse>(`/api/milestones/${milestoneId}/design-docs`);
+  },
+  generateMilestoneDesignDoc(milestoneId: string) {
+    return apiRequest<Job>(`/api/milestones/${milestoneId}/design-docs`, {
+      method: "POST",
+    });
+  },
+  approveMilestoneDesignDoc(milestoneId: string, revisionId: string) {
+    return apiRequest<MilestoneDesignDoc>(
+      `/api/milestones/${milestoneId}/design-docs/${revisionId}/approve`,
+      {
+        method: "POST",
+      },
+    );
+  },
+  getFeatures(projectId: string) {
+    return apiRequest<FeatureListResponse>(`/api/projects/${projectId}/features`);
+  },
+  getFeatureRollup(projectId: string) {
+    return apiRequest<FeatureRollupResponse>(`/api/projects/${projectId}/features/rollup`);
+  },
+  getFeatureGraph(projectId: string) {
+    return apiRequest<FeatureGraphResponse>(`/api/projects/${projectId}/features/graph`);
+  },
+  createFeature(
+    projectId: string,
+    payload: {
+      acceptanceCriteria: string[];
+      kind: Feature["kind"];
+      milestoneId: string;
+      priority: Feature["priority"];
+      source?: string;
+      summary: string;
+      title: string;
+    },
+  ) {
+    return apiRequest<Feature>(`/api/projects/${projectId}/features`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  appendFeaturesFromOnePager(projectId: string, payload: { milestoneId: string }) {
+    return apiRequest<Job>(`/api/projects/${projectId}/features/append-from-one-pager`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateFeature(
+    featureId: string,
+    payload: {
+      kind?: Feature["kind"];
+      milestoneId?: string;
+      priority?: Feature["priority"];
+      status?: Exclude<Feature["status"], "archived">;
+    },
+  ) {
+    return apiRequest<Feature>(`/api/features/${featureId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  archiveFeature(featureId: string) {
+    return apiRequest<void>(`/api/features/${featureId}`, {
+      method: "DELETE",
+    });
+  },
+  getFeatureRevisions(featureId: string) {
+    return apiRequest<FeatureRevisionListResponse>(`/api/features/${featureId}/revisions`);
+  },
+  createFeatureRevision(
+    featureId: string,
+    payload: { acceptanceCriteria: string[]; source?: string; summary: string; title: string },
+  ) {
+    return apiRequest<FeatureRevisionListResponse>(`/api/features/${featureId}/revisions`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getFeatureDependencies(featureId: string) {
+    return apiRequest<FeatureDependencyListResponse>(`/api/features/${featureId}/dependencies`);
+  },
+  addFeatureDependency(featureId: string, payload: { dependsOnFeatureId: string }) {
+    return apiRequest<FeatureDependencyListResponse>(`/api/features/${featureId}/dependencies`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  removeFeatureDependency(featureId: string, dependsOnFeatureId: string) {
+    return apiRequest<FeatureDependencyListResponse>(
+      `/api/features/${featureId}/dependencies/${dependsOnFeatureId}`,
+      {
+        method: "DELETE",
+      },
+    );
   },
   getOnePager(projectId: string) {
     return apiRequest<{ onePager: OnePager | null }>(`/api/projects/${projectId}/one-pager`);

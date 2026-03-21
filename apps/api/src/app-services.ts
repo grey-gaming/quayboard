@@ -13,6 +13,10 @@ import {
   type BlueprintService,
 } from "./services/blueprint-service.js";
 import { createDockerService, type DockerService } from "./services/docker-service.js";
+import {
+  createFeatureService,
+  type FeatureService,
+} from "./services/feature-service.js";
 import { createGithubService, type GithubService } from "./services/github-service.js";
 import {
   createJobRunnerService,
@@ -30,6 +34,10 @@ import {
   createLlmProviderService,
   type LlmProviderService,
 } from "./services/llm-provider.js";
+import {
+  createMilestoneService,
+  type MilestoneService,
+} from "./services/milestone-service.js";
 import {
   createNextActionsService,
   type NextActionsService,
@@ -87,11 +95,13 @@ export type AppServices = {
   blueprintService: BlueprintService;
   db: AppDatabase;
   dockerService: DockerService;
+  featureService: FeatureService;
   githubService: GithubService;
   jobRunnerService: JobRunnerService;
   jobScheduler: JobScheduler;
   jobService: JobService;
   llmProviderService: LlmProviderService;
+  milestoneService: MilestoneService;
   nextActionsService: NextActionsService;
   onePagerService: OnePagerService;
   productSpecService: ProductSpecService;
@@ -143,9 +153,12 @@ export const createAppServices = async (
   const productSpecService = createProductSpecService(db);
   const userFlowService = createUserFlowService(db);
   const blueprintService = createBlueprintService(db);
+  const milestoneService = createMilestoneService(db);
+  const featureService = createFeatureService(db);
   const artifactApprovalService = createArtifactApprovalService(
     db,
     blueprintService,
+    milestoneService,
     productSpecService,
   );
   const projectSetupService = createProjectSetupService(
@@ -178,6 +191,8 @@ export const createAppServices = async (
   const phaseGateService = createPhaseGateService(
     artifactApprovalService,
     blueprintService,
+    featureService,
+    milestoneService,
     onePagerService,
     productSpecService,
     projectSetupService,
@@ -187,6 +202,8 @@ export const createAppServices = async (
   const nextActionsService = createNextActionsService(
     artifactApprovalService,
     blueprintService,
+    featureService,
+    milestoneService,
     projectSetupService,
     questionnaireService,
     onePagerService,
@@ -197,8 +214,10 @@ export const createAppServices = async (
     artifactApprovalService,
     db,
     blueprintService,
+    featureService,
     jobService,
     llmProviderService,
+    milestoneService,
     onePagerService,
     productSpecService,
     projectService,
@@ -259,17 +278,19 @@ export const createAppServices = async (
 
   return {
     services: {
-      artifactApprovalService,
-      authService,
-      blueprintService,
-      db,
-      dockerService,
-      githubService,
-      jobRunnerService,
-      jobScheduler,
-      jobService,
-      llmProviderService,
-      nextActionsService,
+    artifactApprovalService,
+    authService,
+    blueprintService,
+    db,
+    dockerService,
+    featureService,
+    githubService,
+    jobRunnerService,
+    jobScheduler,
+    jobService,
+    llmProviderService,
+    milestoneService,
+    nextActionsService,
       onePagerService,
       productSpecService,
       phaseGateService,
