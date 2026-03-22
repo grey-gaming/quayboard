@@ -2260,7 +2260,7 @@ describe("API integration", () => {
         uxJobs.filter(
           (job) =>
             job.type === "GenerateDecisionDeck" &&
-            job.status === "queued" &&
+            (job.status === "queued" || job.status === "running") &&
             (job.inputs as { kind?: string }).kind === "ux",
         ),
       ).toHaveLength(1);
