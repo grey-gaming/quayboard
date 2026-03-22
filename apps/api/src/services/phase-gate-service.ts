@@ -1,6 +1,7 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureService } from "./feature-service.js";
+import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
@@ -12,6 +13,7 @@ export const createPhaseGateService = (
   artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
   featureService: FeatureService,
+  featureWorkstreamService: FeatureWorkstreamService,
   milestoneService: MilestoneService,
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
@@ -90,6 +92,16 @@ export const createPhaseGateService = (
     ]);
     const hasApprovedMilestone = milestones.milestones.some((milestone) => milestone.status === "approved");
     const hasFeatures = features.features.length > 0;
+    const approvedFeatureProductCount = userFlowsPassed
+      ? (
+          await Promise.all(
+            features.features.map(async (feature) => {
+              const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
+              return tracks.tracks.product.status === "approved";
+            }),
+          )
+        ).filter(Boolean).length
+      : 0;
 
     return {
       phases: [
@@ -274,7 +286,7 @@ export const createPhaseGateService = (
         },
         {
           phase: "Features",
-          passed: hasApprovedMilestone && hasFeatures,
+          passed: hasApprovedMilestone && approvedFeatureProductCount > 0,
           items: [
             {
               key: "milestone_approved",
@@ -285,6 +297,11 @@ export const createPhaseGateService = (
               key: "features_exist",
               label: "At least one active feature exists",
               passed: hasFeatures,
+            },
+            {
+              key: "feature_product_approved",
+              label: "At least one feature has an approved Product Spec",
+              passed: approvedFeatureProductCount > 0,
             },
           ],
         },

@@ -36,6 +36,11 @@ const artifactTypeValues = [
   "blueprint_ux",
   "blueprint_tech",
   "milestone_design_doc",
+  "feature_product_revision",
+  "feature_ux_revision",
+  "feature_tech_revision",
+  "feature_user_doc_revision",
+  "feature_arch_doc_revision",
 ] as const;
 const milestoneStatusValues = ["draft", "approved", "completed"] as const;
 const featureStatusValues = [
@@ -599,6 +604,245 @@ export const featureEdgesTable = pgTable(
   }),
 );
 
+export const featureProductSpecsTable = pgTable(
+  "feature_product_specs",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    headRevisionId: text("head_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureUnique: uniqueIndex("feature_product_specs_feature_id_key").on(table.featureId),
+  }),
+);
+
+export const featureProductRevisionsTable = pgTable(
+  "feature_product_revisions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    uxRequired: boolean("ux_required").notNull().default(true),
+    techRequired: boolean("tech_required").notNull().default(true),
+    userDocsRequired: boolean("user_docs_required").notNull().default(true),
+    archDocsRequired: boolean("arch_docs_required").notNull().default(true),
+    source: text("source").notNull(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("feature_product_revisions_feature_id_idx").on(table.featureId),
+    featureVersionUnique: uniqueIndex("feature_product_revisions_feature_id_version_key").on(
+      table.featureId,
+      table.version,
+    ),
+  }),
+);
+
+export const featureUxSpecsTable = pgTable(
+  "feature_ux_specs",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    headRevisionId: text("head_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureUnique: uniqueIndex("feature_ux_specs_feature_id_key").on(table.featureId),
+  }),
+);
+
+export const featureUxRevisionsTable = pgTable(
+  "feature_ux_revisions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("feature_ux_revisions_feature_id_idx").on(table.featureId),
+    featureVersionUnique: uniqueIndex("feature_ux_revisions_feature_id_version_key").on(
+      table.featureId,
+      table.version,
+    ),
+  }),
+);
+
+export const featureTechSpecsTable = pgTable(
+  "feature_tech_specs",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    headRevisionId: text("head_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureUnique: uniqueIndex("feature_tech_specs_feature_id_key").on(table.featureId),
+  }),
+);
+
+export const featureTechRevisionsTable = pgTable(
+  "feature_tech_revisions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("feature_tech_revisions_feature_id_idx").on(table.featureId),
+    featureVersionUnique: uniqueIndex("feature_tech_revisions_feature_id_version_key").on(
+      table.featureId,
+      table.version,
+    ),
+  }),
+);
+
+export const featureUserDocSpecsTable = pgTable(
+  "feature_user_doc_specs",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    headRevisionId: text("head_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureUnique: uniqueIndex("feature_user_doc_specs_feature_id_key").on(table.featureId),
+  }),
+);
+
+export const featureUserDocRevisionsTable = pgTable(
+  "feature_user_doc_revisions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("feature_user_doc_revisions_feature_id_idx").on(table.featureId),
+    featureVersionUnique: uniqueIndex("feature_user_doc_revisions_feature_id_version_key").on(
+      table.featureId,
+      table.version,
+    ),
+  }),
+);
+
+export const featureArchDocSpecsTable = pgTable(
+  "feature_arch_doc_specs",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    headRevisionId: text("head_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureUnique: uniqueIndex("feature_arch_doc_specs_feature_id_key").on(table.featureId),
+  }),
+);
+
+export const featureArchDocRevisionsTable = pgTable(
+  "feature_arch_doc_revisions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    markdown: text("markdown").notNull(),
+    source: text("source").notNull(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("feature_arch_doc_revisions_feature_id_idx").on(table.featureId),
+    featureVersionUnique: uniqueIndex("feature_arch_doc_revisions_feature_id_version_key").on(
+      table.featureId,
+      table.version,
+    ),
+  }),
+);
+
 export const artifactApprovalsTable = pgTable(
   "artifact_approvals",
   {
@@ -749,10 +993,20 @@ export const encryptedSecretsTable = pgTable(
 
 export type DatabaseSchema = {
   encryptedSecretsTable: typeof encryptedSecretsTable;
+  featureArchDocRevisionsTable: typeof featureArchDocRevisionsTable;
+  featureArchDocSpecsTable: typeof featureArchDocSpecsTable;
   featureCasesTable: typeof featureCasesTable;
   featureDependenciesTable: typeof featureDependenciesTable;
   featureEdgesTable: typeof featureEdgesTable;
+  featureProductRevisionsTable: typeof featureProductRevisionsTable;
+  featureProductSpecsTable: typeof featureProductSpecsTable;
   featureRevisionsTable: typeof featureRevisionsTable;
+  featureTechRevisionsTable: typeof featureTechRevisionsTable;
+  featureTechSpecsTable: typeof featureTechSpecsTable;
+  featureUserDocRevisionsTable: typeof featureUserDocRevisionsTable;
+  featureUserDocSpecsTable: typeof featureUserDocSpecsTable;
+  featureUxRevisionsTable: typeof featureUxRevisionsTable;
+  featureUxSpecsTable: typeof featureUxSpecsTable;
   jobsTable: typeof jobsTable;
   llmRunsTable: typeof llmRunsTable;
   milestoneDesignDocsTable: typeof milestoneDesignDocsTable;

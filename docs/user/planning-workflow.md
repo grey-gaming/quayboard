@@ -37,5 +37,10 @@ Quayboard's current UI supports the current planning workflow:
 25. Open **Feature Builder** to create the initial catalogue against an approved milestone.
 26. Use the intake drawer for manual features or **Append From Overview** to seed more features from the approved one-pager.
 27. Filter the catalogue by status, kind, or priority, then wire direct dependencies and review the dependency graph and rollup summary.
+28. Open a feature in **Feature Editor**.
+29. Use the approved project Product Spec, UX Spec, and Technical Spec as the source context for feature workstream generation.
+30. Draft or generate the feature **Product** workstream first, set which downstream workstreams are required, then approve the current Product revision.
+31. Draft or generate the feature **UX**, **Tech**, **User Docs**, and **Architecture Docs** workstreams as needed, reviewing revision history and approving each current head revision independently.
+32. The **Tasks** tab is present as a placeholder only; delivery-task planning has not landed yet.
 
-The import path remains a stub for now, and Quayboard does not yet provide the later feature-editor, task-planning, bug-report, or sandbox execution workflows.
+The import path remains a stub for now, and Quayboard does not yet provide the later task-planning, bug-report, or sandbox execution workflows.

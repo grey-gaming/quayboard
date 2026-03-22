@@ -17,6 +17,7 @@ import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
+import { FeatureEditorPage } from "./pages/FeatureEditorPage.js";
 import { DocsHomePage } from "./pages/DocsHomePage.js";
 import { FeatureBuilderPage } from "./pages/FeatureBuilderPage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
@@ -163,6 +164,10 @@ export const appRouter = createBrowserRouter([
                           {
                             path: "/projects/:id/features",
                             element: <FeatureBuilderPage />,
+                          },
+                          {
+                            path: "/projects/:id/features/:featureId",
+                            element: <FeatureEditorPage />,
                           },
                         ],
                       },

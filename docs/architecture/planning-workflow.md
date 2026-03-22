@@ -1,6 +1,6 @@
 # Planning Workflow
 
-This document describes the M4 planning workflow as it exists in the repository.
+This document describes the M5 planning workflow as it exists in the repository.
 
 ## Scope
 
@@ -17,6 +17,7 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - user-flow generation, manual editing, deduplication, and approval
 - milestone planning, lifecycle control, milestone design doc generation, and design doc approval
 - feature catalogue management, feature revisions, dependency graph reads, overview-seeded feature intake, and feature rollups
+- feature workstream editing for Product, UX, Tech, User Docs, and Architecture Docs, including revision history and approvals
 
 ## Data Model
 
@@ -34,6 +35,8 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `feature_revisions` stores immutable feature content snapshots
 - `feature_dependencies` stores direct build-order links between features
 - `feature_edges` stores derived read-only graph edges for graph consumers
+- `feature_product_specs`, `feature_ux_specs`, `feature_tech_specs`, `feature_user_doc_specs`, and `feature_arch_doc_specs` store one identity row per feature workstream
+- `feature_product_revisions`, `feature_ux_revisions`, `feature_tech_revisions`, `feature_user_doc_revisions`, and `feature_arch_doc_revisions` store immutable workstream snapshots
 - `projects` stores overview approval time plus user-flow approval snapshot metadata
 - `project_counters` now issues stable feature keys such as `F-001`
 - `settings` holds project-scoped setup state: LLM config, sandbox defaults, and evidence policy
@@ -42,10 +45,10 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 
 - `systemReadinessService` checks database access, encryption key presence, Docker access, artifact storage, and enabled provider adapters
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
-- `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, `milestoneService`, `featureService`, and `artifactApprovalService` manage planning artifacts
-- `phaseGateService` now publishes `Milestones` and `Features` phases alongside the earlier planning gates
-- `nextActionsService` now recommends milestone and feature planning actions after approved user flows
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, and overview-seeded feature creation
+- `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, `milestoneService`, `featureService`, `featureWorkstreamService`, and `artifactApprovalService` manage planning artifacts
+- `phaseGateService` now treats the Features phase as requiring at least one feature with an approved Product workstream revision
+- `nextActionsService` now recommends the first Feature Editor action once the catalogue exists
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, overview-seeded feature creation, and feature workstream generation
 
 ## External Adapters
 
@@ -68,4 +71,5 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `/projects/:id/user-flows`
 - `/projects/:id/milestones`
 - `/projects/:id/features`
+- `/projects/:id/features/:featureId`
 - `/projects/:id/import` as a future-release stub

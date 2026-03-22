@@ -419,9 +419,9 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 |---|---|
 | `feature_cases` | Feature identity node in the dependency graph |
 | `feature_revisions` | Immutable content snapshots (title, summary, acceptance criteria) |
-| `product_specs` / `product_revisions` | Product specification with workstream requirement flags |
-| `ux_specs` / `ux_revisions` | UX specification markdown (versioned) |
-| `tech_specs` / `tech_revisions` | Tech specification markdown (versioned) |
+| `feature_product_specs` / `feature_product_revisions` | Product specification with workstream requirement flags |
+| `feature_ux_specs` / `feature_ux_revisions` | UX specification markdown (versioned) |
+| `feature_tech_specs` / `feature_tech_revisions` | Tech specification markdown (versioned) |
 | `feature_edges` | Rich typed relationships between features (`leads_to`, `depends_on`, `contains`) — used for graph visualisation and navigation. Distinct from `feature_dependencies`, which is the simpler direct-link table used by the build-order system and auto-advance. This table is populated automatically when `feature_dependencies` entries are created and is read-only via the API; all consumer graph reads use `GET /projects/:id/features/graph`. |
 | `feature_dependencies` | Simple, direct dependency links (feature A depends on feature B) — the primary table used by the build-order system, auto-advance, and dependency validation. This is the table the API and MCP tools read and write. |
 | `feature_issues` | Architectural review findings on features (severity, category, status) |
@@ -433,10 +433,10 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 
 | Table | Purpose |
 |---|---|
-| `user_doc_specs` | User documentation specification identity per feature (head revision pointer) |
-| `user_doc_revisions` | Immutable user documentation revision snapshots (markdown, versioned) |
-| `arch_doc_specs` | Architecture documentation specification identity per feature (head revision pointer) |
-| `arch_doc_revisions` | Immutable architecture documentation revision snapshots (markdown, versioned) |
+| `feature_user_doc_specs` | User documentation specification identity per feature (head revision pointer) |
+| `feature_user_doc_revisions` | Immutable user documentation revision snapshots (markdown, versioned) |
+| `feature_arch_doc_specs` | Architecture documentation specification identity per feature (head revision pointer) |
+| `feature_arch_doc_revisions` | Immutable architecture documentation revision snapshots (markdown, versioned) |
 
 #### Bug report tables
 
@@ -662,11 +662,11 @@ The **JobScheduler** (`apps/api/src/services/job-scheduler.ts`) runs a 5-second 
 | Project description | `GenerateProjectDescription`, `SuggestProjectNames`, `AutoAnswerQuestionnaire` |
 | User flows | `GenerateUseCases`, `DeduplicateUseCases` |
 | UX / Technical Spec | `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency` |
-| Feature builder | `GenerateProductFromOnePager`, `GenerateUxFromProduct`, `GenerateTechFromProduct`, `AppendFeatureFromOnePager` |
+| Feature builder | `GenerateFeatureProductSpec`, `GenerateFeatureUxSpec`, `GenerateFeatureTechSpec`, `AppendFeatureFromOnePager` |
 | Feature review/refine | `ReviewProductInContext`, `ReviewUxInContext`, `ReviewTechInContext`, `RefineProductFromIssues`, `RefineUxFromIssues`, `RefineTechFromIssues`, `ReviewFeatureInContext`, `RefineFeatureFromIssues` |
 | Milestones | `GenerateMilestones`, `GenerateMilestoneDesign` |
 | Task planning | `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `RecommendNextFeature`, `ReviewFeatureCohesion` |
-| Documentation | `GenerateUserDocsFromProduct`, `GenerateArchDocsFromTech`, `ReviewUserDocsInContext`, `ReviewArchDocsInContext`, `RefineUserDocsFromIssues`, `RefineArchDocsFromIssues` |
+| Documentation | `GenerateFeatureUserDocs`, `GenerateFeatureArchDocs`, `ReviewUserDocsInContext`, `ReviewArchDocsInContext`, `RefineUserDocsFromIssues`, `RefineArchDocsFromIssues` |
 | Bug fix | `GenerateBugFixTasks`, `VerifyBugFix` |
 | Quality gates | `AssessProjectIntent`, `ValidateArtifactQuality`, `GenerateAssumptionLedger`, `CheckCrossArtifactConsistency`, `StressTestTaskPlan` |
 | Sandbox execution | `ImplementChange`, `TestAndVerify`, `ExecuteMilestoneSession` |
@@ -1305,16 +1305,17 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 **Deliverables**:
 
 **Schema additions** (new migrations):
-- `product_specs`, `product_revisions`, `ux_specs`, `ux_revisions`, `tech_specs`, `tech_revisions`, `user_doc_specs`, `user_doc_revisions`, `arch_doc_specs`, `arch_doc_revisions`
+- `feature_product_specs`, `feature_product_revisions`, `feature_ux_specs`, `feature_ux_revisions`, `feature_tech_specs`, `feature_tech_revisions`, `feature_user_doc_specs`, `feature_user_doc_revisions`, `feature_arch_doc_specs`, `feature_arch_doc_revisions`
 
 **Backend**:
 - Product specification routes (revisions, approve, LLM generate)
 - UX specification routes (revisions, approve, LLM generate)
 - Tech specification routes (revisions, approve, LLM generate)
-- User documentation routes (revisions, approve, LLM generate via `GenerateUserDocsFromProduct`)
-- Architecture documentation routes (revisions, approve, LLM generate via `GenerateArchDocsFromTech`)
+- User documentation routes (revisions, approve, LLM generate via `GenerateFeatureUserDocs`)
+- Architecture documentation routes (revisions, approve, LLM generate via `GenerateFeatureArchDocs`)
 - Feature tracks route (`GET /features/:id/tracks`) — includes user docs and arch docs track status
-- LLM executors: `GenerateProductFromOnePager`, `GenerateUxFromProduct`, `GenerateTechFromProduct`, `GenerateUserDocsFromProduct`, `GenerateArchDocsFromTech`
+- LLM executors: `GenerateFeatureProductSpec`, `GenerateFeatureUxSpec`, `GenerateFeatureTechSpec`, `GenerateFeatureUserDocs`, `GenerateFeatureArchDocs`
+- Feature workstream generation uses the approved project Product Spec, UX Spec, and Technical Spec as source inputs rather than the one-pager
 - Workstream requirement flags (`ux_required`, `tech_required`, `user_docs_required`, `arch_docs_required`) on product revisions
 
 **Frontend**:
@@ -1869,9 +1870,9 @@ Before M12, project access is single-owner: the authenticated creating user is t
 > |---|---|
 > | Overview document | Table: `one_pagers`, routes: `/one-pager`, components: `OnePager*`, jobs: `*OnePager`, `*ProjectOverview` |
 > | User flow | Table: `use_cases`, routes: `/user-flows`, jobs: `GenerateUseCases`, `DeduplicateUseCases` |
-> | Feature specification (product / UX / tech) | Tables: `product_specs`, `ux_specs`, `tech_specs`, routes: `/product-revisions`, `/ux-revisions`, `/tech-revisions` |
-> | User documentation | Tables: `user_doc_specs`, `user_doc_revisions`, routes: `/user-doc-revisions` |
-> | Architecture documentation | Tables: `arch_doc_specs`, `arch_doc_revisions`, routes: `/arch-doc-revisions` |
+> | Feature specification (product / UX / tech) | Tables: `feature_product_specs`, `feature_ux_specs`, `feature_tech_specs`, routes: `/product-revisions`, `/ux-revisions`, `/tech-revisions` |
+> | User documentation | Tables: `feature_user_doc_specs`, `feature_user_doc_revisions`, routes: `/user-doc-revisions` |
+> | Architecture documentation | Tables: `feature_arch_doc_specs`, `feature_arch_doc_revisions`, routes: `/arch-doc-revisions` |
 > | Bug report | Tables: `bug_reports`, `bug_fix_tasks`, routes: `/bugs` |
 > | Encrypted secret | Table: `encrypted_secrets`, routes: `/secrets` |
 > | Project blueprint | Table: `project_blueprints`, routes: `/blueprints/*` |

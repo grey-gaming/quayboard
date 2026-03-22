@@ -17,6 +17,10 @@ import {
   createFeatureService,
   type FeatureService,
 } from "./services/feature-service.js";
+import {
+  createFeatureWorkstreamService,
+  type FeatureWorkstreamService,
+} from "./services/feature-workstream-service.js";
 import { createGithubService, type GithubService } from "./services/github-service.js";
 import {
   createJobRunnerService,
@@ -96,6 +100,7 @@ export type AppServices = {
   db: AppDatabase;
   dockerService: DockerService;
   featureService: FeatureService;
+  featureWorkstreamService: FeatureWorkstreamService;
   githubService: GithubService;
   jobRunnerService: JobRunnerService;
   jobScheduler: JobScheduler;
@@ -155,6 +160,7 @@ export const createAppServices = async (
   const blueprintService = createBlueprintService(db);
   const milestoneService = createMilestoneService(db);
   const featureService = createFeatureService(db);
+  const featureWorkstreamService = createFeatureWorkstreamService(db);
   const artifactApprovalService = createArtifactApprovalService(
     db,
     blueprintService,
@@ -192,6 +198,7 @@ export const createAppServices = async (
     artifactApprovalService,
     blueprintService,
     featureService,
+    featureWorkstreamService,
     milestoneService,
     onePagerService,
     productSpecService,
@@ -203,6 +210,7 @@ export const createAppServices = async (
     artifactApprovalService,
     blueprintService,
     featureService,
+    featureWorkstreamService,
     milestoneService,
     projectSetupService,
     questionnaireService,
@@ -215,6 +223,7 @@ export const createAppServices = async (
     db,
     blueprintService,
     featureService,
+    featureWorkstreamService,
     jobService,
     llmProviderService,
     milestoneService,
@@ -284,6 +293,7 @@ export const createAppServices = async (
     db,
     dockerService,
     featureService,
+    featureWorkstreamService,
     githubService,
     jobRunnerService,
     jobScheduler,
