@@ -4,14 +4,14 @@ Quayboard is a web control plane for managing software projects and orchestratin
 
 ## Status
 
-The repository now contains the active M5 planning workflow:
+The repository now contains the completed M1-M5 planning workflow and an active UX/bug-fix sweep before M6:
 
 - Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, Product Spec APIs, user-flow APIs, UX/Technical Spec APIs, direct artifact approval routes, and project/job status endpoints
 - Drizzle/Postgres schema and migrations covering the M1 foundation plus M2-M5 planning tables, including milestones, feature catalogue data, and feature workstream revision tables
 - Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, Product Spec, UX Spec, Technical Spec, user flows, milestones, feature builder, the Feature Editor, and a public `/docs` guide sourced from `docs/user`
 - Shared schemas for planning-phase resources across API and web
 
-M5: Feature Workstream Specifications is the current repo target.
+Post-M5 UX sweep and bug fixes are the current repo target. M6 task-planning implementation has not started yet.
 
 ## Prerequisites
 
