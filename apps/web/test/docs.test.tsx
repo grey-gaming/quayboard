@@ -162,16 +162,56 @@ describe("docs pages", () => {
     expect(screen.getByRole("heading", { name: "Required Setup" })).toBeTruthy();
   });
 
-  it("renders the import stub without roadmap labels", () => {
+  it("renders the import stub without roadmap labels", async () => {
+    const projectId = "91a28b19-825c-496f-bc99-205d02664a2e";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = typeof input === "string" ? input : input.toString();
+
+        if (path === `/api/projects/${projectId}`) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: projectId,
+              name: "Harbor Console",
+              description: null,
+              state: "READY",
+              ownerUserId: projectId,
+              createdAt: "2026-03-15T00:00:00.000Z",
+              updatedAt: "2026-03-16T10:00:00.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({
+            error: {
+              code: "unauthorized",
+              message: "Authentication is required.",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [{ path: "/projects/:id/import", element: <ImportStubPage /> }],
+      { initialEntries: [`/projects/${projectId}/import`] },
+    );
+
     render(
       <AppProviders>
-        <MemoryRouter>
-          <ImportStubPage />
-        </MemoryRouter>
+        <RouterProvider router={router} />
       </AppProviders>,
     );
 
-    expect(screen.getByText(/repository import is not available yet/i)).toBeTruthy();
+    expect(await screen.findByText(/repository import is not available yet/i)).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 

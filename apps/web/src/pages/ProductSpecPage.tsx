@@ -3,8 +3,9 @@ import { useLocation, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   findLatestJob,
@@ -86,11 +87,20 @@ export const ProductSpecPage = () => {
   const productSpecButtonActive =
     generateProductSpecMutation.isPending || Boolean(activeProductSpecJob);
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? (
-        <ProjectSubNav project={projectQuery.data} />
-      ) : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Product Spec"
         title="Generated Product Spec"
@@ -239,6 +249,6 @@ export const ProductSpecPage = () => {
           </div>
         </Card>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Project, User } from "@quayboard/shared";
 
-import { ProjectSubNav } from "../src/components/layout/ProjectSubNav.js";
+import { ProjectNavigationStack } from "../src/components/layout/ProjectNavigationStack.js";
+import { buildSetupTertiaryItems } from "../src/components/layout/project-navigation.js";
 import { NewProjectPage } from "../src/pages/NewProjectPage.js";
 import { ProtectedHomePage } from "../src/pages/ProtectedHomePage.js";
 
@@ -134,12 +135,44 @@ describe("project entry surfaces", () => {
     expect(screen.queryByText(/scratch path/i)).toBeNull();
   });
 
-  it("renders the compact project secondary nav without summary copy", () => {
+  it("renders grouped project navigation with setup tertiary links", () => {
     const project: Project = {
       id: "91a28b19-825c-496f-bc99-205d02664a2e",
       name: "Harbor Console",
       description: null,
-      state: "READY_PARTIAL",
+      state: "READY",
+      ownerUserId: user.id,
+      createdAt: "2026-03-15T00:00:00.000Z",
+      updatedAt: "2026-03-16T10:00:00.000Z",
+    };
+
+    render(
+      <MemoryRouter initialEntries={[`/projects/${project.id}/questions`]}>
+        <ProjectNavigationStack
+          activeSection="setup"
+          project={project}
+          tertiaryItems={buildSetupTertiaryItems(project)}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Harbor Console")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Product Design" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Feature Design" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Questions" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
+    expect(screen.getByText("Implementation")).toBeTruthy();
+  });
+
+  it("renders locked grouped navigation when setup is incomplete", () => {
+    const project: Project = {
+      id: "91a28b19-825c-496f-bc99-205d02664a2e",
+      name: "Harbor Console",
+      description: null,
+      state: "BOOTSTRAPPING",
       ownerUserId: user.id,
       createdAt: "2026-03-15T00:00:00.000Z",
       updatedAt: "2026-03-16T10:00:00.000Z",
@@ -147,29 +180,20 @@ describe("project entry surfaces", () => {
 
     render(
       <MemoryRouter>
-        <ProjectSubNav project={project} />
+        <ProjectNavigationStack
+          activeSection="setup"
+          project={project}
+          tertiaryItems={buildSetupTertiaryItems(project)}
+        />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Harbor Console")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
-    expect(
-      screen
-        .getAllByRole("link")
-        .map((link) => link.textContent)
-        .slice(0, 8),
-    ).toEqual([
-      "Mission Control",
-      "Project Setup",
-      "Questions",
-      "Overview",
-      "Product Spec",
-      "UX Spec",
-      "Technical Spec",
-      "User Flows",
-    ]);
-    expect(screen.queryByText("Project setup and planning for the current delivery phase.")).toBeNull();
-    expect(screen.queryByText("Active Project")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Import" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Product Design" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Feature Design" })).toBeNull();
+    expect(screen.getByText("Questions")).toBeTruthy();
+    expect(screen.getByText("Import")).toBeTruthy();
+    expect(screen.getByText("Product Design")).toBeTruthy();
   });
 });

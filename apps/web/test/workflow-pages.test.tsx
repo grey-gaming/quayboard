@@ -198,7 +198,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id", <MissionControlPage />);
 
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Recent Jobs")).toBeTruthy();
     expect(screen.queryByText("Pipeline map")).toBeNull();
@@ -1153,7 +1153,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Questions" }).getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
   });
 
   it("queues auto-answer and starts the AI state immediately", async () => {
@@ -3020,7 +3020,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("Primary navigation")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
       true,
@@ -3136,7 +3136,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("UX Spec generation failed.")).toBeTruthy();
     expect(
       screen.getByText(
@@ -3246,7 +3246,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.queryByText("UX Spec generation failed.")).toBeNull();
     });
@@ -3691,7 +3691,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/technical-spec", <TechnicalSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "Technical Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "Technical Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("Technical Decision Tiles")).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Review Decisions" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Approve Technical Spec" })).toBeTruthy();
@@ -3985,6 +3985,17 @@ describe("workflow pages", () => {
     );
 
     expect(await screen.findByText("Current head revision.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Feature Builder" })).toBeTruthy();
+    expect(screen.getAllByText("Feature Product Spec").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Product" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tasks" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+
+    expect(await screen.findByText("Milestone 6 stub")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Product" }));
+
     expect(screen.getByText("Revision 2")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /v1/i }));

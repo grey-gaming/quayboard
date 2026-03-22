@@ -4,8 +4,9 @@ import { useForm, type UseFormRegister } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   findLatestJob,
@@ -182,9 +183,20 @@ export const UserFlowsPage = () => {
   const generateFlowsButtonActive =
     generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="User Flows"
         title="User Flows"
@@ -512,6 +524,6 @@ export const UserFlowsPage = () => {
           </Card>
         </div>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

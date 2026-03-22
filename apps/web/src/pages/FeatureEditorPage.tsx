@@ -3,8 +3,9 @@ import { Navigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildFeatureBuilderTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   findLatestJob,
@@ -20,7 +21,6 @@ import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Checkbox } from "../components/ui/Checkbox.js";
-import { Tabs } from "../components/ui/Tabs.js";
 import {
   useApproveFeatureWorkstreamRevisionMutation,
   useCreateFeatureWorkstreamRevisionMutation,
@@ -130,6 +130,39 @@ export const FeatureEditorPage = () => {
   const [requirements, setRequirements] = useState(
     currentRevision?.requirements ?? defaultRequirements,
   );
+  const featureTertiaryItems = useMemo(() => {
+    if (!projectQuery.data) {
+      return [];
+    }
+
+    const items = [...buildFeatureBuilderTertiaryItems(projectQuery.data)];
+
+    if (!featureQuery.data) {
+      return items;
+    }
+
+    items.push({
+      kind: "label",
+      key: "feature-title",
+      label: featureQuery.data.headRevision.title,
+      title: featureQuery.data.headRevision.title,
+      truncate: true,
+    });
+
+    for (const kind of visibleTabs) {
+      items.push({
+        kind: "button",
+        key: kind,
+        label: kind === "tasks" ? "Tasks" : kindLabels[kind],
+        active: resolvedTab === kind,
+        onClick: () => {
+          setActiveTab(kind);
+        },
+      });
+    }
+
+    return items;
+  }, [featureQuery.data, projectQuery.data, resolvedTab, visibleTabs]);
 
   useEffect(() => {
     if (!revisions.length) {
@@ -229,9 +262,20 @@ export const FeatureEditorPage = () => {
     return <Navigate replace to={`/projects/${featureQuery.data.projectId}/features/${featureId}`} />;
   }
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="feature-design"
+      project={projectQuery.data}
+      tertiaryItems={featureTertiaryItems}
+    >
       <PageIntro
         eyebrow="Features"
         title={featureQuery.data?.headRevision.title ?? "Feature Editor"}
@@ -273,28 +317,6 @@ export const FeatureEditorPage = () => {
       ) : null}
 
       <div className="grid gap-4">
-        <Card surface="panel">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="qb-meta-label">Workstreams</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                Feature specification tabs
-              </p>
-            </div>
-            <Tabs
-              activeValue={resolvedTab}
-              items={visibleTabs.map((kind) => ({
-                label:
-                  kind === "tasks"
-                    ? "Tasks"
-                    : `${kindLabels[kind]}${kind !== "product" && activeTrack?.required === false ? " (Hidden)" : ""}`,
-                value: kind,
-              }))}
-              onChange={setActiveTab}
-            />
-          </div>
-        </Card>
-
         {resolvedTab === "tasks" ? (
           <Card surface="panel">
             <div className="grid gap-2">
@@ -513,6 +535,6 @@ export const FeatureEditorPage = () => {
           </>
         )}
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

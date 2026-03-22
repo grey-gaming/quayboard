@@ -4,8 +4,9 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   getDefaultJobFailureHint,
@@ -372,9 +373,20 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     approveArtifactMutation.error;
   const latestFailedSpecMessage = latestFailedSpecJob ? getJobErrorMessage(latestFailedSpecJob) : null;
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         actions={
           <AiWorkflowButton
@@ -658,6 +670,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
           </div>
         </Card>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

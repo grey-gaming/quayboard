@@ -1,8 +1,8 @@
 import { Link, useParams } from "react-router-dom";
 
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
 import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -52,8 +52,7 @@ export const MissionControlPage = () => {
   });
 
   return (
-    <AppFrame>
-      <ProjectSubNav project={projectQuery.data} />
+    <ProjectPageFrame activeSection="mission-control" project={projectQuery.data}>
       <PageIntro
         eyebrow="Project"
         title="Mission Control"
@@ -149,6 +148,6 @@ export const MissionControlPage = () => {
           />
         </div>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

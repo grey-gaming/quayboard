@@ -4,8 +4,9 @@ import type { Job } from "@quayboard/shared";
 
 import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   getDefaultJobFailureHint,
@@ -139,9 +140,20 @@ export const MilestonesPage = () => {
   const milestoneDesignButtonActive =
     generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         actions={
           <AiWorkflowButton
@@ -471,6 +483,6 @@ export const MilestonesPage = () => {
           </div>
         </div>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

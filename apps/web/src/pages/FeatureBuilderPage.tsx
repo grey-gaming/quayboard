@@ -3,8 +3,9 @@ import { useParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildFeatureBuilderTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Drawer } from "../components/ui/Drawer.js";
 import { FeatureDependencyGraph } from "../components/workflow/FeatureDependencyGraph.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
@@ -104,9 +105,20 @@ export const FeatureBuilderPage = () => {
     setIsDrawerOpen(false);
   };
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="feature-design"
+      project={projectQuery.data}
+      tertiaryItems={buildFeatureBuilderTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Features"
         title="Feature Builder"
@@ -481,6 +493,6 @@ export const FeatureBuilderPage = () => {
           </div>
         </div>
       </Drawer>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

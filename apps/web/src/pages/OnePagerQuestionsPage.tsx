@@ -4,8 +4,9 @@ import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -254,11 +255,20 @@ export const OnePagerQuestionsPage = () => {
     updateQuestionnaireMutation.error ||
     autoAnswerQuestionnaireMutation.error;
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? (
-        <ProjectSubNav project={projectQuery.data} />
-      ) : null}
+    <ProjectPageFrame
+      activeSection="setup"
+      project={projectQuery.data}
+      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Overview"
         title="Questions"
@@ -363,6 +373,6 @@ export const OnePagerQuestionsPage = () => {
           </Button>
         </div>
       </Card>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

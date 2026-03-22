@@ -311,8 +311,8 @@ describe("project setup page", () => {
     expect(screen.getByRole("button", { name: "Complete Setup" }).hasAttribute("disabled")).toBe(
       true,
     );
-    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
-    expect(screen.getByText("Overview", { selector: "span" }).getAttribute("aria-disabled")).toBe(
+    expect(screen.queryByRole("link", { name: "Product Design" })).toBeNull();
+    expect(screen.getByText("Product Design", { selector: "span" }).getAttribute("aria-disabled")).toBe(
       "true",
     );
   });
