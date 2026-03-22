@@ -51,7 +51,7 @@ export const useSseEvents = (projectId?: string) => {
   useEffect(() => {
     const source = createSseConnection("/api/events");
     const refetchActiveProjectQueries = async (activeProjectId: string) => {
-      const keys = [
+      const projectKeys = [
         ["project", activeProjectId],
         ["project", activeProjectId, "jobs"],
         ["project", activeProjectId, "questionnaire"],
@@ -75,7 +75,7 @@ export const useSseEvents = (projectId?: string) => {
       ] as const;
 
       await Promise.all(
-        keys.map((key) =>
+        projectKeys.map((key) =>
           queryClient.refetchQueries({
             exact: true,
             queryKey: key,
@@ -84,6 +84,13 @@ export const useSseEvents = (projectId?: string) => {
         ),
       );
       await Promise.all([
+        queryClient.refetchQueries({
+          predicate: (query) => {
+            const [scope, , resource] = query.queryKey;
+            return scope === "milestone" && resource === "design-docs";
+          },
+          type: "active",
+        }),
         queryClient.invalidateQueries({
           queryKey: ["project", activeProjectId, "artifact-approval"],
         }),

@@ -10,6 +10,7 @@ import {
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
+import { HttpError } from "../../services/http-error.js";
 import { handleRouteError } from "../route-helpers.js";
 
 const projectParamsJsonSchema = {
@@ -268,18 +269,23 @@ export const milestoneRoutes = (
         const params = request.params as { id: string; revisionId: string };
         const context = await services.milestoneService.getContext(request.user!.id, params.id);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const designDocs = await services.milestoneService.listDesignDocs(request.user!.id, params.id);
+        const approvedDoc = designDocs.find((doc) => doc.id === params.revisionId);
+
+        if (!approvedDoc) {
+          throw new HttpError(
+            404,
+            "milestone_design_doc_not_found",
+            "Milestone design document not found.",
+          );
+        }
+
         const approval = await services.artifactApprovalService.approve(
           request.user!.id,
           context.projectId,
           "milestone_design_doc",
           params.revisionId,
         );
-        const docs = await services.milestoneService.listDesignDocs(request.user!.id, params.id);
-        const approvedDoc = docs.find((doc) => doc.id === params.revisionId);
-
-        if (!approvedDoc) {
-          throw new Error("Failed to load approved milestone design document.");
-        }
 
         publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
 

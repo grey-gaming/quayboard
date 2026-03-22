@@ -438,6 +438,64 @@ describe("API integration", () => {
     });
   });
 
+  it("rejects approving a milestone design document from another milestone", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const firstMilestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone alpha",
+        summary: "The first approved increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+    const secondMilestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone beta",
+        summary: "The second approved increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, firstMilestone.id, {
+      action: "approve",
+    });
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, secondMilestone.id, {
+      action: "approve",
+    });
+
+    const secondDesignDoc = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: secondMilestone.id,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nDesign details.",
+      source: "ManualSave",
+    });
+
+    const approvalResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${firstMilestone.id}/design-docs/${secondDesignDoc.id}/approve`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(approvalResponse.statusCode).toBe(404);
+    expect(approvalResponse.json()).toMatchObject({
+      error: {
+        code: "milestone_design_doc_not_found",
+        message: "Milestone design document not found.",
+      },
+    });
+
+    await expect(
+      appServices.services.artifactApprovalService.getApproval(
+        seeded.projectId,
+        "milestone_design_doc",
+        secondDesignDoc.id,
+      ),
+    ).resolves.toBeNull();
+  });
+
   it("cancels running jobs that were interrupted by a server restart", async () => {
     const userId = "4fdf86ba-7f8b-4ef0-b3c7-77c77e7e5978";
     const projectId = "2f1c261d-c88e-44a3-a27e-fd1341ce72ca";

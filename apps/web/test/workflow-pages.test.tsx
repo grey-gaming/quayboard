@@ -510,6 +510,7 @@ describe("workflow pages", () => {
     const milestoneProjectId = "85858585-8585-4585-8585-858585858585";
     const milestoneId = "95959595-9595-4595-8595-959595959595";
     let jobsResponse: { jobs: Job[] } = { jobs: [] };
+    let designDocsResponse = { designDocs: [] as Array<Record<string, unknown>> };
 
     vi.stubGlobal("EventSource", MockEventSource);
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -606,7 +607,7 @@ describe("workflow pages", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => ({ designDocs: [] }),
+          json: async () => designDocsResponse,
         } satisfies Partial<Response>;
       }
 
@@ -644,6 +645,32 @@ describe("workflow pages", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generating..." })).toBeTruthy();
+
+    jobsResponse = { jobs: [] };
+    designDocsResponse = {
+      designDocs: [
+        {
+          id: "doc-1",
+          milestoneId,
+          version: 1,
+          title: "Foundations design",
+          markdown: "# Foundations\n\nShipped via job completion.",
+          source: "GenerateMilestoneDesign",
+          isCanonical: true,
+          createdAt: "2026-03-20T11:01:00.000Z",
+          approval: null,
+        },
+      ],
+    };
+
+    MockEventSource.emit("job:updated", {
+      jobId: "job-design-running",
+      projectId: milestoneProjectId,
+      status: "completed",
+    });
+
+    expect(await screen.findByText("Foundations design")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve design doc" })).toBeTruthy();
 
     jobsResponse = {
       jobs: [
