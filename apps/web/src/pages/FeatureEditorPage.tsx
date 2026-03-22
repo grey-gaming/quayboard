@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
@@ -55,6 +55,13 @@ const generationJobTypes = {
 const toFilename = (featureKey: string, kind: string) =>
   `${featureKey.toLowerCase()}-${kind.replaceAll("_", "-")}.md`;
 
+const defaultRequirements = {
+  uxRequired: true,
+  techRequired: true,
+  userDocsRequired: true,
+  archDocsRequired: true,
+};
+
 export const FeatureEditorPage = () => {
   const { id = "", featureId = "" } = useParams();
   const projectQuery = useProjectQuery(id);
@@ -100,7 +107,14 @@ export const FeatureEditorPage = () => {
     featureId,
     activeKind ?? "product",
   );
-  const currentRevision = revisionsQuery.data?.revisions[0] ?? null;
+  const revisions = revisionsQuery.data?.revisions ?? [];
+  const headRevision = revisions[0] ?? null;
+  const [selectedRevisionId, setSelectedRevisionId] = useState<string | null>(null);
+  const currentRevision =
+    revisions.find((revision) => revision.id === selectedRevisionId) ?? headRevision;
+  const isViewingHeadRevision = Boolean(
+    !currentRevision || (headRevision && currentRevision.id === headRevision.id),
+  );
   const activeTrack =
     activeKind === "product"
       ? tracksQuery.data?.tracks.product
@@ -114,23 +128,22 @@ export const FeatureEditorPage = () => {
               ? tracksQuery.data?.tracks.archDocs
               : null;
   const [requirements, setRequirements] = useState(
-    currentRevision?.requirements ?? {
-      uxRequired: true,
-      techRequired: true,
-      userDocsRequired: true,
-      archDocsRequired: true,
-    },
+    currentRevision?.requirements ?? defaultRequirements,
   );
 
   useEffect(() => {
-    setRequirements(
-      currentRevision?.requirements ?? {
-        uxRequired: true,
-        techRequired: true,
-        userDocsRequired: true,
-        archDocsRequired: true,
-      },
+    if (!revisions.length) {
+      setSelectedRevisionId(null);
+      return;
+    }
+
+    setSelectedRevisionId((current) =>
+      current && revisions.some((revision) => revision.id === current) ? current : revisions[0]!.id,
     );
+  }, [activeKind, revisions]);
+
+  useEffect(() => {
+    setRequirements(currentRevision?.requirements ?? defaultRequirements);
   }, [currentRevision?.id, currentRevision?.requirements]);
 
   const activeJob =
@@ -212,6 +225,10 @@ export const FeatureEditorPage = () => {
     URL.revokeObjectURL(href);
   };
 
+  if (featureQuery.data && featureQuery.data.projectId !== id) {
+    return <Navigate replace to={`/projects/${featureQuery.data.projectId}/features/${featureId}`} />;
+  }
+
   return (
     <AppFrame>
       {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
@@ -235,7 +252,7 @@ export const FeatureEditorPage = () => {
 
       {activeKind && !activeJob ? (
         <LatestJobFailureAlert
-          currentVersionStillAvailable={Boolean(currentRevision)}
+          currentVersionStillAvailable={Boolean(headRevision)}
           hint={
             latestFailedJob && getJobErrorMessage(latestFailedJob)
               ? getDefaultJobFailureHint(
@@ -299,6 +316,11 @@ export const FeatureEditorPage = () => {
                   <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
                     {currentRevision ? `Revision ${currentRevision.version}` : "No revision yet"}
                   </p>
+                  {currentRevision && !isViewingHeadRevision ? (
+                    <p className="mt-2 text-sm text-secondary">
+                      Viewing a historical revision. Saving creates a new head revision.
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <AiWorkflowButton
@@ -336,16 +358,17 @@ export const FeatureEditorPage = () => {
                   </Button>
                   <Button
                     disabled={
-                      !currentRevision ||
-                      currentRevision.approval !== null ||
+                      !headRevision ||
+                      !isViewingHeadRevision ||
+                      headRevision.approval !== null ||
                       approveRevisionMutation.isPending
                     }
                     onClick={() => {
-                      if (currentRevision) {
+                      if (headRevision) {
                         void approveRevisionMutation.mutateAsync({
                           featureId,
                           kind: activeKind!,
-                          revisionId: currentRevision.id,
+                          revisionId: headRevision.id,
                         });
                       }
                     }}
@@ -447,19 +470,31 @@ export const FeatureEditorPage = () => {
                     <div className="mt-4 grid gap-3">
                       {revisionsQuery.data?.revisions.length ? (
                         revisionsQuery.data.revisions.map((revision, index) => (
-                          <div
+                          <button
                             key={revision.id}
-                            className="border border-border/80 bg-panel-inset px-4 py-4"
+                            className={[
+                              "w-full border px-4 py-4 text-left transition-colors",
+                              currentRevision?.id === revision.id
+                                ? "border-accent/55 bg-accent/12"
+                                : "border-border/80 bg-panel-inset hover:border-border-strong",
+                            ].join(" ")}
+                            onClick={() => {
+                              setSelectedRevisionId(revision.id);
+                            }}
+                            type="button"
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge tone="neutral">v{revision.version}</Badge>
                               {index === 0 ? <Badge tone="success">head</Badge> : null}
+                              {currentRevision?.id === revision.id ? (
+                                <Badge tone="neutral">selected</Badge>
+                              ) : null}
                               {revision.approval ? <Badge tone="success">approved</Badge> : null}
                             </div>
                             <p className="mt-2 text-sm font-medium text-foreground">
                               {revision.title}
                             </p>
-                          </div>
+                          </button>
                         ))
                       ) : (
                         <p className="text-sm text-secondary">No revisions yet.</p>

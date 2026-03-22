@@ -57,6 +57,13 @@ const defaultRequirements = {
   archDocsRequired: true,
 } as const;
 
+const hiddenRequirements = {
+  uxRequired: false,
+  techRequired: false,
+  userDocsRequired: false,
+  archDocsRequired: false,
+} as const;
+
 const toApproval = (record: typeof artifactApprovalsTable.$inferSelect) =>
   artifactApprovalSchema.parse({
     id: record.id,
@@ -495,7 +502,7 @@ export const createFeatureWorkstreamService = (db: AppDatabase) => ({
       this.getHeadRevision(ownerUserId, featureId, "arch_docs"),
     ]);
 
-    const requirements = product?.requirements ?? defaultRequirements;
+    const requirements = product?.requirements ?? hiddenRequirements;
     const toSummary = (
       kind: FeatureWorkstreamKind,
       required: boolean,
