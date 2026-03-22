@@ -1,13 +1,25 @@
 import { and, eq, isNull } from "drizzle-orm";
 
-import { questionnaireAnswerMapSchema, questionnaireDefinition } from "@quayboard/shared";
+import {
+  featureKindSchema,
+  prioritySchema,
+  questionnaireAnswerMapSchema,
+  questionnaireDefinition,
+} from "@quayboard/shared";
 
 import type { AppDatabase } from "../../db/client.js";
-import { llmRunsTable, useCasesTable } from "../../db/schema.js";
+import {
+  llmRunsTable,
+  milestoneUseCasesTable,
+  milestonesTable,
+  useCasesTable,
+} from "../../db/schema.js";
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
+import type { FeatureService } from "../feature-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
+import type { MilestoneService } from "../milestone-service.js";
 import type { OnePagerService } from "../one-pager-service.js";
 import type { ProductSpecService } from "../product-spec-service.js";
 import type { ProjectService } from "../project-service.js";
@@ -15,8 +27,11 @@ import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import {
+  buildAppendFeaturesFromOnePagerPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
+  buildMilestoneDesignPrompt,
+  buildMilestonePlanPrompt,
   buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
@@ -305,12 +320,116 @@ const parseDecisionValidationResult = (value: string) => {
   return parsed;
 };
 
+const parseMilestonesResult = (
+  value: string,
+):
+  | Array<{
+      title?: string;
+      summary?: string;
+      useCaseIds?: string[];
+    }>
+  | null => parseJson(value);
+
+const validateGeneratedMilestones = (
+  milestones: Array<{
+    title?: string;
+    summary?: string;
+    useCaseIds?: string[];
+  }>,
+) => {
+  if (milestones.length === 0) {
+    throw new Error(
+      "GenerateMilestones returned invalid content. Expected a non-empty JSON array of milestones.",
+    );
+  }
+
+  return milestones.map((milestone) => {
+    if (
+      !milestone.title?.trim() ||
+      !milestone.summary?.trim() ||
+      !Array.isArray(milestone.useCaseIds) ||
+      milestone.useCaseIds.length === 0
+    ) {
+      throw new Error(
+        "GenerateMilestones returned an incomplete milestone. Each milestone must include title, summary, and at least one useCaseId.",
+      );
+    }
+
+    return {
+      title: milestone.title.trim(),
+      summary: milestone.summary.trim(),
+      useCaseIds: milestone.useCaseIds,
+    };
+  });
+};
+
+const parseGeneratedFeaturesResult = (
+  value: string,
+):
+  | Array<{
+      title?: string;
+      summary?: string;
+      acceptanceCriteria?: string[];
+      kind?: string;
+      priority?: string;
+    }>
+  | null => parseJson(value);
+
+const validateGeneratedFeatures = (
+  items: Array<{
+    title?: string;
+    summary?: string;
+    acceptanceCriteria?: string[];
+    kind?: string;
+    priority?: string;
+  }>,
+) => {
+  if (items.length === 0) {
+    throw new Error(
+      "AppendFeatureFromOnePager returned invalid content. Expected a non-empty JSON array of features.",
+    );
+  }
+
+  return items.map((item) => {
+    if (
+      !item.title?.trim() ||
+      !item.summary?.trim() ||
+      !Array.isArray(item.acceptanceCriteria) ||
+      item.acceptanceCriteria.length === 0
+    ) {
+      throw new Error(
+        "AppendFeatureFromOnePager returned an incomplete feature. Each feature must include title, summary, and at least one acceptance criterion.",
+      );
+    }
+
+    const kind = featureKindSchema.safeParse(item.kind);
+    if (!kind.success) {
+      throw new Error("AppendFeatureFromOnePager returned an unsupported feature kind.");
+    }
+
+    const priority = prioritySchema.safeParse(item.priority);
+    if (!priority.success) {
+      throw new Error("AppendFeatureFromOnePager returned an unsupported feature priority.");
+    }
+
+    return {
+      title: item.title.trim(),
+      summary: item.summary.trim(),
+      acceptanceCriteria: item.acceptanceCriteria.map((criterion) => criterion.trim()),
+      kind: kind.data,
+      priority: priority.data,
+    };
+  });
+};
+
 export const createJobRunnerService = (input: {
   artifactApprovalService: ArtifactApprovalService;
   blueprintService: BlueprintService;
   db: AppDatabase;
+  featureService?: FeatureService;
   jobService: JobService;
   llmProviderService: LlmProviderService;
+  milestoneService?: MilestoneService;
   onePagerService: OnePagerService;
   productSpecService: ProductSpecService;
   projectService: ProjectService;
@@ -913,6 +1032,247 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, {
           blueprintId: blueprint.id,
           kind,
+        });
+      }
+
+      case "GenerateMilestones": {
+        if (!input.milestoneService) {
+          throw new Error("GenerateMilestones requires milestone service support.");
+        }
+
+        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+        const blueprints = await input.blueprintService.getCanonical(ownerUserId, rawJob.projectId);
+
+        if (!userFlows.approvedAt) {
+          throw new Error("GenerateMilestones requires approved user flows.");
+        }
+
+        if (!blueprints.uxBlueprint || !blueprints.techBlueprint) {
+          throw new Error("GenerateMilestones requires approved UX and Technical Specs.");
+        }
+
+        const [uxApproval, techApproval] = await Promise.all([
+          input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            blueprints.uxBlueprint.id,
+          ),
+          input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_tech",
+            blueprints.techBlueprint.id,
+          ),
+        ]);
+
+        if (!uxApproval || !techApproval) {
+          throw new Error("GenerateMilestones requires approved UX and Technical Specs.");
+        }
+
+        const prompt = buildMilestonePlanPrompt({
+          projectName: project.name,
+          uxSpec: blueprints.uxBlueprint.markdown,
+          technicalSpec: blueprints.techBlueprint.markdown,
+          userFlows: userFlows.userFlows.map((flow) => ({
+            id: flow.id,
+            title: flow.title,
+            userStory: flow.userStory,
+            entryPoint: flow.entryPoint,
+            endState: flow.endState,
+          })),
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseMilestonesResult(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "GenerateMilestones returned invalid content. Expected a JSON array of milestones.",
+          );
+        }
+
+        const milestones = validateGeneratedMilestones(parsed);
+        for (const milestone of milestones) {
+          await input.milestoneService.create(
+            ownerUserId,
+            rawJob.projectId,
+            milestone,
+            rawJob.id,
+          );
+        }
+
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: milestones.length });
+      }
+
+      case "GenerateMilestoneDesign": {
+        if (!input.milestoneService) {
+          throw new Error("GenerateMilestoneDesign requires milestone service support.");
+        }
+
+        const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
+        const milestoneId = jobInput?.milestoneId;
+
+        if (!milestoneId) {
+          throw new Error("GenerateMilestoneDesign requires a milestoneId.");
+        }
+
+        const milestone = await input.milestoneService.getContext(ownerUserId, milestoneId);
+        if (milestone.status !== "approved") {
+          throw new Error("GenerateMilestoneDesign requires an approved milestone.");
+        }
+
+        const [blueprints, milestoneRecord, linkedFlows] = await Promise.all([
+          input.blueprintService.getCanonical(ownerUserId, rawJob.projectId),
+          input.db.query.milestonesTable.findFirst({
+            where: eq(milestonesTable.id, milestoneId),
+          }),
+          input.db
+            .select({
+              title: useCasesTable.title,
+              userStory: useCasesTable.userStory,
+              entryPoint: useCasesTable.entryPoint,
+              endState: useCasesTable.endState,
+            })
+            .from(milestoneUseCasesTable)
+            .innerJoin(useCasesTable, eq(useCasesTable.id, milestoneUseCasesTable.useCaseId))
+            .where(eq(milestoneUseCasesTable.milestoneId, milestoneId)),
+        ]);
+
+        if (!milestoneRecord) {
+          throw new Error("GenerateMilestoneDesign could not load the milestone.");
+        }
+
+        if (!blueprints.uxBlueprint || !blueprints.techBlueprint) {
+          throw new Error("GenerateMilestoneDesign requires approved UX and Technical Specs.");
+        }
+
+        const prompt = buildMilestoneDesignPrompt({
+          projectName: project.name,
+          milestoneTitle: milestoneRecord.title,
+          milestoneSummary: milestoneRecord.summary,
+          linkedUserFlows: linkedFlows,
+          uxSpec: blueprints.uxBlueprint.markdown,
+          technicalSpec: blueprints.techBlueprint.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { milestoneId },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const designDoc = parseBlueprintResult(generated.content, rawJob.type);
+        const created = await input.milestoneService.createDesignDocVersion({
+          milestoneId,
+          title: designDoc.title,
+          markdown: designDoc.markdown,
+          source: rawJob.type,
+          createdByJobId: rawJob.id,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, { designDocId: created.id });
+      }
+
+      case "AppendFeatureFromOnePager": {
+        if (!input.featureService) {
+          throw new Error("AppendFeatureFromOnePager requires feature service support.");
+        }
+
+        const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
+        const milestoneId = jobInput?.milestoneId;
+
+        if (!milestoneId) {
+          throw new Error("AppendFeatureFromOnePager requires a milestoneId.");
+        }
+
+        await input.featureService.assertApprovedMilestone(rawJob.projectId, milestoneId);
+        const overview = await input.onePagerService.getCanonical(ownerUserId, rawJob.projectId);
+        if (!overview?.approvedAt) {
+          throw new Error("AppendFeatureFromOnePager requires an approved overview document.");
+        }
+
+        const [features, milestoneRecord] = await Promise.all([
+          input.featureService.list(ownerUserId, rawJob.projectId),
+          input.db.query.milestonesTable.findFirst({
+            where: eq(milestonesTable.id, milestoneId),
+          }),
+        ]);
+
+        if (!milestoneRecord) {
+          throw new Error("AppendFeatureFromOnePager could not load the target milestone.");
+        }
+
+        const prompt = buildAppendFeaturesFromOnePagerPrompt({
+          projectName: project.name,
+          milestoneTitle: milestoneRecord.title,
+          overviewDocument: overview.markdown,
+          existingFeatures: features.features.map((feature) => ({
+            title: feature.headRevision.title,
+            summary: feature.headRevision.summary,
+          })),
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { milestoneId },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseGeneratedFeaturesResult(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "AppendFeatureFromOnePager returned invalid content. Expected a JSON array of features.",
+          );
+        }
+
+        const items = validateGeneratedFeatures(parsed);
+        const appended = await input.featureService.appendGeneratedFeatures({
+          ownerUserId,
+          projectId: rawJob.projectId,
+          milestoneId,
+          createdByJobId: rawJob.id,
+          items,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          createdCount: appended.createdIds.length,
+          skippedCount: appended.skippedCount,
+          featureIds: appended.createdIds,
         });
       }
 

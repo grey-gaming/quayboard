@@ -3,16 +3,16 @@ import { Link, useParams } from "react-router-dom";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
 import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Card } from "../components/ui/Card.js";
 import {
   useNextActionsQuery,
-  usePhaseGatesQuery,
   useProjectJobsQuery,
   useProjectQuery,
 } from "../hooks/use-projects.js";
-import { useSseEvents } from "../hooks/use-sse-events.js";
+import { usePhaseGates } from "../hooks/use-phase-gates.js";
 
 const phaseDisplayOrder = [
   "Project Setup",
@@ -21,6 +21,8 @@ const phaseDisplayOrder = [
   "UX Spec",
   "Technical Spec",
   "User Flows",
+  "Milestones",
+  "Features",
 ] as const;
 
 const phaseOrderIndex = new Map<string, number>(
@@ -30,11 +32,9 @@ const phaseOrderIndex = new Map<string, number>(
 export const MissionControlPage = () => {
   const { id = "" } = useParams();
   const projectQuery = useProjectQuery(id);
-  const phaseGatesQuery = usePhaseGatesQuery(id);
+  const phaseGatesQuery = usePhaseGates(id);
   const nextActionsQuery = useNextActionsQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
-
-  useSseEvents(id);
 
   if (!projectQuery.data) {
     return (
@@ -112,30 +112,8 @@ export const MissionControlPage = () => {
               </div>
               <Badge tone="warning">review states</Badge>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2" data-testid="mission-control-phase-gates">
-              {phases.map((phase) => (
-                <div key={phase.phase} className="border border-border/80 bg-panel-inset p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-medium tracking-[-0.02em]">{phase.phase}</p>
-                    <Badge tone={phase.items.every((item) => item.passed) ? "success" : "warning"}>
-                      {phase.items.filter((item) => item.passed).length}/{phase.items.length}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {phase.items.map((item) => (
-                      <div
-                        key={item.key}
-                        className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm"
-                      >
-                        <span>{item.label}</span>
-                        <span className={item.passed ? "text-success" : "text-muted-foreground"}>
-                          {item.passed ? "passed" : "pending"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="mt-4" data-testid="mission-control-phase-gates">
+              <PhaseGateChecklist phases={phases} />
             </div>
           </Card>
         </div>

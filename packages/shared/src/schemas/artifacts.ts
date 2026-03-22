@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-export const artifactTypeSchema = z.enum(["blueprint_ux", "blueprint_tech"]);
+export const artifactTypeSchema = z.enum([
+  "blueprint_ux",
+  "blueprint_tech",
+  "milestone_design_doc",
+]);
 
 export type ArtifactType = z.infer<typeof artifactTypeSchema>;
 

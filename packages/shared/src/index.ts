@@ -17,4 +17,6 @@ export * from "./schemas/user-flows.js";
 export * from "./schemas/workflow.js";
 export * from "./schemas/blueprints.js";
 export * from "./schemas/artifacts.js";
+export * from "./schemas/milestones.js";
+export * from "./schemas/features.js";
 export * from "./questionnaire-definition.js";

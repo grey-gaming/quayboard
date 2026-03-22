@@ -62,6 +62,45 @@ export const createStubServices = (): AppServices => ({
     checkAvailability: async () => ({ ok: false, message: "Unavailable." }),
     verifySandboxImage: async () => ({ ok: false, message: "Unavailable." }),
   },
+  featureService: {
+    addDependency: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    appendGeneratedFeatures: async () => ({ createdIds: [], skippedCount: 0 }),
+    archive: async () => ({ features: [] }),
+    assertApprovedMilestone: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    buildDependencyAdjacency: async () => new Map(),
+    create: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createRevision: async () => ({ revisions: [] }),
+    get: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getContext: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getGraph: async () => ({ nodes: [], edges: [] }),
+    getRollup: async () => ({
+      totals: { active: 0, archived: 0 },
+      byStatus: [],
+      byKind: [],
+      byPriority: [],
+      byMilestone: [],
+    }),
+    list: async () => ({ features: [] }),
+    listDependencies: async () => ({ dependencies: [] }),
+    listRevisions: async () => ({ revisions: [] }),
+    removeDependency: async () => ({ dependencies: [] }),
+    update: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
   githubService: {
     validatePat: async () => {
       throw new Error("Not implemented in test stub.");
@@ -113,6 +152,44 @@ export const createStubServices = (): AppServices => ({
     generate: async () => {
       throw new Error("Not implemented in test stub.");
     },
+  },
+  milestoneService: {
+    assertApprovedUserFlows: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertCanonicalDesignDoc: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    create: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createDesignDocVersion: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    formatDesignDocList: async () => ({ designDocs: [] }),
+    getCanonicalDesignDoc: async () => undefined,
+    getContext: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    list: async () => ({
+      milestones: [],
+      coverage: {
+        approvedUserFlowCount: 0,
+        coveredUserFlowCount: 0,
+        uncoveredUserFlowIds: [],
+      },
+    }),
+    listDesignDocs: async () => [],
+    transition: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    update: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    validateLinkedUseCases: async () => [],
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),

@@ -12,6 +12,8 @@ const projectNavItems = [
   { label: "UX Spec", suffix: "/ux-spec", end: true, requiresSetupCompletion: true },
   { label: "Technical Spec", suffix: "/technical-spec", end: true, requiresSetupCompletion: true },
   { label: "User Flows", suffix: "/user-flows", end: true, requiresSetupCompletion: true },
+  { label: "Milestones", suffix: "/milestones", end: true, requiresSetupCompletion: true },
+  { label: "Features", suffix: "/features", end: true, requiresSetupCompletion: true },
   { label: "Import", suffix: "/import", end: true, requiresSetupCompletion: true },
 ];
 

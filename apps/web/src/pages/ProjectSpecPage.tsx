@@ -1,6 +1,6 @@
 import type { ArtifactType, BlueprintKind, DecisionCard, Job } from "@quayboard/shared";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
@@ -8,13 +8,11 @@ import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import {
   findLatestFailedJob,
-  findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
   LatestJobFailureAlert,
 } from "../components/workflow/LatestJobFailureAlert.js";
 import { NextActionBar } from "../components/workflow/NextActionBar.js";
-import { TransitionConfirmDialog } from "../components/workflow/TransitionConfirmDialog.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -265,7 +263,8 @@ const getJobFailureHint = (message: string, title: string, decisionTitle: string
 export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const { id = "" } = useParams();
   const location = useLocation();
-  const [confirmApproval, setConfirmApproval] = useState(false);
+  const navigate = useNavigate();
+  const [pendingAutoAdvance, setPendingAutoAdvance] = useState(false);
   const [decisionSectionExpanded, setDecisionSectionExpanded] = useState(false);
   const projectQuery = useProjectQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
@@ -339,12 +338,23 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
   const specApproved = Boolean(artifactApprovalQuery.data?.approval);
   const shouldAutoCollapseDecisionSection = Boolean(currentSpec || activeSpecJob);
   const decisionSectionCollapsed = shouldAutoCollapseDecisionSection && !decisionSectionExpanded;
+  const nextPath =
+    kind === "ux" ? `/projects/${id}/technical-spec` : `/projects/${id}/user-flows`;
 
   useEffect(() => {
     if (!shouldAutoCollapseDecisionSection) {
       setDecisionSectionExpanded(false);
     }
   }, [shouldAutoCollapseDecisionSection]);
+
+  useEffect(() => {
+    if (!pendingAutoAdvance || !specApproved) {
+      return;
+    }
+
+    setPendingAutoAdvance(false);
+    navigate(nextPath);
+  }, [navigate, nextPath, pendingAutoAdvance, specApproved]);
 
   const activeError =
     projectQuery.error ||
@@ -361,9 +371,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     restoreSpecMutation.error ||
     approveArtifactMutation.error;
   const latestFailedSpecMessage = latestFailedSpecJob ? getJobErrorMessage(latestFailedSpecJob) : null;
-  const latestFailedDecisionMessage = latestFailedDecisionJob
-    ? getJobErrorMessage(latestFailedDecisionJob)
-    : null;
 
   return (
     <AppFrame>
@@ -552,7 +559,19 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
                   specApproved
                 }
                 onClick={() => {
-                  setConfirmApproval(true);
+                  if (!currentSpec) {
+                    return;
+                  }
+
+                  setPendingAutoAdvance(true);
+                  approveArtifactMutation.mutate(
+                    { artifactId: currentSpec.id, artifactType },
+                    {
+                      onError: () => {
+                        setPendingAutoAdvance(false);
+                      },
+                    },
+                  );
                 }}
                 type="button"
                 variant="secondary"
@@ -639,27 +658,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
           </div>
         </Card>
       </div>
-
-      <TransitionConfirmDialog
-        confirmLabel={`Approve ${title}`}
-        isOpen={confirmApproval}
-        isPending={approveArtifactMutation.isPending}
-        onCancel={() => {
-          setConfirmApproval(false);
-        }}
-        onConfirm={() => {
-          if (!currentSpec) {
-            return;
-          }
-
-          void approveArtifactMutation
-            .mutateAsync({ artifactId: currentSpec.id, artifactType })
-            .then(() => {
-              setConfirmApproval(false);
-            });
-        }}
-        title={`Approve ${title}`}
-      />
     </AppFrame>
   );
 };

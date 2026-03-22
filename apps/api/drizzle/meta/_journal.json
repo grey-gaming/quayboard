@@ -50,6 +50,13 @@
       "when": 1760000006000,
       "tag": "0006_remove-blueprint-review-flow",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1760000007000,
+      "tag": "0007_m4_milestones_and_features",
+      "breakpoints": true
     }
   ]
 }

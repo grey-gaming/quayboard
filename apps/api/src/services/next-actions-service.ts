@@ -1,5 +1,7 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
+import type { FeatureService } from "./feature-service.js";
+import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
@@ -9,6 +11,8 @@ import type { UserFlowService } from "./user-flow-service.js";
 export const createNextActionsService = (
   artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
+  featureService: FeatureService,
+  milestoneService: MilestoneService,
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
   onePagerService: OnePagerService,
@@ -162,6 +166,34 @@ export const createNextActionsService = (
             label: "Generate and approve user flows",
             href: `/projects/${projectId}/user-flows`,
           });
+        } else {
+          const [milestones, features] = await Promise.all([
+            milestoneService.list(ownerUserId, projectId),
+            featureService.list(ownerUserId, projectId),
+          ]);
+          const hasApprovedMilestone = milestones.milestones.some(
+            (milestone) => milestone.status === "approved",
+          );
+
+          if (milestones.milestones.length === 0) {
+            actions.push({
+              key: "milestones_generate",
+              label: "Create or generate milestones",
+              href: `/projects/${projectId}/milestones`,
+            });
+          } else if (!hasApprovedMilestone) {
+            actions.push({
+              key: "milestones_approve",
+              label: "Approve a milestone",
+              href: `/projects/${projectId}/milestones`,
+            });
+          } else if (features.features.length === 0) {
+            actions.push({
+              key: "features_create",
+              label: "Create the first feature",
+              href: `/projects/${projectId}/features`,
+            });
+          }
         }
       }
     }

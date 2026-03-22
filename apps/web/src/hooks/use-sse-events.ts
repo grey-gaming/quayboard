@@ -9,6 +9,11 @@ type JobUpdatedEventPayload = {
   status?: string;
 };
 
+type ProjectUpdatedEventPayload = {
+  projectId?: string;
+  resource?: "feature" | "milestone" | "phase_gates";
+};
+
 const isJobUpdatedEventPayload = (value: unknown): value is JobUpdatedEventPayload => {
   if (!value || typeof value !== "object") {
     return false;
@@ -24,13 +29,29 @@ const isJobUpdatedEventPayload = (value: unknown): value is JobUpdatedEventPaylo
   );
 };
 
+const isProjectUpdatedEventPayload = (value: unknown): value is ProjectUpdatedEventPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    ("projectId" in candidate ? typeof candidate.projectId === "string" : true) &&
+    ("resource" in candidate
+      ? candidate.resource === "feature" ||
+        candidate.resource === "milestone" ||
+        candidate.resource === "phase_gates"
+      : true)
+  );
+};
+
 export const useSseEvents = (projectId?: string) => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     const source = createSseConnection("/api/events");
     const refetchActiveProjectQueries = async (activeProjectId: string) => {
-      const keys = [
+      const projectKeys = [
         ["project", activeProjectId],
         ["project", activeProjectId, "jobs"],
         ["project", activeProjectId, "questionnaire"],
@@ -47,10 +68,14 @@ export const useSseEvents = (projectId?: string) => {
         ["project", activeProjectId, "tech-spec-versions"],
         ["project", activeProjectId, "phase-gates"],
         ["project", activeProjectId, "next-actions"],
+        ["project", activeProjectId, "milestones"],
+        ["project", activeProjectId, "features"],
+        ["project", activeProjectId, "features-graph"],
+        ["project", activeProjectId, "features-rollup"],
       ] as const;
 
       await Promise.all(
-        keys.map((key) =>
+        projectKeys.map((key) =>
           queryClient.refetchQueries({
             exact: true,
             queryKey: key,
@@ -59,19 +84,28 @@ export const useSseEvents = (projectId?: string) => {
         ),
       );
       await Promise.all([
+        queryClient.refetchQueries({
+          predicate: (query) => {
+            const [scope, , resource] = query.queryKey;
+            return scope === "milestone" && resource === "design-docs";
+          },
+          type: "active",
+        }),
         queryClient.invalidateQueries({
           queryKey: ["project", activeProjectId, "artifact-approval"],
         }),
       ]);
     };
 
-    const handleJobUpdated = (event: Event) => {
+    const handleProjectEvent = (event: Event) => {
       let eventProjectId: string | null | undefined;
 
       if ("data" in event && typeof event.data === "string" && event.data) {
         try {
           const parsed = JSON.parse(event.data) as unknown;
           if (isJobUpdatedEventPayload(parsed)) {
+            eventProjectId = parsed.projectId;
+          } else if (isProjectUpdatedEventPayload(parsed)) {
             eventProjectId = parsed.projectId;
           }
         } catch {
@@ -95,10 +129,12 @@ export const useSseEvents = (projectId?: string) => {
       });
     };
 
-    source.addEventListener("job:updated", handleJobUpdated);
+    source.addEventListener("job:updated", handleProjectEvent);
+    source.addEventListener("project:updated", handleProjectEvent);
 
     return () => {
-      source.removeEventListener("job:updated", handleJobUpdated);
+      source.removeEventListener("job:updated", handleProjectEvent);
+      source.removeEventListener("project:updated", handleProjectEvent);
       source.close();
     };
   }, [projectId, queryClient]);

@@ -1,10 +1,10 @@
 # Planning Workflow
 
-This document describes the M3 planning workflow as it exists in the repository.
+This document describes the M4 planning workflow as it exists in the repository.
 
 ## Scope
 
-The current planning workflow builds on the M1 foundation and M2 onboarding flow:
+The current planning workflow builds on the M1 foundation and M2-M3 planning flow:
 
 - instance readiness checks
 - project creation and Mission Control
@@ -12,11 +12,11 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - questionnaire persistence, autosave, and blank-answer auto-fill
 - overview document generation, version history, restore, and approval
 - Product Spec generation, version history, restore, and approval
-- UX decision-tile generation, selection persistence, and acceptance
-- UX Spec generation, manual save, direct approval, and version history
-- Technical decision-tile generation, selection persistence, and acceptance
-- Technical Spec generation, manual save, direct approval, and version history
+- UX decision-tile generation, selection persistence, acceptance, and UX Spec approval
+- Technical decision-tile generation, selection persistence, acceptance, and Technical Spec approval
 - user-flow generation, manual editing, deduplication, and approval
+- milestone planning, lifecycle control, milestone design doc generation, and design doc approval
+- feature catalogue management, feature revisions, dependency graph reads, overview-seeded feature intake, and feature rollups
 
 ## Data Model
 
@@ -26,21 +26,31 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `use_cases` stores mutable user flows with archive support
 - `decision_cards` stores kind-specific UX and technical decision tiles, selections, and acceptance state
 - `project_blueprints` stores versioned UX and technical spec revisions with canonical pointers
-- `artifact_approvals` backs UX/Technical Spec approval records
-- `projects` now stores overview approval time plus user-flow approval snapshot metadata
+- `artifact_approvals` backs UX/Technical Spec and milestone design doc approval records
+- `milestones` stores milestone ordering plus lifecycle timestamps
+- `milestone_use_cases` stores milestone-to-user-flow coverage links
+- `milestone_design_docs` stores immutable milestone design doc revisions with a canonical flag
+- `feature_cases` stores feature identity, milestone assignment, lifecycle metadata, and archive state
+- `feature_revisions` stores immutable feature content snapshots
+- `feature_dependencies` stores direct build-order links between features
+- `feature_edges` stores derived read-only graph edges for graph consumers
+- `projects` stores overview approval time plus user-flow approval snapshot metadata
+- `project_counters` now issues stable feature keys such as `F-001`
 - `settings` holds project-scoped setup state: LLM config, sandbox defaults, and evidence policy
 
 ## Runtime Services
 
 - `systemReadinessService` checks database access, encryption key presence, Docker access, artifact storage, and enabled provider adapters
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
-- `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, and `artifactApprovalService` manage the planning artifacts
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including decision-tile generation and spec generation
+- `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, `milestoneService`, `featureService`, and `artifactApprovalService` manage planning artifacts
+- `phaseGateService` now publishes `Milestones` and `Features` phases alongside the earlier planning gates
+- `nextActionsService` now recommends milestone and feature planning actions after approved user flows
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, and overview-seeded feature creation
 
 ## External Adapters
 
-- GitHub repo verification is PAT-based only in M2
-- LLM providers supported in M2 are Ollama and OpenAI-compatible
+- GitHub repo verification is PAT-based only in M2-M4
+- LLM providers supported in M2-M4 are Ollama and OpenAI-compatible
 - Sandbox verification checks Docker daemon availability, pulls the base image when needed, and attempts to start a throwaway container
 
 ## UI Surface
@@ -56,4 +66,6 @@ The current planning workflow builds on the M1 foundation and M2 onboarding flow
 - `/projects/:id/ux-spec`
 - `/projects/:id/technical-spec`
 - `/projects/:id/user-flows`
+- `/projects/:id/milestones`
+- `/projects/:id/features`
 - `/projects/:id/import` as a future-release stub
