@@ -98,59 +98,65 @@ describe("API integration", () => {
   const registerAndSeedBlueprintProject = async ({
     approveProductSpec = true,
   }: { approveProductSpec?: boolean } = {}) => {
-    blueprintProjectCounter += 1;
-    const projectSuffix = `${approveProductSpec ? "ready" : "gate"}-${blueprintProjectCounter}`;
-    const registerResponse = await server.inject({
-      method: "POST",
-      url: "/auth/register",
-      payload: {
-        displayName: approveProductSpec ? "Blueprint Owner" : "Blueprint Gate Owner",
-        email: `blueprint-${projectSuffix}@example.com`,
-        password: "correct-horse-battery",
-      },
-    });
+    const restoreReadiness = withHealthyAuthReadiness();
 
-    expect(registerResponse.statusCode).toBe(200);
-    const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
-    expect(cookie?.value).toBeTruthy();
+    try {
+      blueprintProjectCounter += 1;
+      const projectSuffix = `${approveProductSpec ? "ready" : "gate"}-${blueprintProjectCounter}`;
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: approveProductSpec ? "Blueprint Owner" : "Blueprint Gate Owner",
+          email: `blueprint-${projectSuffix}@example.com`,
+          password: "correct-horse-battery",
+        },
+      });
 
-    const ownerUserId = registerResponse.json().user.id as string;
-    const projectResponse = await server.inject({
-      method: "POST",
-      url: "/api/projects",
-      cookies: { qb_session: cookie!.value },
-      payload: {
-        name: approveProductSpec
-          ? `Blueprint Project ${projectSuffix}`
-          : `Blueprint Gate Project ${projectSuffix}`,
-      },
-    });
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+      expect(cookie?.value).toBeTruthy();
 
-    expect(projectResponse.statusCode).toBe(200);
-    const projectId = projectResponse.json().id as string;
+      const ownerUserId = registerResponse.json().user.id as string;
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: {
+          name: approveProductSpec
+            ? `Blueprint Project ${projectSuffix}`
+            : `Blueprint Gate Project ${projectSuffix}`,
+        },
+      });
 
-    await appServices.services.onePagerService.createVersion({
-      approve: true,
-      markdown: "# Overview\n\nApproved planning scope.",
-      projectId,
-      source: "ManualSave",
-      title: "Overview",
-    });
-    await appServices.services.productSpecService.createVersion({
-      markdown: "# Product Spec\n\nApproved scope.",
-      projectId,
-      source: "ManualSave",
-      title: "Product Spec",
-    });
-    if (approveProductSpec) {
-      await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      await appServices.services.onePagerService.createVersion({
+        approve: true,
+        markdown: "# Overview\n\nApproved planning scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Overview",
+      });
+      await appServices.services.productSpecService.createVersion({
+        markdown: "# Product Spec\n\nApproved scope.",
+        projectId,
+        source: "ManualSave",
+        title: "Product Spec",
+      });
+      if (approveProductSpec) {
+        await appServices.services.productSpecService.approveCanonical(ownerUserId, projectId);
+      }
+
+      return {
+        cookieValue: cookie!.value,
+        ownerUserId,
+        projectId,
+      };
+    } finally {
+      restoreReadiness();
     }
-
-    return {
-      cookieValue: cookie!.value,
-      ownerUserId,
-      projectId,
-    };
   };
 
   const approveSpecArtifact = async (
