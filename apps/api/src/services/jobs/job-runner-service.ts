@@ -1,6 +1,8 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
+  createFeatureProductRevisionRequestSchema,
+  createFeatureWorkstreamRevisionRequestSchema,
   featureKindSchema,
   prioritySchema,
   questionnaireAnswerMapSchema,
@@ -17,6 +19,7 @@ import {
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
 import type { FeatureService } from "../feature-service.js";
+import type { FeatureWorkstreamService } from "../feature-workstream-service.js";
 import { generateId } from "../ids.js";
 import type { LlmProviderService } from "../llm-provider.js";
 import type { MilestoneService } from "../milestone-service.js";
@@ -30,6 +33,11 @@ import {
   buildAppendFeaturesFromOnePagerPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
+  buildFeatureArchDocsPrompt,
+  buildFeatureProductSpecPrompt,
+  buildFeatureTechSpecPrompt,
+  buildFeatureUserDocsPrompt,
+  buildFeatureUxSpecPrompt,
   buildMilestoneDesignPrompt,
   buildMilestonePlanPrompt,
   buildProjectBlueprintPrompt,
@@ -170,6 +178,35 @@ const parseProductSpecResult = (value: string, templateId: string) => {
   return {
     title: parsed.title.trim(),
     markdown: parsed.markdown.trim(),
+  };
+};
+
+const parseFeatureWorkstreamResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{
+    markdown?: string;
+    requirements?: {
+      archDocsRequired?: boolean;
+      techRequired?: boolean;
+      userDocsRequired?: boolean;
+      uxRequired?: boolean;
+    };
+    title?: string;
+  }>(value);
+
+  if (!parsed?.title?.trim() || !parsed?.markdown?.trim()) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with non-empty "title" and "markdown".`,
+    );
+  }
+
+  const requirements = parsed.requirements
+    ? createFeatureProductRevisionRequestSchema.shape.requirements.parse(parsed.requirements)
+    : null;
+
+  return {
+    title: parsed.title.trim(),
+    markdown: parsed.markdown.trim(),
+    requirements,
   };
 };
 
@@ -427,6 +464,7 @@ export const createJobRunnerService = (input: {
   blueprintService: BlueprintService;
   db: AppDatabase;
   featureService?: FeatureService;
+  featureWorkstreamService?: FeatureWorkstreamService;
   jobService: JobService;
   llmProviderService: LlmProviderService;
   milestoneService?: MilestoneService;
@@ -451,6 +489,48 @@ export const createJobRunnerService = (input: {
       ownerUserId,
       projectId,
     );
+    const loadApprovedProjectSpecs = async () => {
+      const [productSpec, uxSpec, technicalSpec] = await Promise.all([
+        input.productSpecService.getCanonical(ownerUserId, projectId),
+        input.blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux"),
+        input.blueprintService.getCanonicalByKind(ownerUserId, projectId, "tech"),
+      ]);
+
+      if (!productSpec?.approvedAt) {
+        throw new Error("Feature workstream generation requires an approved Product Spec.");
+      }
+
+      if (!uxSpec) {
+        throw new Error("Feature workstream generation requires an approved UX Spec.");
+      }
+
+      if (!technicalSpec) {
+        throw new Error("Feature workstream generation requires an approved Technical Spec.");
+      }
+
+      const [uxApproval, technicalApproval] = await Promise.all([
+        input.artifactApprovalService.getApproval(projectId, "blueprint_ux", uxSpec.id),
+        input.artifactApprovalService.getApproval(
+          projectId,
+          "blueprint_tech",
+          technicalSpec.id,
+        ),
+      ]);
+
+      if (!uxApproval) {
+        throw new Error("Feature workstream generation requires an approved UX Spec.");
+      }
+
+      if (!technicalApproval) {
+        throw new Error("Feature workstream generation requires an approved Technical Spec.");
+      }
+
+      return {
+        productSpec,
+        technicalSpec,
+        uxSpec,
+      };
+    };
 
     switch (rawJob.type) {
       case "GenerateProjectDescription": {
@@ -1274,6 +1354,194 @@ export const createJobRunnerService = (input: {
           skippedCount: appended.skippedCount,
           featureIds: appended.createdIds,
         });
+      }
+
+      case "GenerateFeatureProductSpec": {
+        if (!input.featureWorkstreamService) {
+          throw new Error("GenerateFeatureProductSpec requires feature workstream support.");
+        }
+
+        const jobInput = parseJson<{ featureId?: string }>(JSON.stringify(rawJob.inputs));
+        const featureId = jobInput?.featureId;
+
+        if (!featureId) {
+          throw new Error("GenerateFeatureProductSpec requires a featureId.");
+        }
+
+        const { productSpec, uxSpec, technicalSpec } = await loadApprovedProjectSpecs();
+        const context = await input.featureWorkstreamService.getFeatureContext(
+          ownerUserId,
+          featureId,
+        );
+        const milestone = await input.db.query.milestonesTable.findFirst({
+          where: eq(milestonesTable.id, context.feature.milestoneId),
+        });
+
+        if (!milestone) {
+          throw new Error("GenerateFeatureProductSpec could not load the target milestone.");
+        }
+
+        const prompt = buildFeatureProductSpecPrompt({
+          feature: {
+            acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
+              ? context.headFeatureRevision.acceptanceCriteria.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            featureKey: context.feature.featureKey,
+            milestoneTitle: milestone.title,
+            summary: context.headFeatureRevision.summary,
+            title: context.headFeatureRevision.title,
+          },
+          productSpec: productSpec.markdown,
+          technicalSpec: technicalSpec.markdown,
+          uxSpec: uxSpec.markdown,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { featureId },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const generatedSpec = parseFeatureWorkstreamResult(generated.content, rawJob.type);
+        await input.featureWorkstreamService.createRevision(
+          ownerUserId,
+          featureId,
+          "product",
+          {
+            markdown: generatedSpec.markdown,
+            requirements:
+              generatedSpec.requirements ?? {
+                uxRequired: true,
+                techRequired: true,
+                userDocsRequired: true,
+                archDocsRequired: true,
+              },
+            source: rawJob.type,
+            title: generatedSpec.title,
+          },
+          rawJob.id,
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, { featureId, kind: "product" });
+      }
+
+      case "GenerateFeatureUxSpec":
+      case "GenerateFeatureTechSpec":
+      case "GenerateFeatureUserDocs":
+      case "GenerateFeatureArchDocs": {
+        if (!input.featureWorkstreamService) {
+          throw new Error(`${rawJob.type} requires feature workstream support.`);
+        }
+
+        const jobInput = parseJson<{ featureId?: string }>(JSON.stringify(rawJob.inputs));
+        const featureId = jobInput?.featureId;
+
+        if (!featureId) {
+          throw new Error(`${rawJob.type} requires a featureId.`);
+        }
+
+        const { productSpec, uxSpec, technicalSpec } = await loadApprovedProjectSpecs();
+        const context = await input.featureWorkstreamService.getFeatureContext(
+          ownerUserId,
+          featureId,
+        );
+        const tracks = await input.featureWorkstreamService.getTracks(ownerUserId, featureId);
+
+        let prompt = "";
+        let kind: "ux" | "tech" | "user_docs" | "arch_docs";
+
+        if (rawJob.type === "GenerateFeatureUxSpec") {
+          if (!tracks.tracks.product.headRevision?.approval) {
+            throw new Error("GenerateFeatureUxSpec requires an approved feature Product Spec.");
+          }
+
+          kind = "ux";
+          prompt = buildFeatureUxSpecPrompt({
+            featureProductSpec: tracks.tracks.product.headRevision.markdown,
+            featureTitle: context.headFeatureRevision.title,
+            projectProductSpec: productSpec.markdown,
+            projectUxSpec: uxSpec.markdown,
+          });
+        } else if (rawJob.type === "GenerateFeatureTechSpec") {
+          if (!tracks.tracks.product.headRevision?.approval) {
+            throw new Error("GenerateFeatureTechSpec requires an approved feature Product Spec.");
+          }
+
+          kind = "tech";
+          prompt = buildFeatureTechSpecPrompt({
+            featureProductSpec: tracks.tracks.product.headRevision.markdown,
+            featureTitle: context.headFeatureRevision.title,
+            projectProductSpec: productSpec.markdown,
+            projectTechnicalSpec: technicalSpec.markdown,
+          });
+        } else if (rawJob.type === "GenerateFeatureUserDocs") {
+          if (!tracks.tracks.product.headRevision?.approval) {
+            throw new Error("GenerateFeatureUserDocs requires an approved feature Product Spec.");
+          }
+
+          kind = "user_docs";
+          prompt = buildFeatureUserDocsPrompt({
+            featureProductSpec: tracks.tracks.product.headRevision.markdown,
+            featureTitle: context.headFeatureRevision.title,
+            projectProductSpec: productSpec.markdown,
+            projectUxSpec: uxSpec.markdown,
+          });
+        } else {
+          if (!tracks.tracks.tech.headRevision?.approval) {
+            throw new Error("GenerateFeatureArchDocs requires an approved feature Tech Spec.");
+          }
+
+          kind = "arch_docs";
+          prompt = buildFeatureArchDocsPrompt({
+            featureTechSpec: tracks.tracks.tech.headRevision.markdown,
+            featureTitle: context.headFeatureRevision.title,
+            projectTechnicalSpec: technicalSpec.markdown,
+          });
+        }
+
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { featureId, kind },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const generatedSpec = parseFeatureWorkstreamResult(generated.content, rawJob.type);
+        await input.featureWorkstreamService.createRevision(
+          ownerUserId,
+          featureId,
+          kind,
+          {
+            markdown: generatedSpec.markdown,
+            source: rawJob.type,
+            title: generatedSpec.title,
+          },
+          rawJob.id,
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, { featureId, kind });
       }
 
       default:

@@ -211,6 +211,13 @@ export const useFeaturesQuery = (projectId: string) =>
     queryFn: () => api.getFeatures(projectId),
   });
 
+export const useFeatureQuery = (featureId: string) =>
+  useQuery({
+    enabled: Boolean(featureId),
+    queryKey: ["feature", featureId],
+    queryFn: () => api.getFeature(featureId),
+  });
+
 export const useFeatureGraphQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "features-graph"],
@@ -221,6 +228,29 @@ export const useFeatureRollupQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "features-rollup"],
     queryFn: () => api.getFeatureRollup(projectId),
+  });
+
+const featureTracksQueryKey = (featureId: string) => ["feature", featureId, "tracks"] as const;
+const featureWorkstreamRevisionsQueryKey = (
+  featureId: string,
+  kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+) => ["feature", featureId, `${kind}-revisions`] as const;
+
+export const useFeatureTracksQuery = (featureId: string) =>
+  useQuery({
+    enabled: Boolean(featureId),
+    queryKey: featureTracksQueryKey(featureId),
+    queryFn: () => api.getFeatureTracks(featureId),
+  });
+
+export const useFeatureWorkstreamRevisionsQuery = (
+  featureId: string,
+  kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+) =>
+  useQuery({
+    enabled: Boolean(featureId),
+    queryKey: featureWorkstreamRevisionsQueryKey(featureId, kind),
+    queryFn: () => api.getFeatureWorkstreamRevisions(featureId, kind),
   });
 
 export const useUpdateProjectMutation = (projectId: string) => {
@@ -683,6 +713,31 @@ const invalidateMilestoneFeatureQueries = (
       : []),
   ]);
 
+const invalidateFeatureWorkstreamQueries = (
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectId: string,
+  featureId: string,
+) =>
+  Promise.all([
+    invalidateMilestoneFeatureQueries(queryClient, projectId),
+    queryClient.invalidateQueries({ queryKey: featureTracksQueryKey(featureId) }),
+    queryClient.invalidateQueries({
+      queryKey: featureWorkstreamRevisionsQueryKey(featureId, "product"),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: featureWorkstreamRevisionsQueryKey(featureId, "ux"),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: featureWorkstreamRevisionsQueryKey(featureId, "tech"),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: featureWorkstreamRevisionsQueryKey(featureId, "user_docs"),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: featureWorkstreamRevisionsQueryKey(featureId, "arch_docs"),
+    }),
+  ]);
+
 export const useCreateMilestoneMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
@@ -867,6 +922,61 @@ export const useRemoveFeatureDependencyMutation = (projectId: string) => {
     }) => api.removeFeatureDependency(featureId, dependsOnFeatureId),
     onSuccess: () => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useCreateFeatureWorkstreamRevisionMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      kind,
+      payload,
+    }: {
+      featureId: string;
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
+      payload: Parameters<typeof api.createFeatureWorkstreamRevision>[2];
+    }) => api.createFeatureWorkstreamRevision(featureId, kind, payload),
+    onSuccess: (_data, variables) => {
+      void invalidateFeatureWorkstreamQueries(queryClient, projectId, variables.featureId);
+    },
+  });
+};
+
+export const useGenerateFeatureWorkstreamRevisionMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      kind,
+    }: {
+      featureId: string;
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
+    }) => api.generateFeatureWorkstreamRevision(featureId, kind),
+    onSuccess: (_data, variables) => {
+      void invalidateFeatureWorkstreamQueries(queryClient, projectId, variables.featureId);
+    },
+  });
+};
+
+export const useApproveFeatureWorkstreamRevisionMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      featureId,
+      kind,
+      revisionId,
+    }: {
+      featureId: string;
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
+      revisionId: string;
+    }) => api.approveFeatureWorkstreamRevision(featureId, kind, revisionId),
+    onSuccess: (_data, variables) => {
+      void invalidateFeatureWorkstreamQueries(queryClient, projectId, variables.featureId);
     },
   });
 };

@@ -101,6 +101,84 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
   },
+  featureWorkstreamService: {
+    approveRevision: async () => ({ revisions: [] }),
+    assertApprovalPrerequisites: async () => undefined,
+    createRevision: async () => ({ revisions: [] }),
+    ensureSpecRecord: async () => undefined,
+    getApproval: async () => null,
+    getFeatureContext: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getHeadRevision: async () => ({
+      id: "00000000-0000-4000-8000-000000000001",
+      featureId: "00000000-0000-4000-8000-000000000000",
+      kind: "product",
+      version: 1,
+      title: "Draft Product Spec",
+      markdown: "# Draft",
+      source: "manual",
+      createdAt: "2026-03-22T00:00:00.000Z",
+      approval: null,
+      requirements: {
+        uxRequired: true,
+        techRequired: true,
+        userDocsRequired: true,
+        archDocsRequired: true,
+      },
+    }),
+    getTracks: async () => ({
+      featureId: "00000000-0000-4000-8000-000000000000",
+      tracks: {
+        product: {
+          kind: "product",
+          required: true,
+          status: "draft",
+          headRevision: null,
+          approvedRevisionId: null,
+          implementationStatus: "not_implemented",
+          isOutOfDate: false,
+        },
+        ux: {
+          kind: "ux",
+          required: false,
+          status: "draft",
+          headRevision: null,
+          approvedRevisionId: null,
+          implementationStatus: "not_implemented",
+          isOutOfDate: false,
+        },
+        tech: {
+          kind: "tech",
+          required: false,
+          status: "draft",
+          headRevision: null,
+          approvedRevisionId: null,
+          implementationStatus: "not_implemented",
+          isOutOfDate: false,
+        },
+        userDocs: {
+          kind: "user_docs",
+          required: false,
+          status: "draft",
+          headRevision: null,
+          approvedRevisionId: null,
+          implementationStatus: "not_implemented",
+          isOutOfDate: false,
+        },
+        archDocs: {
+          kind: "arch_docs",
+          required: false,
+          status: "draft",
+          headRevision: null,
+          approvedRevisionId: null,
+          implementationStatus: "not_implemented",
+          isOutOfDate: false,
+        },
+      },
+    }),
+    listRevisions: async () => ({ revisions: [] }),
+  },
   githubService: {
     validatePat: async () => {
       throw new Error("Not implemented in test stub.");

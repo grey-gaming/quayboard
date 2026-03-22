@@ -13,7 +13,7 @@ const projectNavItems = [
   { label: "Technical Spec", suffix: "/technical-spec", end: true, requiresSetupCompletion: true },
   { label: "User Flows", suffix: "/user-flows", end: true, requiresSetupCompletion: true },
   { label: "Milestones", suffix: "/milestones", end: true, requiresSetupCompletion: true },
-  { label: "Features", suffix: "/features", end: true, requiresSetupCompletion: true },
+  { label: "Features", suffix: "/features", end: false, requiresSetupCompletion: true },
   { label: "Import", suffix: "/import", end: true, requiresSetupCompletion: true },
 ];
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
@@ -241,6 +242,12 @@ export const FeatureBuilderPage = () => {
                         </div>
                       </div>
                       <div className="grid gap-2 md:w-56">
+                        <Link
+                          className="inline-flex min-h-10 items-center justify-center border border-transparent bg-transparent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border hover:bg-panel-inset hover:text-foreground"
+                          to={`/projects/${id}/features/${feature.id}`}
+                        >
+                          Open editor
+                        </Link>
                         <Select
                           onChange={(event) => {
                             void updateFeatureMutation.mutateAsync({

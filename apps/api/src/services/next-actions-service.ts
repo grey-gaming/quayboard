@@ -1,6 +1,7 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureService } from "./feature-service.js";
+import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
@@ -12,6 +13,7 @@ export const createNextActionsService = (
   artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
   featureService: FeatureService,
+  featureWorkstreamService: FeatureWorkstreamService,
   milestoneService: MilestoneService,
   projectSetupService: ProjectSetupService,
   questionnaireService: QuestionnaireService,
@@ -193,6 +195,37 @@ export const createNextActionsService = (
               label: "Create the first feature",
               href: `/projects/${projectId}/features`,
             });
+          } else {
+            const orderedFeatures = [...features.features].sort((left, right) =>
+              left.featureKey.localeCompare(right.featureKey),
+            );
+            let nextFeature = orderedFeatures[0] ?? null;
+            let needsApproval = false;
+
+            for (const feature of orderedFeatures) {
+              const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
+              if (!tracks.tracks.product.headRevision) {
+                nextFeature = feature;
+                needsApproval = false;
+                break;
+              }
+
+              if (tracks.tracks.product.status !== "approved") {
+                nextFeature = feature;
+                needsApproval = true;
+                break;
+              }
+            }
+
+            if (nextFeature) {
+              actions.push({
+                key: needsApproval ? "feature_product_approval" : "feature_product_create",
+                label: needsApproval
+                  ? "Approve a feature Product Spec"
+                  : "Author the first feature Product Spec",
+                href: `/projects/${projectId}/features/${nextFeature.id}`,
+              });
+            }
           }
         }
       }

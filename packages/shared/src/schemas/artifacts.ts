@@ -4,6 +4,11 @@ export const artifactTypeSchema = z.enum([
   "blueprint_ux",
   "blueprint_tech",
   "milestone_design_doc",
+  "feature_product_revision",
+  "feature_ux_revision",
+  "feature_tech_revision",
+  "feature_user_doc_revision",
+  "feature_arch_doc_revision",
 ]);
 
 export type ArtifactType = z.infer<typeof artifactTypeSchema>;

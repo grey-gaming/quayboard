@@ -87,7 +87,12 @@ export const useSseEvents = (projectId?: string) => {
         queryClient.refetchQueries({
           predicate: (query) => {
             const [scope, , resource] = query.queryKey;
-            return scope === "milestone" && resource === "design-docs";
+            return (
+              (scope === "milestone" && resource === "design-docs") ||
+              (scope === "feature" &&
+                typeof resource === "string" &&
+                (resource === "tracks" || resource.endsWith("-revisions")))
+            );
           },
           type: "active",
         }),

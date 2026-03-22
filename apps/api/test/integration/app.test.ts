@@ -444,6 +444,66 @@ describe("API integration", () => {
     });
   });
 
+  it("keeps downstream feature tracks hidden until a Product revision exists", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone delta",
+        summary: "Validate feature track visibility.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const feature = await appServices.services.featureService.create(seeded.ownerUserId, seeded.projectId, {
+      milestoneId: milestone.id,
+      kind: "screen",
+      priority: "must_have",
+      title: "Feature editor",
+      summary: "Show only Product and Tasks until Product requirements exist.",
+      acceptanceCriteria: ["Downstream tabs stay hidden before Product authoring."],
+      source: "manual",
+    });
+
+    const tracksResponse = await server.inject({
+      method: "GET",
+      url: `/api/features/${feature.id}/tracks`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(tracksResponse.statusCode).toBe(200);
+    expect(tracksResponse.json()).toMatchObject({
+      featureId: feature.id,
+      tracks: {
+        product: {
+          required: true,
+          headRevision: null,
+        },
+        ux: {
+          required: false,
+          headRevision: null,
+        },
+        tech: {
+          required: false,
+          headRevision: null,
+        },
+        userDocs: {
+          required: false,
+          headRevision: null,
+        },
+        archDocs: {
+          required: false,
+          headRevision: null,
+        },
+      },
+    });
+  });
+
   it("rejects approving a milestone design document from another milestone", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const firstMilestone = await appServices.services.milestoneService.create(

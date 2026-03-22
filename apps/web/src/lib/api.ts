@@ -3,6 +3,8 @@ import type {
   ArtifactApprovalStateResponse,
   ArtifactType,
   BlueprintKind,
+  CreateFeatureProductRevisionRequest,
+  CreateFeatureWorkstreamRevisionRequest,
   CreateProjectRequest,
   DecisionCardListResponse,
   Job,
@@ -33,6 +35,8 @@ import type {
   FeatureListResponse,
   FeatureRevisionListResponse,
   FeatureRollupResponse,
+  FeatureTracksResponse,
+  FeatureWorkstreamRevisionListResponse,
   UpsertUseCaseRequest,
   UseCase,
   UseCaseListResponse,
@@ -343,6 +347,9 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  getFeature(featureId: string) {
+    return apiRequest<Feature>(`/api/features/${featureId}`);
+  },
   updateFeature(
     featureId: string,
     payload: {
@@ -364,6 +371,9 @@ export const api = {
   },
   getFeatureRevisions(featureId: string) {
     return apiRequest<FeatureRevisionListResponse>(`/api/features/${featureId}/revisions`);
+  },
+  getFeatureTracks(featureId: string) {
+    return apiRequest<FeatureTracksResponse>(`/api/features/${featureId}/tracks`);
   },
   createFeatureRevision(
     featureId: string,
@@ -388,6 +398,87 @@ export const api = {
       `/api/features/${featureId}/dependencies/${dependsOnFeatureId}`,
       {
         method: "DELETE",
+      },
+    );
+  },
+  getFeatureWorkstreamRevisions(
+    featureId: string,
+    kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+  ) {
+    const prefix =
+      kind === "product"
+        ? "product"
+        : kind === "ux"
+          ? "ux"
+          : kind === "tech"
+            ? "tech"
+            : kind === "user_docs"
+              ? "user-doc"
+              : "arch-doc";
+    return apiRequest<FeatureWorkstreamRevisionListResponse>(
+      `/api/features/${featureId}/${prefix}-revisions`,
+    );
+  },
+  createFeatureWorkstreamRevision(
+    featureId: string,
+    kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+    payload: CreateFeatureProductRevisionRequest | CreateFeatureWorkstreamRevisionRequest,
+  ) {
+    const prefix =
+      kind === "product"
+        ? "product"
+        : kind === "ux"
+          ? "ux"
+          : kind === "tech"
+            ? "tech"
+            : kind === "user_docs"
+              ? "user-doc"
+              : "arch-doc";
+    return apiRequest<FeatureWorkstreamRevisionListResponse>(
+      `/api/features/${featureId}/${prefix}-revisions`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+  generateFeatureWorkstreamRevision(
+    featureId: string,
+    kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+  ) {
+    const prefix =
+      kind === "product"
+        ? "product"
+        : kind === "ux"
+          ? "ux"
+          : kind === "tech"
+            ? "tech"
+            : kind === "user_docs"
+              ? "user-doc"
+              : "arch-doc";
+    return apiRequest<Job>(`/api/features/${featureId}/${prefix}-revisions/generate`, {
+      method: "POST",
+    });
+  },
+  approveFeatureWorkstreamRevision(
+    featureId: string,
+    kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+    revisionId: string,
+  ) {
+    const prefix =
+      kind === "product"
+        ? "product"
+        : kind === "ux"
+          ? "ux"
+          : kind === "tech"
+            ? "tech"
+            : kind === "user_docs"
+              ? "user-doc"
+              : "arch-doc";
+    return apiRequest<FeatureWorkstreamRevisionListResponse>(
+      `/api/features/${featureId}/${prefix}-revisions/${revisionId}/approve`,
+      {
+        method: "POST",
       },
     );
   },

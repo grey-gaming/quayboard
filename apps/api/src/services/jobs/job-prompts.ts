@@ -647,3 +647,153 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "Existing feature catalogue summary:",
     JSON.stringify(input.existingFeatures, null, 2),
   ].join("\n");
+
+const renderFeatureContext = (input: {
+  acceptanceCriteria: string[];
+  featureKey: string;
+  milestoneTitle: string;
+  summary: string;
+  title: string;
+}) =>
+  JSON.stringify(
+    {
+      acceptanceCriteria: input.acceptanceCriteria,
+      featureKey: input.featureKey,
+      milestoneTitle: input.milestoneTitle,
+      summary: input.summary,
+      title: input.title,
+    },
+    null,
+    2,
+  );
+
+export const buildFeatureProductSpecPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  productSpec: string;
+  technicalSpec: string;
+  uxSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    "Generate a feature-scoped Product Spec from the approved project Product Spec, UX Spec, and Technical Spec.",
+    "Return valid JSON with top-level keys: \"title\", \"markdown\", and \"requirements\".",
+    "The markdown must be detailed, implementation-oriented, and scoped only to the feature described below.",
+    "The requirements object must contain boolean keys: uxRequired, techRequired, userDocsRequired, archDocsRequired.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved project Product Spec:",
+    input.productSpec,
+    "",
+    "Approved project UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.technicalSpec,
+  ].join("\n");
+
+export const buildFeatureUxSpecPrompt = (input: {
+  featureProductSpec: string;
+  featureTitle: string;
+  projectProductSpec: string;
+  projectUxSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate the feature-scoped UX Spec for "${input.featureTitle}".`,
+    "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
+    "Use the approved feature Product Spec as the main scope definition and the approved project UX Spec as the UX-system reference.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved feature Product Spec:",
+    input.featureProductSpec,
+    "",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project UX Spec:",
+    input.projectUxSpec,
+  ].join("\n");
+
+export const buildFeatureTechSpecPrompt = (input: {
+  featureProductSpec: string;
+  featureTitle: string;
+  projectProductSpec: string;
+  projectTechnicalSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate the feature-scoped Technical Spec for "${input.featureTitle}".`,
+    "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
+    "Use the approved feature Product Spec as the main scope definition and the approved project Technical Spec as the technical-system reference.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved feature Product Spec:",
+    input.featureProductSpec,
+    "",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.projectTechnicalSpec,
+  ].join("\n");
+
+export const buildFeatureUserDocsPrompt = (input: {
+  featureProductSpec: string;
+  featureTitle: string;
+  projectProductSpec: string;
+  projectUxSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate user-facing documentation for "${input.featureTitle}".`,
+    "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
+    "Focus on user-facing behavior, setup expectations, and walkthrough guidance rather than implementation details.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved feature Product Spec:",
+    input.featureProductSpec,
+    "",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project UX Spec:",
+    input.projectUxSpec,
+  ].join("\n");
+
+export const buildFeatureArchDocsPrompt = (input: {
+  featureTechSpec: string;
+  featureTitle: string;
+  projectTechnicalSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate internal architecture documentation for "${input.featureTitle}".`,
+    "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
+    "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved feature Technical Spec:",
+    input.featureTechSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.projectTechnicalSpec,
+  ].join("\n");

@@ -14,6 +14,7 @@ import { UserFlowsApprovalGate } from "../src/components/layout/UserFlowsApprova
 import { FeatureBuilderPage } from "../src/pages/FeatureBuilderPage.js";
 import { MilestonesPage } from "../src/pages/MilestonesPage.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
+import { FeatureEditorPage } from "../src/pages/FeatureEditorPage.js";
 import { OnePagerOverviewPage } from "../src/pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "../src/pages/OnePagerQuestionsPage.js";
 import { ProductSpecPage } from "../src/pages/ProductSpecPage.js";
@@ -3697,5 +3698,430 @@ describe("workflow pages", () => {
 
     expect(screen.queryByRole("button", { name: "Generate Blueprints" })).toBeNull();
     expect(screen.queryByText("Review Panel")).toBeNull();
+  });
+
+  it("hides downstream feature tabs until a Product revision defines requirements", async () => {
+    const featureProjectId = "70707070-7070-4070-8070-707070707070";
+    const featureId = "61616161-6161-4161-8161-616161616161";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${featureProjectId}`]: {
+        id: featureProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: featureProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/features/${featureId}`]: {
+        id: featureId,
+        projectId: featureProjectId,
+        milestoneId: "51515151-5151-4151-8151-515151515151",
+        milestoneTitle: "Milestone alpha",
+        featureKey: "F-001",
+        kind: "screen",
+        priority: "must_have",
+        status: "draft",
+        headRevision: {
+          id: "41414141-4141-4141-8141-414141414141",
+          featureId,
+          version: 1,
+          title: "Feature intake",
+          summary: "Draft the feature workstreams.",
+          acceptanceCriteria: ["A Product spec gates downstream tabs."],
+          source: "manual",
+          createdAt: "2026-03-20T00:00:00.000Z",
+        },
+        dependencyIds: [],
+        createdAt: "2026-03-20T00:00:00.000Z",
+        updatedAt: "2026-03-20T00:00:00.000Z",
+        archivedAt: null,
+      },
+      [`/api/features/${featureId}/tracks`]: {
+        featureId,
+        tracks: {
+          product: {
+            kind: "product",
+            required: true,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          ux: {
+            kind: "ux",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          tech: {
+            kind: "tech",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          userDocs: {
+            kind: "user_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          archDocs: {
+            kind: "arch_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+        },
+      },
+      [`/api/projects/${featureProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/features/${featureId}/product-revisions`]: {
+        revisions: [],
+      },
+    });
+
+    const router = createMemoryRouter(
+      [{ path: "/projects/:id/features/:featureId", element: <FeatureEditorPage /> }],
+      {
+        initialEntries: [`/projects/${featureProjectId}/features/${featureId}`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole("heading", { name: "Feature intake" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Product" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tasks" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "UX" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tech" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "User Docs" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Arch Docs" })).toBeNull();
+  });
+
+  it("lets users select and inspect older feature workstream revisions", async () => {
+    const featureProjectId = "60606060-6060-4060-8060-606060606060";
+    const featureId = "50505050-5050-4050-8050-505050505050";
+    const productRevisionTwoId = "40404040-4040-4040-8040-404040404040";
+    const productRevisionOneId = "30303030-3030-4030-8030-303030303030";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${featureProjectId}`]: {
+        id: featureProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: featureProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/features/${featureId}`]: {
+        id: featureId,
+        projectId: featureProjectId,
+        milestoneId: "20202020-2020-4020-8020-202020202020",
+        milestoneTitle: "Milestone beta",
+        featureKey: "F-002",
+        kind: "screen",
+        priority: "must_have",
+        status: "draft",
+        headRevision: {
+          id: "10101010-1010-4010-8010-101010101010",
+          featureId,
+          version: 1,
+          title: "Revision history",
+          summary: "Inspect workstream history.",
+          acceptanceCriteria: ["Older revisions remain browsable."],
+          source: "manual",
+          createdAt: "2026-03-20T00:00:00.000Z",
+        },
+        dependencyIds: [],
+        createdAt: "2026-03-20T00:00:00.000Z",
+        updatedAt: "2026-03-20T00:00:00.000Z",
+        archivedAt: null,
+      },
+      [`/api/features/${featureId}/tracks`]: {
+        featureId,
+        tracks: {
+          product: {
+            kind: "product",
+            required: true,
+            status: "draft",
+            headRevision: {
+              id: productRevisionTwoId,
+              featureId,
+              kind: "product",
+              version: 2,
+              title: "Feature Product Spec",
+              markdown: "# Revision Two\n\nCurrent head revision.",
+              source: "manual",
+              createdAt: "2026-03-21T00:00:00.000Z",
+              approval: null,
+              requirements: {
+                uxRequired: true,
+                techRequired: true,
+                userDocsRequired: false,
+                archDocsRequired: false,
+              },
+            },
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          ux: {
+            kind: "ux",
+            required: true,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          tech: {
+            kind: "tech",
+            required: true,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          userDocs: {
+            kind: "user_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          archDocs: {
+            kind: "arch_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+        },
+      },
+      [`/api/projects/${featureProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/features/${featureId}/product-revisions`]: {
+        revisions: [
+          {
+            id: productRevisionTwoId,
+            featureId,
+            kind: "product",
+            version: 2,
+            title: "Feature Product Spec",
+            markdown: "# Revision Two\n\nCurrent head revision.",
+            source: "manual",
+            createdAt: "2026-03-21T00:00:00.000Z",
+            approval: null,
+            requirements: {
+              uxRequired: true,
+              techRequired: true,
+              userDocsRequired: false,
+              archDocsRequired: false,
+            },
+          },
+          {
+            id: productRevisionOneId,
+            featureId,
+            kind: "product",
+            version: 1,
+            title: "Feature Product Spec",
+            markdown: "# Revision One\n\nOriginal product direction.",
+            source: "manual",
+            createdAt: "2026-03-20T00:00:00.000Z",
+            approval: null,
+            requirements: {
+              uxRequired: false,
+              techRequired: true,
+              userDocsRequired: false,
+              archDocsRequired: false,
+            },
+          },
+        ],
+      },
+    });
+
+    const router = createMemoryRouter(
+      [{ path: "/projects/:id/features/:featureId", element: <FeatureEditorPage /> }],
+      {
+        initialEntries: [`/projects/${featureProjectId}/features/${featureId}`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText("Current head revision.")).toBeTruthy();
+    expect(screen.getByText("Revision 2")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /v1/i }));
+
+    expect(await screen.findByText("Viewing a historical revision. Saving creates a new head revision.")).toBeTruthy();
+    expect(screen.getByText("Revision 1")).toBeTruthy();
+    expect(screen.getByText("Original product direction.")).toBeTruthy();
+  });
+
+  it("redirects feature editor routes to the feature's owning project", async () => {
+    const routeProjectId = "90909090-9090-4090-8090-909090909091";
+    const featureProjectId = "91919191-9191-4191-8191-919191919192";
+    const featureId = "92929292-9292-4292-8292-929292929293";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${routeProjectId}`]: {
+        id: routeProjectId,
+        name: "Wrong project",
+        description: "Wrong route target.",
+        state: "READY",
+        ownerUserId: routeProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${featureProjectId}`]: {
+        id: featureProjectId,
+        name: "Right project",
+        description: "Feature owner.",
+        state: "READY",
+        ownerUserId: featureProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/features/${featureId}`]: {
+        id: featureId,
+        projectId: featureProjectId,
+        milestoneId: "93939393-9393-4393-8393-939393939394",
+        milestoneTitle: "Milestone gamma",
+        featureKey: "F-003",
+        kind: "screen",
+        priority: "must_have",
+        status: "draft",
+        headRevision: {
+          id: "94949494-9494-4494-8494-949494949495",
+          featureId,
+          version: 1,
+          title: "Cross-project route",
+          summary: "Reject mixed project routes.",
+          acceptanceCriteria: ["The route uses the feature's owning project."],
+          source: "manual",
+          createdAt: "2026-03-20T00:00:00.000Z",
+        },
+        dependencyIds: [],
+        createdAt: "2026-03-20T00:00:00.000Z",
+        updatedAt: "2026-03-20T00:00:00.000Z",
+        archivedAt: null,
+      },
+      [`/api/features/${featureId}/tracks`]: {
+        featureId,
+        tracks: {
+          product: {
+            kind: "product",
+            required: true,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          ux: {
+            kind: "ux",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          tech: {
+            kind: "tech",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          userDocs: {
+            kind: "user_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+          archDocs: {
+            kind: "arch_docs",
+            required: false,
+            status: "draft",
+            headRevision: null,
+            approvedRevisionId: null,
+            implementationStatus: "not_implemented",
+            isOutOfDate: false,
+          },
+        },
+      },
+      [`/api/projects/${routeProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${featureProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/features/${featureId}/product-revisions`]: {
+        revisions: [],
+      },
+    });
+
+    const router = createMemoryRouter(
+      [{ path: "/projects/:id/features/:featureId", element: <FeatureEditorPage /> }],
+      {
+        initialEntries: [`/projects/${routeProjectId}/features/${featureId}`],
+      },
+    );
+
+    render(
+      <AppProviders>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(
+        `/projects/${featureProjectId}/features/${featureId}`,
+      );
+    });
   });
 });
