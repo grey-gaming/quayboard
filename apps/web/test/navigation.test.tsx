@@ -1,10 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Outlet, RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { User } from "@quayboard/shared";
 
-import { AppProviders } from "../src/app.js";
+import { AppProviders, ScrollToTopOnNavigation } from "../src/app.js";
 import { GlobalHeader } from "../src/components/layout/GlobalHeader.js";
 import { SettingsPage } from "../src/pages/SettingsPage.js";
 
@@ -92,5 +92,46 @@ describe("global navigation", () => {
     expect(screen.getByRole("link", { name: "Open Instance Readiness" }).getAttribute("href")).toBe(
       "/setup/instance",
     );
+  });
+
+  it("scrolls to the top when route navigation changes pages", async () => {
+    const scrollTo = vi.fn();
+
+    vi.stubGlobal("scrollTo", scrollTo);
+
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <>
+              <ScrollToTopOnNavigation />
+              <Outlet />
+            </>
+          ),
+          children: [
+            {
+              path: "/first",
+              element: <div>First route</div>,
+            },
+            {
+              path: "/second",
+              element: <div>Second route</div>,
+            },
+          ],
+        },
+      ],
+      {
+        initialEntries: ["/first"],
+      },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+    await router.navigate("/second");
+
+    expect(await screen.findByText("Second route")).toBeTruthy();
+    expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 0);
   });
 });
