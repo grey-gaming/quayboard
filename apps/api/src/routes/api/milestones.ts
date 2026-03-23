@@ -282,6 +282,11 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+
+        if (context.status !== "draft") {
+          throw new HttpError(409, "milestone_locked", "Only draft milestones can be edited.");
+        }
+
         const canonical = await services.milestoneService.getCanonicalDesignDoc(
           request.user!.id,
           milestoneId,

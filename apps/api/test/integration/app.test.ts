@@ -1,3 +1,10 @@
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -259,6 +266,109 @@ describe("API integration", () => {
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
+  });
+
+  it("reopens approved milestones without canonical design docs when the follow-up migration runs", async () => {
+    const tempDatabaseName = `quayboard_migration_${Date.now()}`;
+    const tempDatabaseUrl = new URL(databaseUrl);
+    tempDatabaseUrl.pathname = `/${tempDatabaseName}`;
+    const adminDatabaseUrl = new URL(databaseUrl);
+    adminDatabaseUrl.pathname = "/postgres";
+    const adminSql = postgres(adminDatabaseUrl.toString(), { max: 1 });
+    const tempSql = postgres(tempDatabaseUrl.toString(), { max: 1 });
+    const tempMigrationsRoot = await mkdtemp(path.join(tmpdir(), "quayboard-migrations-"));
+    const tempMigrationsFolder = path.join(tempMigrationsRoot, "drizzle");
+    const sourceMigrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+
+    try {
+      await adminSql.unsafe(`create database "${tempDatabaseName}"`);
+      await cp(sourceMigrationsFolder, tempMigrationsFolder, { recursive: true });
+      await rm(path.join(tempMigrationsFolder, "0010_reopen-approved-milestones-without-design-docs.sql"));
+      await writeFile(
+        path.join(tempMigrationsFolder, "meta", "_journal.json"),
+        `${JSON.stringify(
+          {
+            version: "7",
+            dialect: "postgresql",
+            entries: Array.from({ length: 10 }, (_, idx) => ({
+              idx,
+              version: "7",
+              when: 1760000000000 + idx * 1000,
+              tag: [
+                "0000_core-auth-foundation",
+                "0001_secret-type-unique",
+                "0002_m2_project-setup-and-planning",
+                "0003_product-spec-phase",
+                "0004_blueprint-builder",
+                "0005_spec-flow-split",
+                "0006_remove-blueprint-review-flow",
+                "0007_m4_milestones_and_features",
+                "0008_m5_feature_workstream_specs",
+                "0009_binary_milestone_approval",
+              ][idx],
+              breakpoints: true,
+            })),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      const tempDb = drizzle(tempSql);
+      await migrate(tempDb, { migrationsFolder: tempMigrationsFolder });
+
+      await tempSql`
+        insert into "users" ("id", "email", "password_hash", "display_name")
+        values ('legacy-user', 'legacy@example.com', 'hash', 'Legacy User')
+      `;
+      await tempSql`
+        insert into "projects" ("id", "owner_user_id", "name", "description", "state")
+        values ('legacy-project', 'legacy-user', 'Legacy Project', 'Migration fixture', 'READY')
+      `;
+      await tempSql`
+        insert into "milestones" (
+          "id",
+          "project_id",
+          "position",
+          "title",
+          "summary",
+          "status",
+          "approved_at"
+        )
+        values (
+          'legacy-milestone',
+          'legacy-project',
+          1,
+          'Legacy approved milestone',
+          'Approved before design docs were required.',
+          'approved',
+          now()
+        )
+      `;
+
+      await runMigrations(tempDatabaseUrl.toString());
+
+      const migratedMilestones = await tempSql<{
+        status: string;
+        approvedAt: Date | null;
+      }[]>`
+        select "status", "approved_at" as "approvedAt"
+        from "milestones"
+        where "id" = 'legacy-milestone'
+      `;
+
+      expect(migratedMilestones).toEqual([
+        {
+          status: "draft",
+          approvedAt: null,
+        },
+      ]);
+    } finally {
+      await tempSql.end({ timeout: 5 });
+      await adminSql.unsafe(`drop database if exists "${tempDatabaseName}" with (force)`);
+      await adminSql.end({ timeout: 5 });
+      await rm(tempMigrationsRoot, { recursive: true, force: true });
+    }
   });
 
   it("creates milestones, features, dependencies, graph nodes, and rollups for milestone planning", async () => {
@@ -564,6 +674,66 @@ describe("API integration", () => {
           markdown: "# Milestone beta\n\nOriginal copy.",
           source: "GenerateMilestoneDesign",
           isCanonical: false,
+        },
+      ],
+    });
+  });
+
+  it("rejects editing a milestone design document after the milestone is approved", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone gamma",
+        summary: "The locked milestone increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    const original = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone gamma design",
+      markdown: "# Milestone gamma\n\nApproved copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const updateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        markdown: "# Milestone gamma\n\nEdited after approval.",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(409);
+    expect(updateResponse.json()).toEqual({
+      error: {
+        code: "milestone_locked",
+        message: "Only draft milestones can be edited.",
+      },
+    });
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          id: original.id,
+          version: 1,
+          markdown: "# Milestone gamma\n\nApproved copy.",
+          isCanonical: true,
+          approval: null,
         },
       ],
     });
