@@ -769,6 +769,29 @@ const TasksTab = ({ featureId }: TasksTabProps) => {
     );
   }
 
+  if (sessionQuery.error) {
+    const error = sessionQuery.error as Error & { code?: string };
+    const errorMessage = error.message ?? "Failed to load task planning session";
+    const isTechSpecRequired =
+      error.code === "tech_spec_required" || error.message?.includes("tech specification");
+    return (
+      <Card surface="panel">
+        <div className="grid gap-4">
+          <p className="qb-meta-label">Tasks</p>
+          <p className="text-lg font-semibold tracking-[-0.02em]">No task planning session</p>
+          {isTechSpecRequired ? (
+            <p className="text-sm text-secondary">
+              Task planning requires an approved tech specification. Generate and approve the tech
+              spec before planning tasks.
+            </p>
+          ) : (
+            <Alert tone="error">{errorMessage}</Alert>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   if (!session) {
     return (
       <Card surface="panel">
@@ -784,8 +807,35 @@ const TasksTab = ({ featureId }: TasksTabProps) => {
     );
   }
 
+  const isGeneratingClarifications =
+    generateClarificationsMutation.isPending ||
+    session.status === "pending_clarifications" ||
+    (session.status === "clarifications_generated" && clarifications.length === 0);
+
+  const isAutoAnswering = autoAnswerMutation.isPending;
+  const isGeneratingTasks = generateTasksMutation.isPending;
+
+  const generateError = generateClarificationsMutation.error as Error & { code?: string } | null;
+  const autoAnswerError = autoAnswerMutation.error as Error & { code?: string } | null;
+  const generateTasksError = generateTasksMutation.error as Error & { code?: string } | null;
+
   return (
     <div className="grid gap-4">
+      {generateError ? (
+        <Alert tone="error">
+          {generateError.message || "Failed to generate clarifications"}
+        </Alert>
+      ) : null}
+      {autoAnswerError ? (
+        <Alert tone="error">
+          {autoAnswerError.message || "Failed to auto-answer clarifications"}
+        </Alert>
+      ) : null}
+      {generateTasksError ? (
+        <Alert tone="error">
+          {generateTasksError.message || "Failed to generate tasks"}
+        </Alert>
+      ) : null}
       <Card surface="panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
           <div>
@@ -818,7 +868,11 @@ const TasksTab = ({ featureId }: TasksTabProps) => {
           </div>
         </div>
 
-        {clarifications.length === 0 ? (
+        {isGeneratingClarifications && clarifications.length === 0 ? (
+          <p className="mt-4 text-sm text-secondary">
+            Generating clarification questions...
+          </p>
+        ) : clarifications.length === 0 ? (
           <p className="mt-4 text-sm text-secondary">
             No clarification questions yet. Generate clarifications to identify questions about
             the implementation approach.
@@ -831,7 +885,9 @@ const TasksTab = ({ featureId }: TasksTabProps) => {
                 className="grid gap-2 border border-border/80 bg-panel-inset p-4"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium text-foreground">{clarification.question}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {clarification.question}
+                  </p>
                   {clarification.status === "answered" ? (
                     <Badge tone="success">answered</Badge>
                   ) : clarification.status === "skipped" ? (
@@ -891,7 +947,9 @@ const TasksTab = ({ featureId }: TasksTabProps) => {
           <AiWorkflowButton
             active={generateTasksMutation.isPending}
             disabled={
-              generateTasksMutation.isPending || !allClarificationsAnswered || tasks.length > 0
+              generateTasksMutation.isPending ||
+              !allClarificationsAnswered ||
+              tasks.length > 0
             }
             label="Generate tasks"
             onClick={() => {
