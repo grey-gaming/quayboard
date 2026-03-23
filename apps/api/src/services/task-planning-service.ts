@@ -531,4 +531,125 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
 
     await this.setSessionStatus(sessionId, "tasks_generated");
   },
+
+  async createTask(
+    ownerUserId: string,
+    featureId: string,
+    data: {
+      title: string;
+      description: string;
+      instructions?: string;
+      acceptanceCriteria?: string[];
+      status?: DeliveryTaskStatus;
+    },
+  ) {
+    await this.getFeatureContext(ownerUserId, featureId);
+
+    const session = await this.getOrCreateSession(ownerUserId, featureId);
+
+    const maxPositionResult = await db
+      .select({ position: featureDeliveryTasksTable.position })
+      .from(featureDeliveryTasksTable)
+      .where(eq(featureDeliveryTasksTable.sessionId, session.id))
+      .orderBy(desc(featureDeliveryTasksTable.position))
+      .limit(1);
+
+    const nextPosition = maxPositionResult[0]?.position != null 
+      ? maxPositionResult[0].position + 1 
+      : 0;
+
+    const now = new Date();
+    const taskId = generateId();
+
+    await db.insert(featureDeliveryTasksTable).values({
+      id: taskId,
+      sessionId: session.id,
+      position: nextPosition,
+      title: data.title,
+      description: data.description,
+      instructions: data.instructions ?? null,
+      acceptanceCriteria: data.acceptanceCriteria ?? [],
+      status: data.status ?? "pending",
+      createdByJobId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const record = await db.query.featureDeliveryTasksTable.findFirst({
+      where: eq(featureDeliveryTasksTable.id, taskId),
+    });
+
+    return toDeliveryTask(record!);
+  },
+
+  async updateTask(
+    ownerUserId: string,
+    featureId: string,
+    taskId: string,
+    data: {
+      title?: string;
+      description?: string;
+      instructions?: string | null;
+      acceptanceCriteria?: string[];
+      status?: DeliveryTaskStatus;
+    },
+  ) {
+    await this.getFeatureContext(ownerUserId, featureId);
+
+    const existingTask = await db.query.featureDeliveryTasksTable.findFirst({
+      where: eq(featureDeliveryTasksTable.id, taskId),
+    });
+
+    if (!existingTask) {
+      throw new HttpError(404, "task_not_found", "Task not found.");
+    }
+
+    const now = new Date();
+    const updateData: Record<string, unknown> = { updatedAt: now };
+
+    if (data.title !== undefined) {
+      updateData.title = data.title;
+    }
+    if (data.description !== undefined) {
+      updateData.description = data.description;
+    }
+    if (data.instructions !== undefined) {
+      updateData.instructions = data.instructions;
+    }
+    if (data.acceptanceCriteria !== undefined) {
+      updateData.acceptanceCriteria = data.acceptanceCriteria;
+    }
+    if (data.status !== undefined) {
+      updateData.status = data.status;
+    }
+
+    await db
+      .update(featureDeliveryTasksTable)
+      .set(updateData)
+      .where(eq(featureDeliveryTasksTable.id, taskId));
+
+    const record = await db.query.featureDeliveryTasksTable.findFirst({
+      where: eq(featureDeliveryTasksTable.id, taskId),
+    });
+
+    return toDeliveryTask(record!);
+  },
+
+  async deleteTask(ownerUserId: string, featureId: string, taskId: string) {
+    await this.getFeatureContext(ownerUserId, featureId);
+
+    const existingTask = await db.query.featureDeliveryTasksTable.findFirst({
+      where: eq(featureDeliveryTasksTable.id, taskId),
+    });
+
+    if (!existingTask) {
+      throw new HttpError(404, "task_not_found", "Task not found.");
+    }
+
+    await db
+      .delete(featureDeliveryTasksTable)
+      .where(eq(featureDeliveryTasksTable.id, taskId));
+
+    return { success: true };
+  },
 });

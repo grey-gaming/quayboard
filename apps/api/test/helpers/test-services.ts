@@ -534,5 +534,14 @@ export const createStubServices = (): AppServices => ({
     getImplementationRecords: async () => [],
     getTasks: async () => [],
     setSessionStatus: async () => undefined,
+    createTask: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    updateTask: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    deleteTask: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
   },
 });

@@ -87,6 +87,57 @@ export const useGenerateTasksMutation = (featureId: string) => {
   });
 };
 
+export const useCreateTaskMutation = (featureId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      title: string;
+      description: string;
+      instructions?: string;
+      acceptanceCriteria?: string[];
+      status?: "pending" | "in_progress" | "completed" | "blocked";
+    }) => api.createTask(featureId, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: tasksKey(featureId) });
+    },
+  });
+};
+
+export const useUpdateTaskMutation = (featureId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      data,
+    }: {
+      taskId: string;
+      data: {
+        title?: string;
+        description?: string;
+        instructions?: string | null;
+        acceptanceCriteria?: string[];
+        status?: "pending" | "in_progress" | "completed" | "blocked";
+      };
+    }) => api.updateTask(featureId, taskId, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: tasksKey(featureId) });
+    },
+  });
+};
+
+export const useDeleteTaskMutation = (featureId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (taskId: string) => api.deleteTask(featureId, taskId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: tasksKey(featureId) });
+    },
+  });
+};
+
 export const useCreateImplementationRecordMutation = (featureId: string) => {
   const queryClient = useQueryClient();
 

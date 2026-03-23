@@ -68,7 +68,31 @@ export const deliveryTaskSchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
-export type DeliveryTask = z.infer<typeof deliveryTaskSchema>;
+export const createTaskRequestSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().min(1).max(5000),
+  instructions: z.string().max(10000).optional(),
+  acceptanceCriteria: z.array(z.string().min(1).max(1000)).optional(),
+  status: deliveryTaskStatusSchema.optional(),
+});
+
+export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;
+
+export const updateTaskRequestSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  description: z.string().min(1).max(5000).optional(),
+  instructions: z.string().max(10000).nullable().optional(),
+  acceptanceCriteria: z.array(z.string().min(1).max(1000)).optional(),
+  status: deliveryTaskStatusSchema.optional(),
+});
+
+export type UpdateTaskRequest = z.infer<typeof updateTaskRequestSchema>;
+
+export const taskListResponseSchema = z.object({
+  tasks: z.array(deliveryTaskSchema),
+});
+
+export type TaskListResponse = z.infer<typeof taskListResponseSchema>;
 
 export const taskIssueSeveritySchema = z.enum([
   "blocker",

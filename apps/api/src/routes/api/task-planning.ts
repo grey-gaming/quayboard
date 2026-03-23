@@ -3,11 +3,14 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   answerClarificationRequestSchema,
   createImplementationRecordRequestSchema,
+  createTaskRequestSchema,
   generateClarificationsRequestSchema,
   generateTasksRequestSchema,
   implementationRecordListResponseSchema,
   taskClarificationSchema,
+  taskListResponseSchema,
   taskPlanningSessionResponseSchema,
+  updateTaskRequestSchema,
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
@@ -399,6 +402,193 @@ export const taskPlanningRoutes = (
         );
 
         return implementationRecordListResponseSchema.parse({ records });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  const createTaskJsonSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: 500 },
+      description: { type: "string", minLength: 1, maxLength: 5000 },
+      instructions: { type: "string", maxLength: 10000 },
+      acceptanceCriteria: {
+        type: "array",
+        items: { type: "string", minLength: 1, maxLength: 1000 },
+      },
+      status: { type: "string", enum: ["pending", "in_progress", "completed", "blocked"] },
+    },
+    required: ["title", "description"],
+    additionalProperties: false,
+  } as const;
+
+  const updateTaskJsonSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: 500 },
+      description: { type: "string", minLength: 1, maxLength: 5000 },
+      instructions: { type: "string", maxLength: 10000, nullable: true },
+      acceptanceCriteria: {
+        type: "array",
+        items: { type: "string", minLength: 1, maxLength: 1000 },
+      },
+      status: { type: "string", enum: ["pending", "in_progress", "completed", "blocked"] },
+    },
+    additionalProperties: false,
+  } as const;
+
+  const taskIdParamsJsonSchema = {
+    type: "object",
+    properties: {
+      id: { type: "string", format: "uuid" },
+      taskId: { type: "string", format: "uuid" },
+    },
+    required: ["id", "taskId"],
+    additionalProperties: false,
+  } as const;
+
+  app.post(
+    "/features/:id/task-planning-session/tasks",
+    {
+      schema: {
+        params: featureParamsJsonSchema,
+        body: createTaskJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const featureId = (request.params as { id: string }).id;
+        const body = request.body as {
+          title: string;
+          description: string;
+          instructions?: string;
+          acceptanceCriteria?: string[];
+          status?: "pending" | "in_progress" | "completed" | "blocked";
+        };
+
+        const context = await services.taskPlanningService.getFeatureContext(
+          request.user!.id,
+          featureId,
+        );
+        await services.projectSetupService.assertSetupCompleted(
+          request.user!.id,
+          context.feature.projectId,
+        );
+
+        const task = await services.taskPlanningService.createTask(
+          request.user!.id,
+          featureId,
+          {
+            title: body.title,
+            description: body.description,
+            instructions: body.instructions,
+            acceptanceCriteria: body.acceptanceCriteria,
+            status: body.status,
+          },
+        );
+
+        publishFeatureUpdate(
+          services,
+          context.project.ownerUserId,
+          context.feature.projectId,
+        );
+
+        return taskListResponseSchema.parse({ tasks: [task] });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.patch(
+    "/features/:id/task-planning-session/tasks/:taskId",
+    {
+      schema: {
+        params: taskIdParamsJsonSchema,
+        body: updateTaskJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const featureId = (request.params as { id: string }).id;
+        const taskId = (request.params as { taskId: string }).taskId;
+        const body = request.body as {
+          title?: string;
+          description?: string;
+          instructions?: string | null;
+          acceptanceCriteria?: string[];
+          status?: "pending" | "in_progress" | "completed" | "blocked";
+        };
+
+        const context = await services.taskPlanningService.getFeatureContext(
+          request.user!.id,
+          featureId,
+        );
+        await services.projectSetupService.assertSetupCompleted(
+          request.user!.id,
+          context.feature.projectId,
+        );
+
+        const task = await services.taskPlanningService.updateTask(
+          request.user!.id,
+          featureId,
+          taskId,
+          {
+            title: body.title,
+            description: body.description,
+            instructions: body.instructions,
+            acceptanceCriteria: body.acceptanceCriteria,
+            status: body.status,
+          },
+        );
+
+        publishFeatureUpdate(
+          services,
+          context.project.ownerUserId,
+          context.feature.projectId,
+        );
+
+        return taskListResponseSchema.parse({ tasks: [task] });
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.delete(
+    "/features/:id/task-planning-session/tasks/:taskId",
+    {
+      schema: { params: taskIdParamsJsonSchema },
+    },
+    async (request, reply) => {
+      try {
+        const featureId = (request.params as { id: string }).id;
+        const taskId = (request.params as { taskId: string }).taskId;
+
+        const context = await services.taskPlanningService.getFeatureContext(
+          request.user!.id,
+          featureId,
+        );
+        await services.projectSetupService.assertSetupCompleted(
+          request.user!.id,
+          context.feature.projectId,
+        );
+
+        await services.taskPlanningService.deleteTask(
+          request.user!.id,
+          featureId,
+          taskId,
+        );
+
+        publishFeatureUpdate(
+          services,
+          context.project.ownerUserId,
+          context.feature.projectId,
+        );
+
+        return { success: true };
       } catch (error) {
         return handleRouteError(reply, error);
       }

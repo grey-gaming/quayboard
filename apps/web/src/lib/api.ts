@@ -777,6 +777,71 @@ export const api = {
       }>;
     }>(`/api/features/${featureId}/task-planning-session/tasks`);
   },
+  createTask(
+    featureId: string,
+    data: {
+      title: string;
+      description: string;
+      instructions?: string;
+      acceptanceCriteria?: string[];
+      status?: "pending" | "in_progress" | "completed" | "blocked";
+    },
+  ) {
+    return apiRequest<{
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/tasks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateTask(
+    featureId: string,
+    taskId: string,
+    data: {
+      title?: string;
+      description?: string;
+      instructions?: string | null;
+      acceptanceCriteria?: string[];
+      status?: "pending" | "in_progress" | "completed" | "blocked";
+    },
+  ) {
+    return apiRequest<{
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteTask(featureId: string, taskId: string) {
+    return apiRequest<{ success: boolean }>(
+      `/api/features/${featureId}/task-planning-session/tasks/${taskId}`,
+      { method: "DELETE" },
+    );
+  },
   getImplementationRecords(featureId: string) {
     return apiRequest<{
       records: Array<{
