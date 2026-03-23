@@ -266,8 +266,8 @@ export const FeatureBuilderPage = () => {
                     <div className="mt-4 grid gap-3">
                       {milestoneFeatures.map((feature) => (
                         <div key={feature.id} className="border border-border/80 bg-panel p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-4">
-                            <div>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap gap-2">
                                 <Badge tone="neutral">{feature.featureKey}</Badge>
                                 <Badge tone="neutral">{feature.kind.replaceAll("_", " ")}</Badge>
@@ -280,7 +280,7 @@ export const FeatureBuilderPage = () => {
                               </p>
                             </div>
                             <Link
-                              className="inline-flex min-h-8 items-center justify-center border border-border/80 bg-transparent px-3 py-1.5 text-[12px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border-strong hover:bg-panel-inset hover:text-foreground"
+                              className="inline-flex min-h-8 shrink-0 items-center justify-center self-start border border-border/80 bg-transparent px-3 py-1.5 text-[12px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border-strong hover:bg-panel-inset hover:text-foreground"
                               to={`/projects/${id}/features/${feature.id}`}
                             >
                               Open editor
