@@ -823,6 +823,20 @@ export const useApproveMilestoneDesignMutation = (
   });
 };
 
+export const useUpdateMilestoneDesignMutation = (
+  projectId: string,
+  milestoneId: string,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { markdown: string }) => api.updateMilestoneDesignDoc(milestoneId, payload),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
+    },
+  });
+};
+
 export const useCreateFeatureMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 

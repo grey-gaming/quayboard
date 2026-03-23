@@ -250,14 +250,6 @@ export const UserFlowsPage = () => {
                   {userFlowsQuery.data?.approvedAt ? "approved" : "review required"}
                 </Badge>
                 <Button
-                  onClick={() => {
-                    setIsCreatePanelOpen((current) => !current);
-                  }}
-                  variant="secondary"
-                >
-                  {isCreatePanelOpen ? "Close Add User Flow" : "Add User Flow"}
-                </Button>
-                <Button
                   disabled={approveUserFlowsMutation.isPending}
                   onClick={() => {
                     void approveUserFlowsMutation.mutateAsync(acceptedWarnings);
@@ -269,6 +261,14 @@ export const UserFlowsPage = () => {
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setIsCreatePanelOpen((current) => !current);
+                }}
+                variant="secondary"
+              >
+                {isCreatePanelOpen ? "Close Add User Flow" : "Add User Flow"}
+              </Button>
               <AiWorkflowButton
                 active={generateFlowsButtonActive}
                 disabled={generateFlowsButtonActive}

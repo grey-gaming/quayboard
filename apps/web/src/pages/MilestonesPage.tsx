@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { Job, Milestone } from "@quayboard/shared";
 
-import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
+import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
@@ -33,6 +33,7 @@ import {
   useProjectJobsQuery,
   useProjectQuery,
   useTransitionMilestoneMutation,
+  useUpdateMilestoneDesignMutation,
   useUpdateMilestoneMutation,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
@@ -58,7 +59,6 @@ type MilestoneDesignCardProps = {
   projectId: string;
   jobs: Job[] | undefined;
   isExpanded: boolean;
-  onToggle: () => void;
 };
 
 const MilestoneDesignCard = ({
@@ -66,11 +66,11 @@ const MilestoneDesignCard = ({
   projectId,
   jobs,
   isExpanded,
-  onToggle,
 }: MilestoneDesignCardProps) => {
   const designDocsQuery = useMilestoneDesignDocsQuery(isExpanded ? milestone.id : null);
   const generateDesignMutation = useGenerateMilestoneDesignMutation(projectId, milestone.id);
   const approveDesignMutation = useApproveMilestoneDesignMutation(projectId, milestone.id);
+  const updateDesignMutation = useUpdateMilestoneDesignMutation(projectId, milestone.id);
 
   const activeMilestoneDesignJob = useMemo(
     () =>
@@ -102,7 +102,10 @@ const MilestoneDesignCard = ({
     generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
   const currentDesignDoc = designDocsQuery.data?.designDocs[0];
   const designDocError =
-    designDocsQuery.error || generateDesignMutation.error || approveDesignMutation.error;
+    designDocsQuery.error ||
+    generateDesignMutation.error ||
+    approveDesignMutation.error ||
+    updateDesignMutation.error;
 
   useJobDrivenRefresh({
     active: isExpanded && Boolean(activeMilestoneDesignJob),
@@ -112,23 +115,14 @@ const MilestoneDesignCard = ({
 
   return (
     <div className="mt-4 border-t border-border/80 pt-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="qb-meta-label">Design doc</p>
-          <p className="mt-1 text-sm text-secondary">
-            Generate and review the milestone design document inline.
-          </p>
-        </div>
-        <Button
-          aria-expanded={isExpanded}
-          onClick={onToggle}
-          variant="ghost"
-        >
-          {isExpanded ? "Hide design doc" : "Open design doc"}
-        </Button>
-      </div>
       {isExpanded ? (
-        <div className="mt-4 grid gap-4">
+        <div className="grid gap-4">
+          <div>
+            <p className="qb-meta-label">Design doc</p>
+            <p className="mt-1 text-sm text-secondary">
+              Generate and review the milestone design document inline.
+            </p>
+          </div>
           {activeMilestoneDesignJob ? (
             <Alert tone="info">
               Milestone design doc generation is {activeMilestoneDesignJob.status}. The milestone
@@ -200,7 +194,14 @@ const MilestoneDesignCard = ({
                       linked flows covered: {milestone.linkedUserFlows.length}
                     </Badge>
                   </div>
-                  <MarkdownDocument markdown={currentDesignDoc.markdown} showTableOfContents />
+                  <EditableMarkdownDocument
+                    disabled={milestone.status !== "approved"}
+                    editLabel="Edit Markdown"
+                    isSaving={updateDesignMutation.isPending}
+                    markdown={currentDesignDoc.markdown}
+                    onSave={(markdown) => updateDesignMutation.mutateAsync({ markdown })}
+                    saveLabel="Save milestone document"
+                  />
                 </>
               ) : (
                 <p className="text-sm text-secondary">
@@ -482,9 +483,22 @@ export const MilestonesPage = () => {
                     onClick={() => {
                       openEditPanel(milestone);
                     }}
-                    variant="ghost"
+                    variant="secondary"
                   >
-                    Edit
+                    Edit Milestone
+                  </Button>
+                  <Button
+                    aria-expanded={expandedDesignMilestoneId === milestone.id}
+                    onClick={() =>
+                      setExpandedDesignMilestoneId((current) =>
+                        current === milestone.id ? null : milestone.id,
+                      )
+                    }
+                    variant="secondary"
+                  >
+                    {expandedDesignMilestoneId === milestone.id
+                      ? "Hide Milestone Document"
+                      : "View Milestone Document"}
                   </Button>
                   {milestone.status === "draft" ? (
                     <Button
@@ -526,11 +540,6 @@ export const MilestonesPage = () => {
                 isExpanded={expandedDesignMilestoneId === milestone.id}
                 jobs={jobsQuery.data?.jobs}
                 milestone={milestone}
-                onToggle={() =>
-                  setExpandedDesignMilestoneId((current) =>
-                    current === milestone.id ? null : milestone.id,
-                  )
-                }
                 projectId={id}
               />
             </Card>

@@ -444,6 +444,73 @@ describe("API integration", () => {
     });
   });
 
+  it("creates a new canonical milestone design document revision from a manual markdown edit", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone beta",
+        summary: "The editable milestone increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const original = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nOriginal copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    const updateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        markdown: "# Milestone beta\n\nEdited copy.",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json()).toMatchObject({
+      milestoneId: milestone.id,
+      version: 2,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nEdited copy.",
+      source: "ManualEdit",
+      isCanonical: true,
+      approval: null,
+    });
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          markdown: "# Milestone beta\n\nEdited copy.",
+          source: "ManualEdit",
+          isCanonical: true,
+        },
+        {
+          id: original.id,
+          markdown: "# Milestone beta\n\nOriginal copy.",
+          source: "GenerateMilestoneDesign",
+          isCanonical: false,
+        },
+      ],
+    });
+  });
+
   it("keeps downstream feature tracks hidden until a Product revision exists", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const milestone = await appServices.services.milestoneService.create(

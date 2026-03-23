@@ -86,3 +86,9 @@ export const milestoneDesignDocListResponseSchema = z.object({
 });
 
 export type MilestoneDesignDocListResponse = z.infer<typeof milestoneDesignDocListResponseSchema>;
+
+export const updateMilestoneDesignDocRequestSchema = z.object({
+  markdown: z.string().trim().min(1),
+});
+
+export type UpdateMilestoneDesignDocRequest = z.infer<typeof updateMilestoneDesignDocRequestSchema>;

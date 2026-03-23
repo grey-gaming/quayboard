@@ -7,6 +7,7 @@ import {
   milestoneDesignDocSchema,
   milestoneListResponseSchema,
   milestoneSchema,
+  updateMilestoneDesignDocRequestSchema,
 } from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
@@ -251,6 +252,63 @@ export const milestoneRoutes = (
         });
 
         return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.patch(
+    "/milestones/:id/design-docs",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const canonical = await services.milestoneService.getCanonicalDesignDoc(
+          request.user!.id,
+          milestoneId,
+        );
+
+        if (!canonical) {
+          throw new HttpError(
+            404,
+            "milestone_design_doc_not_found",
+            "Milestone design document not found.",
+          );
+        }
+
+        const payload = updateMilestoneDesignDocRequestSchema.parse(request.body);
+        const updatedDoc = await services.milestoneService.createDesignDocVersion({
+          milestoneId,
+          title: canonical.title,
+          markdown: payload.markdown,
+          source: "ManualEdit",
+        });
+        const approval = await services.artifactApprovalService.getApproval(
+          context.projectId,
+          "milestone_design_doc",
+          updatedDoc.id,
+        );
+
+        publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
+
+        return milestoneDesignDocSchema.parse({
+          id: updatedDoc.id,
+          milestoneId: updatedDoc.milestoneId,
+          version: updatedDoc.version,
+          title: updatedDoc.title,
+          markdown: updatedDoc.markdown,
+          source: updatedDoc.source,
+          isCanonical: updatedDoc.isCanonical,
+          createdAt: updatedDoc.createdAt.toISOString(),
+          approval,
+        });
       } catch (error) {
         return handleRouteError(reply, error);
       }

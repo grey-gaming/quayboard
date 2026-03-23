@@ -354,8 +354,9 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open design doc" }));
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
     expect(await screen.findByRole("button", { name: "Approve design doc" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Markdown" })).toBeTruthy();
     expect(screen.queryByText("Milestone Gates")).toBeNull();
     expect(screen.getByText("Coverage check")).toBeTruthy();
   });
@@ -788,7 +789,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open design doc" }));
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
     jobsResponse = {
       jobs: [
         {
@@ -873,6 +874,169 @@ describe("workflow pages", () => {
     expect(await screen.findByText("Milestone design doc generation failed.")).toBeTruthy();
     expect(screen.getByText("GenerateMilestoneDesign requires an approved milestone.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Design Document" })).toBeTruthy();
+  });
+
+  it("edits milestone markdown from the open document panel", async () => {
+    const milestoneProjectId = "86868686-8686-4686-8686-868686868686";
+    const milestoneId = "97979797-9797-4797-8797-979797979797";
+    let designDocsResponse = {
+      designDocs: [
+        {
+          id: "doc-edit-1",
+          milestoneId,
+          version: 1,
+          title: "Foundations design",
+          markdown: "# Foundations\n\nInitial copy.",
+          source: "GenerateMilestoneDesign",
+          isCanonical: true,
+          createdAt: "2026-03-20T11:01:00.000Z",
+          approval: null,
+        },
+      ],
+    };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-3",
+                projectId: milestoneProjectId,
+                title: "Ship foundations",
+                userStory: "As a planner, I want the milestone document editable.",
+                entryPoint: "Milestones",
+                endState: "Document saved",
+                flowSteps: ["Open milestone", "Edit markdown"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Document is updated."],
+                doneCriteriaRefs: ["DC-3"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: milestoneId,
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Prepare the first releasable increment.",
+                status: "approved",
+                linkedUserFlows: [{ id: "flow-3", title: "Ship foundations" }],
+                featureCount: 0,
+                approvedAt: "2026-03-20T10:00:00.000Z",
+                completedAt: null,
+                createdAt: "2026-03-20T09:45:00.000Z",
+                updatedAt: "2026-03-20T10:00:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/milestones/${milestoneId}/design-docs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => designDocsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/milestones/${milestoneId}/design-docs` && method === "PATCH") {
+        expect(init?.body).toEqual(JSON.stringify({ markdown: "# Foundations\n\nEdited copy." }));
+        designDocsResponse = {
+          designDocs: [
+            {
+              id: "doc-edit-2",
+              milestoneId,
+              version: 2,
+              title: "Foundations design",
+              markdown: "# Foundations\n\nEdited copy.",
+              source: "ManualEdit",
+              isCanonical: true,
+              createdAt: "2026-03-20T11:05:00.000Z",
+              approval: null,
+            },
+          ],
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => designDocsResponse.designDocs[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
+    expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "# Foundations\n\nEdited copy." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save milestone document" }));
+
+    expect(await screen.findByText("Edited copy.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Markdown" })).toBeTruthy();
   });
 
   it("gates feature builder behind approved user flows and renders the catalogue once unlocked", async () => {

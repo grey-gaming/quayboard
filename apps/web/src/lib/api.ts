@@ -307,6 +307,12 @@ export const api = {
       method: "POST",
     });
   },
+  updateMilestoneDesignDoc(milestoneId: string, payload: { markdown: string }) {
+    return apiRequest<MilestoneDesignDoc>(`/api/milestones/${milestoneId}/design-docs`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
   approveMilestoneDesignDoc(milestoneId: string, revisionId: string) {
     return apiRequest<MilestoneDesignDoc>(
       `/api/milestones/${milestoneId}/design-docs/${revisionId}/approve`,
