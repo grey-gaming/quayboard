@@ -19,12 +19,10 @@ import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAddFeatureDependencyMutation,
   useAppendFeaturesFromOnePagerMutation,
-  useArchiveFeatureMutation,
   useCreateFeatureMutation,
   useFeaturesQuery,
   useMilestonesQuery,
   useProjectQuery,
-  useUpdateFeatureMutation,
 } from "../hooks/use-projects.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 
@@ -50,8 +48,6 @@ export const FeatureBuilderPage = () => {
   const featuresQuery = useFeaturesQuery(id);
   const createFeatureMutation = useCreateFeatureMutation(id);
   const appendFeaturesMutation = useAppendFeaturesFromOnePagerMutation(id);
-  const updateFeatureMutation = useUpdateFeatureMutation(id);
-  const archiveFeatureMutation = useArchiveFeatureMutation(id);
   const addDependencyMutation = useAddFeatureDependencyMutation(id);
   const approvedMilestones = (milestonesQuery.data?.milestones ?? []).filter(
     (milestone) => milestone.status === "approved",
@@ -297,48 +293,6 @@ export const FeatureBuilderPage = () => {
                               >
                                 Open editor
                               </Link>
-                              <Select
-                                onChange={(event) => {
-                                  void updateFeatureMutation.mutateAsync({
-                                    featureId: feature.id,
-                                    payload: {
-                                      status: event.target.value as (typeof statuses)[number],
-                                    },
-                                  });
-                                }}
-                                value={feature.status}
-                              >
-                                {statuses.map((status) => (
-                                  <option key={status} value={status}>
-                                    {status.replaceAll("_", " ")}
-                                  </option>
-                                ))}
-                              </Select>
-                              <Select
-                                onChange={(event) => {
-                                  void updateFeatureMutation.mutateAsync({
-                                    featureId: feature.id,
-                                    payload: {
-                                      priority: event.target.value as (typeof priorities)[number],
-                                    },
-                                  });
-                                }}
-                                value={feature.priority}
-                              >
-                                {priorities.map((entry) => (
-                                  <option key={entry} value={entry}>
-                                    {entry.replaceAll("_", " ")}
-                                  </option>
-                                ))}
-                              </Select>
-                              <Button
-                                onClick={() => {
-                                  void archiveFeatureMutation.mutateAsync(feature.id);
-                                }}
-                                variant="danger"
-                              >
-                                Archive
-                              </Button>
                             </div>
                           </div>
                         </div>

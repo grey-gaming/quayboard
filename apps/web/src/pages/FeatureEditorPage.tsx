@@ -26,6 +26,7 @@ import { Select } from "../components/ui/Select.js";
 import {
   useAddFeatureDependencyMutation,
   useApproveFeatureWorkstreamRevisionMutation,
+  useArchiveFeatureMutation,
   useCreateFeatureWorkstreamRevisionMutation,
   useFeaturesQuery,
   useFeatureQuery,
@@ -35,6 +36,7 @@ import {
   useProjectJobsQuery,
   useProjectQuery,
   useRemoveFeatureDependencyMutation,
+  useUpdateFeatureMutation,
 } from "../hooks/use-projects.js";
 import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
@@ -67,6 +69,8 @@ const defaultRequirements = {
   userDocsRequired: true,
   archDocsRequired: true,
 };
+const priorities = ["must_have", "should_have", "could_have", "wont_have"] as const;
+const statuses = ["draft", "approved", "in_progress", "completed"] as const;
 
 export const FeatureEditorPage = () => {
   const { id = "", featureId = "" } = useParams();
@@ -76,10 +80,12 @@ export const FeatureEditorPage = () => {
   const tracksQuery = useFeatureTracksQuery(featureId);
   const jobsQuery = useProjectJobsQuery(id);
   const addDependencyMutation = useAddFeatureDependencyMutation(id);
+  const archiveFeatureMutation = useArchiveFeatureMutation(id);
   const createRevisionMutation = useCreateFeatureWorkstreamRevisionMutation(id);
   const generateRevisionMutation = useGenerateFeatureWorkstreamRevisionMutation(id);
   const approveRevisionMutation = useApproveFeatureWorkstreamRevisionMutation(id);
   const removeDependencyMutation = useRemoveFeatureDependencyMutation(id);
+  const updateFeatureMutation = useUpdateFeatureMutation(id);
 
   useSseEvents(id);
 
@@ -521,6 +527,67 @@ export const FeatureEditorPage = () => {
                 </div>
                 <div className="grid gap-4">
                   <ReviewPanel />
+                  <Card surface="rail">
+                    <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+                      <div>
+                        <p className="qb-meta-label">Details</p>
+                        <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Feature state</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      <div className="grid gap-2">
+                        <Label htmlFor="feature-status">Status</Label>
+                        <Select
+                          id="feature-status"
+                          onChange={(event) => {
+                            void updateFeatureMutation.mutateAsync({
+                              featureId,
+                              payload: {
+                                status: event.target.value as (typeof statuses)[number],
+                              },
+                            });
+                          }}
+                          value={featureQuery.data?.status ?? "draft"}
+                        >
+                          {statuses.map((status) => (
+                            <option key={status} value={status}>
+                              {status.replaceAll("_", " ")}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="feature-priority">Priority</Label>
+                        <Select
+                          id="feature-priority"
+                          onChange={(event) => {
+                            void updateFeatureMutation.mutateAsync({
+                              featureId,
+                              payload: {
+                                priority: event.target.value as (typeof priorities)[number],
+                              },
+                            });
+                          }}
+                          value={featureQuery.data?.priority ?? "must_have"}
+                        >
+                          {priorities.map((priority) => (
+                            <option key={priority} value={priority}>
+                              {priority.replaceAll("_", " ")}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          void archiveFeatureMutation.mutateAsync(featureId);
+                        }}
+                        type="button"
+                        variant="danger"
+                      >
+                        Archive
+                      </Button>
+                    </div>
+                  </Card>
                   <Card surface="rail">
                     <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
                       <div>
