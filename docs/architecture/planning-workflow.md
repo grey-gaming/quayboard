@@ -28,7 +28,7 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `decision_cards` stores kind-specific UX and technical decision tiles, selections, and acceptance state
 - `project_blueprints` stores versioned UX and technical spec revisions with canonical pointers
 - `artifact_approvals` backs UX/Technical Spec and milestone design doc approval records
-- `milestones` stores milestone ordering plus lifecycle timestamps
+- `milestones` stores milestone ordering plus approval timestamps
 - `milestone_use_cases` stores milestone-to-user-flow coverage links
 - `milestone_design_docs` stores immutable milestone design doc revisions with a canonical flag
 - `feature_cases` stores feature identity, milestone assignment, lifecycle metadata, and archive state

@@ -155,7 +155,6 @@ export const createMilestoneService = (db: AppDatabase) => ({
           linkedUserFlows: linksByMilestone.get(milestone.id) ?? [],
           featureCount: featureCountByMilestone.get(milestone.id) ?? 0,
           approvedAt: milestone.approvedAt?.toISOString() ?? null,
-          completedAt: milestone.completedAt?.toISOString() ?? null,
           createdAt: milestone.createdAt.toISOString(),
           updatedAt: milestone.updatedAt.toISOString(),
         }),
@@ -292,41 +291,31 @@ export const createMilestoneService = (db: AppDatabase) => ({
     const payload = milestoneActionRequestSchema.parse(input);
     const now = new Date();
 
-    if (payload.action === "approve") {
-      if (context.status !== "draft") {
-        throw new HttpError(
-          409,
-          "invalid_milestone_transition",
-          "Only draft milestones can be approved.",
-        );
-      }
-
-      await db
-        .update(milestonesTable)
-        .set({
-          status: "approved",
-          approvedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(milestonesTable.id, milestoneId));
-    } else {
-      if (context.status !== "approved") {
-        throw new HttpError(
-          409,
-          "invalid_milestone_transition",
-          "Only approved milestones can be completed.",
-        );
-      }
-
-      await db
-        .update(milestonesTable)
-        .set({
-          status: "completed",
-          completedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(milestonesTable.id, milestoneId));
+    if (context.status !== "draft") {
+      throw new HttpError(
+        409,
+        "invalid_milestone_transition",
+        "Only draft milestones can be approved.",
+      );
     }
+
+    const designDoc = await this.getCanonicalDesignDoc(ownerUserId, milestoneId);
+    if (!designDoc) {
+      throw new HttpError(
+        409,
+        "milestone_design_doc_required",
+        "Create a milestone design document before approving the milestone.",
+      );
+    }
+
+    await db
+      .update(milestonesTable)
+      .set({
+        status: "approved",
+        approvedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(milestonesTable.id, milestoneId));
 
     return this.list(ownerUserId, context.projectId).then((response) => {
       const milestone = response.milestones.find((item) => item.id === milestoneId);

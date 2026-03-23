@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { artifactApprovalSchema } from "./artifacts.js";
 
-export const milestoneStatusSchema = z.enum(["draft", "approved", "completed"]);
+export const milestoneStatusSchema = z.enum(["draft", "approved"]);
 
 export type MilestoneStatus = z.infer<typeof milestoneStatusSchema>;
 
@@ -23,7 +23,6 @@ export const milestoneSchema = z.object({
   linkedUserFlows: z.array(milestoneLinkedUseCaseSchema),
   featureCount: z.number().int().nonnegative(),
   approvedAt: z.string().datetime().nullable(),
-  completedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -47,7 +46,7 @@ export const updateMilestoneRequestSchema = z.object({
 export type UpdateMilestoneRequest = z.infer<typeof updateMilestoneRequestSchema>;
 
 export const milestoneActionRequestSchema = z.object({
-  action: z.enum(["approve", "complete"]),
+  action: z.enum(["approve"]),
 });
 
 export type MilestoneActionRequest = z.infer<typeof milestoneActionRequestSchema>;

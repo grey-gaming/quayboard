@@ -322,7 +322,6 @@ describe("workflow pages", () => {
             ],
             featureCount: 2,
             approvedAt: "2026-03-16T10:02:00.000Z",
-            completedAt: null,
             createdAt: "2026-03-16T10:00:00.000Z",
             updatedAt: "2026-03-16T10:02:00.000Z",
           },
@@ -357,6 +356,7 @@ describe("workflow pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
     expect(await screen.findByRole("button", { name: "Approve design doc" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
     expect(screen.queryByText("Milestone Gates")).toBeNull();
     expect(screen.getByText("Coverage check")).toBeTruthy();
   });
@@ -481,7 +481,6 @@ describe("workflow pages", () => {
               ],
               featureCount: 0,
               approvedAt: null,
-              completedAt: null,
               createdAt: "2026-03-20T10:00:00.000Z",
               updatedAt: "2026-03-20T10:00:00.000Z",
             },
@@ -526,6 +525,128 @@ describe("workflow pages", () => {
       expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
     });
     expect(screen.getByText("Release Foundations")).toBeTruthy();
+  });
+
+  it("blocks milestone approval until a design doc exists", async () => {
+    const milestoneProjectId = "83838383-8383-4383-8383-838383838383";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-blocked",
+                projectId: milestoneProjectId,
+                title: "Plan delivery milestones",
+                userStory: "As a planner, I want a roadmap so delivery can start.",
+                entryPoint: "Mission Control",
+                endState: "Milestone ready for approval",
+                flowSteps: ["Open milestones", "Prepare design doc"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["A design doc exists before approval."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-16T10:01:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: "milestone-blocked",
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Establish the first releasable increment.",
+                status: "draft",
+                linkedUserFlows: [{ id: "flow-blocked", title: "Plan delivery milestones" }],
+                featureCount: 0,
+                approvedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-blocked" && method === "POST") {
+        return {
+          ok: false,
+          status: 409,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            error: {
+              code: "milestone_design_doc_required",
+              message: "Create a milestone design document before approving the milestone.",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(
+      await screen.findByText("Create a milestone design document before approving the milestone."),
+    ).toBeTruthy();
   });
 
   it("tracks milestone generation jobs and surfaces failures", async () => {
@@ -752,7 +873,6 @@ describe("workflow pages", () => {
                 linkedUserFlows: [{ id: "flow-2", title: "Ship first release" }],
                 featureCount: 0,
                 approvedAt: "2026-03-20T10:00:00.000Z",
-                completedAt: null,
                 createdAt: "2026-03-20T09:45:00.000Z",
                 updatedAt: "2026-03-20T10:00:00.000Z",
               },
@@ -856,7 +976,7 @@ describe("workflow pages", () => {
           inputs: { milestoneId },
           outputs: null,
           error: {
-            message: "GenerateMilestoneDesign requires an approved milestone.",
+            message: "GenerateMilestoneDesign only runs for milestones that are not approved yet.",
           },
           queuedAt: "2026-03-20T11:00:00.000Z",
           startedAt: "2026-03-20T11:00:30.000Z",
@@ -872,7 +992,9 @@ describe("workflow pages", () => {
     });
 
     expect(await screen.findByText("Milestone design doc generation failed.")).toBeTruthy();
-    expect(screen.getByText("GenerateMilestoneDesign requires an approved milestone.")).toBeTruthy();
+    expect(
+      screen.getByText("GenerateMilestoneDesign only runs for milestones that are not approved yet."),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Design Document" })).toBeTruthy();
   });
 
@@ -961,13 +1083,12 @@ describe("workflow pages", () => {
                 position: 1,
                 title: "Foundations",
                 summary: "Prepare the first releasable increment.",
-                status: "approved",
+                status: "draft",
                 linkedUserFlows: [{ id: "flow-3", title: "Ship foundations" }],
                 featureCount: 0,
-                approvedAt: "2026-03-20T10:00:00.000Z",
-                completedAt: null,
+                approvedAt: null,
                 createdAt: "2026-03-20T09:45:00.000Z",
-                updatedAt: "2026-03-20T10:00:00.000Z",
+                updatedAt: "2026-03-20T09:45:00.000Z",
               },
             ],
             coverage: {
@@ -1114,7 +1235,6 @@ describe("workflow pages", () => {
                 ],
                 featureCount: 2,
                 approvedAt: "2026-03-16T10:02:00.000Z",
-                completedAt: null,
                 createdAt: "2026-03-16T10:00:00.000Z",
                 updatedAt: "2026-03-16T10:02:00.000Z",
               },

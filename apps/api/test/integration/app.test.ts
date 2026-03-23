@@ -280,6 +280,28 @@ describe("API integration", () => {
 
     const milestoneId = createMilestoneResponse.json().id as string;
 
+    const approveWithoutDesignDocResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestoneId}`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: { action: "approve" },
+    });
+
+    expect(approveWithoutDesignDocResponse.statusCode).toBe(409);
+    expect(approveWithoutDesignDocResponse.json()).toEqual({
+      error: {
+        code: "milestone_design_doc_required",
+        message: "Create a milestone design document before approving the milestone.",
+      },
+    });
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId,
+      title: "Foundations design",
+      markdown: "# Foundations\n\nPrepare the first releasable increment.",
+      source: "ManualSave",
+    });
+
     const approveMilestoneResponse = await server.inject({
       method: "POST",
       url: `/api/milestones/${milestoneId}`,
@@ -289,6 +311,21 @@ describe("API integration", () => {
 
     expect(approveMilestoneResponse.statusCode).toBe(200);
     expect(approveMilestoneResponse.json().status).toBe("approved");
+
+    const completeMilestoneResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestoneId}`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: { action: "complete" },
+    });
+
+    expect(completeMilestoneResponse.statusCode).toBe(400);
+    expect(completeMilestoneResponse.json()).toEqual({
+      error: {
+        code: "invalid_request",
+        message: "Invalid enum value. Expected 'approve', received 'complete'",
+      },
+    });
 
     const createFirstFeatureResponse = await server.inject({
       method: "POST",
@@ -395,15 +432,15 @@ describe("API integration", () => {
       },
     );
 
-    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
-      action: "approve",
-    });
-
     const designDoc = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
       title: "Milestone alpha design",
       markdown: "# Milestone alpha\n\nDesign details.",
       source: "ManualSave",
+    });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
     });
 
     const approvalResponse = await server.inject({
@@ -455,10 +492,6 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
-
-    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
-      action: "approve",
-    });
 
     const original = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -522,6 +555,13 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone delta design",
+      markdown: "# Milestone delta\n\nFeature planning details.",
+      source: "ManualSave",
+    });
 
     await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
       action: "approve",
@@ -592,6 +632,19 @@ describe("API integration", () => {
       },
     );
 
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: firstMilestone.id,
+      title: "Milestone alpha design",
+      markdown: "# Milestone alpha\n\nDesign details.",
+      source: "ManualSave",
+    });
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: secondMilestone.id,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nDesign details.",
+      source: "ManualSave",
+    });
+
     await appServices.services.milestoneService.transition(seeded.ownerUserId, firstMilestone.id, {
       action: "approve",
     });
@@ -599,12 +652,13 @@ describe("API integration", () => {
       action: "approve",
     });
 
-    const secondDesignDoc = await appServices.services.milestoneService.createDesignDocVersion({
-      milestoneId: secondMilestone.id,
-      title: "Milestone beta design",
-      markdown: "# Milestone beta\n\nDesign details.",
-      source: "ManualSave",
-    });
+    const secondDesignDoc = await appServices.services.milestoneService.getCanonicalDesignDoc(
+      seeded.ownerUserId,
+      secondMilestone.id,
+    );
+    if (!secondDesignDoc) {
+      throw new Error("Expected a canonical milestone design document.");
+    }
 
     const approvalResponse = await server.inject({
       method: "POST",

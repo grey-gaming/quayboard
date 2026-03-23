@@ -1211,8 +1211,8 @@ export const createJobRunnerService = (input: {
         }
 
         const milestone = await input.milestoneService.getContext(ownerUserId, milestoneId);
-        if (milestone.status !== "approved") {
-          throw new Error("GenerateMilestoneDesign requires an approved milestone.");
+        if (milestone.status !== "draft") {
+          throw new Error("GenerateMilestoneDesign only runs for milestones that are not approved yet.");
         }
 
         const [blueprints, milestoneRecord, linkedFlows] = await Promise.all([

@@ -42,7 +42,7 @@ const artifactTypeValues = [
   "feature_user_doc_revision",
   "feature_arch_doc_revision",
 ] as const;
-const milestoneStatusValues = ["draft", "approved", "completed"] as const;
+const milestoneStatusValues = ["draft", "approved"] as const;
 const featureStatusValues = [
   "draft",
   "approved",
@@ -394,7 +394,6 @@ export const milestonesTable = pgTable(
     summary: text("summary").notNull(),
     status: text("status").notNull().$type<(typeof milestoneStatusValues)[number]>(),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
     createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
       onDelete: "set null",
     }),

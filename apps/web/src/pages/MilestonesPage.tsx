@@ -117,11 +117,23 @@ const MilestoneDesignCard = ({
     <div className="mt-4 border-t border-border/80 pt-4">
       {isExpanded ? (
         <div className="grid gap-4">
-          <div>
-            <p className="qb-meta-label">Design doc</p>
-            <p className="mt-1 text-sm text-secondary">
-              Generate and review the milestone design document inline.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="qb-meta-label">Design doc</p>
+              <p className="mt-1 text-sm text-secondary">
+                Generate or edit the milestone design document before approving the milestone.
+              </p>
+            </div>
+            <AiWorkflowButton
+              active={milestoneDesignButtonActive}
+              disabled={milestoneDesignButtonActive || milestone.status === "approved"}
+              label="Generate Design Document"
+              onClick={() => {
+                void generateDesignMutation.mutateAsync().catch(() => undefined);
+              }}
+              runningLabel="Generating..."
+              variant="secondary"
+            />
           </div>
           {activeMilestoneDesignJob ? (
             <Alert tone="info">
@@ -157,22 +169,11 @@ const MilestoneDesignCard = ({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {milestone.status === "approved" ? (
-                  <AiWorkflowButton
-                    active={milestoneDesignButtonActive}
-                    disabled={milestoneDesignButtonActive}
-                    label="Generate Design Document"
-                    onClick={() => {
-                      void generateDesignMutation.mutateAsync();
-                    }}
-                    runningLabel="Generating..."
-                    variant="secondary"
-                  />
-                ) : null}
-                {currentDesignDoc && !currentDesignDoc.approval && milestone.status === "approved" ? (
+                {currentDesignDoc && !currentDesignDoc.approval ? (
                   <Button
+                    disabled={milestone.status !== "approved"}
                     onClick={() => {
-                      void approveDesignMutation.mutateAsync(currentDesignDoc.id);
+                      void approveDesignMutation.mutateAsync(currentDesignDoc.id).catch(() => undefined);
                     }}
                     variant="secondary"
                   >
@@ -195,11 +196,13 @@ const MilestoneDesignCard = ({
                     </Badge>
                   </div>
                   <EditableMarkdownDocument
-                    disabled={milestone.status !== "approved"}
+                    disabled={milestone.status === "approved"}
                     editLabel="Edit Markdown"
                     isSaving={updateDesignMutation.isPending}
                     markdown={currentDesignDoc.markdown}
-                    onSave={(markdown) => updateDesignMutation.mutateAsync({ markdown })}
+                    onSave={(markdown) =>
+                      updateDesignMutation.mutateAsync({ markdown }).catch(() => undefined)
+                    }
                     saveLabel="Save milestone document"
                   />
                 </>
@@ -308,7 +311,7 @@ export const MilestonesPage = () => {
       <PageIntro
         eyebrow="Milestones"
         title="Milestones"
-        summary="Plan releasable increments from the approved user-flow contract, then generate and approve a design document for each approved milestone."
+        summary="Plan releasable increments from the approved user-flow contract, prepare a design document for each milestone, then approve the milestones that are ready for feature work."
         meta={
           <>
             <Badge tone="neutral">{activeMilestones.length} milestones</Badge>
@@ -366,7 +369,7 @@ export const MilestonesPage = () => {
                 disabled={milestonePlanButtonActive || activeMilestones.length > 0}
                 label="Generate Milestones"
                 onClick={() => {
-                  void generateMilestonesMutation.mutateAsync();
+                  void generateMilestonesMutation.mutateAsync().catch(() => undefined);
                 }}
                 runningLabel="Generating milestones..."
                 variant="secondary"
@@ -445,13 +448,17 @@ export const MilestonesPage = () => {
                           .mutateAsync({ milestoneId: editingMilestoneId, payload })
                           .then(() => {
                             resetForm();
-                          });
+                          })
+                          .catch(() => undefined);
                         return;
                       }
 
-                      void createMilestoneMutation.mutateAsync(payload).then(() => {
-                        resetForm();
-                      });
+                      void createMilestoneMutation
+                        .mutateAsync(payload)
+                        .then(() => {
+                          resetForm();
+                        })
+                        .catch(() => undefined);
                     }}
                     variant="primary"
                   >
@@ -469,7 +476,7 @@ export const MilestonesPage = () => {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="neutral">Milestone {milestone.position}</Badge>
-                    <Badge tone={milestone.status === "completed" ? "success" : "info"}>
+                    <Badge tone={milestone.status === "approved" ? "success" : "info"}>
                       {milestone.status}
                     </Badge>
                   </div>
@@ -506,24 +513,11 @@ export const MilestonesPage = () => {
                         void transitionMilestoneMutation.mutateAsync({
                           milestoneId: milestone.id,
                           action: "approve",
-                        });
+                        }).catch(() => undefined);
                       }}
                       variant="secondary"
                     >
                       Approve
-                    </Button>
-                  ) : null}
-                  {milestone.status === "approved" ? (
-                    <Button
-                      onClick={() => {
-                        void transitionMilestoneMutation.mutateAsync({
-                          milestoneId: milestone.id,
-                          action: "complete",
-                        });
-                      }}
-                      variant="secondary"
-                    >
-                      Complete
                     </Button>
                   ) : null}
                 </div>

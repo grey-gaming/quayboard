@@ -100,7 +100,7 @@ Home (project list)
     ├── Product Spec (overview -> full specification)
     ├── UX Spec (UX decision tiles -> UX specification)
     ├── Technical Spec (Technical decision tiles -> technical specification)
-    ├── Milestones (lifecycle: draft -> approved -> completed)
+    ├── Milestones (lifecycle: draft -> approved)
     ├── Features (catalogue / editor)
     │   └── Feature Editor
     │       ├── Product specification tab
@@ -225,7 +225,7 @@ Mission Control is the default project landing page (`/projects/:id`). It absorb
 #### Flow 4: Milestones and features
 
 1. LLM proposes milestone structure (e.g., Milestone 0: Foundations, Milestone 1: Hello World, ...) using approved user flows as the primary release contract.
-2. User approves milestones — each moves from `draft` to `approved`.
+2. User prepares a milestone design document, then approves milestones — each moves from `draft` to `approved` once a canonical design doc exists.
 3. User enters the **Feature Builder** to create features.
 4. Features can be created manually or seeded from the overview document via LLM; recommendation and append flows deduplicate against existing project scope to avoid repeated foundation work.
 5. Each feature has five workstream tracks: **product specification**, **UX specification**, **tech specification**, **user documentation**, **architecture documentation**.
@@ -405,7 +405,7 @@ The database uses PostgreSQL in production and SQLite for unit tests. All tables
 
 | Table | Purpose |
 |---|---|
-| `milestones` | Milestone lifecycle (`draft -> approved -> completed`) |
+| `milestones` | Milestone lifecycle (`draft -> approved`) |
 | `milestone_use_cases` | Links approved user flows to milestones so release planning stays tied to journey coverage |
 | `milestone_design_docs` | Versioned milestone design documents |
 | `auto_advance_sessions` | Auto-advance session lifecycle: status (`active / paused / completed / failed`), automation flags (`auto_approve_when_clear`, `skip_review_steps`), failure counters, paused reason, timestamps |
@@ -1267,7 +1267,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 **Backend**:
 - Milestone routes (CRUD, approve, complete, LLM generate)
 - `GenerateMilestones` LLM executor (proposes milestone structure from approved user flows and project blueprints)
-- `GenerateMilestoneDesign` LLM executor (generates a design document for an approved milestone)
+- `GenerateMilestoneDesign` LLM executor (generates a design document for a draft milestone before approval)
 - Milestone design doc routes (`GET/POST /milestones/:id/design-docs`, `POST /milestones/:id/design-docs/:rid/approve`)
 - Feature CRUD routes (`POST/GET /projects/:id/features`, `GET/PATCH/DELETE /features/:id`)
 - Feature revision routes (create, list)
@@ -1287,8 +1287,8 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 **Acceptance criteria**:
 - Milestones can be created manually and via LLM generation
 - Milestone generation reports journey coverage against approved user flows and stores milestone-to-user-flow links
-- Milestone lifecycle transitions (`draft -> approved -> completed`) enforce correct ordering
-- A design document can be generated for any approved milestone and approved independently
+- Milestone lifecycle transitions (`draft -> approved`) enforce correct ordering
+- A design document must exist before milestone approval, and its artifact approval remains independent
 - Features cannot be created without selecting an approved milestone
 - Features can be seeded from the overview document via LLM
 - Feature dependencies can be wired and visualised; `GET /projects/:id/features/graph` returns correct nodes and typed edges matching the wired `feature_dependencies`
@@ -1894,7 +1894,7 @@ Before M12, project access is single-owner: the authenticated creating user is t
 | **Feature specification** | A detailed specification for one workstream of a feature. Five types: **product specification** (what and why), **UX specification** (wireframes, flows, interaction), **tech specification** (implementation plan, data model, API), **user documentation** (user-facing guides and help text), **architecture documentation** (internal design rationale and data flow). Each is independently versioned and approvable. |
 | **Revision** | An immutable content snapshot. Feature specifications, features, and project blueprints all use revisions for version history. |
 | **Version** | Used specifically for overview document version history (version 1, version 2, etc.). |
-| **Milestone** | A grouping of features representing a deliverable increment. Lifecycle: `draft -> approved -> completed`. Every feature belongs to exactly one milestone. |
+| **Milestone** | A grouping of features representing a deliverable increment. Lifecycle: `draft -> approved`. Approval requires a canonical milestone design document. Every feature belongs to exactly one milestone. |
 | **Delivery task** | An atomic, ordered implementation work item generated from approved feature specifications. Has an ID like `PROJ-00001`. All pending tasks for a feature are bundled and executed together in a single sandbox run. |
 | **Sandbox run** | A single `ImplementChange` or `TestAndVerify` execution inside an isolated Docker container using OpenCode. An `ImplementChange` run bundles all pending tasks for a feature into a single cohesive implementation; `TestAndVerify` can reuse a warm-start worktree and apply bounded remediation. Produces artifacts (logs, diffs, test reports) and optionally a PR. |
 | **Milestone session** | An orchestrated sequence of feature-level sandbox runs across all features in a milestone, respecting dependency order. |

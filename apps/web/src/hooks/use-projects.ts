@@ -776,7 +776,7 @@ export const useTransitionMilestoneMutation = (projectId: string) => {
       action,
     }: {
       milestoneId: string;
-      action: "approve" | "complete";
+      action: "approve";
     }) => api.transitionMilestone(milestoneId, action),
     onSuccess: () => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId);
