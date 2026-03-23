@@ -728,7 +728,7 @@ export const api = {
   generateClarifications(featureId: string) {
     return apiRequest<Job>(
       `/api/features/${featureId}/task-planning-session/clarifications`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({}) },
     );
   },
   answerClarification(featureId: string, clarificationId: string, answer: string) {
@@ -751,12 +751,13 @@ export const api = {
   autoAnswerClarifications(featureId: string) {
     return apiRequest<Job>(
       `/api/features/${featureId}/task-planning-session/clarifications/auto-answer`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({}) },
     );
   },
   generateTasks(featureId: string) {
     return apiRequest<Job>(`/api/features/${featureId}/task-planning-session/tasks/generate`, {
       method: "POST",
+      body: JSON.stringify({}),
     });
   },
   getTasks(featureId: string) {
