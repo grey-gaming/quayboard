@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -30,9 +30,13 @@ describe("global navigation", () => {
       </MemoryRouter>,
     );
 
+    const banner = screen.getByRole("banner");
+    const navLinks = within(banner).getAllByRole("link");
+
+    expect(navLinks.map((link) => link.textContent)).toEqual(["Quayboard", "Projects", "Docs", "Settings"]);
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/");
-    expect(screen.getByRole("link", { name: "Docs" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Docs" }).className).toContain("qb-global-nav-cell-idle");
+    expect(screen.getByRole("link", { name: "Settings" }).className).toContain("qb-global-nav-cell-active");
     expect(screen.getByRole("link", { name: "Quayboard" })).toBeTruthy();
     expect(screen.getByText("Harbor Admin")).toBeTruthy();
     expect(screen.queryByText("Control Plane")).toBeNull();
@@ -47,8 +51,12 @@ describe("global navigation", () => {
       </MemoryRouter>,
     );
 
+    const banner = screen.getByRole("banner");
+    const navLinks = within(banner).getAllByRole("link");
+
+    expect(navLinks.map((link) => link.textContent)).toEqual(["Quayboard", "Projects", "Docs", "Sign in", "Register"]);
     expect(screen.getByRole("link", { name: "Projects" }).getAttribute("href")).toBe("/login");
-    expect(screen.getByRole("link", { name: "Docs" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Docs" }).className).toContain("qb-global-nav-cell-active");
     expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Register" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();

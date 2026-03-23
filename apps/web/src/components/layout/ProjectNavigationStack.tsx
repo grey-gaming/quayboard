@@ -8,22 +8,17 @@ import {
 } from "./project-navigation.js";
 
 const titleLabelClassName =
-  "qb-project-nav-label max-w-[11rem] truncate md:max-w-[16rem]";
+  "qb-project-nav-title max-w-[11rem] truncate md:max-w-[16rem]";
 
-const secondaryActiveClassName =
-  "border-accent/45 bg-accent/12 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--accent)/0.12)]";
+const secondaryActiveClassName = "qb-project-nav-cell-secondary-active";
 
-const secondaryIdleClassName =
-  "border-border/70 bg-panel-inset text-secondary hover:border-border-strong hover:bg-panel-active hover:text-foreground";
+const secondaryIdleClassName = "qb-project-nav-cell-secondary-idle";
 
-const tertiaryActiveClassName =
-  "border-border-strong bg-panel-active text-foreground";
+const tertiaryActiveClassName = "qb-project-nav-cell-tertiary-active";
 
-const tertiaryIdleClassName =
-  "border-border/70 bg-panel text-secondary hover:border-border-strong hover:text-foreground";
+const tertiaryIdleClassName = "qb-project-nav-cell-tertiary-idle";
 
-const disabledClassName =
-  "cursor-not-allowed border-border/60 bg-panel text-muted-foreground opacity-70";
+const disabledClassName = "qb-project-nav-cell-disabled";
 
 const linkClassName = ({
   isActive,

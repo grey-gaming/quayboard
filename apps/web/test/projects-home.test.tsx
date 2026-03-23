@@ -157,6 +157,7 @@ describe("project entry surfaces", () => {
     );
 
     expect(screen.getByText("Harbor Console")).toBeTruthy();
+    expect(screen.getByText("Harbor Console").tagName).toBe("SPAN");
     expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Product Design" })).toBeTruthy();
@@ -164,6 +165,8 @@ describe("project entry surfaces", () => {
     expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Questions" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Setup" }).className).toContain("qb-project-nav-cell-secondary-active");
+    expect(screen.getByRole("link", { name: "Questions" }).className).toContain("qb-project-nav-cell-tertiary-active");
     expect(screen.getByText("Implementation")).toBeTruthy();
   });
 
