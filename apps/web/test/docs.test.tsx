@@ -95,6 +95,12 @@ describe("docs pages", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Authentication" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "On This Page" }).length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("link", { name: "Register" })
+        .some((link) => link.getAttribute("href") === "#register"),
+    ).toBe(true);
     expect(screen.getAllByText(/currently supports local email\/password authentication/i)).toHaveLength(2);
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
@@ -160,6 +166,7 @@ describe("docs pages", () => {
 
     expect(screen.getByRole("heading", { name: "First Install" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Required Setup" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "On This Page" }).length).toBeGreaterThan(0);
   });
 
   it("renders the import stub without roadmap labels", async () => {

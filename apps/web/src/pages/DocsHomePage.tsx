@@ -7,7 +7,7 @@ import { docsGuideEntries, docsLandingEntry } from "../lib/docs-content.js";
 
 export const DocsHomePage = () => (
   <DocsFrame activeSlug="" guides={docsGuideEntries}>
-    <MarkdownDocument markdown={docsLandingEntry.markdown} />
+    <MarkdownDocument markdown={docsLandingEntry.markdown} showTableOfContents />
     <section className="space-y-4">
       <h2 className="font-display text-[1.35rem] font-semibold tracking-[-0.02em]">
         Available Guides

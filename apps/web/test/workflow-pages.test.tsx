@@ -655,7 +655,8 @@ describe("workflow pages", () => {
           milestoneId,
           version: 1,
           title: "Foundations design",
-          markdown: "# Foundations\n\nShipped via job completion.",
+          markdown:
+            "# Foundations\n\n## Delivery Shape\n\nShipped via job completion.\n\n### Exit Criteria\n\nShip with the generated design doc.",
           source: "GenerateMilestoneDesign",
           isCanonical: true,
           createdAt: "2026-03-20T11:01:00.000Z",
@@ -671,6 +672,7 @@ describe("workflow pages", () => {
     });
 
     expect(await screen.findByText("Foundations design")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Approve design doc" })).toBeTruthy();
 
     jobsResponse = {
@@ -1451,7 +1453,8 @@ describe("workflow pages", () => {
       projectId: overviewProjectId,
       version: 2,
       title: "Overview",
-      markdown: "# Overview\n\nCanonical scope for the planning workspace.",
+      markdown:
+        "# Overview\n\n## Scope\n\nCanonical scope for the planning workspace.\n\n### Defaults\n\nTeam-wide defaults remain explicit.",
       source: "generated",
       isCanonical: true,
       approvedAt: null,
@@ -1595,6 +1598,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.queryByText("Current Overview")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Overview" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
@@ -1603,8 +1607,12 @@ describe("workflow pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
+    expect(screen.queryByRole("button", { name: "On This Page" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
+      target: {
+        value:
+          "# Overview\n\n## Scope\n\nExpanded canonical scope for the planning workspace.\n\n### Defaults\n\nTeam-wide defaults remain explicit.",
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Overview" }));
 
@@ -2132,7 +2140,8 @@ describe("workflow pages", () => {
       projectId: productSpecProjectId,
       version: 2,
       title: "Product Spec",
-      markdown: "# Product Spec\n\nCanonical specification.",
+      markdown:
+        "# Product Spec\n\n## Scope\n\nCanonical specification.\n\n### Risks\n\nCapture the principal delivery risks.",
       source: "GenerateProductSpec",
       isCanonical: true,
       approvedAt: null,
@@ -2234,6 +2243,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.queryByText("Current Product Spec")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Product Spec" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
@@ -2241,8 +2251,12 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
+    expect(screen.queryByRole("button", { name: "On This Page" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "# Product Spec\n\nExpanded canonical specification." },
+      target: {
+        value:
+          "# Product Spec\n\n## Scope\n\nExpanded canonical specification.\n\n### Risks\n\nCapture the principal delivery risks.",
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Product Spec" }));
 

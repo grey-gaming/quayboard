@@ -139,6 +139,25 @@
     @apply font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground;
   }
 
+  .qb-markdown {
+    @apply grid gap-3 text-sm leading-6 text-secondary;
+  }
+
+  .qb-markdown ul,
+  .qb-markdown ol {
+    @apply marker:text-foreground;
+  }
+
+  .qb-markdown li > p,
+  .qb-markdown li > ul,
+  .qb-markdown li > ol {
+    margin-top: 0.375rem;
+  }
+
+  .qb-markdown li > p:first-child {
+    margin-top: 0;
+  }
+
   .qb-nav-cell {
     @apply inline-flex min-h-10 items-center border border-transparent px-3 font-mono text-[11px] font-medium uppercase tracking-[0.18em] transition-colors duration-150;
   }

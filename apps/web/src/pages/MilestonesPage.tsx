@@ -482,7 +482,10 @@ export const MilestonesPage = () => {
                         linked flows covered: {selectedMilestone?.linkedUserFlows.length ?? 0}
                       </Badge>
                     </div>
-                    <MarkdownDocument markdown={designDocsQuery.data.designDocs[0].markdown} />
+                    <MarkdownDocument
+                      markdown={designDocsQuery.data.designDocs[0].markdown}
+                      showTableOfContents
+                    />
                   </>
                 ) : (
                   <p className="text-sm text-secondary">
