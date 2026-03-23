@@ -31,6 +31,7 @@ import {
   useProjectJobsQuery,
   useProjectQuery,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 
 const tabKinds = ["product", "ux", "tech", "user_docs", "arch_docs", "tasks"] as const;
@@ -215,6 +216,18 @@ export const FeatureEditorPage = () => {
             job.inputs.featureId === featureId,
         )
       : null;
+
+  useJobDrivenRefresh({
+    active: Boolean(activeJob),
+    latestJob,
+    queryKeys:
+      activeKind === null
+        ? []
+        : [
+            ["feature", featureId, "tracks"],
+            ["feature", featureId, `${activeKind}-revisions`],
+          ],
+  });
 
   const saveRevision = async (markdown: string) => {
     if (!activeKind) {

@@ -9,6 +9,7 @@ import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
+  findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
   LatestJobFailureAlert,
@@ -37,6 +38,7 @@ import {
   useSpecDecisionTilesQuery,
   useUpdateSpecDecisionTilesMutation,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -316,6 +318,22 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
       ) ?? null,
     [jobsQuery.data?.jobs, kind],
   );
+  const latestDecisionJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) => job.type === "GenerateDecisionDeck" && jobHasKind(job, kind),
+      ),
+    [jobsQuery.data?.jobs, kind],
+  );
+  const latestSpecJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) => job.type === "GenerateProjectBlueprint" && jobHasKind(job, kind),
+      ),
+    [jobsQuery.data?.jobs, kind],
+  );
   const latestFailedSpecJob = useMemo(() => {
     return findLatestFailedJob(
       jobsQuery.data?.jobs,
@@ -372,6 +390,21 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     restoreSpecMutation.error ||
     approveArtifactMutation.error;
   const latestFailedSpecMessage = latestFailedSpecJob ? getJobErrorMessage(latestFailedSpecJob) : null;
+
+  useJobDrivenRefresh({
+    active: Boolean(activeDecisionJob),
+    latestJob: latestDecisionJob,
+    queryKeys: [["project", id, `${kind}-decision-tiles`]],
+  });
+
+  useJobDrivenRefresh({
+    active: Boolean(activeSpecJob),
+    latestJob: latestSpecJob,
+    queryKeys: [
+      ["project", id, `${kind}-spec`],
+      ["project", id, `${kind}-spec-versions`],
+    ],
+  });
 
   if (!projectQuery.data) {
     return (

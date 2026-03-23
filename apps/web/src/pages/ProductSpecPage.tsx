@@ -28,6 +28,7 @@ import {
   useRestoreProductSpecMutation,
   useUpdateProductSpecMutation,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -86,6 +87,15 @@ export const ProductSpecPage = () => {
     updateProductSpecMutation.error;
   const productSpecButtonActive =
     generateProductSpecMutation.isPending || Boolean(activeProductSpecJob);
+
+  useJobDrivenRefresh({
+    active: Boolean(activeProductSpecJob),
+    latestJob: latestProductSpecJob,
+    queryKeys: [
+      ["project", id, "product-spec"],
+      ["project", id, "product-spec-versions"],
+    ],
+  });
 
   if (!projectQuery.data) {
     return (

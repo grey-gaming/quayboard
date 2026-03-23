@@ -9,6 +9,7 @@ import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
+  findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
   LatestJobFailureAlert,
@@ -35,6 +36,7 @@ import {
   useUpdateMilestoneMutation,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 
 const readSelectedValues = (select: HTMLSelectElement) =>
@@ -99,6 +101,10 @@ export const MilestonesPage = () => {
     () => findLatestFailedJob(jobsQuery.data?.jobs, (job) => job.type === "GenerateMilestones"),
     [jobsQuery.data?.jobs],
   );
+  const latestMilestonePlanJob = useMemo(
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => job.type === "GenerateMilestones"),
+    [jobsQuery.data?.jobs],
+  );
   const activeMilestoneDesignJob = useMemo(
     () =>
       selectedMilestone
@@ -123,6 +129,18 @@ export const MilestonesPage = () => {
         : null,
     [jobsQuery.data?.jobs, selectedMilestone],
   );
+  const latestMilestoneDesignJob = useMemo(
+    () =>
+      selectedMilestone
+        ? findLatestJob(
+            jobsQuery.data?.jobs,
+            (job) =>
+              job.type === "GenerateMilestoneDesign" &&
+              jobTargetsMilestone(job, selectedMilestone.id),
+          )
+        : null,
+    [jobsQuery.data?.jobs, selectedMilestone],
+  );
   const activeError =
     projectQuery.error ||
     userFlowsQuery.error ||
@@ -139,6 +157,18 @@ export const MilestonesPage = () => {
     generateMilestonesMutation.isPending || Boolean(activeMilestonePlanJob);
   const milestoneDesignButtonActive =
     generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
+
+  useJobDrivenRefresh({
+    active: Boolean(activeMilestonePlanJob),
+    latestJob: latestMilestonePlanJob,
+    queryKeys: [["project", id, "milestones"]],
+  });
+
+  useJobDrivenRefresh({
+    active: Boolean(activeMilestoneDesignJob),
+    latestJob: latestMilestoneDesignJob,
+    queryKeys: selectedMilestone?.id ? [["milestone", selectedMilestone.id, "design-docs"]] : [],
+  });
 
   if (!projectQuery.data) {
     return (

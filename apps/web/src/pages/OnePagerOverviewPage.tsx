@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -30,6 +29,7 @@ import {
   useRestoreOnePagerMutation,
   useUpdateOnePagerMutation,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -48,7 +48,6 @@ export const OnePagerOverviewPage = () => {
   const { id = "" } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const navigationState = location.state as NavigationState | null;
   const projectQuery = useProjectQuery(id);
   const questionnaireQuery = useQuestionnaireQuery(id);
@@ -60,7 +59,6 @@ export const OnePagerOverviewPage = () => {
   const restoreOnePagerMutation = useRestoreOnePagerMutation(id);
   const updateOnePagerMutation = useUpdateOnePagerMutation(id);
   const hasTriggeredGenerationRef = useRef(false);
-  const lastCompletedOverviewJobRef = useRef<string | null>(null);
 
   useSseEvents(id);
 
@@ -122,44 +120,14 @@ export const OnePagerOverviewPage = () => {
     questionnaireReady,
   ]);
 
-  useEffect(() => {
-    if (!activeOverviewJob) {
-      return;
-    }
-
-    const refreshHandle = window.setInterval(() => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project", id, "one-pager"] }),
-        queryClient.invalidateQueries({ queryKey: ["project", id, "one-pager-versions"] }),
-      ]);
-    }, 1_000);
-
-    return () => {
-      window.clearInterval(refreshHandle);
-    };
-  }, [activeOverviewJob, id, queryClient]);
-
-  useEffect(() => {
-    if (
-      latestOverviewJob?.status !== "succeeded" ||
-      !latestOverviewJob.completedAt ||
-      lastCompletedOverviewJobRef.current === latestOverviewJob.id
-    ) {
-      return;
-    }
-
-    lastCompletedOverviewJobRef.current = latestOverviewJob.id;
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["project", id, "one-pager"] }),
-      queryClient.invalidateQueries({ queryKey: ["project", id, "one-pager-versions"] }),
-    ]);
-  }, [
-    id,
-    latestOverviewJob?.completedAt,
-    latestOverviewJob?.id,
-    latestOverviewJob?.status,
-    queryClient,
-  ]);
+  useJobDrivenRefresh({
+    active: Boolean(activeOverviewJob),
+    latestJob: latestOverviewJob,
+    queryKeys: [
+      ["project", id, "one-pager"],
+      ["project", id, "one-pager-versions"],
+    ],
+  });
 
   if (questionnaireQuery.data && !questionnaireReady && !navigationState?.startGeneration) {
     return <Navigate replace to={`/projects/${id}/questions`} />;

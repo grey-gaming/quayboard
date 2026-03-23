@@ -2260,6 +2260,164 @@ describe("workflow pages", () => {
     expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
   });
 
+  it("refreshes the Product Spec after generation succeeds without a page reload", async () => {
+    const productSpecProjectId = "31313131-3131-4313-8313-313131313131";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let productSpec: {
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    } | null = null;
+    let versions: Array<{
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    }> = [];
+    let generateSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: productSpecProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: productSpecProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ productSpec }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "POST") {
+        generateSubmitted = true;
+        productSpec = {
+          id: "generated-product-spec-id",
+          projectId: productSpecProjectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nGenerated without refresh.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:10:00.000Z",
+        };
+        versions = [productSpec];
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "product-spec-job-id",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:06:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: generateSubmitted
+              ? [
+                  {
+                    id: "product-spec-job-id",
+                    projectId: productSpecProjectId,
+                    type: "GenerateProductSpec",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:06:00.000Z",
+                    startedAt: "2026-03-16T09:06:10.000Z",
+                    completedAt: "2026-03-16T09:10:00.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate Product Spec" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${productSpecProjectId}/product-spec` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      await screen.findByText("Generated without refresh.", {}, { timeout: 2_500 }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("The Product Spec is being prepared. Stay on this page to review it when the job finishes."),
+    ).toBeNull();
+  });
+
   it("loads the Product Spec page without an error when the overview is approved but no Product Spec exists yet", async () => {
     const productSpecProjectId = "60606060-6060-4060-8060-606060606060";
 

@@ -32,6 +32,7 @@ import {
   useUpdateUserFlowMutation,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -180,8 +181,18 @@ export const UserFlowsPage = () => {
       findLatestFailedJob(jobsQuery.data?.jobs, (job) => generateUserFlowJobTypes.has(job.type)),
     [jobsQuery.data?.jobs],
   );
+  const latestGenerateUserFlowsJob = useMemo(
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => generateUserFlowJobTypes.has(job.type)),
+    [jobsQuery.data?.jobs],
+  );
   const generateFlowsButtonActive =
     generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
+
+  useJobDrivenRefresh({
+    active: Boolean(activeGenerateUserFlowsJob),
+    latestJob: latestGenerateUserFlowsJob,
+    queryKeys: [["project", id, "user-flows"]],
+  });
 
   if (!projectQuery.data) {
     return (
