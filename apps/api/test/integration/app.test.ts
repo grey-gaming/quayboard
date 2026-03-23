@@ -739,6 +739,53 @@ describe("API integration", () => {
     });
   });
 
+  it("rejects design-doc generation after the milestone is approved", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone epsilon",
+        summary: "The already-approved milestone.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone epsilon design",
+      markdown: "# Milestone epsilon\n\nApproved copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const createResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(createResponse.statusCode).toBe(409);
+    expect(createResponse.json()).toEqual({
+      error: {
+        code: "milestone_locked",
+        message: "Only draft milestones can generate a design document.",
+      },
+    });
+
+    const jobs = await sql<{ count: string }[]>`
+      select count(*)::text as "count"
+      from "jobs"
+      where "project_id" = ${seeded.projectId}
+        and "type" = 'GenerateMilestoneDesign'
+    `;
+
+    expect(jobs).toEqual([{ count: "0" }]);
+  });
+
   it("keeps downstream feature tracks hidden until a Product revision exists", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const milestone = await appServices.services.milestoneService.create(

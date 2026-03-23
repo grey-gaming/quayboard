@@ -61,9 +61,8 @@ export const FeatureBuilderPage = () => {
   const createFeatureMutation = useCreateFeatureMutation(id);
   const appendFeaturesMutation = useAppendFeaturesFromOnePagerMutation(id);
   const addDependencyMutation = useAddFeatureDependencyMutation(id);
-  const approvedMilestones = (milestonesQuery.data?.milestones ?? []).filter(
-    (milestone) => milestone.status === "approved",
-  );
+  const milestones = milestonesQuery.data?.milestones ?? [];
+  const approvedMilestones = milestones.filter((milestone) => milestone.status === "approved");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
@@ -113,6 +112,16 @@ export const FeatureBuilderPage = () => {
 
     return grouped;
   }, [approvedMilestones, filteredFeatures]);
+
+  const visibleMilestones = useMemo(() => {
+    const featureMilestoneIds = new Set(
+      (featuresQuery.data?.features ?? []).map((feature) => feature.milestoneId),
+    );
+
+    return milestones.filter(
+      (milestone) => milestone.status === "approved" || featureMilestoneIds.has(milestone.id),
+    );
+  }, [featuresQuery.data?.features, milestones]);
 
   const dependencyOptions = useMemo(
     () =>
@@ -234,8 +243,9 @@ export const FeatureBuilderPage = () => {
               <Badge tone="neutral">{filteredFeatures.length} shown</Badge>
             </div>
             <div className="mt-4 grid gap-4">
-              {approvedMilestones.map((milestone) => {
+              {visibleMilestones.map((milestone) => {
                 const milestoneFeatures = filteredFeaturesByMilestone.get(milestone.id) ?? [];
+                const isApproved = milestone.status === "approved";
 
                 return (
                   <Card key={milestone.id} surface="inset">
@@ -243,6 +253,7 @@ export const FeatureBuilderPage = () => {
                       <div>
                         <div className="flex flex-wrap gap-2">
                           <Badge tone="neutral">{milestone.title}</Badge>
+                          <Badge tone={isApproved ? "neutral" : "warning"}>{milestone.status}</Badge>
                           <Badge tone="neutral">{milestoneFeatures.length} shown</Badge>
                           <Badge tone="neutral">{milestone.featureCount} total</Badge>
                         </div>
@@ -251,29 +262,35 @@ export const FeatureBuilderPage = () => {
                         </p>
                         <p className="mt-2 text-sm text-secondary">{milestone.summary}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <AiWorkflowButton
-                          active={
-                            appendFeaturesMutation.isPending &&
-                            appendFeaturesMutation.variables?.milestoneId === milestone.id
-                          }
-                          disabled={appendFeaturesMutation.isPending}
-                          label="Generate features"
-                          onClick={() => {
-                            void appendFeaturesMutation.mutateAsync({ milestoneId: milestone.id });
-                          }}
-                          runningLabel="Generating..."
-                          variant="secondary"
-                        />
-                        <Button
-                          onClick={() => {
-                            openCreateDrawer(milestone.id);
-                          }}
-                          variant="primary"
-                        >
-                          New feature
-                        </Button>
-                      </div>
+                      {isApproved ? (
+                        <div className="flex flex-wrap gap-2">
+                          <AiWorkflowButton
+                            active={
+                              appendFeaturesMutation.isPending &&
+                              appendFeaturesMutation.variables?.milestoneId === milestone.id
+                            }
+                            disabled={appendFeaturesMutation.isPending}
+                            label="Generate features"
+                            onClick={() => {
+                              void appendFeaturesMutation.mutateAsync({ milestoneId: milestone.id });
+                            }}
+                            runningLabel="Generating..."
+                            variant="secondary"
+                          />
+                          <Button
+                            onClick={() => {
+                              openCreateDrawer(milestone.id);
+                            }}
+                            variant="primary"
+                          >
+                            New feature
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="max-w-sm text-sm text-secondary">
+                          Reapprove this milestone before generating or creating additional features.
+                        </p>
+                      )}
                     </div>
                     <div className="mt-4 grid gap-3">
                       {milestoneFeatures.map((feature) => (
@@ -326,7 +343,7 @@ export const FeatureBuilderPage = () => {
                   </Card>
                 );
               })}
-              {approvedMilestones.length === 0 ? (
+              {visibleMilestones.length === 0 ? (
                 <p className="text-sm text-secondary">
                   Approve at least one milestone before building the feature catalogue.
                 </p>

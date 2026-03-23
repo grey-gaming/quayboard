@@ -1399,6 +1399,21 @@ describe("workflow pages", () => {
                 createdAt: "2026-03-16T10:00:00.000Z",
                 updatedAt: "2026-03-16T10:02:00.000Z",
               },
+              {
+                id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                projectId: featureProjectId,
+                position: 2,
+                title: "Legacy scope",
+                summary: "Reapproval is pending, but existing features still need an editor path.",
+                status: "draft",
+                linkedUserFlows: [
+                  { id: "44444444-4444-4444-8444-444444444444", title: "Plan delivery milestones" },
+                ],
+                featureCount: 1,
+                approvedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:04:00.000Z",
+              },
             ],
             coverage: {
               approvedUserFlowCount: 1,
@@ -1475,6 +1490,37 @@ describe("workflow pages", () => {
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
+                archivedAt: null,
+              },
+              {
+                id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                projectId: featureProjectId,
+                milestoneId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                milestoneTitle: "Legacy scope",
+                featureKey: "F-003",
+                kind: "system",
+                priority: "could_have",
+                status: "draft",
+                headRevision: {
+                  id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                  featureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                  version: 1,
+                  title: "Legacy feature shell",
+                  summary: "Keep editor access while the reopened milestone is waiting on reapproval.",
+                  acceptanceCriteria: ["Existing features stay visible in the catalogue."],
+                  source: "ManualSave",
+                  createdAt: "2026-03-16T10:04:00.000Z",
+                },
+                documents: {
+                  product: { required: true, state: "draft" },
+                  ux: { required: false, state: "missing" },
+                  tech: { required: false, state: "missing" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: false, state: "missing" },
+                },
+                dependencyIds: [],
+                createdAt: "2026-03-16T10:04:00.000Z",
+                updatedAt: "2026-03-16T10:04:00.000Z",
                 archivedAt: null,
               },
             ],
@@ -1592,6 +1638,9 @@ describe("workflow pages", () => {
     expect(screen.getByRole("button", { name: "Generate features" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New feature" })).toBeTruthy();
     expect(screen.getAllByText("Foundations").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Legacy scope").length).toBeGreaterThan(0);
+    expect(screen.getByText("Reapprove this milestone before generating or creating additional features.")).toBeTruthy();
+    expect(screen.getByText("Legacy feature shell")).toBeTruthy();
     expect(screen.getAllByText("Product accepted").length).toBeGreaterThan(0);
     expect(screen.getByText("UX draft")).toBeTruthy();
     expect(screen.queryByText("Dependency graph")).toBeNull();

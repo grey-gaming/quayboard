@@ -254,6 +254,15 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+
+        if (context.status !== "draft") {
+          throw new HttpError(
+            409,
+            "milestone_locked",
+            "Only draft milestones can generate a design document.",
+          );
+        }
+
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId: context.projectId,
