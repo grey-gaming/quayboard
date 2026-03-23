@@ -175,11 +175,23 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const canonicalDesignDoc = await services.milestoneService.getCanonicalDesignDoc(
+          request.user!.id,
+          milestoneId,
+        );
         const milestone = await services.milestoneService.transition(
           request.user!.id,
           milestoneId,
           milestoneActionRequestSchema.parse(request.body),
         );
+        if (canonicalDesignDoc) {
+          await services.artifactApprovalService.approve(
+            request.user!.id,
+            context.projectId,
+            "milestone_design_doc",
+            canonicalDesignDoc.id,
+          );
+        }
         publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
 
         return milestoneSchema.parse(milestone);

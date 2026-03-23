@@ -1288,7 +1288,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - Milestones can be created manually and via LLM generation
 - Milestone generation reports journey coverage against approved user flows and stores milestone-to-user-flow links
 - Milestone lifecycle transitions (`draft -> approved`) enforce correct ordering
-- A design document must exist before milestone approval, and its artifact approval remains independent
+- A design document must exist before milestone approval, and milestone approval auto-approves the canonical design document
 - Features cannot be created without selecting an approved milestone
 - Features can be seeded from the overview document via LLM
 - Feature dependencies can be wired and visualised; `GET /projects/:id/features/graph` returns correct nodes and typed edges matching the wired `feature_dependencies`

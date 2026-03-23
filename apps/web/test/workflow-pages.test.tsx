@@ -649,6 +649,167 @@ describe("workflow pages", () => {
     ).toBeTruthy();
   });
 
+  it("refreshes the design doc approval state after milestone approval", async () => {
+    const milestoneProjectId = "83838383-8383-4383-8383-838383838384";
+    let milestoneStatus: "draft" | "approved" = "draft";
+    let designDocApproval: null | { approvedAt: string } = null;
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-auto-approve",
+                projectId: milestoneProjectId,
+                title: "Plan delivery milestones",
+                userStory: "As a planner, I want milestone approval to finalize the document.",
+                entryPoint: "Milestones",
+                endState: "Milestone approved",
+                flowSteps: ["Open milestones", "Approve milestone"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Milestone approval finalizes the design doc."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-16T10:01:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: "milestone-auto-approve",
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Establish the first releasable increment.",
+                status: milestoneStatus,
+                linkedUserFlows: [{ id: "flow-auto-approve", title: "Plan delivery milestones" }],
+                featureCount: 0,
+                approvedAt:
+                  milestoneStatus === "approved" ? "2026-03-16T10:05:00.000Z" : null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:05:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-auto-approve/design-docs") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            designDocs: [
+              {
+                id: "doc-auto-approve",
+                milestoneId: "milestone-auto-approve",
+                version: 1,
+                title: "Foundations design",
+                markdown: "# Foundations\n\nInitial copy.",
+                source: "ManualSave",
+                isCanonical: true,
+                createdAt: "2026-03-16T10:04:00.000Z",
+                approval: designDocApproval,
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-auto-approve" && method === "POST") {
+        milestoneStatus = "approved";
+        designDocApproval = { approvedAt: "2026-03-16T10:05:00.000Z" };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: "milestone-auto-approve",
+            projectId: milestoneProjectId,
+            position: 1,
+            title: "Foundations",
+            summary: "Establish the first releasable increment.",
+            status: "approved",
+            linkedUserFlows: [{ id: "flow-auto-approve", title: "Plan delivery milestones" }],
+            featureCount: 0,
+            approvedAt: "2026-03-16T10:05:00.000Z",
+            createdAt: "2026-03-16T10:00:00.000Z",
+            updatedAt: "2026-03-16T10:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(await screen.findByText("Foundations design")).toBeTruthy();
+    expect(await screen.findByText("approval required")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("approval required")).toBeNull();
+    });
+    expect(screen.getAllByText("approved")).toHaveLength(2);
+  });
+
   it("tracks milestone generation jobs and surfaces failures", async () => {
     const milestoneProjectId = "84848484-8484-4484-8484-848484848484";
     let jobsResponse: { jobs: Job[] } = { jobs: [] };

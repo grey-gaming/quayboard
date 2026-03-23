@@ -312,6 +312,25 @@ describe("API integration", () => {
     expect(approveMilestoneResponse.statusCode).toBe(200);
     expect(approveMilestoneResponse.json().status).toBe("approved");
 
+    const approvedDesignDocsResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestoneId}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(approvedDesignDocsResponse.statusCode).toBe(200);
+    expect(approvedDesignDocsResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          title: "Foundations design",
+          approval: {
+            artifactType: "milestone_design_doc",
+            projectId: seeded.projectId,
+          },
+        },
+      ],
+    });
+
     const completeMilestoneResponse = await server.inject({
       method: "POST",
       url: `/api/milestones/${milestoneId}`,
@@ -420,7 +439,7 @@ describe("API integration", () => {
     );
   });
 
-  it("approves the canonical milestone design document through the API", async () => {
+  it("returns the existing approval when a milestone approval already auto-approved the canonical design document", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const milestone = await appServices.services.milestoneService.create(
       seeded.ownerUserId,
@@ -442,6 +461,12 @@ describe("API integration", () => {
     await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
       action: "approve",
     });
+    await appServices.services.artifactApprovalService.approve(
+      seeded.ownerUserId,
+      seeded.projectId,
+      "milestone_design_doc",
+      designDoc.id,
+    );
 
     const approvalResponse = await server.inject({
       method: "POST",

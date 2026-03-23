@@ -33,7 +33,7 @@ Quayboard's current UI supports the current planning workflow:
 21. Open **User Flows** after the Technical Spec is approved, generate or refine the journey set, resolve or accept coverage warnings, and approve the current user-flow set.
 22. Open **Milestones** after user flows are approved.
 23. Create milestones manually or queue milestone generation, then prepare the design doc for each milestone that should accept features.
-24. Review the **Milestone Design Doc** panel for a draft milestone, generate or edit a design doc until the canonical revision is ready, then approve the milestone and optionally approve the canonical design-doc revision.
+24. Review the **Milestone Design Doc** panel for a draft milestone, generate or edit a design doc until the canonical revision is ready, then approve the milestone. Milestone approval also approves that canonical design-doc revision.
 25. Open **Feature Builder** to create the initial catalogue against an approved milestone.
 26. Use the intake drawer for manual features or **Append From Overview** to seed more features from the approved one-pager.
 27. Filter the catalogue by status, kind, or priority, then wire direct dependencies and review the dependency graph and rollup summary.
