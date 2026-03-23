@@ -499,4 +499,40 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
   },
+  taskPlanningService: {
+    answerClarification: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    autoAnswerClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createImplementationRecord: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createTasks: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    generateClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    generateTasks: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getOrCreateSession: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getSession: async () => null,
+    getFeatureContext: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getImplementationRecords: async () => [],
+    getTasks: async () => [],
+    setSessionStatus: async () => undefined,
+  },
 });

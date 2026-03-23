@@ -1342,50 +1342,58 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 
 ---
 
-### M6 — Feature Review, Approval, and Task Planning
+### M6 — Approval and Task Planning
 
-**Goal**: LLM review jobs surface issues in feature specifications; users triage them; approved specifications flow into task planning; tasks are generated and ordered for sandbox execution. Bug reports can be filed against sandbox run outputs and tracked through a structured fix-and-verify lifecycle.
+**Goal**: Enable task planning for features with approved technical specifications. Users generate clarification questions, answer them (manually or via LLM auto-answer), generate ordered delivery task lists, and track implementation records that link features to implemented tech revisions.
 
 **Deliverables**:
 
 **Schema additions** (new migrations):
-- `feature_issues`, `artifact_issues`, `feature_task_planning_sessions`, `feature_task_clarifications`, `feature_task_clarification_answers`, `feature_delivery_tasks`, `feature_task_issues`, `implementation_records`, `bug_reports`, `bug_fix_tasks`
+- `feature_task_planning_sessions` — task planning session lifecycle per feature
+- `feature_task_clarifications` — generated clarification questions
+- `feature_task_clarification_answers` — user or auto-answered clarification responses
+- `feature_delivery_tasks` — ordered, executable task items with LLM instructions
+- `feature_task_issues` — issues discovered during task implementation
+- `implementation_records` — links a feature to the implemented tech revision and commit SHA
 
 **Backend**:
-- Feature review routes (trigger review run, list items, triage)
-- LLM executors: `ReviewProductInContext`, `ReviewUxInContext`, `ReviewTechInContext`, `RefineProductFromIssues`, `RefineUxFromIssues`, `RefineTechFromIssues`, `ReviewFeatureInContext`, `RefineFeatureFromIssues`, `ReviewUserDocsInContext`, `ReviewArchDocsInContext`, `RefineUserDocsFromIssues`, `RefineArchDocsFromIssues`
-- Task planning routes (clarifications, auto-answer, generate, list tasks)
-- LLM executors: `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `ReviewFeatureCohesion`, `RecommendNextFeature`
-- Implementation record route (`POST /features/:id/implementation-records`)
-- Feature issue CRUD routes
-- Bug report routes (`GET/POST /features/:id/bugs`, `GET/PATCH /bugs/:id`, `POST /bugs/:id/fix-tasks`, `POST /bugs/:id/verify`)
-- `GenerateBugFixTasks` and `VerifyBugFix` LLM executors
-- Bug lifecycle enforcement (see §3.17)
+- Task planning routes:
+  - `GET /features/:id/task-planning-session` — get or create session
+  - `POST /features/:id/task-planning-session/clarifications` — generate clarification questions
+  - `GET /features/:id/task-planning-session/clarifications` — list clarifications
+  - `PATCH /features/:id/task-planning-session/clarifications/:cid` — answer clarification
+  - `POST /features/:id/task-planning-session/clarifications/auto-answer` — auto-answer all
+  - `POST /features/:id/task-planning-session/tasks/generate` — generate delivery task list
+  - `GET /features/:id/task-planning-session/tasks` — list tasks
+  - `POST /features/:id/implementation-records` — record implementation
+- LLM executors: `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `RecommendNextFeature`
+- Task planning service (`apps/api/src/services/task-planning-service.ts`)
 
 **Frontend**:
-- `ReviewPanel` wired to feature artifact review items (product/UX/tech/user docs/arch docs specifications)
-- Tasks tab in `FeatureEditorPage`:
-  - Clarification questions list with answer input
-  - Generated task list view
-- Bugs tab in `FeatureEditorPage`:
-  - List of linked bug reports with status badges
-  - Bug report creation form (linked to sandbox run, PR, environment snapshot)
-  - Fix task generation trigger
-  - Verification evidence attachment
-- `FeatureTaskPage` (standalone task planning view)
-- `IssueCard` component
+- Tasks tab in `FeatureEditorPage` (replace existing stub):
+  - Clarification questions panel with answer inputs
+  - Generate clarifications button
+  - Auto-answer action
+  - Delivery task list view
+  - Implementation status indicator
+- `useTaskPlanningSession` hook
+- Task planning API client module
 
 **Acceptance criteria**:
-- Review jobs produce BLOCKER/WARNING/SUGGESTION items on product/UX/tech/user docs/arch docs specifications
-- Users can set items to DONE, ACCEPTED, or IGNORED
-- All BLOCKERs cleared — specification approval becomes available
-- With an approved tech specification, task clarifications can be generated and answered
-- Delivery task list generates from answered clarifications
-- `ReviewFeatureCohesion` quality gate runs before tasks are executable (`StressTestTaskPlan` is wired into the pipeline in M9)
-- Bug reports can be created, linked to a feature and sandbox run, and tracked through the lifecycle (`open → in_progress → fixed → verified → closed`)
-- Closing a bug as verified requires evidence (verification run ID, test results, or reviewer sign-off)
+- Task planning session is created when a feature has an approved tech specification
+- Clarification questions can be generated via LLM and listed
+- Clarification questions can be answered manually or via auto-answer
+- Delivery task list can be generated from answered clarifications
+- Implementation records can be created to link a feature to an implemented tech revision
 - User-facing documentation exists for all new screens and flows introduced in this milestone
 - Internal architecture documentation exists for all new services, schema tables, and API routes
+- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
+- `pnpm db:migrate` succeeds on a fresh database
+
+**Deferred to future milestones**:
+- Feature review routes and LLM executors (review items, triage, BLOCKER/WARNING/SUGGESTION)
+- Bug reports, bug fix tasks, and verification workflow
+- Quality gates for task plans (`ReviewFeatureCohesion`, `StressTestTaskPlan`)
 
 ---
 

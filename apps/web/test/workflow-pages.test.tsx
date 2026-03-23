@@ -5432,6 +5432,14 @@ describe("workflow pages", () => {
           },
         ],
       },
+      [`/api/features/${featureId}/task-planning-session`]: {
+        session: null,
+        clarifications: [],
+        tasks: [],
+      },
+      [`/api/features/${featureId}/task-planning-session/tasks`]: {
+        tasks: [],
+      },
     });
 
     const router = createMemoryRouter(
@@ -5455,7 +5463,7 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
 
-    expect(await screen.findByText("Milestone 6 stub")).toBeTruthy();
+    expect(await screen.findByText("No task planning session")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Product" }));
 

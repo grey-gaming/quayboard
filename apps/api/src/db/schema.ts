@@ -875,6 +875,198 @@ export const artifactApprovalsTable = pgTable(
   }),
 );
 
+const taskPlanningSessionStatusValues = [
+  "pending_clarifications",
+  "clarifications_generated",
+  "clarifications_answered",
+  "tasks_generated",
+] as const;
+
+export const featureTaskPlanningSessionsTable = pgTable(
+  "feature_task_planning_sessions",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    status: text("status")
+      .notNull()
+      .$type<(typeof taskPlanningSessionStatusValues)[number]>(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index(
+      "feature_task_planning_sessions_feature_id_idx",
+    ).on(table.featureId),
+    featureUnique: uniqueIndex(
+      "feature_task_planning_sessions_feature_id_key",
+    ).on(table.featureId),
+    statusCheck: check(
+      "feature_task_planning_sessions_status_check",
+      sql`${table.status} in (${sql.join(taskPlanningSessionStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+const clarificationStatusValues = ["pending", "answered", "skipped"] as const;
+
+export const featureTaskClarificationsTable = pgTable(
+  "feature_task_clarifications",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => featureTaskPlanningSessionsTable.id, {
+        onDelete: "cascade",
+      }),
+    position: integer("position").notNull(),
+    question: text("question").notNull(),
+    context: text("context"),
+    status: text("status")
+      .notNull()
+      .default("pending")
+      .$type<(typeof clarificationStatusValues)[number]>(),
+    answer: text("answer"),
+    answerSource: text("answer_source"),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    sessionIndex: index("feature_task_clarifications_session_id_idx").on(
+      table.sessionId,
+    ),
+    sessionPositionUnique: uniqueIndex(
+      "feature_task_clarifications_session_id_position_key",
+    ).on(table.sessionId, table.position),
+    statusCheck: check(
+      "feature_task_clarifications_status_check",
+      sql`${table.status} in (${sql.join(clarificationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+const deliveryTaskStatusValues = ["pending", "in_progress", "completed", "blocked"] as const;
+
+export const featureDeliveryTasksTable = pgTable(
+  "feature_delivery_tasks",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => featureTaskPlanningSessionsTable.id, {
+        onDelete: "cascade",
+      }),
+    position: integer("position").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    instructions: text("instructions"),
+    acceptanceCriteria: jsonb("acceptance_criteria")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: text("status")
+      .notNull()
+      .default("pending")
+      .$type<(typeof deliveryTaskStatusValues)[number]>(),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    sessionIndex: index("feature_delivery_tasks_session_id_idx").on(
+      table.sessionId,
+    ),
+    sessionPositionUnique: uniqueIndex(
+      "feature_delivery_tasks_session_id_position_key",
+    ).on(table.sessionId, table.position),
+    statusCheck: check(
+      "feature_delivery_tasks_status_check",
+      sql`${table.status} in (${sql.join(deliveryTaskStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+const taskIssueSeverityValues = ["blocker", "warning", "suggestion"] as const;
+const taskIssueStatusValues = ["open", "resolved", "ignored"] as const;
+
+export const featureTaskIssuesTable = pgTable(
+  "feature_task_issues",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => featureDeliveryTasksTable.id, { onDelete: "cascade" }),
+    severity: text("severity")
+      .notNull()
+      .$type<(typeof taskIssueSeverityValues)[number]>(),
+    category: text("category").notNull(),
+    description: text("description").notNull(),
+    status: text("status")
+      .notNull()
+      .default("open")
+      .$type<(typeof taskIssueStatusValues)[number]>(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    taskIndex: index("feature_task_issues_task_id_idx").on(table.taskId),
+    statusCheck: check(
+      "feature_task_issues_status_check",
+      sql`${table.status} in (${sql.join(taskIssueStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    severityCheck: check(
+      "feature_task_issues_severity_check",
+      sql`${table.severity} in (${sql.join(taskIssueSeverityValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const implementationRecordsTable = pgTable(
+  "implementation_records",
+  {
+    id: text("id").primaryKey(),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    techRevisionId: text("tech_revision_id")
+      .notNull()
+      .references(() => featureTechRevisionsTable.id, { onDelete: "restrict" }),
+    commitSha: text("commit_sha"),
+    sandboxRunId: text("sandbox_run_id"),
+    implementedAt: timestamp("implemented_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    featureIndex: index("implementation_records_feature_id_idx").on(
+      table.featureId,
+    ),
+    techRevisionIndex: index(
+      "implementation_records_tech_revision_id_idx",
+    ).on(table.techRevisionId),
+    featureTechRevisionUnique: uniqueIndex(
+      "implementation_records_feature_id_tech_revision_id_key",
+    ).on(table.featureId, table.techRevisionId),
+  }),
+);
+
 export const jobsTable = pgTable(
   "jobs",
   {
@@ -991,21 +1183,27 @@ export const encryptedSecretsTable = pgTable(
 );
 
 export type DatabaseSchema = {
+  artifactApprovalsTable: typeof artifactApprovalsTable;
   encryptedSecretsTable: typeof encryptedSecretsTable;
   featureArchDocRevisionsTable: typeof featureArchDocRevisionsTable;
   featureArchDocSpecsTable: typeof featureArchDocSpecsTable;
   featureCasesTable: typeof featureCasesTable;
+  featureDeliveryTasksTable: typeof featureDeliveryTasksTable;
   featureDependenciesTable: typeof featureDependenciesTable;
   featureEdgesTable: typeof featureEdgesTable;
   featureProductRevisionsTable: typeof featureProductRevisionsTable;
   featureProductSpecsTable: typeof featureProductSpecsTable;
   featureRevisionsTable: typeof featureRevisionsTable;
+  featureTaskClarificationsTable: typeof featureTaskClarificationsTable;
+  featureTaskIssuesTable: typeof featureTaskIssuesTable;
+  featureTaskPlanningSessionsTable: typeof featureTaskPlanningSessionsTable;
   featureTechRevisionsTable: typeof featureTechRevisionsTable;
   featureTechSpecsTable: typeof featureTechSpecsTable;
   featureUserDocRevisionsTable: typeof featureUserDocRevisionsTable;
   featureUserDocSpecsTable: typeof featureUserDocSpecsTable;
   featureUxRevisionsTable: typeof featureUxRevisionsTable;
   featureUxSpecsTable: typeof featureUxSpecsTable;
+  implementationRecordsTable: typeof implementationRecordsTable;
   jobsTable: typeof jobsTable;
   llmRunsTable: typeof llmRunsTable;
   milestoneDesignDocsTable: typeof milestoneDesignDocsTable;

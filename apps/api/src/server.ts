@@ -21,6 +21,7 @@ import { projectsRoutes } from "./routes/api/projects.js";
 import { sandboxRoutes } from "./routes/api/sandbox.js";
 import { secretRoutes } from "./routes/api/secrets.js";
 import { systemRoutes } from "./routes/api/system.js";
+import { taskPlanningRoutes } from "./routes/api/task-planning.js";
 import { toolSystemRoutes } from "./routes/api/tool-system.js";
 import { userFlowRoutes } from "./routes/api/user-flows.js";
 import { requireAuthenticatedUser } from "./routes/route-helpers.js";
@@ -57,6 +58,7 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
     await apiApp.register(milestoneRoutes(services));
     await apiApp.register(featureRoutes(services));
     await apiApp.register(featureWorkstreamRoutes(services));
+    await apiApp.register(taskPlanningRoutes(services));
     await apiApp.register(bugRoutes);
     await apiApp.register(artifactRoutes(services));
     await apiApp.register(autoAdvanceRoutes);
