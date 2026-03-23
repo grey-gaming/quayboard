@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { questionnaireDefinition } from "@quayboard/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -68,6 +69,7 @@ const isTerminalJobStatus = (status: string | null | undefined) =>
 export const OnePagerQuestionsPage = () => {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const projectQuery = useProjectQuery(id);
   const questionnaireQuery = useQuestionnaireQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
@@ -246,8 +248,27 @@ export const OnePagerQuestionsPage = () => {
       return;
     }
 
-    setQueuedAutoAnswerJobId(null);
-  }, [queuedAutoAnswerJobId, trackedAutoAnswerJob?.status]);
+    void (trackedAutoAnswerJob?.status === "succeeded"
+      ? queryClient.invalidateQueries({ queryKey: ["project", id, "questionnaire"] })
+      : Promise.resolve()
+    ).finally(() => {
+      setQueuedAutoAnswerJobId(null);
+    });
+  }, [id, queryClient, queuedAutoAnswerJobId, trackedAutoAnswerJob?.status]);
+
+  useEffect(() => {
+    if (!autoAnswerActive) {
+      return;
+    }
+
+    const refreshHandle = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ["project", id, "questionnaire"] });
+    }, 1_000);
+
+    return () => {
+      window.clearInterval(refreshHandle);
+    };
+  }, [autoAnswerActive, id, queryClient]);
 
   const activeError =
     questionnaireQuery.error ||

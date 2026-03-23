@@ -1291,6 +1291,157 @@ describe("workflow pages", () => {
     });
   });
 
+  it("refreshes generated questionnaire answers after the auto-answer job succeeds", async () => {
+    const autoAnswerProjectId = "15151515-1515-4515-8515-151515151515";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let questionnaireRequestCount = 0;
+    let autoAnswerSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === `/api/projects/${autoAnswerProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: autoAnswerProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: autoAnswerProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers` &&
+        method === "GET"
+      ) {
+        questionnaireRequestCount += 1;
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: autoAnswerProjectId,
+            answers:
+              questionnaireRequestCount >= 2
+                ? {
+                    q1_name_and_description: "Planning workspace",
+                    q2_who_is_it_for: "Engineering leads and delivery managers.",
+                  }
+                : {
+                    q1_name_and_description: "Planning workspace",
+                  },
+            updatedAt:
+              questionnaireRequestCount >= 2
+                ? "2026-03-16T09:02:30.000Z"
+                : "2026-03-16T09:00:00.000Z",
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+        method === "POST"
+      ) {
+        autoAnswerSubmitted = true;
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "5fd58d3b-ffda-4576-b0e6-a8b8267da6ac",
+            projectId: autoAnswerProjectId,
+            type: "AutoAnswerQuestionnaire",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:01:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: autoAnswerSubmitted
+              ? [
+                  {
+                    id: "5fd58d3b-ffda-4576-b0e6-a8b8267da6ac",
+                    projectId: autoAnswerProjectId,
+                    type: "AutoAnswerQuestionnaire",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:01:00.000Z",
+                    startedAt: "2026-03-16T09:01:10.000Z",
+                    completedAt: "2026-03-16T09:02:30.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/questions", <OnePagerQuestionsPage />, autoAnswerProjectId);
+
+    expect(await screen.findByDisplayValue("Planning workspace")).toBeTruthy();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Generate Answers",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Engineering leads and delivery managers.")).toBeTruthy();
+    }, { timeout: 2_500 });
+
+    expect(questionnaireRequestCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("renders the overview document through the editable markdown surface", async () => {
     const overviewProjectId = "22222222-2222-4222-8222-222222222222";
 
