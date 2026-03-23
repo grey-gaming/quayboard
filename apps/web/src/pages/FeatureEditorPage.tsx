@@ -21,15 +21,20 @@ import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Checkbox } from "../components/ui/Checkbox.js";
+import { Label } from "../components/ui/Label.js";
+import { Select } from "../components/ui/Select.js";
 import {
+  useAddFeatureDependencyMutation,
   useApproveFeatureWorkstreamRevisionMutation,
   useCreateFeatureWorkstreamRevisionMutation,
+  useFeaturesQuery,
   useFeatureQuery,
   useFeatureTracksQuery,
   useFeatureWorkstreamRevisionsQuery,
   useGenerateFeatureWorkstreamRevisionMutation,
   useProjectJobsQuery,
   useProjectQuery,
+  useRemoveFeatureDependencyMutation,
 } from "../hooks/use-projects.js";
 import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
@@ -67,11 +72,14 @@ export const FeatureEditorPage = () => {
   const { id = "", featureId = "" } = useParams();
   const projectQuery = useProjectQuery(id);
   const featureQuery = useFeatureQuery(featureId);
+  const featuresQuery = useFeaturesQuery(id);
   const tracksQuery = useFeatureTracksQuery(featureId);
   const jobsQuery = useProjectJobsQuery(id);
+  const addDependencyMutation = useAddFeatureDependencyMutation(id);
   const createRevisionMutation = useCreateFeatureWorkstreamRevisionMutation(id);
   const generateRevisionMutation = useGenerateFeatureWorkstreamRevisionMutation(id);
   const approveRevisionMutation = useApproveFeatureWorkstreamRevisionMutation(id);
+  const removeDependencyMutation = useRemoveFeatureDependencyMutation(id);
 
   useSseEvents(id);
 
@@ -101,6 +109,7 @@ export const FeatureEditorPage = () => {
   }, [tracksQuery.data?.tracks]);
 
   const [activeTab, setActiveTab] = useState<TabKind>("product");
+  const [pendingDependencyId, setPendingDependencyId] = useState("");
 
   const resolvedTab = visibleTabs.includes(activeTab) ? activeTab : (visibleTabs[0] ?? "product");
   const activeKind = resolvedTab === "tasks" ? null : resolvedTab;
@@ -130,6 +139,24 @@ export const FeatureEditorPage = () => {
               : null;
   const [requirements, setRequirements] = useState(
     currentRevision?.requirements ?? defaultRequirements,
+  );
+  const dependencyOptions = useMemo(
+    () =>
+      (featuresQuery.data?.features ?? []).filter(
+        (feature) =>
+          feature.id !== featureId && !featureQuery.data?.dependencyIds.includes(feature.id),
+      ),
+    [featureId, featureQuery.data?.dependencyIds, featuresQuery.data?.features],
+  );
+  const dependencyTitleById = useMemo(
+    () =>
+      new Map(
+        (featuresQuery.data?.features ?? []).map((feature) => [
+          feature.id,
+          `${feature.featureKey} ${feature.headRevision.title}`,
+        ]),
+      ),
+    [featuresQuery.data?.features],
   );
   const featureTertiaryItems = useMemo(() => {
     if (!projectQuery.data) {
@@ -494,6 +521,79 @@ export const FeatureEditorPage = () => {
                 </div>
                 <div className="grid gap-4">
                   <ReviewPanel />
+                  <Card surface="rail">
+                    <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+                      <div>
+                        <p className="qb-meta-label">Dependencies</p>
+                        <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Direct edges</p>
+                      </div>
+                      <Badge tone="neutral">{featureQuery.data?.dependencyIds.length ?? 0}</Badge>
+                    </div>
+                    <div className="mt-4 grid gap-4">
+                      <div className="grid gap-3">
+                        {(featureQuery.data?.dependencyIds ?? []).length ? (
+                          featureQuery.data?.dependencyIds.map((dependencyId) => (
+                            <div
+                              key={dependencyId}
+                              className="flex items-center justify-between gap-3 border border-border/80 bg-panel-inset px-3 py-2"
+                            >
+                              <span className="text-sm text-foreground">
+                                {dependencyTitleById.get(dependencyId) ?? dependencyId}
+                              </span>
+                              <Button
+                                onClick={() => {
+                                  void removeDependencyMutation.mutateAsync({
+                                    featureId,
+                                    dependsOnFeatureId: dependencyId,
+                                  });
+                                }}
+                                type="button"
+                                variant="ghost"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-secondary">
+                            This feature does not depend on any other features yet.
+                          </p>
+                        )}
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="feature-dependency-select">Add dependency</Label>
+                        <Select
+                          id="feature-dependency-select"
+                          onChange={(event) => setPendingDependencyId(event.target.value)}
+                          value={pendingDependencyId}
+                        >
+                          <option value="">Select feature</option>
+                          {dependencyOptions.map((feature) => (
+                            <option key={feature.id} value={feature.id}>
+                              {feature.featureKey} {feature.headRevision.title} ({feature.milestoneTitle})
+                            </option>
+                          ))}
+                        </Select>
+                        <Button
+                          disabled={!pendingDependencyId}
+                          onClick={() => {
+                            void addDependencyMutation
+                              .mutateAsync({
+                                featureId,
+                                payload: { dependsOnFeatureId: pendingDependencyId },
+                              })
+                              .then(() => {
+                                setPendingDependencyId("");
+                              });
+                          }}
+                          type="button"
+                          variant="secondary"
+                        >
+                          Add dependency
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
                   <Card surface="rail">
                     <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
                       <div>

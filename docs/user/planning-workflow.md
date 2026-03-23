@@ -35,10 +35,10 @@ Quayboard's current UI supports the current planning workflow:
 23. Create milestones manually or queue milestone generation, then prepare the design doc for each milestone that should accept features.
 24. Review the **Milestone Design Doc** panel for a draft milestone, generate or edit a design doc until the canonical revision is ready, then approve the milestone. Milestone approval also approves that canonical design-doc revision.
 25. Open **Feature Builder** to create the initial catalogue against an approved milestone.
-26. Use the intake drawer for manual features or **Append From Overview** to seed more features from the approved one-pager.
-27. Filter the catalogue by status, kind, or priority, then wire direct dependencies and review the dependency graph and rollup summary.
+26. Use each milestone section's **New feature** action for manual intake or **Generate features** to seed that milestone from the approved planning documents and canonical milestone design doc.
+27. Filter the catalogue by status, kind, or priority while reviewing milestone-grouped feature lists.
 28. Open a feature in **Feature Editor**.
-29. Use the approved project Product Spec, UX Spec, and Technical Spec as the source context for feature workstream generation.
+29. Manage direct feature dependencies inside the create flow or **Feature Editor**, then use the approved project Product Spec, UX Spec, and Technical Spec as the source context for feature workstream generation.
 30. Draft or generate the feature **Product** workstream first, set which downstream workstreams are required, then approve the current Product revision.
 31. Draft or generate the feature **UX**, **Tech**, **User Docs**, and **Architecture Docs** workstreams as needed, reviewing revision history and approving each current head revision independently.
 32. The **Tasks** tab is present as a placeholder only; delivery-task planning has not landed yet.

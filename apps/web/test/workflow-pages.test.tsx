@@ -1574,9 +1574,12 @@ describe("workflow pages", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Feature Builder" })).toBeTruthy();
+    expect(screen.getByText("Milestones")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate features" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New feature" })).toBeTruthy();
-    expect(screen.getByText("Dependency graph")).toBeTruthy();
-    expect(screen.getByText("Wire dependency")).toBeTruthy();
+    expect(screen.getAllByText("Foundations").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Dependency graph")).toBeNull();
+    expect(screen.queryByText("Wire dependency")).toBeNull();
   });
 
   it("renders the questionnaire page and autosaves answers", async () => {
@@ -5051,6 +5054,34 @@ describe("workflow pages", () => {
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
       },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "20202020-2020-4020-8020-202020202020",
+            milestoneTitle: "Milestone beta",
+            featureKey: "F-001",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "41414141-4141-4141-8141-414141414141",
+              featureId,
+              version: 1,
+              title: "Feature intake",
+              summary: "Draft the feature workstreams.",
+              acceptanceCriteria: ["A Product spec gates downstream tabs."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
+      },
       [`/api/features/${featureId}/tracks`]: {
         featureId,
         tracks: {
@@ -5172,6 +5203,34 @@ describe("workflow pages", () => {
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
+      },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "20202020-2020-4020-8020-202020202020",
+            milestoneTitle: "Milestone beta",
+            featureKey: "F-002",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "10101010-1010-4010-8010-101010101010",
+              featureId,
+              version: 1,
+              title: "Revision history",
+              summary: "Inspect workstream history.",
+              acceptanceCriteria: ["Older revisions remain browsable."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
       },
       [`/api/features/${featureId}/tracks`]: {
         featureId,
@@ -5365,6 +5424,34 @@ describe("workflow pages", () => {
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
+      },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "93939393-9393-4393-8393-939393939394",
+            milestoneTitle: "Milestone gamma",
+            featureKey: "F-003",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "94949494-9494-4494-8494-949494949495",
+              featureId,
+              version: 1,
+              title: "Cross-project route",
+              summary: "Reject mixed project routes.",
+              acceptanceCriteria: ["The route uses the feature's owning project."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
       },
       [`/api/features/${featureId}/tracks`]: {
         featureId,

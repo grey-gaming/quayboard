@@ -14,6 +14,9 @@ const createDbStub = () => {
     })),
     values,
     query: {
+      milestonesTable: {
+        findFirst: vi.fn(async () => null) as unknown,
+      },
       useCasesTable: {
         findMany: vi.fn(async () => []),
       },
@@ -1481,5 +1484,364 @@ describe("job runner service", () => {
     expect(markSucceeded).toHaveBeenCalledWith("job-generate-use-cases", {
       createdCount: 1,
     });
+  });
+
+  it("builds milestone feature generation prompts from approved planning context", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const markSucceeded = vi.fn(async () => undefined);
+    const appendGeneratedFeatures = vi.fn(async () => ({
+      createdIds: ["feature-2"],
+      skippedCount: 0,
+    }));
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify([
+        {
+          title: "Milestone dashboard",
+          summary: "Show milestone progress.",
+          acceptanceCriteria: ["Displays approved milestones"],
+          kind: "screen",
+          priority: "must_have",
+        },
+      ]),
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: {
+        getApproval: vi.fn(async (targetProjectId: string, artifactType: string) => ({
+          id: `${artifactType}-approval`,
+          projectId: targetProjectId,
+          artifactType,
+          artifactId: `${artifactType}-artifact`,
+          approvedByUserId: userId,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async (_ownerUserId: string, _projectId: string, kind: string) => ({
+          id: `${kind}-spec-id`,
+          projectId,
+          kind,
+          version: 1,
+          title: kind === "ux" ? "UX Spec" : "Technical Spec",
+          markdown:
+            kind === "ux"
+              ? "# UX Spec\n\nApproved UX scope."
+              : "# Technical Spec\n\nApproved technical scope.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      featureService: {
+        appendGeneratedFeatures,
+        assertApprovedMilestone: vi.fn(async () => undefined),
+        list: vi.fn(async () => ({
+          features: [
+            {
+              id: "feature-1",
+              projectId,
+              milestoneId: "earlier-milestone-id",
+              milestoneTitle: "Platform",
+              featureKey: "F-001",
+              kind: "service",
+              priority: "must_have",
+              status: "approved",
+              headRevision: {
+                id: "feature-revision-1",
+                featureId: "feature-1",
+                version: 1,
+                title: "Platform setup",
+                summary: "Bootstrap the shared foundations.",
+                acceptanceCriteria: ["Sets up shared infrastructure"],
+                source: "manual",
+                createdAt: "2026-03-18T00:00:00.000Z",
+              },
+              dependencyIds: [],
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+              archivedAt: null,
+            },
+          ],
+        })),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-append-features",
+          projectId,
+          createdByUserId: userId,
+          type: "AppendFeatureFromOnePager",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        getCanonicalDesignDoc: vi.fn(async () => ({
+          id: "design-doc-id",
+          milestoneId: "milestone-id",
+          title: "Foundations design",
+          markdown: "# Foundations design\n\nShip the first usable planning slice.",
+          source: "ManualSave",
+          version: 1,
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+        list: vi.fn(async () => ({
+          milestones: [
+            {
+              id: "earlier-milestone-id",
+              projectId,
+              position: 1,
+              title: "Platform",
+              summary: "Shared foundations.",
+              status: "approved",
+              linkedUserFlows: [],
+              featureCount: 1,
+              approvedAt: "2026-03-18T00:00:00.000Z",
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+            {
+              id: "milestone-id",
+              projectId,
+              position: 2,
+              title: "Foundations",
+              summary: "First releasable slice.",
+              status: "approved",
+              linkedUserFlows: [],
+              featureCount: 0,
+              approvedAt: "2026-03-18T00:00:00.000Z",
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 1,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: [],
+          },
+        })),
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "overview-id",
+          projectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved project intent.",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved product scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-1",
+              projectId,
+              title: "Plan milestone",
+              userStory: "As a planner, I need milestone scope.",
+              entryPoint: "Mission Control",
+              endState: "The milestone is ready for feature planning.",
+              flowSteps: ["Review specs", "Approve milestone"],
+              coverageTags: ["happy-path"],
+              acceptanceCriteria: ["The milestone has clear scope."],
+              doneCriteriaRefs: ["DC-1"],
+              source: "manual",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-append-features");
+
+    const prompt =
+      (
+        generate as unknown as {
+          mock: { calls: Array<[unknown, string, unknown]> };
+        }
+      ).mock.calls[0]?.[1] ?? "";
+
+    expect(generate).toHaveBeenCalledWith(
+      { provider: "openai", model: "gpt-4.1" },
+      expect.stringContaining("Selected milestone design document:"),
+      { responseFormat: "json" },
+    );
+    expect(prompt).toContain("Approved project Product Spec:");
+    expect(prompt).toContain("Approved project UX Spec:");
+    expect(prompt).toContain("Approved project Technical Spec:");
+    expect(prompt).toContain("Approved user flows:");
+    expect(prompt).toContain("Ordered milestone list:");
+    expect(prompt).toContain("Platform setup");
+    expect(appendGeneratedFeatures).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestoneId: "milestone-id",
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-append-features",
+      expect.objectContaining({ createdCount: 1 }),
+    );
+  });
+
+  it("rejects milestone feature generation when the milestone design document is missing", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const generate = vi.fn(async () => ({
+      content: "[]",
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async (_ownerUserId: string, targetProjectId: string, kind: string) => ({
+          id: `${kind}-spec-id`,
+          projectId: targetProjectId,
+          kind,
+          version: 1,
+          title: kind === "ux" ? "UX Spec" : "Technical Spec",
+          markdown: "# Spec\n\nApproved scope.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      featureService: {
+        assertApprovedMilestone: vi.fn(async () => undefined),
+        list: vi.fn(async () => ({ features: [] })),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-append-features",
+          projectId,
+          createdByUserId: userId,
+          type: "AppendFeatureFromOnePager",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded: vi.fn(async () => undefined),
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        getCanonicalDesignDoc: vi.fn(async () => null),
+        list: vi.fn(async () => ({
+          milestones: [],
+          coverage: {
+            approvedUserFlowCount: 0,
+            coveredUserFlowCount: 0,
+            uncoveredUserFlowIds: [],
+          },
+        })),
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "overview-id",
+          projectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved project intent.",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved product scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await expect(service.run("job-append-features")).rejects.toThrow(
+      "AppendFeatureFromOnePager requires a canonical milestone design document.",
+    );
+    expect(generate).not.toHaveBeenCalled();
   });
 });

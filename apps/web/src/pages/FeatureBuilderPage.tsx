@@ -7,11 +7,11 @@ import { buildFeatureBuilderTertiaryItems } from "../components/layout/project-n
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Drawer } from "../components/ui/Drawer.js";
-import { FeatureDependencyGraph } from "../components/workflow/FeatureDependencyGraph.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
+import { Checkbox } from "../components/ui/Checkbox.js";
 import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
 import { Select } from "../components/ui/Select.js";
@@ -21,8 +21,6 @@ import {
   useAppendFeaturesFromOnePagerMutation,
   useArchiveFeatureMutation,
   useCreateFeatureMutation,
-  useFeatureGraphQuery,
-  useFeatureRollupQuery,
   useFeaturesQuery,
   useMilestonesQuery,
   useProjectQuery,
@@ -50,8 +48,6 @@ export const FeatureBuilderPage = () => {
   const projectQuery = useProjectQuery(id);
   const milestonesQuery = useMilestonesQuery(id);
   const featuresQuery = useFeaturesQuery(id);
-  const rollupQuery = useFeatureRollupQuery(id);
-  const graphQuery = useFeatureGraphQuery(id);
   const createFeatureMutation = useCreateFeatureMutation(id);
   const appendFeaturesMutation = useAppendFeaturesFromOnePagerMutation(id);
   const updateFeatureMutation = useUpdateFeatureMutation(id);
@@ -66,12 +62,11 @@ export const FeatureBuilderPage = () => {
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
   const [kind, setKind] = useState<(typeof featureKinds)[number]>("screen");
   const [priority, setPriority] = useState<(typeof priorities)[number]>("must_have");
-  const [milestoneId, setMilestoneId] = useState("");
+  const [drawerMilestoneId, setDrawerMilestoneId] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [kindFilter, setKindFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [dependencyFeatureId, setDependencyFeatureId] = useState("");
-  const [dependsOnFeatureId, setDependsOnFeatureId] = useState("");
+  const [selectedDependencyIds, setSelectedDependencyIds] = useState<string[]>([]);
 
   useSseEvents(id);
 
@@ -95,14 +90,46 @@ export const FeatureBuilderPage = () => {
     [featuresQuery.data?.features, kindFilter, priorityFilter, statusFilter],
   );
 
+  const filteredFeaturesByMilestone = useMemo(() => {
+    const grouped = new Map<string, typeof filteredFeatures>();
+
+    for (const milestone of approvedMilestones) {
+      grouped.set(milestone.id, []);
+    }
+
+    for (const feature of filteredFeatures) {
+      const existing = grouped.get(feature.milestoneId) ?? [];
+      existing.push(feature);
+      grouped.set(feature.milestoneId, existing);
+    }
+
+    return grouped;
+  }, [approvedMilestones, filteredFeatures]);
+
+  const dependencyOptions = useMemo(
+    () =>
+      (featuresQuery.data?.features ?? []).map((feature) => ({
+        id: feature.id,
+        label: `${feature.featureKey} ${feature.headRevision.title}`,
+        milestoneTitle: feature.milestoneTitle,
+      })),
+    [featuresQuery.data?.features],
+  );
+
   const resetDrawer = () => {
     setTitle("");
     setSummary("");
     setAcceptanceCriteria("");
     setKind("screen");
     setPriority("must_have");
-    setMilestoneId("");
+    setDrawerMilestoneId("");
+    setSelectedDependencyIds([]);
     setIsDrawerOpen(false);
+  };
+
+  const openCreateDrawer = (milestoneId: string) => {
+    setDrawerMilestoneId(milestoneId);
+    setIsDrawerOpen(true);
   };
 
   if (!projectQuery.data) {
@@ -122,7 +149,7 @@ export const FeatureBuilderPage = () => {
       <PageIntro
         eyebrow="Features"
         title="Feature Builder"
-        summary="Build the initial feature catalogue, seed new features from the approved overview document, and wire direct dependencies before the feature workstream editors arrive."
+        summary="Review the feature catalogue by milestone, generate milestone-scoped features from approved planning documents, and open feature editors to manage dependencies and workstreams."
         meta={
           <>
             <Badge tone="neutral">{featuresQuery.data?.features.length ?? 0} active features</Badge>
@@ -138,43 +165,10 @@ export const FeatureBuilderPage = () => {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="qb-meta-label">Catalogue controls</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Feature intake</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => setIsDrawerOpen(true)} variant="primary">
-                New feature
-              </Button>
-              <AiWorkflowButton
-                active={appendFeaturesMutation.isPending}
-                disabled={appendFeaturesMutation.isPending || !milestoneId}
-                label="Append From Overview"
-                onClick={() => {
-                  if (!milestoneId) {
-                    return;
-                  }
-                  void appendFeaturesMutation.mutateAsync({ milestoneId });
-                }}
-                runningLabel="Appending..."
-                variant="secondary"
-              />
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Milestone catalogue</p>
             </div>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-4">
-            <div className="grid gap-2">
-              <Label htmlFor="feature-target-milestone">Seed target milestone</Label>
-              <Select
-                id="feature-target-milestone"
-                onChange={(event) => setMilestoneId(event.target.value)}
-                value={milestoneId}
-              >
-                <option value="">Select approved milestone</option>
-                {approvedMilestones.map((milestone) => (
-                  <option key={milestone.id} value={milestone.id}>
-                    {milestone.title}
-                  </option>
-                ))}
-              </Select>
-            </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
             <div className="grid gap-2">
               <Label htmlFor="feature-status-filter">Status filter</Label>
               <Select
@@ -222,175 +216,149 @@ export const FeatureBuilderPage = () => {
             </div>
           </div>
         </Card>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_24rem]">
-          <div className="grid gap-4">
-            <Card surface="panel">
-              <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-                <div>
-                  <p className="qb-meta-label">Feature catalogue</p>
-                  <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Current features</p>
-                </div>
-                <Badge tone="neutral">{filteredFeatures.length} shown</Badge>
+        <div className="grid gap-4">
+          <Card surface="panel">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Feature catalogue</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Milestones</p>
               </div>
-              <div className="mt-4 grid gap-3">
-                {filteredFeatures.map((feature) => (
-                  <div key={feature.id} className="border border-border/80 bg-panel-inset p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+              <Badge tone="neutral">{filteredFeatures.length} shown</Badge>
+            </div>
+            <div className="mt-4 grid gap-4">
+              {approvedMilestones.map((milestone) => {
+                const milestoneFeatures = filteredFeaturesByMilestone.get(milestone.id) ?? [];
+
+                return (
+                  <Card key={milestone.id} surface="inset">
+                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/80 pb-4">
                       <div>
                         <div className="flex flex-wrap gap-2">
-                          <Badge tone="neutral">{feature.featureKey}</Badge>
-                          <Badge tone="neutral">{feature.milestoneTitle}</Badge>
+                          <Badge tone="neutral">{milestone.title}</Badge>
+                          <Badge tone="neutral">{milestoneFeatures.length} shown</Badge>
+                          <Badge tone="neutral">{milestone.featureCount} total</Badge>
                         </div>
                         <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
-                          {feature.headRevision.title}
+                          {milestone.title}
                         </p>
-                        <p className="mt-2 text-sm text-secondary">{feature.headRevision.summary}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {feature.headRevision.acceptanceCriteria.map((criterion) => (
-                            <Badge key={criterion} tone="warning">
-                              {criterion}
-                            </Badge>
-                          ))}
-                        </div>
+                        <p className="mt-2 text-sm text-secondary">{milestone.summary}</p>
                       </div>
-                      <div className="grid gap-2 md:w-56">
-                        <Link
-                          className="inline-flex min-h-10 items-center justify-center border border-transparent bg-transparent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border hover:bg-panel-inset hover:text-foreground"
-                          to={`/projects/${id}/features/${feature.id}`}
-                        >
-                          Open editor
-                        </Link>
-                        <Select
-                          onChange={(event) => {
-                            void updateFeatureMutation.mutateAsync({
-                              featureId: feature.id,
-                              payload: {
-                                status: event.target.value as (typeof statuses)[number],
-                              },
-                            });
+                      <div className="flex flex-wrap gap-2">
+                        <AiWorkflowButton
+                          active={
+                            appendFeaturesMutation.isPending &&
+                            appendFeaturesMutation.variables?.milestoneId === milestone.id
+                          }
+                          disabled={appendFeaturesMutation.isPending}
+                          label="Generate features"
+                          onClick={() => {
+                            void appendFeaturesMutation.mutateAsync({ milestoneId: milestone.id });
                           }}
-                          value={feature.status}
-                        >
-                          {statuses.map((status) => (
-                            <option key={status} value={status}>
-                              {status.replaceAll("_", " ")}
-                            </option>
-                          ))}
-                        </Select>
-                        <Select
-                          onChange={(event) => {
-                            void updateFeatureMutation.mutateAsync({
-                              featureId: feature.id,
-                              payload: {
-                                priority: event.target.value as (typeof priorities)[number],
-                              },
-                            });
-                          }}
-                          value={feature.priority}
-                        >
-                          {priorities.map((entry) => (
-                            <option key={entry} value={entry}>
-                              {entry.replaceAll("_", " ")}
-                            </option>
-                          ))}
-                        </Select>
+                          runningLabel="Generating..."
+                          variant="secondary"
+                        />
                         <Button
                           onClick={() => {
-                            void archiveFeatureMutation.mutateAsync(feature.id);
+                            openCreateDrawer(milestone.id);
                           }}
-                          variant="danger"
+                          variant="primary"
                         >
-                          Archive
+                          New feature
                         </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {filteredFeatures.length === 0 ? (
-                  <p className="text-sm text-secondary">No features match the current filters.</p>
-                ) : null}
-              </div>
-            </Card>
-            <Card surface="panel">
-              <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-                <div>
-                  <p className="qb-meta-label">Dependency graph</p>
-                  <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Feature edges</p>
-                </div>
-              </div>
-              <div className="mt-4">
-                <FeatureDependencyGraph graph={graphQuery.data ?? { nodes: [], edges: [] }} />
-              </div>
-            </Card>
-          </div>
-          <div className="grid gap-4">
-            <Card surface="rail">
-              <p className="qb-meta-label">Rollup</p>
-              <div className="mt-4 grid gap-2 text-sm text-secondary">
-                <p>Active: {rollupQuery.data?.totals.active ?? 0}</p>
-                <p>Archived: {rollupQuery.data?.totals.archived ?? 0}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(rollupQuery.data?.byPriority ?? []).map((entry) => (
-                    <Badge key={entry.key} tone="neutral">
-                      {entry.key.replaceAll("_", " ")}: {entry.count}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </Card>
-            <Card surface="rail">
-              <p className="qb-meta-label">Wire dependency</p>
-              <div className="mt-4 grid gap-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="dependency-feature">Feature</Label>
-                  <Select
-                    id="dependency-feature"
-                    onChange={(event) => setDependencyFeatureId(event.target.value)}
-                    value={dependencyFeatureId}
-                  >
-                    <option value="">Select feature</option>
-                    {(featuresQuery.data?.features ?? []).map((feature) => (
-                      <option key={feature.id} value={feature.id}>
-                        {feature.headRevision.title}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="dependency-target">Depends on</Label>
-                  <Select
-                    id="dependency-target"
-                    onChange={(event) => setDependsOnFeatureId(event.target.value)}
-                    value={dependsOnFeatureId}
-                  >
-                    <option value="">Select dependency</option>
-                    {(featuresQuery.data?.features ?? []).map((feature) => (
-                      <option key={feature.id} value={feature.id}>
-                        {feature.headRevision.title}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <Button
-                  disabled={!dependencyFeatureId || !dependsOnFeatureId}
-                  onClick={() => {
-                    void addDependencyMutation
-                      .mutateAsync({
-                        featureId: dependencyFeatureId,
-                        payload: { dependsOnFeatureId },
-                      })
-                      .then(() => {
-                        setDependencyFeatureId("");
-                        setDependsOnFeatureId("");
-                      });
-                  }}
-                  variant="secondary"
-                >
-                  Add dependency
-                </Button>
-              </div>
-            </Card>
-          </div>
+                    <div className="mt-4 grid gap-3">
+                      {milestoneFeatures.map((feature) => (
+                        <div key={feature.id} className="border border-border/80 bg-panel p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                              <div className="flex flex-wrap gap-2">
+                                <Badge tone="neutral">{feature.featureKey}</Badge>
+                                <Badge tone="neutral">{feature.kind.replaceAll("_", " ")}</Badge>
+                              </div>
+                              <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
+                                {feature.headRevision.title}
+                              </p>
+                              <p className="mt-2 text-sm text-secondary">
+                                {feature.headRevision.summary}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {feature.headRevision.acceptanceCriteria.map((criterion) => (
+                                  <Badge key={criterion} tone="warning">
+                                    {criterion}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="grid gap-2 md:w-56">
+                              <Link
+                                className="inline-flex min-h-10 items-center justify-center border border-transparent bg-transparent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border hover:bg-panel-inset hover:text-foreground"
+                                to={`/projects/${id}/features/${feature.id}`}
+                              >
+                                Open editor
+                              </Link>
+                              <Select
+                                onChange={(event) => {
+                                  void updateFeatureMutation.mutateAsync({
+                                    featureId: feature.id,
+                                    payload: {
+                                      status: event.target.value as (typeof statuses)[number],
+                                    },
+                                  });
+                                }}
+                                value={feature.status}
+                              >
+                                {statuses.map((status) => (
+                                  <option key={status} value={status}>
+                                    {status.replaceAll("_", " ")}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                onChange={(event) => {
+                                  void updateFeatureMutation.mutateAsync({
+                                    featureId: feature.id,
+                                    payload: {
+                                      priority: event.target.value as (typeof priorities)[number],
+                                    },
+                                  });
+                                }}
+                                value={feature.priority}
+                              >
+                                {priorities.map((entry) => (
+                                  <option key={entry} value={entry}>
+                                    {entry.replaceAll("_", " ")}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Button
+                                onClick={() => {
+                                  void archiveFeatureMutation.mutateAsync(feature.id);
+                                }}
+                                variant="danger"
+                              >
+                                Archive
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {milestoneFeatures.length === 0 ? (
+                        <p className="text-sm text-secondary">
+                          No features match the current filters for this milestone.
+                        </p>
+                      ) : null}
+                    </div>
+                  </Card>
+                );
+              })}
+              {approvedMilestones.length === 0 ? (
+                <p className="text-sm text-secondary">
+                  Approve at least one milestone before building the feature catalogue.
+                </p>
+              ) : null}
+            </div>
+          </Card>
         </div>
       </div>
       <Drawer onClose={resetDrawer} open={isDrawerOpen} title="Create feature">
@@ -422,18 +390,14 @@ export const FeatureBuilderPage = () => {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="grid gap-2">
               <Label htmlFor="drawer-feature-milestone">Approved milestone</Label>
-              <Select
+              <Input
+                disabled
                 id="drawer-feature-milestone"
-                onChange={(event) => setMilestoneId(event.target.value)}
-                value={milestoneId}
-              >
-                <option value="">Select milestone</option>
-                {approvedMilestones.map((milestone) => (
-                  <option key={milestone.id} value={milestone.id}>
-                    {milestone.title}
-                  </option>
-                ))}
-              </Select>
+                value={
+                  approvedMilestones.find((milestone) => milestone.id === drawerMilestoneId)?.title ??
+                  ""
+                }
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="drawer-feature-kind">Kind</Label>
@@ -466,13 +430,43 @@ export const FeatureBuilderPage = () => {
               </Select>
             </div>
           </div>
+          <div className="grid gap-2">
+            <Label>Direct dependencies</Label>
+            <div className="grid gap-2 border border-border/80 bg-panel-inset p-3">
+              {dependencyOptions.length ? (
+                dependencyOptions.map((feature) => (
+                  <Checkbox
+                    checked={selectedDependencyIds.includes(feature.id)}
+                    key={feature.id}
+                    label={`${feature.label} (${feature.milestoneTitle})`}
+                    onChange={(event) =>
+                      setSelectedDependencyIds((current) =>
+                        event.target.checked
+                          ? [...current, feature.id]
+                          : current.filter((id) => id !== feature.id),
+                      )
+                    }
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-secondary">
+                  No existing features are available to depend on yet.
+                </p>
+              )}
+            </div>
+          </div>
           <div className="flex justify-end">
             <Button
-              disabled={!title.trim() || !summary.trim() || !acceptanceCriteria.trim() || !milestoneId}
+              disabled={
+                !title.trim() ||
+                !summary.trim() ||
+                !acceptanceCriteria.trim() ||
+                !drawerMilestoneId
+              }
               onClick={() => {
-                void createFeatureMutation
-                  .mutateAsync({
-                    milestoneId,
+                void (async () => {
+                  const created = await createFeatureMutation.mutateAsync({
+                    milestoneId: drawerMilestoneId,
                     kind,
                     priority,
                     title: title.trim(),
@@ -481,10 +475,17 @@ export const FeatureBuilderPage = () => {
                       .split("\n")
                       .map((entry) => entry.trim())
                       .filter(Boolean),
-                  })
-                  .then(() => {
-                    resetDrawer();
                   });
+
+                  for (const dependencyId of selectedDependencyIds) {
+                    await addDependencyMutation.mutateAsync({
+                      featureId: created.id,
+                      payload: { dependsOnFeatureId: dependencyId },
+                    });
+                  }
+
+                  resetDrawer();
+                })();
               }}
               variant="primary"
             >
