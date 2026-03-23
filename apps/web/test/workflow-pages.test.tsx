@@ -354,8 +354,177 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open design doc" }));
+    expect(await screen.findByRole("button", { name: "Approve design doc" })).toBeTruthy();
     expect(screen.queryByText("Milestone Gates")).toBeNull();
     expect(screen.getByText("Coverage check")).toBeTruthy();
+  });
+
+  it("reveals the create milestone panel and submits linked flows as checkboxes", async () => {
+    const milestoneProjectId = "91919191-9191-4191-8191-919191919191";
+    let milestonesResponse = {
+      milestones: [] as Array<Record<string, unknown>>,
+      coverage: {
+        approvedUserFlowCount: 2,
+        coveredUserFlowCount: 0,
+        uncoveredUserFlowIds: ["flow-a", "flow-b"],
+      },
+    };
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-a",
+                projectId: milestoneProjectId,
+                title: "Planner creates milestones",
+                userStory: "As a planner, I want to create milestones.",
+                entryPoint: "Milestones",
+                endState: "Milestones exist",
+                flowSteps: ["Open milestones", "Add milestone"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Milestone is saved."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+              {
+                id: "flow-b",
+                projectId: milestoneProjectId,
+                title: "Planner covers release goal",
+                userStory: "As a planner, I want coverage across release flows.",
+                entryPoint: "Milestones",
+                endState: "Coverage is linked",
+                flowSteps: ["Open milestones", "Select linked flows"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Linked flows are persisted."],
+                doneCriteriaRefs: ["DC-2"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:05:00.000Z",
+                updatedAt: "2026-03-20T09:05:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => milestonesResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones` && method === "POST") {
+        expect(init?.body).toEqual(
+          JSON.stringify({
+            title: "Release Foundations",
+            summary: "Ship the first release increment.",
+            useCaseIds: ["flow-a", "flow-b"],
+          }),
+        );
+
+        milestonesResponse = {
+          milestones: [
+            {
+              id: "milestone-1",
+              projectId: milestoneProjectId,
+              position: 1,
+              title: "Release Foundations",
+              summary: "Ship the first release increment.",
+              status: "draft",
+              linkedUserFlows: [
+                { id: "flow-a", title: "Planner creates milestones" },
+                { id: "flow-b", title: "Planner covers release goal" },
+              ],
+              featureCount: 0,
+              approvedAt: null,
+              completedAt: null,
+              createdAt: "2026-03-20T10:00:00.000Z",
+              updatedAt: "2026-03-20T10:00:00.000Z",
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 2,
+            coveredUserFlowCount: 2,
+            uncoveredUserFlowIds: [],
+          },
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => milestonesResponse.milestones[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Milestone" }));
+
+    expect(await screen.findByRole("textbox", { name: "Title" })).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+      target: { value: "Release Foundations" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Summary" }), {
+      target: { value: "Ship the first release increment." },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Planner creates milestones" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Planner covers release goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create milestone" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+    });
+    expect(screen.getByText("Release Foundations")).toBeTruthy();
   });
 
   it("tracks milestone generation jobs and surfaces failures", async () => {
@@ -507,7 +676,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
   });
 
-  it("tracks milestone design doc jobs for the selected milestone and surfaces failures", async () => {
+  it("tracks milestone design doc jobs for the inline milestone card and surfaces failures", async () => {
     const milestoneProjectId = "85858585-8585-4585-8585-858585858585";
     const milestoneId = "95959595-9595-4595-8595-959595959595";
     let jobsResponse: { jobs: Job[] } = { jobs: [] };
@@ -619,6 +788,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open design doc" }));
     jobsResponse = {
       jobs: [
         {
@@ -642,7 +812,7 @@ describe("workflow pages", () => {
     });
     expect(
       await screen.findByText(
-        "Milestone design doc generation is running. The selected milestone will refresh automatically when the job completes.",
+        "Milestone design doc generation is running. The milestone card will refresh automatically when the job completes.",
       ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generating..." })).toBeTruthy();
@@ -702,7 +872,7 @@ describe("workflow pages", () => {
 
     expect(await screen.findByText("Milestone design doc generation failed.")).toBeTruthy();
     expect(screen.getByText("GenerateMilestoneDesign requires an approved milestone.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Generate" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Design Document" })).toBeTruthy();
   });
 
   it("gates feature builder behind approved user flows and renders the catalogue once unlocked", async () => {
