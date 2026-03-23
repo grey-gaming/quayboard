@@ -53,6 +53,27 @@ export const featureDependencySchema = z.object({
 
 export type FeatureDependency = z.infer<typeof featureDependencySchema>;
 
+export const featureDocumentStateSchema = z.enum(["missing", "draft", "accepted"]);
+
+export type FeatureDocumentState = z.infer<typeof featureDocumentStateSchema>;
+
+export const featureDocumentSummarySchema = z.object({
+  required: z.boolean(),
+  state: featureDocumentStateSchema,
+});
+
+export type FeatureDocumentSummary = z.infer<typeof featureDocumentSummarySchema>;
+
+export const featureDocumentsSchema = z.object({
+  product: featureDocumentSummarySchema,
+  ux: featureDocumentSummarySchema,
+  tech: featureDocumentSummarySchema,
+  userDocs: featureDocumentSummarySchema,
+  archDocs: featureDocumentSummarySchema,
+});
+
+export type FeatureDocuments = z.infer<typeof featureDocumentsSchema>;
+
 export const featureSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
@@ -63,6 +84,7 @@ export const featureSchema = z.object({
   priority: prioritySchema,
   status: featureStatusSchema,
   headRevision: featureRevisionSchema,
+  documents: featureDocumentsSchema,
   dependencyIds: z.array(z.string().uuid()),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

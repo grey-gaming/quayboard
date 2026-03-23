@@ -4,8 +4,9 @@ import { useForm, type UseFormRegister } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   findLatestJob,
@@ -31,6 +32,7 @@ import {
   useUpdateUserFlowMutation,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -143,6 +145,7 @@ export const UserFlowsPage = () => {
   const approveUserFlowsMutation = useApproveUserFlowsMutation(id);
   const [acceptedWarnings, setAcceptedWarnings] = useState<string[]>([]);
   const [editingFlowId, setEditingFlowId] = useState<string | null>(null);
+  const [isCreatePanelOpen, setIsCreatePanelOpen] = useState(false);
   const createForm = useForm<FormValues>({
     defaultValues: defaultFormValues,
   });
@@ -179,16 +182,37 @@ export const UserFlowsPage = () => {
       findLatestFailedJob(jobsQuery.data?.jobs, (job) => generateUserFlowJobTypes.has(job.type)),
     [jobsQuery.data?.jobs],
   );
+  const latestGenerateUserFlowsJob = useMemo(
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => generateUserFlowJobTypes.has(job.type)),
+    [jobsQuery.data?.jobs],
+  );
   const generateFlowsButtonActive =
     generateUserFlowsMutation.isPending || Boolean(activeGenerateUserFlowsJob);
 
+  useJobDrivenRefresh({
+    active: Boolean(activeGenerateUserFlowsJob),
+    latestJob: latestGenerateUserFlowsJob,
+    queryKeys: [["project", id, "user-flows"]],
+  });
+
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="User Flows"
         title="User Flows"
-        summary="Use this page to build the journeys the team must support, review coverage warnings, and approve the flow set that will guide milestone and feature planning."
+        summary="Map the user journeys this project must support so implementation covers first-time use, happy paths, and failure cases. These flows help confirm the team is building the full product journey rather than a single thin slice through the application."
         meta={
           <>
             <Badge tone="neutral">planning contract</Badge>
@@ -221,11 +245,30 @@ export const UserFlowsPage = () => {
                   Generation And Approval
                 </p>
               </div>
-              <Badge tone={userFlowsQuery.data?.approvedAt ? "success" : "warning"}>
-                {userFlowsQuery.data?.approvedAt ? "approved" : "review required"}
-              </Badge>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge tone={userFlowsQuery.data?.approvedAt ? "success" : "warning"}>
+                  {userFlowsQuery.data?.approvedAt ? "approved" : "review required"}
+                </Badge>
+                <Button
+                  disabled={approveUserFlowsMutation.isPending}
+                  onClick={() => {
+                    void approveUserFlowsMutation.mutateAsync(acceptedWarnings);
+                  }}
+                  variant="primary"
+                >
+                  Approve User Flows
+                </Button>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setIsCreatePanelOpen((current) => !current);
+                }}
+                variant="secondary"
+              >
+                {isCreatePanelOpen ? "Close Add User Flow" : "Add User Flow"}
+              </Button>
               <AiWorkflowButton
                 active={generateFlowsButtonActive}
                 disabled={generateFlowsButtonActive}
@@ -236,15 +279,6 @@ export const UserFlowsPage = () => {
                 runningLabel="Generating Flows"
                 variant="secondary"
               />
-              <Button
-                disabled={approveUserFlowsMutation.isPending}
-                onClick={() => {
-                  void approveUserFlowsMutation.mutateAsync(acceptedWarnings);
-                }}
-                variant="secondary"
-              >
-                Approve User Flows
-              </Button>
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               <div className="qb-kv">
@@ -274,29 +308,43 @@ export const UserFlowsPage = () => {
               </Alert>
             ) : null}
           </Card>
-          <Card surface="panel">
-            <div className="border-b border-border/80 pb-3">
-              <p className="qb-meta-label">Manual intake</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Add User Flow</p>
-            </div>
-            <form
-              className="mt-4 grid gap-4"
-              onSubmit={createForm.handleSubmit(async (values) => {
-                await createUserFlowMutation.mutateAsync(toPayload(values));
-                createForm.reset(defaultFormValues);
-              })}
-            >
-              <UserFlowFields formId="create-flow" register={createForm.register} />
-              {createUserFlowMutation.error ? (
-                <Alert tone="error">{createUserFlowMutation.error.message}</Alert>
-              ) : null}
-              <div className="border-t border-border/80 pt-4">
-                <Button disabled={createUserFlowMutation.isPending} type="submit">
-                  Save User Flow
-                </Button>
+          {isCreatePanelOpen ? (
+            <Card surface="panel">
+              <div className="border-b border-border/80 pb-3">
+                <p className="qb-meta-label">Manual intake</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Add User Flow</p>
               </div>
-            </form>
-          </Card>
+              <form
+                className="mt-4 grid gap-4"
+                onSubmit={createForm.handleSubmit(async (values) => {
+                  await createUserFlowMutation.mutateAsync(toPayload(values));
+                  createForm.reset(defaultFormValues);
+                  setIsCreatePanelOpen(false);
+                })}
+              >
+                <UserFlowFields formId="create-flow" register={createForm.register} />
+                {createUserFlowMutation.error ? (
+                  <Alert tone="error">{createUserFlowMutation.error.message}</Alert>
+                ) : null}
+                <div className="flex flex-wrap gap-2 border-t border-border/80 pt-4">
+                  <Button disabled={createUserFlowMutation.isPending} type="submit">
+                    Save User Flow
+                  </Button>
+                  <Button
+                    disabled={createUserFlowMutation.isPending}
+                    onClick={() => {
+                      createForm.reset(defaultFormValues);
+                      setIsCreatePanelOpen(false);
+                    }}
+                    type="button"
+                    variant="ghost"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          ) : null}
           <Card surface="rail">
             <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
               <div>
@@ -459,25 +507,6 @@ export const UserFlowsPage = () => {
         </div>
         <div className="grid gap-4">
           <Card surface="rail" className="h-fit">
-            <p className="qb-meta-label">Coverage summary</p>
-            <div className="mt-4 grid gap-2">
-              <div className="qb-kv">
-                <p className="qb-meta-label">Warnings accepted</p>
-                <p className="text-sm text-foreground">
-                  {acceptedWarnings.length} selected warnings
-                </p>
-              </div>
-              <div className="qb-kv">
-                <p className="qb-meta-label">Approved at</p>
-                <p className="text-sm text-foreground">
-                  {userFlowsQuery.data?.approvedAt
-                    ? formatDateTime(userFlowsQuery.data.approvedAt)
-                    : "Pending review"}
-                </p>
-              </div>
-            </div>
-          </Card>
-          <Card surface="rail" className="h-fit">
             <div className="border-b border-border/80 pb-3">
               <p className="qb-meta-label">Review items</p>
               <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
@@ -512,6 +541,6 @@ export const UserFlowsPage = () => {
           </Card>
         </div>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

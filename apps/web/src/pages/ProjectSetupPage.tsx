@@ -4,8 +4,9 @@ import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
@@ -265,11 +266,20 @@ export const ProjectSetupPage = () => {
       (requireArchitectureDocs === "true") &&
     setupState?.evidencePolicy?.requireUserDocs === (requireUserDocs === "true");
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? (
-        <ProjectSubNav project={projectQuery.data} />
-      ) : null}
+    <ProjectPageFrame
+      activeSection="setup"
+      project={projectQuery.data}
+      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Project"
         title="Project Setup"
@@ -692,6 +702,6 @@ export const ProjectSetupPage = () => {
           </div>
         </Card>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

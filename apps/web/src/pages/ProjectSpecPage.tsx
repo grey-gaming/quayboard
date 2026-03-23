@@ -4,10 +4,12 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
+  findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
   LatestJobFailureAlert,
@@ -36,6 +38,7 @@ import {
   useSpecDecisionTilesQuery,
   useUpdateSpecDecisionTilesMutation,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -315,6 +318,22 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
       ) ?? null,
     [jobsQuery.data?.jobs, kind],
   );
+  const latestDecisionJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) => job.type === "GenerateDecisionDeck" && jobHasKind(job, kind),
+      ),
+    [jobsQuery.data?.jobs, kind],
+  );
+  const latestSpecJob = useMemo(
+    () =>
+      findLatestJob(
+        jobsQuery.data?.jobs,
+        (job) => job.type === "GenerateProjectBlueprint" && jobHasKind(job, kind),
+      ),
+    [jobsQuery.data?.jobs, kind],
+  );
   const latestFailedSpecJob = useMemo(() => {
     return findLatestFailedJob(
       jobsQuery.data?.jobs,
@@ -372,9 +391,35 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
     approveArtifactMutation.error;
   const latestFailedSpecMessage = latestFailedSpecJob ? getJobErrorMessage(latestFailedSpecJob) : null;
 
+  useJobDrivenRefresh({
+    active: Boolean(activeDecisionJob),
+    latestJob: latestDecisionJob,
+    queryKeys: [["project", id, `${kind}-decision-tiles`]],
+  });
+
+  useJobDrivenRefresh({
+    active: Boolean(activeSpecJob),
+    latestJob: latestSpecJob,
+    queryKeys: [
+      ["project", id, `${kind}-spec`],
+      ["project", id, `${kind}-spec-versions`],
+    ],
+  });
+
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         actions={
           <AiWorkflowButton
@@ -658,6 +703,6 @@ export const ProjectSpecPage = ({ kind }: { kind: BlueprintKind }) => {
           </div>
         </Card>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

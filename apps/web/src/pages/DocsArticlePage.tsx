@@ -12,7 +12,7 @@ export const DocsArticlePage = () => {
   return (
     <DocsFrame activeSlug={slug} guides={docsGuideEntries}>
       {entry ? (
-        <MarkdownDocument markdown={entry.markdown} />
+        <MarkdownDocument markdown={entry.markdown} showTableOfContents />
       ) : (
         <Card surface="rail">
           <p className="font-display text-2xl font-semibold tracking-[-0.02em]">Guide not found</p>

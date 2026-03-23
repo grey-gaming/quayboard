@@ -1211,8 +1211,8 @@ export const createJobRunnerService = (input: {
         }
 
         const milestone = await input.milestoneService.getContext(ownerUserId, milestoneId);
-        if (milestone.status !== "approved") {
-          throw new Error("GenerateMilestoneDesign requires an approved milestone.");
+        if (milestone.status !== "draft") {
+          throw new Error("GenerateMilestoneDesign only runs for milestones that are not approved yet.");
         }
 
         const [blueprints, milestoneRecord, linkedFlows] = await Promise.all([
@@ -1278,8 +1278,8 @@ export const createJobRunnerService = (input: {
       }
 
       case "AppendFeatureFromOnePager": {
-        if (!input.featureService) {
-          throw new Error("AppendFeatureFromOnePager requires feature service support.");
+        if (!input.featureService || !input.milestoneService) {
+          throw new Error("AppendFeatureFromOnePager requires feature and milestone support.");
         }
 
         const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
@@ -1295,24 +1295,64 @@ export const createJobRunnerService = (input: {
           throw new Error("AppendFeatureFromOnePager requires an approved overview document.");
         }
 
-        const [features, milestoneRecord] = await Promise.all([
+        const [features, milestoneRecord, milestoneList, milestoneDesignDoc, projectSpecs, userFlows] =
+          await Promise.all([
           input.featureService.list(ownerUserId, rawJob.projectId),
           input.db.query.milestonesTable.findFirst({
             where: eq(milestonesTable.id, milestoneId),
           }),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
+          input.milestoneService.getCanonicalDesignDoc(ownerUserId, milestoneId),
+          loadApprovedProjectSpecs(),
+          input.userFlowService.list(ownerUserId, rawJob.projectId),
         ]);
 
         if (!milestoneRecord) {
           throw new Error("AppendFeatureFromOnePager could not load the target milestone.");
         }
 
+        if (!milestoneDesignDoc) {
+          throw new Error(
+            "AppendFeatureFromOnePager requires a canonical milestone design document.",
+          );
+        }
+
+        if (!userFlows.approvedAt) {
+          throw new Error("AppendFeatureFromOnePager requires approved user flows.");
+        }
+
+        const featureTitleById = new Map(
+          features.features.map((feature) => [feature.id, feature.headRevision.title]),
+        );
+
         const prompt = buildAppendFeaturesFromOnePagerPrompt({
-          projectName: project.name,
-          milestoneTitle: milestoneRecord.title,
-          overviewDocument: overview.markdown,
           existingFeatures: features.features.map((feature) => ({
-            title: feature.headRevision.title,
+            dependencies: feature.dependencyIds.map(
+              (dependencyId) => featureTitleById.get(dependencyId) ?? dependencyId,
+            ),
+            milestoneTitle: feature.milestoneTitle,
             summary: feature.headRevision.summary,
+            title: feature.headRevision.title,
+          })),
+          milestone: {
+            title: milestoneRecord.title,
+            summary: milestoneRecord.summary,
+          },
+          milestoneDesignDoc: milestoneDesignDoc.markdown,
+          milestones: milestoneList.milestones.map((milestone) => ({
+            title: milestone.title,
+            summary: milestone.summary,
+          })),
+          projectName: project.name,
+          overviewDocument: overview.markdown,
+          projectProductSpec: projectSpecs.productSpec.markdown,
+          projectTechnicalSpec: projectSpecs.technicalSpec.markdown,
+          projectUxSpec: projectSpecs.uxSpec.markdown,
+          userFlows: userFlows.userFlows.map((flow) => ({
+            acceptanceCriteria: flow.acceptanceCriteria,
+            flowSteps: flow.flowSteps,
+            title: flow.title,
+            userStory: flow.userStory,
           })),
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {

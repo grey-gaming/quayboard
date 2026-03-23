@@ -95,6 +95,12 @@ describe("docs pages", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Authentication" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "On This Page" }).length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("link", { name: "Register" })
+        .some((link) => link.getAttribute("href") === "#register"),
+    ).toBe(true);
     expect(screen.getAllByText(/currently supports local email\/password authentication/i)).toHaveLength(2);
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
@@ -160,18 +166,59 @@ describe("docs pages", () => {
 
     expect(screen.getByRole("heading", { name: "First Install" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Required Setup" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "On This Page" }).length).toBeGreaterThan(0);
   });
 
-  it("renders the import stub without roadmap labels", () => {
+  it("renders the import stub without roadmap labels", async () => {
+    const projectId = "91a28b19-825c-496f-bc99-205d02664a2e";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = typeof input === "string" ? input : input.toString();
+
+        if (path === `/api/projects/${projectId}`) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              id: projectId,
+              name: "Harbor Console",
+              description: null,
+              state: "READY",
+              ownerUserId: projectId,
+              createdAt: "2026-03-15T00:00:00.000Z",
+              updatedAt: "2026-03-16T10:00:00.000Z",
+            }),
+          } satisfies Partial<Response>;
+        }
+
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({
+            error: {
+              code: "unauthorized",
+              message: "Authentication is required.",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [{ path: "/projects/:id/import", element: <ImportStubPage /> }],
+      { initialEntries: [`/projects/${projectId}/import`] },
+    );
+
     render(
       <AppProviders>
-        <MemoryRouter>
-          <ImportStubPage />
-        </MemoryRouter>
+        <RouterProvider router={router} />
       </AppProviders>,
     );
 
-    expect(screen.getByText(/repository import is not available yet/i)).toBeTruthy();
+    expect(await screen.findByText(/repository import is not available yet/i)).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 

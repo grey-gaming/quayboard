@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   Navigate,
   Outlet,
@@ -65,109 +65,131 @@ const RequireAuth = () => {
   return <Outlet />;
 };
 
+export const ScrollToTopOnNavigation = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  return null;
+};
+
+const AppShell = () => (
+  <>
+    <ScrollToTopOnNavigation />
+    <Outlet />
+  </>
+);
+
 export const appRouter = createBrowserRouter([
   {
-    path: "/docs",
-    element: <DocsHomePage />,
-  },
-  {
-    path: "/docs/:slug",
-    element: <DocsArticlePage />,
-  },
-  {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  {
-    path: "/register",
-    element: <RegisterPage />,
-  },
-  {
-    element: <RequireAuth />,
+    element: <AppShell />,
     children: [
       {
-        path: "/",
-        element: <ProtectedHomePage />,
+        path: "/docs",
+        element: <DocsHomePage />,
       },
       {
-        path: "/setup/instance",
-        element: <InstanceReadinessPage />,
+        path: "/docs/:slug",
+        element: <DocsArticlePage />,
       },
       {
-        path: "/projects/new",
-        element: <NewProjectPage />,
+        path: "/login",
+        element: <LoginPage />,
       },
       {
-        path: "/settings",
-        element: <SettingsPage />,
+        path: "/register",
+        element: <RegisterPage />,
       },
       {
-        path: "/projects/:id",
-        element: <MissionControlPage />,
-      },
-      {
-        path: "/projects/:id/setup",
-        element: <ProjectSetupPage />,
-      },
-      {
-        element: <SetupCompletionGate />,
+        element: <RequireAuth />,
         children: [
           {
-            path: "/projects/:id/questions",
-            element: <OnePagerQuestionsPage />,
+            path: "/",
+            element: <ProtectedHomePage />,
           },
           {
-            path: "/projects/:id/one-pager",
-            element: <OnePagerOverviewPage />,
+            path: "/setup/instance",
+            element: <InstanceReadinessPage />,
           },
           {
-            path: "/projects/:id/import",
-            element: <ImportStubPage />,
+            path: "/projects/new",
+            element: <NewProjectPage />,
           },
           {
-            element: <OverviewApprovalGate />,
+            path: "/settings",
+            element: <SettingsPage />,
+          },
+          {
+            path: "/projects/:id",
+            element: <MissionControlPage />,
+          },
+          {
+            path: "/projects/:id/setup",
+            element: <ProjectSetupPage />,
+          },
+          {
+            element: <SetupCompletionGate />,
             children: [
               {
-                path: "/projects/:id/product-spec",
-                element: <ProductSpecPage />,
-              },
-            ],
-          },
-          {
-            element: <ProductSpecApprovalGate />,
-            children: [
-              {
-                path: "/projects/:id/ux-spec",
-                element: <UxSpecPage />,
+                path: "/projects/:id/questions",
+                element: <OnePagerQuestionsPage />,
               },
               {
-                element: <UxSpecApprovalGate />,
+                path: "/projects/:id/one-pager",
+                element: <OnePagerOverviewPage />,
+              },
+              {
+                path: "/projects/:id/import",
+                element: <ImportStubPage />,
+              },
+              {
+                element: <OverviewApprovalGate />,
                 children: [
                   {
-                    path: "/projects/:id/technical-spec",
-                    element: <TechnicalSpecPage />,
+                    path: "/projects/:id/product-spec",
+                    element: <ProductSpecPage />,
+                  },
+                ],
+              },
+              {
+                element: <ProductSpecApprovalGate />,
+                children: [
+                  {
+                    path: "/projects/:id/ux-spec",
+                    element: <UxSpecPage />,
                   },
                   {
-                    element: <TechnicalSpecApprovalGate />,
+                    element: <UxSpecApprovalGate />,
                     children: [
                       {
-                        path: "/projects/:id/user-flows",
-                        element: <UserFlowsPage />,
+                        path: "/projects/:id/technical-spec",
+                        element: <TechnicalSpecPage />,
                       },
                       {
-                        element: <UserFlowsApprovalGate />,
+                        element: <TechnicalSpecApprovalGate />,
                         children: [
                           {
-                            path: "/projects/:id/milestones",
-                            element: <MilestonesPage />,
+                            path: "/projects/:id/user-flows",
+                            element: <UserFlowsPage />,
                           },
                           {
-                            path: "/projects/:id/features",
-                            element: <FeatureBuilderPage />,
-                          },
-                          {
-                            path: "/projects/:id/features/:featureId",
-                            element: <FeatureEditorPage />,
+                            element: <UserFlowsApprovalGate />,
+                            children: [
+                              {
+                                path: "/projects/:id/milestones",
+                                element: <MilestonesPage />,
+                              },
+                              {
+                                path: "/projects/:id/features",
+                                element: <FeatureBuilderPage />,
+                              },
+                              {
+                                path: "/projects/:id/features/:featureId",
+                                element: <FeatureEditorPage />,
+                              },
+                            ],
                           },
                         ],
                       },

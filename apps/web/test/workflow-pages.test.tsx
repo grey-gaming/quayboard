@@ -198,7 +198,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id", <MissionControlPage />);
 
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Recent Jobs")).toBeTruthy();
     expect(screen.queryByText("Pipeline map")).toBeNull();
@@ -322,7 +322,6 @@ describe("workflow pages", () => {
             ],
             featureCount: 2,
             approvedAt: "2026-03-16T10:02:00.000Z",
-            completedAt: null,
             createdAt: "2026-03-16T10:00:00.000Z",
             updatedAt: "2026-03-16T10:02:00.000Z",
           },
@@ -354,8 +353,461 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
+    expect(await screen.findByRole("button", { name: "Approve design doc" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
     expect(screen.queryByText("Milestone Gates")).toBeNull();
     expect(screen.getByText("Coverage check")).toBeTruthy();
+  });
+
+  it("reveals the create milestone panel and submits linked flows as checkboxes", async () => {
+    const milestoneProjectId = "91919191-9191-4191-8191-919191919191";
+    let milestonesResponse = {
+      milestones: [] as Array<Record<string, unknown>>,
+      coverage: {
+        approvedUserFlowCount: 2,
+        coveredUserFlowCount: 0,
+        uncoveredUserFlowIds: ["flow-a", "flow-b"],
+      },
+    };
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-a",
+                projectId: milestoneProjectId,
+                title: "Planner creates milestones",
+                userStory: "As a planner, I want to create milestones.",
+                entryPoint: "Milestones",
+                endState: "Milestones exist",
+                flowSteps: ["Open milestones", "Add milestone"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Milestone is saved."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+              {
+                id: "flow-b",
+                projectId: milestoneProjectId,
+                title: "Planner covers release goal",
+                userStory: "As a planner, I want coverage across release flows.",
+                entryPoint: "Milestones",
+                endState: "Coverage is linked",
+                flowSteps: ["Open milestones", "Select linked flows"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Linked flows are persisted."],
+                doneCriteriaRefs: ["DC-2"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:05:00.000Z",
+                updatedAt: "2026-03-20T09:05:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => milestonesResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones` && method === "POST") {
+        expect(init?.body).toEqual(
+          JSON.stringify({
+            title: "Release Foundations",
+            summary: "Ship the first release increment.",
+            useCaseIds: ["flow-a", "flow-b"],
+          }),
+        );
+
+        milestonesResponse = {
+          milestones: [
+            {
+              id: "milestone-1",
+              projectId: milestoneProjectId,
+              position: 1,
+              title: "Release Foundations",
+              summary: "Ship the first release increment.",
+              status: "draft",
+              linkedUserFlows: [
+                { id: "flow-a", title: "Planner creates milestones" },
+                { id: "flow-b", title: "Planner covers release goal" },
+              ],
+              featureCount: 0,
+              approvedAt: null,
+              createdAt: "2026-03-20T10:00:00.000Z",
+              updatedAt: "2026-03-20T10:00:00.000Z",
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 2,
+            coveredUserFlowCount: 2,
+            uncoveredUserFlowIds: [],
+          },
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => milestonesResponse.milestones[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Milestone" }));
+
+    expect(await screen.findByRole("textbox", { name: "Title" })).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+      target: { value: "Release Foundations" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Summary" }), {
+      target: { value: "Ship the first release increment." },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Planner creates milestones" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Planner covers release goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create milestone" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "Title" })).toBeNull();
+    });
+    expect(screen.getByText("Release Foundations")).toBeTruthy();
+  });
+
+  it("blocks milestone approval until a design doc exists", async () => {
+    const milestoneProjectId = "83838383-8383-4383-8383-838383838383";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-blocked",
+                projectId: milestoneProjectId,
+                title: "Plan delivery milestones",
+                userStory: "As a planner, I want a roadmap so delivery can start.",
+                entryPoint: "Mission Control",
+                endState: "Milestone ready for approval",
+                flowSteps: ["Open milestones", "Prepare design doc"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["A design doc exists before approval."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-16T10:01:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: "milestone-blocked",
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Establish the first releasable increment.",
+                status: "draft",
+                linkedUserFlows: [{ id: "flow-blocked", title: "Plan delivery milestones" }],
+                featureCount: 0,
+                approvedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-blocked" && method === "POST") {
+        return {
+          ok: false,
+          status: 409,
+          headers: new Headers({ "content-type": "application/json" }),
+          json: async () => ({
+            error: {
+              code: "milestone_design_doc_required",
+              message: "Create a milestone design document before approving the milestone.",
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(
+      await screen.findByText("Create a milestone design document before approving the milestone."),
+    ).toBeTruthy();
+  });
+
+  it("refreshes the design doc approval state after milestone approval", async () => {
+    const milestoneProjectId = "83838383-8383-4383-8383-838383838384";
+    let milestoneStatus: "draft" | "approved" = "draft";
+    let designDocApproval: null | { approvedAt: string } = null;
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-auto-approve",
+                projectId: milestoneProjectId,
+                title: "Plan delivery milestones",
+                userStory: "As a planner, I want milestone approval to finalize the document.",
+                entryPoint: "Milestones",
+                endState: "Milestone approved",
+                flowSteps: ["Open milestones", "Approve milestone"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Milestone approval finalizes the design doc."],
+                doneCriteriaRefs: ["DC-1"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-16T10:01:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: "milestone-auto-approve",
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Establish the first releasable increment.",
+                status: milestoneStatus,
+                linkedUserFlows: [{ id: "flow-auto-approve", title: "Plan delivery milestones" }],
+                featureCount: 0,
+                approvedAt:
+                  milestoneStatus === "approved" ? "2026-03-16T10:05:00.000Z" : null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:05:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-auto-approve/design-docs") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            designDocs: [
+              {
+                id: "doc-auto-approve",
+                milestoneId: "milestone-auto-approve",
+                version: 1,
+                title: "Foundations design",
+                markdown: "# Foundations\n\nInitial copy.",
+                source: "ManualSave",
+                isCanonical: true,
+                createdAt: "2026-03-16T10:04:00.000Z",
+                approval: designDocApproval,
+              },
+            ],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === "/api/milestones/milestone-auto-approve" && method === "POST") {
+        milestoneStatus = "approved";
+        designDocApproval = { approvedAt: "2026-03-16T10:05:00.000Z" };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: "milestone-auto-approve",
+            projectId: milestoneProjectId,
+            position: 1,
+            title: "Foundations",
+            summary: "Establish the first releasable increment.",
+            status: "approved",
+            linkedUserFlows: [{ id: "flow-auto-approve", title: "Plan delivery milestones" }],
+            featureCount: 0,
+            approvedAt: "2026-03-16T10:05:00.000Z",
+            createdAt: "2026-03-16T10:00:00.000Z",
+            updatedAt: "2026-03-16T10:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(await screen.findByText("Foundations design")).toBeTruthy();
+    expect(await screen.findByText("approval required")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("approval required")).toBeNull();
+    });
+    expect(screen.getAllByText("approved")).toHaveLength(2);
   });
 
   it("tracks milestone generation jobs and surfaces failures", async () => {
@@ -507,7 +959,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("button", { name: "Generate Milestones" })).toBeTruthy();
   });
 
-  it("tracks milestone design doc jobs for the selected milestone and surfaces failures", async () => {
+  it("tracks milestone design doc jobs for the inline milestone card and surfaces failures", async () => {
     const milestoneProjectId = "85858585-8585-4585-8585-858585858585";
     const milestoneId = "95959595-9595-4595-8595-959595959595";
     let jobsResponse: { jobs: Job[] } = { jobs: [] };
@@ -582,7 +1034,6 @@ describe("workflow pages", () => {
                 linkedUserFlows: [{ id: "flow-2", title: "Ship first release" }],
                 featureCount: 0,
                 approvedAt: "2026-03-20T10:00:00.000Z",
-                completedAt: null,
                 createdAt: "2026-03-20T09:45:00.000Z",
                 updatedAt: "2026-03-20T10:00:00.000Z",
               },
@@ -619,6 +1070,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
 
     expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
     jobsResponse = {
       jobs: [
         {
@@ -642,7 +1094,7 @@ describe("workflow pages", () => {
     });
     expect(
       await screen.findByText(
-        "Milestone design doc generation is running. The selected milestone will refresh automatically when the job completes.",
+        "Milestone design doc generation is running. The milestone card will refresh automatically when the job completes.",
       ),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generating..." })).toBeTruthy();
@@ -655,7 +1107,8 @@ describe("workflow pages", () => {
           milestoneId,
           version: 1,
           title: "Foundations design",
-          markdown: "# Foundations\n\nShipped via job completion.",
+          markdown:
+            "# Foundations\n\n## Delivery Shape\n\nShipped via job completion.\n\n### Exit Criteria\n\nShip with the generated design doc.",
           source: "GenerateMilestoneDesign",
           isCanonical: true,
           createdAt: "2026-03-20T11:01:00.000Z",
@@ -671,6 +1124,7 @@ describe("workflow pages", () => {
     });
 
     expect(await screen.findByText("Foundations design")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Approve design doc" })).toBeTruthy();
 
     jobsResponse = {
@@ -683,7 +1137,7 @@ describe("workflow pages", () => {
           inputs: { milestoneId },
           outputs: null,
           error: {
-            message: "GenerateMilestoneDesign requires an approved milestone.",
+            message: "GenerateMilestoneDesign only runs for milestones that are not approved yet.",
           },
           queuedAt: "2026-03-20T11:00:00.000Z",
           startedAt: "2026-03-20T11:00:30.000Z",
@@ -699,8 +1153,172 @@ describe("workflow pages", () => {
     });
 
     expect(await screen.findByText("Milestone design doc generation failed.")).toBeTruthy();
-    expect(screen.getByText("GenerateMilestoneDesign requires an approved milestone.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Generate" })).toBeTruthy();
+    expect(
+      screen.getByText("GenerateMilestoneDesign only runs for milestones that are not approved yet."),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate Design Document" })).toBeTruthy();
+  });
+
+  it("edits milestone markdown from the open document panel", async () => {
+    const milestoneProjectId = "86868686-8686-4686-8686-868686868686";
+    const milestoneId = "97979797-9797-4797-8797-979797979797";
+    let designDocsResponse = {
+      designDocs: [
+        {
+          id: "doc-edit-1",
+          milestoneId,
+          version: 1,
+          title: "Foundations design",
+          markdown: "# Foundations\n\nInitial copy.",
+          source: "GenerateMilestoneDesign",
+          isCanonical: true,
+          createdAt: "2026-03-20T11:01:00.000Z",
+          approval: null,
+        },
+      ],
+    };
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me") {
+        return { ok: true, status: 200, json: async () => ({ user }) } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: milestoneProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: milestoneProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/user-flows`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            userFlows: [
+              {
+                id: "flow-3",
+                projectId: milestoneProjectId,
+                title: "Ship foundations",
+                userStory: "As a planner, I want the milestone document editable.",
+                entryPoint: "Milestones",
+                endState: "Document saved",
+                flowSteps: ["Open milestone", "Edit markdown"],
+                coverageTags: ["happy-path"],
+                acceptanceCriteria: ["Document is updated."],
+                doneCriteriaRefs: ["DC-3"],
+                source: "ManualSave",
+                archivedAt: null,
+                createdAt: "2026-03-20T09:00:00.000Z",
+                updatedAt: "2026-03-20T09:00:00.000Z",
+              },
+            ],
+            coverage: { warnings: [], acceptedWarnings: [] },
+            approvedAt: "2026-03-20T09:30:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/milestones`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            milestones: [
+              {
+                id: milestoneId,
+                projectId: milestoneProjectId,
+                position: 1,
+                title: "Foundations",
+                summary: "Prepare the first releasable increment.",
+                status: "draft",
+                linkedUserFlows: [{ id: "flow-3", title: "Ship foundations" }],
+                featureCount: 0,
+                approvedAt: null,
+                createdAt: "2026-03-20T09:45:00.000Z",
+                updatedAt: "2026-03-20T09:45:00.000Z",
+              },
+            ],
+            coverage: {
+              approvedUserFlowCount: 1,
+              coveredUserFlowCount: 1,
+              uncoveredUserFlowIds: [],
+            },
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${milestoneProjectId}/jobs`) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/milestones/${milestoneId}/design-docs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => designDocsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/milestones/${milestoneId}/design-docs` && method === "PATCH") {
+        expect(init?.body).toEqual(JSON.stringify({ markdown: "# Foundations\n\nEdited copy." }));
+        designDocsResponse = {
+          designDocs: [
+            {
+              id: "doc-edit-2",
+              milestoneId,
+              version: 2,
+              title: "Foundations design",
+              markdown: "# Foundations\n\nEdited copy.",
+              source: "ManualEdit",
+              isCanonical: true,
+              createdAt: "2026-03-20T11:05:00.000Z",
+              approval: null,
+            },
+          ],
+        };
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => designDocsResponse.designDocs[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/milestones", <MilestonesPage />, milestoneProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Milestones" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View Milestone Document" }));
+    expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "# Foundations\n\nEdited copy." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save milestone document" }));
+
+    expect(await screen.findByText("Edited copy.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Markdown" })).toBeTruthy();
   });
 
   it("gates feature builder behind approved user flows and renders the catalogue once unlocked", async () => {
@@ -778,9 +1396,23 @@ describe("workflow pages", () => {
                 ],
                 featureCount: 2,
                 approvedAt: "2026-03-16T10:02:00.000Z",
-                completedAt: null,
                 createdAt: "2026-03-16T10:00:00.000Z",
                 updatedAt: "2026-03-16T10:02:00.000Z",
+              },
+              {
+                id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                projectId: featureProjectId,
+                position: 2,
+                title: "Legacy scope",
+                summary: "Reapproval is pending, but existing features still need an editor path.",
+                status: "draft",
+                linkedUserFlows: [
+                  { id: "44444444-4444-4444-8444-444444444444", title: "Plan delivery milestones" },
+                ],
+                featureCount: 1,
+                approvedAt: null,
+                createdAt: "2026-03-16T10:00:00.000Z",
+                updatedAt: "2026-03-16T10:04:00.000Z",
               },
             ],
             coverage: {
@@ -817,6 +1449,13 @@ describe("workflow pages", () => {
                   source: "ManualSave",
                   createdAt: "2026-03-16T10:03:00.000Z",
                 },
+                documents: {
+                  product: { required: true, state: "accepted" },
+                  ux: { required: true, state: "draft" },
+                  tech: { required: true, state: "missing" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: false, state: "missing" },
+                },
                 dependencyIds: ["88888888-8888-4888-8888-888888888888"],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -841,9 +1480,47 @@ describe("workflow pages", () => {
                   source: "ManualSave",
                   createdAt: "2026-03-16T10:03:00.000Z",
                 },
+                documents: {
+                  product: { required: true, state: "accepted" },
+                  ux: { required: false, state: "missing" },
+                  tech: { required: true, state: "accepted" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: true, state: "draft" },
+                },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
+                archivedAt: null,
+              },
+              {
+                id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                projectId: featureProjectId,
+                milestoneId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                milestoneTitle: "Legacy scope",
+                featureKey: "F-003",
+                kind: "system",
+                priority: "could_have",
+                status: "draft",
+                headRevision: {
+                  id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                  featureId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                  version: 1,
+                  title: "Legacy feature shell",
+                  summary: "Keep editor access while the reopened milestone is waiting on reapproval.",
+                  acceptanceCriteria: ["Existing features stay visible in the catalogue."],
+                  source: "ManualSave",
+                  createdAt: "2026-03-16T10:04:00.000Z",
+                },
+                documents: {
+                  product: { required: true, state: "draft" },
+                  ux: { required: false, state: "missing" },
+                  tech: { required: false, state: "missing" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: false, state: "missing" },
+                },
+                dependencyIds: [],
+                createdAt: "2026-03-16T10:04:00.000Z",
+                updatedAt: "2026-03-16T10:04:00.000Z",
                 archivedAt: null,
               },
             ],
@@ -957,9 +1634,17 @@ describe("workflow pages", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "Feature Builder" })).toBeTruthy();
+    expect(screen.getByText("Milestones")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Generate features" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New feature" })).toBeTruthy();
-    expect(screen.getByText("Dependency graph")).toBeTruthy();
-    expect(screen.getByText("Wire dependency")).toBeTruthy();
+    expect(screen.getAllByText("Foundations").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Legacy scope").length).toBeGreaterThan(0);
+    expect(screen.getByText("Reapprove this milestone before generating or creating additional features.")).toBeTruthy();
+    expect(screen.getByText("Legacy feature shell")).toBeTruthy();
+    expect(screen.getAllByText("Product accepted").length).toBeGreaterThan(0);
+    expect(screen.getByText("UX draft")).toBeTruthy();
+    expect(screen.queryByText("Dependency graph")).toBeNull();
+    expect(screen.queryByText("Wire dependency")).toBeNull();
   });
 
   it("renders the questionnaire page and autosaves answers", async () => {
@@ -1153,7 +1838,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Questions" }).getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
   });
 
   it("queues auto-answer and starts the AI state immediately", async () => {
@@ -1291,6 +1976,157 @@ describe("workflow pages", () => {
     });
   });
 
+  it("refreshes generated questionnaire answers after the auto-answer job succeeds", async () => {
+    const autoAnswerProjectId = "15151515-1515-4515-8515-151515151515";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let questionnaireRequestCount = 0;
+    let autoAnswerSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === `/api/projects/${autoAnswerProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: autoAnswerProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: autoAnswerProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers` &&
+        method === "GET"
+      ) {
+        questionnaireRequestCount += 1;
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: autoAnswerProjectId,
+            answers:
+              questionnaireRequestCount >= 2
+                ? {
+                    q1_name_and_description: "Planning workspace",
+                    q2_who_is_it_for: "Engineering leads and delivery managers.",
+                  }
+                : {
+                    q1_name_and_description: "Planning workspace",
+                  },
+            updatedAt:
+              questionnaireRequestCount >= 2
+                ? "2026-03-16T09:02:30.000Z"
+                : "2026-03-16T09:00:00.000Z",
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (
+        path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+        method === "POST"
+      ) {
+        autoAnswerSubmitted = true;
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "5fd58d3b-ffda-4576-b0e6-a8b8267da6ac",
+            projectId: autoAnswerProjectId,
+            type: "AutoAnswerQuestionnaire",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:01:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${autoAnswerProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: autoAnswerSubmitted
+              ? [
+                  {
+                    id: "5fd58d3b-ffda-4576-b0e6-a8b8267da6ac",
+                    projectId: autoAnswerProjectId,
+                    type: "AutoAnswerQuestionnaire",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:01:00.000Z",
+                    startedAt: "2026-03-16T09:01:10.000Z",
+                    completedAt: "2026-03-16T09:02:30.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/questions", <OnePagerQuestionsPage />, autoAnswerProjectId);
+
+    expect(await screen.findByDisplayValue("Planning workspace")).toBeTruthy();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Generate Answers",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${autoAnswerProjectId}/questionnaire-answers/auto-answer` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Engineering leads and delivery managers.")).toBeTruthy();
+    }, { timeout: 2_500 });
+
+    expect(questionnaireRequestCount).toBeGreaterThanOrEqual(2);
+  });
+
   it("renders the overview document through the editable markdown surface", async () => {
     const overviewProjectId = "22222222-2222-4222-8222-222222222222";
 
@@ -1300,7 +2136,8 @@ describe("workflow pages", () => {
       projectId: overviewProjectId,
       version: 2,
       title: "Overview",
-      markdown: "# Overview\n\nCanonical scope for the planning workspace.",
+      markdown:
+        "# Overview\n\n## Scope\n\nCanonical scope for the planning workspace.\n\n### Defaults\n\nTeam-wide defaults remain explicit.",
       source: "generated",
       isCanonical: true,
       approvedAt: null,
@@ -1444,6 +2281,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Overview" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.queryByText("Current Overview")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Overview" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
@@ -1452,8 +2290,12 @@ describe("workflow pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("items-start");
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
+    expect(screen.queryByRole("button", { name: "On This Page" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "# Overview\n\nExpanded canonical scope for the planning workspace." },
+      target: {
+        value:
+          "# Overview\n\n## Scope\n\nExpanded canonical scope for the planning workspace.\n\n### Defaults\n\nTeam-wide defaults remain explicit.",
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Overview" }));
 
@@ -1471,6 +2313,204 @@ describe("workflow pages", () => {
     ).toBeTruthy();
     expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
     expect(screen.queryByText("Background Jobs")).toBeNull();
+  });
+
+  it("refreshes the overview after generation succeeds without a page reload", async () => {
+    const overviewProjectId = "23232323-2323-4232-8232-232323232323";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let onePager: {
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    } | null = null;
+    let versions: Array<{
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    }> = [];
+    let generateSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: overviewProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: overviewProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/questionnaire-answers` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: overviewProjectId,
+            answers: {},
+            updatedAt: "2026-03-16T09:00:00.000Z",
+            completedAt: "2026-03-16T09:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ onePager }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "POST") {
+        generateSubmitted = true;
+        onePager = {
+          id: "generated-overview-id",
+          projectId: overviewProjectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview\n\nGenerated without refresh.",
+          source: "generated",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:10:00.000Z",
+        };
+        versions = [onePager];
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "overview-job-id",
+            projectId: overviewProjectId,
+            type: "GenerateProjectOverview",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:06:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: generateSubmitted
+              ? [
+                  {
+                    id: "overview-job-id",
+                    projectId: overviewProjectId,
+                    type: "GenerateProjectOverview",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:06:00.000Z",
+                    startedAt: "2026-03-16T09:06:10.000Z",
+                    completedAt: "2026-03-16T09:10:00.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ phases: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/next-actions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ actions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate Overview" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${overviewProjectId}/one-pager` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      await screen.findByText("Generated without refresh.", {}, { timeout: 2_500 }),
+    ).toBeTruthy();
+    expect(screen.queryByText("The overview is being prepared. Stay on this page to review it when the job finishes.")).toBeNull();
   });
 
   it("keeps questions header status text free of timestamps", async () => {
@@ -1783,7 +2823,8 @@ describe("workflow pages", () => {
       projectId: productSpecProjectId,
       version: 2,
       title: "Product Spec",
-      markdown: "# Product Spec\n\nCanonical specification.",
+      markdown:
+        "# Product Spec\n\n## Scope\n\nCanonical specification.\n\n### Risks\n\nCapture the principal delivery risks.",
       source: "GenerateProductSpec",
       isCanonical: true,
       approvedAt: null,
@@ -1885,6 +2926,7 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
 
     expect(await screen.findByRole("heading", { name: "Generated Product Spec" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "On This Page" })).toBeTruthy();
     expect(screen.queryByText("Current Product Spec")).toBeNull();
     expect(await screen.findByRole("button", { name: "Regenerate Product Spec" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Edit Markdown" })).toBeTruthy();
@@ -1892,8 +2934,12 @@ describe("workflow pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Markdown" }));
     expect(screen.getByTestId("editable-markdown-editor").className).toContain("min-w-0");
+    expect(screen.queryByRole("button", { name: "On This Page" })).toBeNull();
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "# Product Spec\n\nExpanded canonical specification." },
+      target: {
+        value:
+          "# Product Spec\n\n## Scope\n\nExpanded canonical specification.\n\n### Risks\n\nCapture the principal delivery risks.",
+      },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Product Spec" }));
 
@@ -1909,6 +2955,164 @@ describe("workflow pages", () => {
 
     expect(await screen.findByText("Expanded canonical specification.")).toBeTruthy();
     expect(await screen.findByText("Version 3 (canonical)")).toBeTruthy();
+  });
+
+  it("refreshes the Product Spec after generation succeeds without a page reload", async () => {
+    const productSpecProjectId = "31313131-3131-4313-8313-313131313131";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let productSpec: {
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    } | null = null;
+    let versions: Array<{
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    }> = [];
+    let generateSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: productSpecProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: productSpecProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ productSpec }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/product-spec` && method === "POST") {
+        generateSubmitted = true;
+        productSpec = {
+          id: "generated-product-spec-id",
+          projectId: productSpecProjectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nGenerated without refresh.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:10:00.000Z",
+        };
+        versions = [productSpec];
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "product-spec-job-id",
+            projectId: productSpecProjectId,
+            type: "GenerateProductSpec",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:06:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${productSpecProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: generateSubmitted
+              ? [
+                  {
+                    id: "product-spec-job-id",
+                    projectId: productSpecProjectId,
+                    type: "GenerateProductSpec",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:06:00.000Z",
+                    startedAt: "2026-03-16T09:06:10.000Z",
+                    completedAt: "2026-03-16T09:10:00.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/product-spec", <ProductSpecPage />, productSpecProjectId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate Product Spec" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${productSpecProjectId}/product-spec` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      await screen.findByText("Generated without refresh.", {}, { timeout: 2_500 }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("The Product Spec is being prepared. Stay on this page to review it when the job finishes."),
+    ).toBeNull();
   });
 
   it("loads the Product Spec page without an error when the overview is approved but no Product Spec exists yet", async () => {
@@ -2151,8 +3355,14 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
 
     expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add User Flow" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Flows" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Approve User Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve User Flows" }).className).toContain(
+      "bg-accent",
+    );
+    expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+    expect(screen.queryByText("Coverage summary")).toBeNull();
     expect(screen.queryByRole("button", { name: "Deduplicate" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Generate Flows" }));
@@ -2166,6 +3376,175 @@ describe("workflow pages", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("reveals the add user flow panel, submits a manual flow, and closes it on success", async () => {
+    const userFlowsProjectId = "72727272-7272-4272-8272-727272727272";
+    let userFlowsResponse: UseCaseListResponse = {
+      userFlows: [],
+      coverage: {
+        warnings: [],
+        acceptedWarnings: [],
+      },
+      approvedAt: null,
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: userFlowsProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: userFlowsProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => userFlowsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "POST") {
+        const payload = JSON.parse(String(init?.body)) as {
+          acceptanceCriteria: string[];
+          coverageTags: string[];
+          doneCriteriaRefs: string[];
+          endState: string;
+          entryPoint: string;
+          flowSteps: string[];
+          source: string;
+          title: string;
+          userStory: string;
+        };
+
+        expect(payload).toEqual({
+          acceptanceCriteria: ["Project appears in Mission Control."],
+          coverageTags: ["happy-path", "onboarding"],
+          doneCriteriaRefs: ["manual"],
+          endState: "The new project is visible in Mission Control.",
+          entryPoint: "Projects home",
+          flowSteps: ["Click new project", "Enter details", "Create project"],
+          source: "manual",
+          title: "Create first project",
+          userStory: "As a new user, I want to create a project so I can begin planning.",
+        });
+
+        userFlowsResponse = {
+          userFlows: [
+            {
+              id: "flow-create-id",
+              projectId: userFlowsProjectId,
+              title: payload.title,
+              userStory: payload.userStory,
+              entryPoint: payload.entryPoint,
+              endState: payload.endState,
+              flowSteps: payload.flowSteps,
+              coverageTags: payload.coverageTags,
+              acceptanceCriteria: payload.acceptanceCriteria,
+              doneCriteriaRefs: payload.doneCriteriaRefs,
+              source: payload.source,
+              archivedAt: null,
+              createdAt: "2026-03-16T10:00:00.000Z",
+              updatedAt: "2026-03-16T10:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: null,
+        };
+
+        return {
+          ok: true,
+          status: 201,
+          json: async () => userFlowsResponse.userFlows[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add User Flow" }));
+
+    expect(await screen.findByRole("button", { name: "Save User Flow" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Create first project" },
+    });
+    fireEvent.change(screen.getByLabelText("User story"), {
+      target: {
+        value: "As a new user, I want to create a project so I can begin planning.",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Entry point"), {
+      target: { value: "Projects home" },
+    });
+    fireEvent.change(screen.getByLabelText("End state"), {
+      target: { value: "The new project is visible in Mission Control." },
+    });
+    fireEvent.change(screen.getByLabelText("Flow steps"), {
+      target: { value: "Click new project\nEnter details\nCreate project" },
+    });
+    fireEvent.change(screen.getByLabelText("Coverage tags"), {
+      target: { value: "happy-path, onboarding" },
+    });
+    fireEvent.change(screen.getByLabelText("Acceptance criteria"), {
+      target: { value: "Project appears in Mission Control." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save User Flow" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${userFlowsProjectId}/user-flows` && init?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+    });
+    expect(await screen.findByText("Create first project")).toBeTruthy();
   });
 
   it("shows the generate flows AI button as active only for running generation jobs", async () => {
@@ -2348,10 +3727,10 @@ describe("workflow pages", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getAllByLabelText("Title")[1], {
+    fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Invite and assign a teammate" },
     });
-    fireEvent.change(screen.getAllByLabelText("Flow steps")[1], {
+    fireEvent.change(screen.getByLabelText("Flow steps"), {
       target: { value: "Open members\nEnter teammate email\nAssign role\nSend invite" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
@@ -3020,7 +4399,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("Primary navigation")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Generate UX Spec" }) as HTMLButtonElement).disabled).toBe(
       true,
@@ -3136,7 +4515,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("UX Spec generation failed.")).toBeTruthy();
     expect(
       screen.getByText(
@@ -3246,7 +4625,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/ux-spec", <UxSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "UX Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "UX Spec" })).length).toBeGreaterThan(0);
     await waitFor(() => {
       expect(screen.queryByText("UX Spec generation failed.")).toBeNull();
     });
@@ -3691,7 +5070,7 @@ describe("workflow pages", () => {
 
     renderRoute("/projects/:id/technical-spec", <TechnicalSpecPage />, specProjectId);
 
-    expect(await screen.findByRole("heading", { name: "Technical Spec" })).toBeTruthy();
+    expect((await screen.findAllByRole("heading", { name: "Technical Spec" })).length).toBeGreaterThan(0);
     expect(await screen.findByText("Technical Decision Tiles")).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Review Decisions" })).toBeTruthy();
     expect(await screen.findByRole("button", { name: "Approve Technical Spec" })).toBeTruthy();
@@ -3735,10 +5114,52 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "missing" },
+          ux: { required: false, state: "missing" },
+          tech: { required: false, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
+      },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "20202020-2020-4020-8020-202020202020",
+            milestoneTitle: "Milestone beta",
+            featureKey: "F-001",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "41414141-4141-4141-8141-414141414141",
+              featureId,
+              version: 1,
+              title: "Feature intake",
+              summary: "Draft the feature workstreams.",
+              acceptanceCriteria: ["A Product spec gates downstream tabs."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "missing" },
+              ux: { required: false, state: "missing" },
+              tech: { required: false, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
       },
       [`/api/features/${featureId}/tracks`]: {
         featureId,
@@ -3857,10 +5278,52 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "draft" },
+          ux: { required: true, state: "missing" },
+          tech: { required: true, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
+      },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "20202020-2020-4020-8020-202020202020",
+            milestoneTitle: "Milestone beta",
+            featureKey: "F-002",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "10101010-1010-4010-8010-101010101010",
+              featureId,
+              version: 1,
+              title: "Revision history",
+              summary: "Inspect workstream history.",
+              acceptanceCriteria: ["Older revisions remain browsable."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "draft" },
+              ux: { required: true, state: "missing" },
+              tech: { required: true, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
       },
       [`/api/features/${featureId}/tracks`]: {
         featureId,
@@ -3985,6 +5448,17 @@ describe("workflow pages", () => {
     );
 
     expect(await screen.findByText("Current head revision.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Feature Builder" })).toBeTruthy();
+    expect(screen.getAllByText("Feature Product Spec").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Product" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Tasks" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tasks" }));
+
+    expect(await screen.findByText("Milestone 6 stub")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Product" }));
+
     expect(screen.getByText("Revision 2")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /v1/i }));
@@ -4039,10 +5513,52 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "missing" },
+          ux: { required: false, state: "missing" },
+          tech: { required: false, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
         archivedAt: null,
+      },
+      [`/api/projects/${featureProjectId}/features`]: {
+        features: [
+          {
+            id: featureId,
+            projectId: featureProjectId,
+            milestoneId: "93939393-9393-4393-8393-939393939394",
+            milestoneTitle: "Milestone gamma",
+            featureKey: "F-003",
+            kind: "screen",
+            priority: "must_have",
+            status: "draft",
+            headRevision: {
+              id: "94949494-9494-4494-8494-949494949495",
+              featureId,
+              version: 1,
+              title: "Cross-project route",
+              summary: "Reject mixed project routes.",
+              acceptanceCriteria: ["The route uses the feature's owning project."],
+              source: "manual",
+              createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "missing" },
+              ux: { required: false, state: "missing" },
+              tech: { required: false, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
+            },
+            dependencyIds: [],
+            createdAt: "2026-03-20T00:00:00.000Z",
+            updatedAt: "2026-03-20T00:00:00.000Z",
+            archivedAt: null,
+          },
+        ],
       },
       [`/api/features/${featureId}/tracks`]: {
         featureId,

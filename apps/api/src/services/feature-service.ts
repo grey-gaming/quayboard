@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
+  type FeatureDocumentState,
   type FeatureKind,
   type Priority,
   createFeatureDependencyRequestSchema,
@@ -10,6 +11,7 @@ import {
   featureDependencySchema,
   featureGraphResponseSchema,
   featureGraphNodeSchema,
+  featureDocumentsSchema,
   featureListResponseSchema,
   featureRevisionListResponseSchema,
   featureRevisionSchema,
@@ -20,10 +22,17 @@ import {
 
 import type { AppDatabase } from "../db/client.js";
 import {
+  artifactApprovalsTable,
+  featureArchDocSpecsTable,
   featureCasesTable,
   featureDependenciesTable,
   featureEdgesTable,
+  featureProductRevisionsTable,
+  featureProductSpecsTable,
   featureRevisionsTable,
+  featureTechSpecsTable,
+  featureUserDocSpecsTable,
+  featureUxSpecsTable,
   milestonesTable,
   projectCountersTable,
   projectsTable,
@@ -33,11 +42,15 @@ import { HttpError } from "./http-error.js";
 
 const formatFeatureKey = (counter: number) => `F-${counter.toString().padStart(3, "0")}`;
 const normalizeFeatureTitle = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const acceptedState: FeatureDocumentState = "accepted";
+const draftState: FeatureDocumentState = "draft";
+const missingState: FeatureDocumentState = "missing";
 
 const buildFeature = (
   feature: typeof featureCasesTable.$inferSelect,
   milestoneTitle: string,
   headRevision: typeof featureRevisionsTable.$inferSelect,
+  documents: ReturnType<typeof featureDocumentsSchema.parse>,
   dependencyIds: string[],
 ) =>
   featureSchema.parse({
@@ -59,6 +72,7 @@ const buildFeature = (
       source: headRevision.source,
       createdAt: headRevision.createdAt.toISOString(),
     }),
+    documents,
     dependencyIds,
     createdAt: feature.createdAt.toISOString(),
     updatedAt: feature.updatedAt.toISOString(),
@@ -137,7 +151,7 @@ export const createFeatureService = (db: AppDatabase) => ({
       return featureListResponseSchema.parse({ features: [] });
     }
 
-    const [milestones, revisions, dependencies] = await Promise.all([
+    const [milestones, revisions, dependencies, productSpecs, productRevisions, uxSpecs, techSpecs, userDocSpecs, archDocSpecs] = await Promise.all([
       db.query.milestonesTable.findMany({
         where: inArray(
           milestonesTable.id,
@@ -157,6 +171,28 @@ export const createFeatureService = (db: AppDatabase) => ({
           features.map((feature) => feature.id),
         ),
       }),
+      db.query.featureProductSpecsTable.findMany({
+        where: inArray(featureProductSpecsTable.featureId, features.map((feature) => feature.id)),
+      }),
+      db.query.featureProductRevisionsTable.findMany({
+        where: inArray(
+          featureProductRevisionsTable.featureId,
+          features.map((feature) => feature.id),
+        ),
+        orderBy: [desc(featureProductRevisionsTable.version)],
+      }),
+      db.query.featureUxSpecsTable.findMany({
+        where: inArray(featureUxSpecsTable.featureId, features.map((feature) => feature.id)),
+      }),
+      db.query.featureTechSpecsTable.findMany({
+        where: inArray(featureTechSpecsTable.featureId, features.map((feature) => feature.id)),
+      }),
+      db.query.featureUserDocSpecsTable.findMany({
+        where: inArray(featureUserDocSpecsTable.featureId, features.map((feature) => feature.id)),
+      }),
+      db.query.featureArchDocSpecsTable.findMany({
+        where: inArray(featureArchDocSpecsTable.featureId, features.map((feature) => feature.id)),
+      }),
     ]);
 
     const milestoneTitleById = new Map(milestones.map((milestone) => [milestone.id, milestone.title]));
@@ -172,6 +208,35 @@ export const createFeatureService = (db: AppDatabase) => ({
       existing.push(dependency.dependsOnFeatureId);
       dependencyIdsByFeatureId.set(dependency.featureId, existing);
     }
+    const productSpecByFeatureId = new Map(productSpecs.map((spec) => [spec.featureId, spec]));
+    const uxSpecByFeatureId = new Map(uxSpecs.map((spec) => [spec.featureId, spec]));
+    const techSpecByFeatureId = new Map(techSpecs.map((spec) => [spec.featureId, spec]));
+    const userDocSpecByFeatureId = new Map(userDocSpecs.map((spec) => [spec.featureId, spec]));
+    const archDocSpecByFeatureId = new Map(archDocSpecs.map((spec) => [spec.featureId, spec]));
+    const productRevisionById = new Map(productRevisions.map((revision) => [revision.id, revision]));
+    const headRevisionIds = [
+      ...productSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
+      ...uxSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
+      ...techSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
+      ...userDocSpecs
+        .map((spec) => spec.headRevisionId)
+        .filter((value): value is string => Boolean(value)),
+      ...archDocSpecs
+        .map((spec) => spec.headRevisionId)
+        .filter((value): value is string => Boolean(value)),
+    ];
+    const approvals =
+      headRevisionIds.length > 0
+        ? await db.query.artifactApprovalsTable.findMany({
+            where: and(
+              eq(artifactApprovalsTable.projectId, projectId),
+              inArray(artifactApprovalsTable.artifactId, headRevisionIds),
+            ),
+          })
+        : [];
+    const approvedRevisionIds = new Set(approvals.map((approval) => approval.artifactId));
+    const resolveState = (headRevisionId: string | null): FeatureDocumentState =>
+      !headRevisionId ? missingState : approvedRevisionIds.has(headRevisionId) ? acceptedState : draftState;
 
     return featureListResponseSchema.parse({
       features: features.map((feature) => {
@@ -179,11 +244,51 @@ export const createFeatureService = (db: AppDatabase) => ({
         if (!headRevision) {
           throw new Error(`Missing head revision for feature ${feature.id}.`);
         }
+        const productSpec = productSpecByFeatureId.get(feature.id);
+        const productHeadRevision = productSpec?.headRevisionId
+          ? productRevisionById.get(productSpec.headRevisionId) ?? null
+          : null;
+        const requirements = productHeadRevision
+          ? {
+              ux: productHeadRevision.uxRequired,
+              tech: productHeadRevision.techRequired,
+              userDocs: productHeadRevision.userDocsRequired,
+              archDocs: productHeadRevision.archDocsRequired,
+            }
+          : {
+              ux: false,
+              tech: false,
+              userDocs: false,
+              archDocs: false,
+            };
+        const documents = featureDocumentsSchema.parse({
+          product: {
+            required: true,
+            state: resolveState(productSpec?.headRevisionId ?? null),
+          },
+          ux: {
+            required: requirements.ux,
+            state: resolveState(uxSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
+          },
+          tech: {
+            required: requirements.tech,
+            state: resolveState(techSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
+          },
+          userDocs: {
+            required: requirements.userDocs,
+            state: resolveState(userDocSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
+          },
+          archDocs: {
+            required: requirements.archDocs,
+            state: resolveState(archDocSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
+          },
+        });
 
         return buildFeature(
           feature,
           milestoneTitleById.get(feature.milestoneId) ?? "Unknown milestone",
           headRevision,
+          documents,
           dependencyIdsByFeatureId.get(feature.id) ?? [],
         );
       }),

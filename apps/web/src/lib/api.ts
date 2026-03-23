@@ -288,7 +288,7 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  transitionMilestone(milestoneId: string, action: "approve" | "complete") {
+  transitionMilestone(milestoneId: string, action: "approve") {
     return apiRequest<Milestone>(`/api/milestones/${milestoneId}`, {
       method: "POST",
       body: JSON.stringify({ action }),
@@ -305,6 +305,12 @@ export const api = {
   generateMilestoneDesignDoc(milestoneId: string) {
     return apiRequest<Job>(`/api/milestones/${milestoneId}/design-docs`, {
       method: "POST",
+    });
+  },
+  updateMilestoneDesignDoc(milestoneId: string, payload: { markdown: string }) {
+    return apiRequest<MilestoneDesignDoc>(`/api/milestones/${milestoneId}/design-docs`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     });
   },
   approveMilestoneDesignDoc(milestoneId: string, revisionId: string) {

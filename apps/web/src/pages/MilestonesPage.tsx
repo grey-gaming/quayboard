@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import type { Job } from "@quayboard/shared";
+import type { Job, Milestone } from "@quayboard/shared";
 
-import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
+import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
+  findLatestJob,
   getDefaultJobFailureHint,
   getJobErrorMessage,
   LatestJobFailureAlert,
@@ -17,9 +19,9 @@ import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
+import { Checkbox } from "../components/ui/Checkbox.js";
 import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
-import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
 import {
   useApproveMilestoneDesignMutation,
@@ -31,13 +33,12 @@ import {
   useProjectJobsQuery,
   useProjectQuery,
   useTransitionMilestoneMutation,
+  useUpdateMilestoneDesignMutation,
   useUpdateMilestoneMutation,
   useUserFlowsQuery,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
-
-const readSelectedValues = (select: HTMLSelectElement) =>
-  [...select.selectedOptions].map((option) => option.value);
 
 const isActiveJob = (job: Job) => job.status === "queued" || job.status === "running";
 const jobTargetsMilestone = (job: Job, milestoneId: string) =>
@@ -45,6 +46,178 @@ const jobTargetsMilestone = (job: Job, milestoneId: string) =>
   job.inputs !== null &&
   "milestoneId" in job.inputs &&
   job.inputs.milestoneId === milestoneId;
+
+const toggleSelectedFlow = (selectedUseCaseIds: string[], flowId: string, checked: boolean) =>
+  checked
+    ? selectedUseCaseIds.includes(flowId)
+      ? selectedUseCaseIds
+      : [...selectedUseCaseIds, flowId]
+    : selectedUseCaseIds.filter((id) => id !== flowId);
+
+type MilestoneDesignCardProps = {
+  milestone: Milestone;
+  projectId: string;
+  jobs: Job[] | undefined;
+  isExpanded: boolean;
+};
+
+const MilestoneDesignCard = ({
+  milestone,
+  projectId,
+  jobs,
+  isExpanded,
+}: MilestoneDesignCardProps) => {
+  const designDocsQuery = useMilestoneDesignDocsQuery(isExpanded ? milestone.id : null);
+  const generateDesignMutation = useGenerateMilestoneDesignMutation(projectId, milestone.id);
+  const approveDesignMutation = useApproveMilestoneDesignMutation(projectId, milestone.id);
+  const updateDesignMutation = useUpdateMilestoneDesignMutation(projectId, milestone.id);
+
+  const activeMilestoneDesignJob = useMemo(
+    () =>
+      jobs?.find(
+        (job) =>
+          job.type === "GenerateMilestoneDesign" &&
+          jobTargetsMilestone(job, milestone.id) &&
+          isActiveJob(job),
+      ) ?? null,
+    [jobs, milestone.id],
+  );
+  const latestFailedMilestoneDesignJob = useMemo(
+    () =>
+      findLatestFailedJob(
+        jobs,
+        (job) => job.type === "GenerateMilestoneDesign" && jobTargetsMilestone(job, milestone.id),
+      ),
+    [jobs, milestone.id],
+  );
+  const latestMilestoneDesignJob = useMemo(
+    () =>
+      findLatestJob(
+        jobs,
+        (job) => job.type === "GenerateMilestoneDesign" && jobTargetsMilestone(job, milestone.id),
+      ),
+    [jobs, milestone.id],
+  );
+  const milestoneDesignButtonActive =
+    generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
+  const currentDesignDoc = designDocsQuery.data?.designDocs[0];
+  const designDocError =
+    designDocsQuery.error ||
+    generateDesignMutation.error ||
+    approveDesignMutation.error ||
+    updateDesignMutation.error;
+
+  useJobDrivenRefresh({
+    active: isExpanded && Boolean(activeMilestoneDesignJob),
+    latestJob: latestMilestoneDesignJob,
+    queryKeys: [["milestone", milestone.id, "design-docs"]],
+  });
+
+  return (
+    <div className="mt-4 border-t border-border/80 pt-4">
+      {isExpanded ? (
+        <div className="grid gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="qb-meta-label">Design doc</p>
+              <p className="mt-1 text-sm text-secondary">
+                Generate or edit the milestone design document before approving the milestone.
+              </p>
+            </div>
+            <AiWorkflowButton
+              active={milestoneDesignButtonActive}
+              disabled={milestoneDesignButtonActive || milestone.status === "approved"}
+              label="Generate Design Document"
+              onClick={() => {
+                void generateDesignMutation.mutateAsync().catch(() => undefined);
+              }}
+              runningLabel="Generating..."
+              variant="secondary"
+            />
+          </div>
+          {activeMilestoneDesignJob ? (
+            <Alert tone="info">
+              Milestone design doc generation is {activeMilestoneDesignJob.status}. The milestone
+              card will refresh automatically when the job completes.
+            </Alert>
+          ) : null}
+          {!activeMilestoneDesignJob ? (
+            <LatestJobFailureAlert
+              currentVersionStillAvailable={Boolean(currentDesignDoc)}
+              hint={
+                latestFailedMilestoneDesignJob && getJobErrorMessage(latestFailedMilestoneDesignJob)
+                  ? getDefaultJobFailureHint(
+                      getJobErrorMessage(latestFailedMilestoneDesignJob)!,
+                      "milestone design doc generation",
+                    )
+                  : null
+              }
+              job={latestFailedMilestoneDesignJob}
+              workflowLabel="Milestone design doc generation"
+            />
+          ) : null}
+          {designDocError ? <Alert tone="error">{designDocError.message}</Alert> : null}
+          <Card surface="inset">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="qb-meta-label">Current revision</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+                  {currentDesignDoc?.title ?? "No design doc yet"}
+                </p>
+                <p className="mt-2 text-sm text-secondary">
+                  Linked journeys: {milestone.linkedUserFlows.map((flow) => flow.title).join(", ")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {currentDesignDoc && !currentDesignDoc.approval ? (
+                  <Button
+                    disabled={milestone.status !== "approved"}
+                    onClick={() => {
+                      void approveDesignMutation.mutateAsync(currentDesignDoc.id).catch(() => undefined);
+                    }}
+                    variant="secondary"
+                  >
+                    Approve design doc
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {currentDesignDoc ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {currentDesignDoc.approval ? (
+                      <Badge tone="success">approved</Badge>
+                    ) : (
+                      <Badge tone="warning">approval required</Badge>
+                    )}
+                    <Badge tone="neutral">
+                      linked flows covered: {milestone.linkedUserFlows.length}
+                    </Badge>
+                  </div>
+                  <EditableMarkdownDocument
+                    disabled={milestone.status === "approved"}
+                    editLabel="Edit Markdown"
+                    isSaving={updateDesignMutation.isPending}
+                    markdown={currentDesignDoc.markdown}
+                    onSave={(markdown) =>
+                      updateDesignMutation.mutateAsync({ markdown }).catch(() => undefined)
+                    }
+                    saveLabel="Save milestone document"
+                  />
+                </>
+              ) : (
+                <p className="text-sm text-secondary">
+                  No milestone design doc exists for this milestone yet.
+                </p>
+              )}
+            </div>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+};
 
 export const MilestonesPage = () => {
   const { id = "" } = useParams();
@@ -56,107 +229,89 @@ export const MilestonesPage = () => {
   const updateMilestoneMutation = useUpdateMilestoneMutation(id);
   const transitionMilestoneMutation = useTransitionMilestoneMutation(id);
   const generateMilestonesMutation = useGenerateMilestonesMutation(id);
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>("");
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [expandedDesignMilestoneId, setExpandedDesignMilestoneId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [summary, setSummary] = useState("");
   const [selectedUseCaseIds, setSelectedUseCaseIds] = useState<string[]>([]);
 
   useSseEvents(id);
 
-  const selectedMilestone =
-    milestonesQuery.data?.milestones.find((milestone) => milestone.id === selectedMilestoneId) ??
-    milestonesQuery.data?.milestones[0] ??
-    null;
-  const designDocsQuery = useMilestoneDesignDocsQuery(selectedMilestone?.id ?? null);
-  const generateDesignMutation = useGenerateMilestoneDesignMutation(id, selectedMilestone?.id ?? "");
-  const approveDesignMutation = useApproveMilestoneDesignMutation(id, selectedMilestone?.id ?? "");
-
-  const resetForm = () => {
-    setEditingMilestoneId(null);
-    setTitle("");
-    setSummary("");
-    setSelectedUseCaseIds([]);
-  };
-
   const activeMilestones = milestonesQuery.data?.milestones ?? [];
-
   const canSubmit = title.trim() && summary.trim() && selectedUseCaseIds.length > 0;
-
-  const linkedFlowTitles = useMemo(
-    () => new Set(selectedMilestone?.linkedUserFlows.map((flow) => flow.title) ?? []),
-    [selectedMilestone?.linkedUserFlows],
-  );
   const activeMilestonePlanJob = useMemo(
-    () =>
-      jobsQuery.data?.jobs.find(
-        (job) => job.type === "GenerateMilestones" && isActiveJob(job),
-      ) ?? null,
+    () => jobsQuery.data?.jobs.find((job) => job.type === "GenerateMilestones" && isActiveJob(job)) ?? null,
     [jobsQuery.data?.jobs],
   );
   const latestFailedMilestonePlanJob = useMemo(
     () => findLatestFailedJob(jobsQuery.data?.jobs, (job) => job.type === "GenerateMilestones"),
     [jobsQuery.data?.jobs],
   );
-  const activeMilestoneDesignJob = useMemo(
-    () =>
-      selectedMilestone
-        ? jobsQuery.data?.jobs.find(
-            (job) =>
-              job.type === "GenerateMilestoneDesign" &&
-              jobTargetsMilestone(job, selectedMilestone.id) &&
-              isActiveJob(job),
-          ) ?? null
-        : null,
-    [jobsQuery.data?.jobs, selectedMilestone],
-  );
-  const latestFailedMilestoneDesignJob = useMemo(
-    () =>
-      selectedMilestone
-        ? findLatestFailedJob(
-            jobsQuery.data?.jobs,
-            (job) =>
-              job.type === "GenerateMilestoneDesign" &&
-              jobTargetsMilestone(job, selectedMilestone.id),
-          )
-        : null,
-    [jobsQuery.data?.jobs, selectedMilestone],
+  const latestMilestonePlanJob = useMemo(
+    () => findLatestJob(jobsQuery.data?.jobs, (job) => job.type === "GenerateMilestones"),
+    [jobsQuery.data?.jobs],
   );
   const activeError =
     projectQuery.error ||
     userFlowsQuery.error ||
     milestonesQuery.error ||
     jobsQuery.error ||
-    designDocsQuery.error ||
     createMilestoneMutation.error ||
     updateMilestoneMutation.error ||
     transitionMilestoneMutation.error ||
-    generateMilestonesMutation.error ||
-    generateDesignMutation.error ||
-    approveDesignMutation.error;
+    generateMilestonesMutation.error;
   const milestonePlanButtonActive =
     generateMilestonesMutation.isPending || Boolean(activeMilestonePlanJob);
-  const milestoneDesignButtonActive =
-    generateDesignMutation.isPending || Boolean(activeMilestoneDesignJob);
+
+  const resetForm = () => {
+    setEditingMilestoneId(null);
+    setTitle("");
+    setSummary("");
+    setSelectedUseCaseIds([]);
+    setIsFormOpen(false);
+  };
+
+  const openCreatePanel = () => {
+    setEditingMilestoneId(null);
+    setTitle("");
+    setSummary("");
+    setSelectedUseCaseIds([]);
+    setIsFormOpen(true);
+  };
+
+  const openEditPanel = (milestone: Milestone) => {
+    setEditingMilestoneId(milestone.id);
+    setTitle(milestone.title);
+    setSummary(milestone.summary);
+    setSelectedUseCaseIds(milestone.linkedUserFlows.map((flow) => flow.id));
+    setIsFormOpen(true);
+  };
+
+  useJobDrivenRefresh({
+    active: Boolean(activeMilestonePlanJob),
+    latestJob: latestMilestonePlanJob,
+    queryKeys: [["project", id, "milestones"]],
+  });
+
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
 
   return (
-    <AppFrame>
-      {projectQuery.data ? <ProjectSubNav project={projectQuery.data} /> : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
-        actions={
-          <AiWorkflowButton
-            active={milestonePlanButtonActive}
-            disabled={milestonePlanButtonActive || activeMilestones.length > 0}
-            label="Generate Milestones"
-            onClick={() => {
-              void generateMilestonesMutation.mutateAsync();
-            }}
-            runningLabel="Generating milestones..."
-          />
-        }
         eyebrow="Milestones"
         title="Milestones"
-        summary="Plan releasable increments from the approved user-flow contract, then generate and approve a design document for each approved milestone."
+        summary="Plan releasable increments from the approved user-flow contract, prepare a design document for each milestone, then approve the milestones that are ready for feature work."
         meta={
           <>
             <Badge tone="neutral">{activeMilestones.length} milestones</Badge>
@@ -190,21 +345,49 @@ export const MilestonesPage = () => {
         />
       ) : null}
       <div className="grid gap-4">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_24rem]">
-          <div className="grid gap-4">
-            <Card surface="panel">
-              <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+        <Card surface="panel">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="qb-meta-label">Milestone controls</p>
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Roadmap intake</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  if (isFormOpen && !editingMilestoneId) {
+                    resetForm();
+                    return;
+                  }
+                  openCreatePanel();
+                }}
+                variant="primary"
+              >
+                {isFormOpen && !editingMilestoneId ? "Hide Add Milestone" : "Add Milestone"}
+              </Button>
+              <AiWorkflowButton
+                active={milestonePlanButtonActive}
+                disabled={milestonePlanButtonActive || activeMilestones.length > 0}
+                label="Generate Milestones"
+                onClick={() => {
+                  void generateMilestonesMutation.mutateAsync().catch(() => undefined);
+                }}
+                runningLabel="Generating milestones..."
+                variant="secondary"
+              />
+            </div>
+          </div>
+          {isFormOpen ? (
+            <div className="mt-4 border-t border-border/80 pt-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="qb-meta-label">Milestone intake</p>
                   <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
                     {editingMilestoneId ? "Edit milestone" : "Create milestone"}
                   </p>
                 </div>
-                {editingMilestoneId ? (
-                  <Button onClick={resetForm} variant="ghost">
-                    Cancel edit
-                  </Button>
-                ) : null}
+                <Button onClick={resetForm} variant="ghost">
+                  Cancel
+                </Button>
               </div>
               <div className="mt-4 grid gap-4">
                 <div className="grid gap-2">
@@ -223,20 +406,28 @@ export const MilestonesPage = () => {
                     value={summary}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="milestone-flows">Linked user flows</Label>
-                  <Select
-                    id="milestone-flows"
-                    multiple
-                    onChange={(event) => setSelectedUseCaseIds(readSelectedValues(event.target))}
-                    value={selectedUseCaseIds}
-                  >
-                    {(userFlowsQuery.data?.userFlows ?? []).map((flow) => (
-                      <option key={flow.id} value={flow.id}>
-                        {flow.title}
-                      </option>
-                    ))}
-                  </Select>
+                <div className="grid gap-3">
+                  <Label>Linked user flows</Label>
+                  {(userFlowsQuery.data?.userFlows ?? []).length > 0 ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {(userFlowsQuery.data?.userFlows ?? []).map((flow) => (
+                        <Checkbox
+                          checked={selectedUseCaseIds.includes(flow.id)}
+                          key={flow.id}
+                          label={flow.title}
+                          onChange={(event) =>
+                            setSelectedUseCaseIds((current) =>
+                              toggleSelectedFlow(current, flow.id, event.target.checked),
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-secondary">
+                      No active user flows are available to link yet.
+                    </p>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button
@@ -257,13 +448,17 @@ export const MilestonesPage = () => {
                           .mutateAsync({ milestoneId: editingMilestoneId, payload })
                           .then(() => {
                             resetForm();
-                          });
+                          })
+                          .catch(() => undefined);
                         return;
                       }
 
-                      void createMilestoneMutation.mutateAsync(payload).then(() => {
-                        resetForm();
-                      });
+                      void createMilestoneMutation
+                        .mutateAsync(payload)
+                        .then(() => {
+                          resetForm();
+                        })
+                        .catch(() => undefined);
                     }}
                     variant="primary"
                   >
@@ -271,206 +466,92 @@ export const MilestonesPage = () => {
                   </Button>
                 </div>
               </div>
-            </Card>
-            <div className="grid gap-4">
-              {activeMilestones.map((milestone) => (
-                <Card key={milestone.id} surface="panel">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone="neutral">Milestone {milestone.position}</Badge>
-                        <Badge tone={milestone.status === "completed" ? "success" : "info"}>
-                          {milestone.status}
-                        </Badge>
-                      </div>
-                      <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
-                        {milestone.title}
-                      </p>
-                      <p className="mt-2 text-sm text-secondary">{milestone.summary}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        onClick={() => {
-                          setEditingMilestoneId(milestone.id);
-                          setTitle(milestone.title);
-                          setSummary(milestone.summary);
-                          setSelectedUseCaseIds(milestone.linkedUserFlows.map((flow) => flow.id));
-                        }}
-                        variant="ghost"
-                      >
-                        Edit
-                      </Button>
-                      {milestone.status === "draft" ? (
-                        <Button
-                          onClick={() => {
-                            void transitionMilestoneMutation.mutateAsync({
-                              milestoneId: milestone.id,
-                              action: "approve",
-                            });
-                          }}
-                          variant="secondary"
-                        >
-                          Approve
-                        </Button>
-                      ) : null}
-                      {milestone.status === "approved" ? (
-                        <Button
-                          onClick={() => {
-                            void transitionMilestoneMutation.mutateAsync({
-                              milestoneId: milestone.id,
-                              action: "complete",
-                            });
-                          }}
-                          variant="secondary"
-                        >
-                          Complete
-                        </Button>
-                      ) : null}
-                      <Button
-                        onClick={() => setSelectedMilestoneId(milestone.id)}
-                        variant="ghost"
-                      >
-                        Design doc
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {milestone.linkedUserFlows.map((flow) => (
-                      <Badge key={flow.id} tone="warning">
-                        {flow.title}
-                      </Badge>
-                    ))}
-                    <Badge tone="neutral">{milestone.featureCount} features</Badge>
-                  </div>
-                </Card>
-              ))}
             </div>
-          </div>
-          <div className="grid gap-4">
-            {activeMilestoneDesignJob ? (
-              <Alert tone="info">
-                Milestone design doc generation is {activeMilestoneDesignJob.status}. The selected
-                milestone will refresh automatically when the job completes.
-              </Alert>
-            ) : null}
-            {!activeMilestoneDesignJob ? (
-              <LatestJobFailureAlert
-                currentVersionStillAvailable={Boolean(designDocsQuery.data?.designDocs[0])}
-                hint={
-                  latestFailedMilestoneDesignJob &&
-                  getJobErrorMessage(latestFailedMilestoneDesignJob)
-                    ? getDefaultJobFailureHint(
-                        getJobErrorMessage(latestFailedMilestoneDesignJob)!,
-                        "milestone design doc generation",
-                      )
-                    : null
-                }
-                job={latestFailedMilestoneDesignJob}
-                workflowLabel="Milestone design doc generation"
-              />
-            ) : null}
-            <Card surface="rail">
-              <div className="flex items-center justify-between gap-3">
+          ) : null}
+        </Card>
+        <div className="grid gap-4">
+          {activeMilestones.map((milestone) => (
+            <Card key={milestone.id} surface="panel">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="qb-meta-label">Design doc</p>
-                  <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                    {selectedMilestone?.title ?? "Select a milestone"}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone="neutral">Milestone {milestone.position}</Badge>
+                    <Badge tone={milestone.status === "approved" ? "success" : "info"}>
+                      {milestone.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
+                    {milestone.title}
                   </p>
+                  <p className="mt-2 text-sm text-secondary">{milestone.summary}</p>
                 </div>
-                {selectedMilestone?.status === "approved" ? (
-                  <AiWorkflowButton
-                    active={milestoneDesignButtonActive}
-                    label="Generate"
-                    onClick={() => {
-                      if (!selectedMilestone) {
-                        return;
-                      }
-                      void generateDesignMutation.mutateAsync();
-                    }}
-                    runningLabel="Generating..."
-                    disabled={milestoneDesignButtonActive}
-                    variant="secondary"
-                  />
-                ) : null}
-              </div>
-              <div className="mt-4 text-sm text-secondary">
-                {(selectedMilestone?.linkedUserFlows ?? []).length === 0 ? (
-                  <p>Select an approved milestone to generate and review its design doc.</p>
-                ) : (
-                  <p>
-                    Linked journeys:{" "}
-                    {[...(selectedMilestone?.linkedUserFlows ?? [])]
-                      .map((flow) => flow.title)
-                      .join(", ")}
-                  </p>
-                )}
-              </div>
-            </Card>
-            <Card surface="panel">
-              <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-                <div>
-                  <p className="qb-meta-label">Current revision</p>
-                  <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                    {designDocsQuery.data?.designDocs[0]?.title ?? "No design doc yet"}
-                  </p>
-                </div>
-                {designDocsQuery.data?.designDocs[0] &&
-                !designDocsQuery.data.designDocs[0].approval &&
-                selectedMilestone?.status === "approved" ? (
+                <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() => {
-                      void approveDesignMutation.mutateAsync(designDocsQuery.data!.designDocs[0].id);
+                      openEditPanel(milestone);
                     }}
                     variant="secondary"
                   >
-                    Approve design doc
+                    Edit Milestone
                   </Button>
-                ) : null}
+                  <Button
+                    aria-expanded={expandedDesignMilestoneId === milestone.id}
+                    onClick={() =>
+                      setExpandedDesignMilestoneId((current) =>
+                        current === milestone.id ? null : milestone.id,
+                      )
+                    }
+                    variant="secondary"
+                  >
+                    {expandedDesignMilestoneId === milestone.id
+                      ? "Hide Milestone Document"
+                      : "View Milestone Document"}
+                  </Button>
+                  {milestone.status === "draft" ? (
+                    <Button
+                      onClick={() => {
+                        void transitionMilestoneMutation.mutateAsync({
+                          milestoneId: milestone.id,
+                          action: "approve",
+                        }).catch(() => undefined);
+                      }}
+                      variant="secondary"
+                    >
+                      Approve
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-              <div className="mt-4 grid gap-3">
-                {designDocsQuery.data?.designDocs[0] ? (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {designDocsQuery.data.designDocs[0].approval ? (
-                        <Badge tone="success">approved</Badge>
-                      ) : (
-                        <Badge tone="warning">approval required</Badge>
-                      )}
-                      <Badge tone="neutral">
-                        linked flows covered: {selectedMilestone?.linkedUserFlows.length ?? 0}
-                      </Badge>
-                    </div>
-                    <MarkdownDocument markdown={designDocsQuery.data.designDocs[0].markdown} />
-                  </>
-                ) : (
-                  <p className="text-sm text-secondary">
-                    No milestone design doc exists for the selected milestone yet.
-                  </p>
-                )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {milestone.linkedUserFlows.map((flow) => (
+                  <Badge key={flow.id} tone="warning">
+                    {flow.title}
+                  </Badge>
+                ))}
+                <Badge tone="neutral">{milestone.featureCount} features</Badge>
               </div>
+              <MilestoneDesignCard
+                isExpanded={expandedDesignMilestoneId === milestone.id}
+                jobs={jobsQuery.data?.jobs}
+                milestone={milestone}
+                projectId={id}
+              />
             </Card>
-            <Card surface="rail">
-              <p className="qb-meta-label">Coverage check</p>
-              <div className="mt-4 grid gap-2 text-sm text-secondary">
-                <p>
-                  Covered journeys: {milestonesQuery.data?.coverage.coveredUserFlowCount ?? 0}/
-                  {milestonesQuery.data?.coverage.approvedUserFlowCount ?? 0}
-                </p>
-                <p>
-                  Uncovered journeys: {milestonesQuery.data?.coverage.uncoveredUserFlowIds.length ?? 0}
-                </p>
-                {selectedMilestone ? (
-                  <p>
-                    Selected milestone overlap: {selectedMilestone.linkedUserFlows.filter((flow) =>
-                      linkedFlowTitles.has(flow.title),
-                    ).length}
-                  </p>
-                ) : null}
-              </div>
-            </Card>
-          </div>
+          ))}
         </div>
+        <Card surface="rail">
+          <p className="qb-meta-label">Coverage check</p>
+          <div className="mt-4 grid gap-2 text-sm text-secondary">
+            <p>
+              Covered journeys: {milestonesQuery.data?.coverage.coveredUserFlowCount ?? 0}/
+              {milestonesQuery.data?.coverage.approvedUserFlowCount ?? 0}
+            </p>
+            <p>
+              Uncovered journeys: {milestonesQuery.data?.coverage.uncoveredUserFlowIds.length ?? 0}
+            </p>
+          </div>
+        </Card>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

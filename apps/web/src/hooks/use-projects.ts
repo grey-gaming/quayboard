@@ -776,10 +776,10 @@ export const useTransitionMilestoneMutation = (projectId: string) => {
       action,
     }: {
       milestoneId: string;
-      action: "approve" | "complete";
+      action: "approve";
     }) => api.transitionMilestone(milestoneId, action),
-    onSuccess: () => {
-      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    onSuccess: (_data, variables) => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, variables.milestoneId);
     },
   });
 };
@@ -817,6 +817,20 @@ export const useApproveMilestoneDesignMutation = (
 
   return useMutation({
     mutationFn: (revisionId: string) => api.approveMilestoneDesignDoc(milestoneId, revisionId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
+    },
+  });
+};
+
+export const useUpdateMilestoneDesignMutation = (
+  projectId: string,
+  milestoneId: string,
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { markdown: string }) => api.updateMilestoneDesignDoc(milestoneId, payload),
     onSuccess: () => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
     },

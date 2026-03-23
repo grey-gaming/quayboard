@@ -1,3 +1,10 @@
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -261,6 +268,109 @@ describe("API integration", () => {
     await runMigrations(databaseUrl);
   });
 
+  it("reopens approved milestones without canonical design docs when the follow-up migration runs", async () => {
+    const tempDatabaseName = `quayboard_migration_${Date.now()}`;
+    const tempDatabaseUrl = new URL(databaseUrl);
+    tempDatabaseUrl.pathname = `/${tempDatabaseName}`;
+    const adminDatabaseUrl = new URL(databaseUrl);
+    adminDatabaseUrl.pathname = "/postgres";
+    const adminSql = postgres(adminDatabaseUrl.toString(), { max: 1 });
+    const tempSql = postgres(tempDatabaseUrl.toString(), { max: 1 });
+    const tempMigrationsRoot = await mkdtemp(path.join(tmpdir(), "quayboard-migrations-"));
+    const tempMigrationsFolder = path.join(tempMigrationsRoot, "drizzle");
+    const sourceMigrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+
+    try {
+      await adminSql.unsafe(`create database "${tempDatabaseName}"`);
+      await cp(sourceMigrationsFolder, tempMigrationsFolder, { recursive: true });
+      await rm(path.join(tempMigrationsFolder, "0010_reopen-approved-milestones-without-design-docs.sql"));
+      await writeFile(
+        path.join(tempMigrationsFolder, "meta", "_journal.json"),
+        `${JSON.stringify(
+          {
+            version: "7",
+            dialect: "postgresql",
+            entries: Array.from({ length: 10 }, (_, idx) => ({
+              idx,
+              version: "7",
+              when: 1760000000000 + idx * 1000,
+              tag: [
+                "0000_core-auth-foundation",
+                "0001_secret-type-unique",
+                "0002_m2_project-setup-and-planning",
+                "0003_product-spec-phase",
+                "0004_blueprint-builder",
+                "0005_spec-flow-split",
+                "0006_remove-blueprint-review-flow",
+                "0007_m4_milestones_and_features",
+                "0008_m5_feature_workstream_specs",
+                "0009_binary_milestone_approval",
+              ][idx],
+              breakpoints: true,
+            })),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+
+      const tempDb = drizzle(tempSql);
+      await migrate(tempDb, { migrationsFolder: tempMigrationsFolder });
+
+      await tempSql`
+        insert into "users" ("id", "email", "password_hash", "display_name")
+        values ('legacy-user', 'legacy@example.com', 'hash', 'Legacy User')
+      `;
+      await tempSql`
+        insert into "projects" ("id", "owner_user_id", "name", "description", "state")
+        values ('legacy-project', 'legacy-user', 'Legacy Project', 'Migration fixture', 'READY')
+      `;
+      await tempSql`
+        insert into "milestones" (
+          "id",
+          "project_id",
+          "position",
+          "title",
+          "summary",
+          "status",
+          "approved_at"
+        )
+        values (
+          'legacy-milestone',
+          'legacy-project',
+          1,
+          'Legacy approved milestone',
+          'Approved before design docs were required.',
+          'approved',
+          now()
+        )
+      `;
+
+      await runMigrations(tempDatabaseUrl.toString());
+
+      const migratedMilestones = await tempSql<{
+        status: string;
+        approvedAt: Date | null;
+      }[]>`
+        select "status", "approved_at" as "approvedAt"
+        from "milestones"
+        where "id" = 'legacy-milestone'
+      `;
+
+      expect(migratedMilestones).toEqual([
+        {
+          status: "draft",
+          approvedAt: null,
+        },
+      ]);
+    } finally {
+      await tempSql.end({ timeout: 5 });
+      await adminSql.unsafe(`drop database if exists "${tempDatabaseName}" with (force)`);
+      await adminSql.end({ timeout: 5 });
+      await rm(tempMigrationsRoot, { recursive: true, force: true });
+    }
+  });
+
   it("creates milestones, features, dependencies, graph nodes, and rollups for milestone planning", async () => {
     const seeded = await registerAndSeedMilestoneProject();
 
@@ -280,6 +390,28 @@ describe("API integration", () => {
 
     const milestoneId = createMilestoneResponse.json().id as string;
 
+    const approveWithoutDesignDocResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestoneId}`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: { action: "approve" },
+    });
+
+    expect(approveWithoutDesignDocResponse.statusCode).toBe(409);
+    expect(approveWithoutDesignDocResponse.json()).toEqual({
+      error: {
+        code: "milestone_design_doc_required",
+        message: "Create a milestone design document before approving the milestone.",
+      },
+    });
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId,
+      title: "Foundations design",
+      markdown: "# Foundations\n\nPrepare the first releasable increment.",
+      source: "ManualSave",
+    });
+
     const approveMilestoneResponse = await server.inject({
       method: "POST",
       url: `/api/milestones/${milestoneId}`,
@@ -289,6 +421,40 @@ describe("API integration", () => {
 
     expect(approveMilestoneResponse.statusCode).toBe(200);
     expect(approveMilestoneResponse.json().status).toBe("approved");
+
+    const approvedDesignDocsResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestoneId}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(approvedDesignDocsResponse.statusCode).toBe(200);
+    expect(approvedDesignDocsResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          title: "Foundations design",
+          approval: {
+            artifactType: "milestone_design_doc",
+            projectId: seeded.projectId,
+          },
+        },
+      ],
+    });
+
+    const completeMilestoneResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestoneId}`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: { action: "complete" },
+    });
+
+    expect(completeMilestoneResponse.statusCode).toBe(400);
+    expect(completeMilestoneResponse.json()).toEqual({
+      error: {
+        code: "invalid_request",
+        message: "Invalid enum value. Expected 'approve', received 'complete'",
+      },
+    });
 
     const createFirstFeatureResponse = await server.inject({
       method: "POST",
@@ -383,7 +549,7 @@ describe("API integration", () => {
     );
   });
 
-  it("approves the canonical milestone design document through the API", async () => {
+  it("returns the existing approval when a milestone approval already auto-approved the canonical design document", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const milestone = await appServices.services.milestoneService.create(
       seeded.ownerUserId,
@@ -395,16 +561,22 @@ describe("API integration", () => {
       },
     );
 
-    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
-      action: "approve",
-    });
-
     const designDoc = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
       title: "Milestone alpha design",
       markdown: "# Milestone alpha\n\nDesign details.",
       source: "ManualSave",
     });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+    await appServices.services.artifactApprovalService.approve(
+      seeded.ownerUserId,
+      seeded.projectId,
+      "milestone_design_doc",
+      designDoc.id,
+    );
 
     const approvalResponse = await server.inject({
       method: "POST",
@@ -444,6 +616,176 @@ describe("API integration", () => {
     });
   });
 
+  it("creates a new canonical milestone design document revision from a manual markdown edit", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone beta",
+        summary: "The editable milestone increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    const original = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nOriginal copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    const updateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        markdown: "# Milestone beta\n\nEdited copy.",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(200);
+    expect(updateResponse.json()).toMatchObject({
+      milestoneId: milestone.id,
+      version: 2,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nEdited copy.",
+      source: "ManualEdit",
+      isCanonical: true,
+      approval: null,
+    });
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          markdown: "# Milestone beta\n\nEdited copy.",
+          source: "ManualEdit",
+          isCanonical: true,
+        },
+        {
+          id: original.id,
+          markdown: "# Milestone beta\n\nOriginal copy.",
+          source: "GenerateMilestoneDesign",
+          isCanonical: false,
+        },
+      ],
+    });
+  });
+
+  it("rejects editing a milestone design document after the milestone is approved", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone gamma",
+        summary: "The locked milestone increment.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    const original = await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone gamma design",
+      markdown: "# Milestone gamma\n\nApproved copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const updateResponse = await server.inject({
+      method: "PATCH",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+      payload: {
+        markdown: "# Milestone gamma\n\nEdited after approval.",
+      },
+    });
+
+    expect(updateResponse.statusCode).toBe(409);
+    expect(updateResponse.json()).toEqual({
+      error: {
+        code: "milestone_locked",
+        message: "Only draft milestones can be edited.",
+      },
+    });
+
+    const listResponse = await server.inject({
+      method: "GET",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      designDocs: [
+        {
+          id: original.id,
+          version: 1,
+          markdown: "# Milestone gamma\n\nApproved copy.",
+          isCanonical: true,
+          approval: null,
+        },
+      ],
+    });
+  });
+
+  it("rejects design-doc generation after the milestone is approved", async () => {
+    const seeded = await registerAndSeedMilestoneProject();
+    const milestone = await appServices.services.milestoneService.create(
+      seeded.ownerUserId,
+      seeded.projectId,
+      {
+        title: "Milestone epsilon",
+        summary: "The already-approved milestone.",
+        useCaseIds: [seeded.flow.id],
+      },
+    );
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone epsilon design",
+      markdown: "# Milestone epsilon\n\nApproved copy.",
+      source: "GenerateMilestoneDesign",
+    });
+
+    await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
+      action: "approve",
+    });
+
+    const createResponse = await server.inject({
+      method: "POST",
+      url: `/api/milestones/${milestone.id}/design-docs`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(createResponse.statusCode).toBe(409);
+    expect(createResponse.json()).toEqual({
+      error: {
+        code: "milestone_locked",
+        message: "Only draft milestones can generate a design document.",
+      },
+    });
+
+    const jobs = await sql<{ count: string }[]>`
+      select count(*)::text as "count"
+      from "jobs"
+      where "project_id" = ${seeded.projectId}
+        and "type" = 'GenerateMilestoneDesign'
+    `;
+
+    expect(jobs).toEqual([{ count: "0" }]);
+  });
+
   it("keeps downstream feature tracks hidden until a Product revision exists", async () => {
     const seeded = await registerAndSeedMilestoneProject();
     const milestone = await appServices.services.milestoneService.create(
@@ -455,6 +797,13 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: milestone.id,
+      title: "Milestone delta design",
+      markdown: "# Milestone delta\n\nFeature planning details.",
+      source: "ManualSave",
+    });
 
     await appServices.services.milestoneService.transition(seeded.ownerUserId, milestone.id, {
       action: "approve",
@@ -525,6 +874,19 @@ describe("API integration", () => {
       },
     );
 
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: firstMilestone.id,
+      title: "Milestone alpha design",
+      markdown: "# Milestone alpha\n\nDesign details.",
+      source: "ManualSave",
+    });
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: secondMilestone.id,
+      title: "Milestone beta design",
+      markdown: "# Milestone beta\n\nDesign details.",
+      source: "ManualSave",
+    });
+
     await appServices.services.milestoneService.transition(seeded.ownerUserId, firstMilestone.id, {
       action: "approve",
     });
@@ -532,12 +894,13 @@ describe("API integration", () => {
       action: "approve",
     });
 
-    const secondDesignDoc = await appServices.services.milestoneService.createDesignDocVersion({
-      milestoneId: secondMilestone.id,
-      title: "Milestone beta design",
-      markdown: "# Milestone beta\n\nDesign details.",
-      source: "ManualSave",
-    });
+    const secondDesignDoc = await appServices.services.milestoneService.getCanonicalDesignDoc(
+      seeded.ownerUserId,
+      secondMilestone.id,
+    );
+    if (!secondDesignDoc) {
+      throw new Error("Expected a canonical milestone design document.");
+    }
 
     const approvalResponse = await server.inject({
       method: "POST",

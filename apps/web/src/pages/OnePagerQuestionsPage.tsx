@@ -1,11 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { questionnaireDefinition } from "@quayboard/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
@@ -67,6 +69,7 @@ const isTerminalJobStatus = (status: string | null | undefined) =>
 export const OnePagerQuestionsPage = () => {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const projectQuery = useProjectQuery(id);
   const questionnaireQuery = useQuestionnaireQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
@@ -245,8 +248,27 @@ export const OnePagerQuestionsPage = () => {
       return;
     }
 
-    setQueuedAutoAnswerJobId(null);
-  }, [queuedAutoAnswerJobId, trackedAutoAnswerJob?.status]);
+    void (trackedAutoAnswerJob?.status === "succeeded"
+      ? queryClient.invalidateQueries({ queryKey: ["project", id, "questionnaire"] })
+      : Promise.resolve()
+    ).finally(() => {
+      setQueuedAutoAnswerJobId(null);
+    });
+  }, [id, queryClient, queuedAutoAnswerJobId, trackedAutoAnswerJob?.status]);
+
+  useEffect(() => {
+    if (!autoAnswerActive) {
+      return;
+    }
+
+    const refreshHandle = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ["project", id, "questionnaire"] });
+    }, 1_000);
+
+    return () => {
+      window.clearInterval(refreshHandle);
+    };
+  }, [autoAnswerActive, id, queryClient]);
 
   const activeError =
     questionnaireQuery.error ||
@@ -254,11 +276,20 @@ export const OnePagerQuestionsPage = () => {
     updateQuestionnaireMutation.error ||
     autoAnswerQuestionnaireMutation.error;
 
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
   return (
-    <AppFrame>
-      {projectQuery.data ? (
-        <ProjectSubNav project={projectQuery.data} />
-      ) : null}
+    <ProjectPageFrame
+      activeSection="setup"
+      project={projectQuery.data}
+      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Overview"
         title="Questions"
@@ -363,6 +394,6 @@ export const OnePagerQuestionsPage = () => {
           </Button>
         </div>
       </Card>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

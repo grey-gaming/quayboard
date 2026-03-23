@@ -619,32 +619,76 @@ export const buildMilestoneDesignPrompt = (input: {
   ].join("\n");
 
 export const buildAppendFeaturesFromOnePagerPrompt = (input: {
-  projectName: string;
-  milestoneTitle: string;
-  overviewDocument: string;
   existingFeatures: Array<{
-    title: string;
+    dependencies: string[];
+    milestoneTitle: string;
     summary: string;
+    title: string;
+  }>;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  milestones: Array<{
+    summary: string;
+    title: string;
+  }>;
+  overviewDocument: string;
+  projectName: string;
+  projectProductSpec: string;
+  projectTechnicalSpec: string;
+  projectUxSpec: string;
+  userFlows: Array<{
+    flowSteps: string[];
+    title: string;
+    acceptanceCriteria: string[];
+    userStory: string;
   }>;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Append implementation-ready feature candidates for milestone "${input.milestoneTitle}" in "${input.projectName}".`,
+    `Append implementation-ready feature candidates for milestone "${input.milestone.title}" in "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
     "acceptanceCriteria must be a non-empty array of concrete strings.",
     "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     "priority must be one of: must_have, should_have, could_have, wont_have.",
-    "Do not repeat or lightly rename an existing feature.",
+    "Create features only for the selected milestone.",
+    "Use the approved planning documents and milestone design document to understand the current context.",
+    "Build on work already planned in earlier or parallel milestones instead of recreating it.",
+    "Do not repeat or lightly rename an existing feature from any milestone.",
+    "Order the proposed features so they can be implemented in a sensible sequence within the milestone.",
     "Prefer concrete vertical slices over vague epics.",
     "Do not wrap the JSON in code fences.",
     "",
-    "Overview document:",
+    "Approved overview document:",
     input.overviewDocument,
     "",
-    "Existing feature catalogue summary:",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project UX Spec:",
+    input.projectUxSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.projectTechnicalSpec,
+    "",
+    "Approved user flows:",
+    JSON.stringify(input.userFlows, null, 2),
+    "",
+    "Ordered milestone list:",
+    JSON.stringify(input.milestones, null, 2),
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Existing feature catalogue across all milestones:",
     JSON.stringify(input.existingFeatures, null, 2),
   ].join("\n");
 

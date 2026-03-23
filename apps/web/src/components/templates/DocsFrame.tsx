@@ -27,8 +27,8 @@ export const DocsFrame = ({
   const logoutMutation = useLogoutMutation();
 
   return (
-    <div className="min-h-screen px-4 py-4 md:px-5 md:py-5">
-      <div className="mx-auto max-w-screen-2xl space-y-4">
+    <div className="min-h-screen px-3 py-2 md:px-4 md:py-3">
+      <div className="mx-auto max-w-screen-2xl space-y-3">
         <GlobalHeader
           isSigningOut={logoutMutation.isPending}
           onSignOut={() => {

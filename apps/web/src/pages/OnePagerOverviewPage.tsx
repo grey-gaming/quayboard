@@ -3,8 +3,9 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { ProjectSubNav } from "../components/layout/ProjectSubNav.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import {
   findLatestFailedJob,
   findLatestJob,
@@ -28,6 +29,7 @@ import {
   useRestoreOnePagerMutation,
   useUpdateOnePagerMutation,
 } from "../hooks/use-projects.js";
+import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 import { formatDateTime } from "../lib/format.js";
 
@@ -118,17 +120,35 @@ export const OnePagerOverviewPage = () => {
     questionnaireReady,
   ]);
 
+  useJobDrivenRefresh({
+    active: Boolean(activeOverviewJob),
+    latestJob: latestOverviewJob,
+    queryKeys: [
+      ["project", id, "one-pager"],
+      ["project", id, "one-pager-versions"],
+    ],
+  });
+
   if (questionnaireQuery.data && !questionnaireReady && !navigationState?.startGeneration) {
     return <Navigate replace to={`/projects/${id}/questions`} />;
+  }
+
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
   }
 
   const overviewButtonActive = generateOnePagerMutation.isPending || Boolean(activeOverviewJob);
 
   return (
-    <AppFrame>
-      {projectQuery.data ? (
-        <ProjectSubNav project={projectQuery.data} />
-      ) : null}
+    <ProjectPageFrame
+      activeSection="product-design"
+      project={projectQuery.data}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
+    >
       <PageIntro
         eyebrow="Overview"
         title="Generated Overview"
@@ -274,6 +294,6 @@ export const OnePagerOverviewPage = () => {
           </Card>
         </div>
       </div>
-    </AppFrame>
+    </ProjectPageFrame>
   );
 };

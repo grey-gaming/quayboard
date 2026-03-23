@@ -123,7 +123,7 @@ export const EditableMarkdownDocument = ({
           </div>
         </div>
       ) : (
-        <MarkdownDocument markdown={markdown} />
+        <MarkdownDocument markdown={markdown} showTableOfContents />
       )}
     </div>
   );
