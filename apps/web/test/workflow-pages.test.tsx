@@ -2672,8 +2672,14 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
 
     expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add User Flow" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Generate Flows" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Approve User Flows" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve User Flows" }).className).toContain(
+      "bg-accent",
+    );
+    expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+    expect(screen.queryByText("Coverage summary")).toBeNull();
     expect(screen.queryByRole("button", { name: "Deduplicate" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Generate Flows" }));
@@ -2687,6 +2693,175 @@ describe("workflow pages", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("reveals the add user flow panel, submits a manual flow, and closes it on success", async () => {
+    const userFlowsProjectId = "72727272-7272-4272-8272-727272727272";
+    let userFlowsResponse: UseCaseListResponse = {
+      userFlows: [],
+      coverage: {
+        warnings: [],
+        acceptedWarnings: [],
+      },
+      approvedAt: null,
+    };
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: userFlowsProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: userFlowsProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => userFlowsResponse,
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${userFlowsProjectId}/user-flows` && method === "POST") {
+        const payload = JSON.parse(String(init?.body)) as {
+          acceptanceCriteria: string[];
+          coverageTags: string[];
+          doneCriteriaRefs: string[];
+          endState: string;
+          entryPoint: string;
+          flowSteps: string[];
+          source: string;
+          title: string;
+          userStory: string;
+        };
+
+        expect(payload).toEqual({
+          acceptanceCriteria: ["Project appears in Mission Control."],
+          coverageTags: ["happy-path", "onboarding"],
+          doneCriteriaRefs: ["manual"],
+          endState: "The new project is visible in Mission Control.",
+          entryPoint: "Projects home",
+          flowSteps: ["Click new project", "Enter details", "Create project"],
+          source: "manual",
+          title: "Create first project",
+          userStory: "As a new user, I want to create a project so I can begin planning.",
+        });
+
+        userFlowsResponse = {
+          userFlows: [
+            {
+              id: "flow-create-id",
+              projectId: userFlowsProjectId,
+              title: payload.title,
+              userStory: payload.userStory,
+              entryPoint: payload.entryPoint,
+              endState: payload.endState,
+              flowSteps: payload.flowSteps,
+              coverageTags: payload.coverageTags,
+              acceptanceCriteria: payload.acceptanceCriteria,
+              doneCriteriaRefs: payload.doneCriteriaRefs,
+              source: payload.source,
+              archivedAt: null,
+              createdAt: "2026-03-16T10:00:00.000Z",
+              updatedAt: "2026-03-16T10:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: null,
+        };
+
+        return {
+          ok: true,
+          status: 201,
+          json: async () => userFlowsResponse.userFlows[0],
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/user-flows", <UserFlowsPage />, userFlowsProjectId);
+
+    expect(await screen.findByRole("heading", { name: "User Flows" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add User Flow" }));
+
+    expect(await screen.findByRole("button", { name: "Save User Flow" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Create first project" },
+    });
+    fireEvent.change(screen.getByLabelText("User story"), {
+      target: {
+        value: "As a new user, I want to create a project so I can begin planning.",
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Entry point"), {
+      target: { value: "Projects home" },
+    });
+    fireEvent.change(screen.getByLabelText("End state"), {
+      target: { value: "The new project is visible in Mission Control." },
+    });
+    fireEvent.change(screen.getByLabelText("Flow steps"), {
+      target: { value: "Click new project\nEnter details\nCreate project" },
+    });
+    fireEvent.change(screen.getByLabelText("Coverage tags"), {
+      target: { value: "happy-path, onboarding" },
+    });
+    fireEvent.change(screen.getByLabelText("Acceptance criteria"), {
+      target: { value: "Project appears in Mission Control." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save User Flow" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, init]) =>
+            path === `/api/projects/${userFlowsProjectId}/user-flows` && init?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Save User Flow" })).toBeNull();
+    });
+    expect(await screen.findByText("Create first project")).toBeTruthy();
   });
 
   it("shows the generate flows AI button as active only for running generation jobs", async () => {
@@ -2869,10 +3044,10 @@ describe("workflow pages", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getAllByLabelText("Title")[1], {
+    fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Invite and assign a teammate" },
     });
-    fireEvent.change(screen.getAllByLabelText("Flow steps")[1], {
+    fireEvent.change(screen.getByLabelText("Flow steps"), {
       target: { value: "Open members\nEnter teammate email\nAssign role\nSend invite" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
