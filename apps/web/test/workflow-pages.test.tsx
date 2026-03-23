@@ -1624,6 +1624,204 @@ describe("workflow pages", () => {
     expect(screen.queryByText("Background Jobs")).toBeNull();
   });
 
+  it("refreshes the overview after generation succeeds without a page reload", async () => {
+    const overviewProjectId = "23232323-2323-4232-8232-232323232323";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    let onePager: {
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    } | null = null;
+    let versions: Array<{
+      id: string;
+      projectId: string;
+      version: number;
+      title: string;
+      markdown: string;
+      source: string;
+      isCanonical: boolean;
+      approvedAt: string | null;
+      createdAt: string;
+    }> = [];
+    let generateSubmitted = false;
+
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = typeof input === "string" ? input : input.toString();
+      const method = init?.method ?? "GET";
+
+      if (path === "/auth/me" && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ user }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            id: overviewProjectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY_PARTIAL",
+            ownerUserId: overviewProjectId,
+            createdAt: "2026-03-15T00:00:00.000Z",
+            updatedAt: "2026-03-16T10:00:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/setup-status` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            repoConnected: true,
+            llmVerified: true,
+            sandboxVerified: true,
+            checks: [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/questionnaire-answers` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            projectId: overviewProjectId,
+            answers: {},
+            updatedAt: "2026-03-16T09:00:00.000Z",
+            completedAt: "2026-03-16T09:05:00.000Z",
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ onePager }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager/versions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ versions }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/one-pager` && method === "POST") {
+        generateSubmitted = true;
+        onePager = {
+          id: "generated-overview-id",
+          projectId: overviewProjectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview\n\nGenerated without refresh.",
+          source: "generated",
+          isCanonical: true,
+          approvedAt: null,
+          createdAt: "2026-03-16T09:10:00.000Z",
+        };
+        versions = [onePager];
+
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({
+            id: "overview-job-id",
+            projectId: overviewProjectId,
+            type: "GenerateProjectOverview",
+            status: "queued",
+            inputs: {},
+            outputs: null,
+            error: null,
+            queuedAt: "2026-03-16T09:06:00.000Z",
+            startedAt: null,
+            completedAt: null,
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/jobs` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobs: generateSubmitted
+              ? [
+                  {
+                    id: "overview-job-id",
+                    projectId: overviewProjectId,
+                    type: "GenerateProjectOverview",
+                    status: "succeeded",
+                    inputs: {},
+                    outputs: null,
+                    error: null,
+                    queuedAt: "2026-03-16T09:06:00.000Z",
+                    startedAt: "2026-03-16T09:06:10.000Z",
+                    completedAt: "2026-03-16T09:10:00.000Z",
+                  },
+                ]
+              : [],
+          }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/phase-gates` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ phases: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      if (path === `/api/projects/${overviewProjectId}/next-actions` && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ actions: [] }),
+        } satisfies Partial<Response>;
+      }
+
+      throw new Error(`Unhandled fetch for ${method} ${path}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderRoute("/projects/:id/one-pager", <OnePagerOverviewPage />, overviewProjectId);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate Overview" }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([path, requestInit]) =>
+            path === `/api/projects/${overviewProjectId}/one-pager` &&
+            requestInit?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    expect(
+      await screen.findByText("Generated without refresh.", {}, { timeout: 2_500 }),
+    ).toBeTruthy();
+    expect(screen.queryByText("The overview is being prepared. Stay on this page to review it when the job finishes.")).toBeNull();
+  });
+
   it("keeps questions header status text free of timestamps", async () => {
     const completedProjectId = "14141414-1414-4414-8414-141414141414";
 
