@@ -187,9 +187,10 @@
   }
 
   .qb-global-user-chip {
-    @apply border px-3 py-2;
+    @apply inline-flex min-h-9 items-center gap-2 border px-3 py-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.18em];
     border-color: hsl(var(--nav-primary-text) / 0.18);
     background: hsl(var(--nav-primary-surface) / 0.38);
+    color: hsl(var(--nav-primary-text));
   }
 
   .qb-global-action-link {
@@ -204,7 +205,14 @@
   }
 
   .qb-global-signout {
+    min-height: 2.25rem !important;
+    padding: 0.375rem 0.75rem !important;
     border-color: hsl(var(--nav-primary-text) / 0.18) !important;
+    font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, ui-monospace, monospace !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.18em !important;
+    text-transform: uppercase !important;
     color: hsl(var(--nav-primary-text)) !important;
   }
 

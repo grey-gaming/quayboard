@@ -14,6 +14,23 @@ const plainLinkClassName = "qb-global-nav-cell qb-global-nav-cell-idle";
 
 const primaryLinkClassName = "qb-global-action-link";
 
+const ProfileIcon = () => (
+  <svg
+    aria-hidden="true"
+    className="h-3.5 w-3.5 shrink-0"
+    fill="none"
+    viewBox="0 0 16 16"
+  >
+    <circle cx="8" cy="5.25" r="2.5" stroke="currentColor" strokeWidth="1.25" />
+    <path
+      d="M3.25 13c.6-2.2 2.34-3.5 4.75-3.5s4.15 1.3 4.75 3.5"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.25"
+    />
+  </svg>
+);
+
 export const GlobalHeader = ({
   isSigningOut = false,
   onSignOut,
@@ -56,7 +73,8 @@ export const GlobalHeader = ({
         {user ? (
           <>
             <div className="qb-global-user-chip">
-              <p className="text-sm font-semibold text-[hsl(var(--nav-primary-text))]">{user.displayName}</p>
+              <ProfileIcon />
+              <p>{user.displayName}</p>
             </div>
             <Button className="qb-global-signout" disabled={isSigningOut} onClick={onSignOut} variant="ghost">
               Sign out
