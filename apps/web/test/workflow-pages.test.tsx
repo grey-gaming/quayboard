@@ -1434,6 +1434,13 @@ describe("workflow pages", () => {
                   source: "ManualSave",
                   createdAt: "2026-03-16T10:03:00.000Z",
                 },
+                documents: {
+                  product: { required: true, state: "accepted" },
+                  ux: { required: true, state: "draft" },
+                  tech: { required: true, state: "missing" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: false, state: "missing" },
+                },
                 dependencyIds: ["88888888-8888-4888-8888-888888888888"],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -1457,6 +1464,13 @@ describe("workflow pages", () => {
                   acceptanceCriteria: ["Stores milestones"],
                   source: "ManualSave",
                   createdAt: "2026-03-16T10:03:00.000Z",
+                },
+                documents: {
+                  product: { required: true, state: "accepted" },
+                  ux: { required: false, state: "missing" },
+                  tech: { required: true, state: "accepted" },
+                  userDocs: { required: false, state: "missing" },
+                  archDocs: { required: true, state: "draft" },
                 },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:03:00.000Z",
@@ -1578,6 +1592,8 @@ describe("workflow pages", () => {
     expect(screen.getByRole("button", { name: "Generate features" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New feature" })).toBeTruthy();
     expect(screen.getAllByText("Foundations").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Product accepted").length).toBeGreaterThan(0);
+    expect(screen.getByText("UX draft")).toBeTruthy();
     expect(screen.queryByText("Dependency graph")).toBeNull();
     expect(screen.queryByText("Wire dependency")).toBeNull();
   });
@@ -5049,6 +5065,13 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "missing" },
+          ux: { required: false, state: "missing" },
+          tech: { required: false, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5074,6 +5097,13 @@ describe("workflow pages", () => {
               acceptanceCriteria: ["A Product spec gates downstream tabs."],
               source: "manual",
               createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "missing" },
+              ux: { required: false, state: "missing" },
+              tech: { required: false, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5199,6 +5229,13 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "draft" },
+          ux: { required: true, state: "missing" },
+          tech: { required: true, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5224,6 +5261,13 @@ describe("workflow pages", () => {
               acceptanceCriteria: ["Older revisions remain browsable."],
               source: "manual",
               createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "draft" },
+              ux: { required: true, state: "missing" },
+              tech: { required: true, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5420,6 +5464,13 @@ describe("workflow pages", () => {
           source: "manual",
           createdAt: "2026-03-20T00:00:00.000Z",
         },
+        documents: {
+          product: { required: true, state: "missing" },
+          ux: { required: false, state: "missing" },
+          tech: { required: false, state: "missing" },
+          userDocs: { required: false, state: "missing" },
+          archDocs: { required: false, state: "missing" },
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5445,6 +5496,13 @@ describe("workflow pages", () => {
               acceptanceCriteria: ["The route uses the feature's owning project."],
               source: "manual",
               createdAt: "2026-03-20T00:00:00.000Z",
+            },
+            documents: {
+              product: { required: true, state: "missing" },
+              ux: { required: false, state: "missing" },
+              tech: { required: false, state: "missing" },
+              userDocs: { required: false, state: "missing" },
+              archDocs: { required: false, state: "missing" },
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",

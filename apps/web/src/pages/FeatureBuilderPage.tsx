@@ -40,6 +40,18 @@ const featureKinds = [
 
 const priorities = ["must_have", "should_have", "could_have", "wont_have"] as const;
 const statuses = ["draft", "approved", "in_progress", "completed"] as const;
+const documentBadgeLabels = {
+  product: "Product",
+  ux: "UX",
+  tech: "Tech",
+  userDocs: "User Docs",
+  archDocs: "Arch Docs",
+} as const;
+const documentToneByState = {
+  accepted: "success",
+  draft: "info",
+  missing: "warning",
+} as const;
 
 export const FeatureBuilderPage = () => {
   const { id = "" } = useParams();
@@ -278,6 +290,23 @@ export const FeatureBuilderPage = () => {
                               <p className="mt-2 text-sm text-secondary">
                                 {feature.headRevision.summary}
                               </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {Object.entries(feature.documents)
+                                  .filter(([, document]) => document.required || document.state !== "missing")
+                                  .map(([key, document]) => (
+                                    <Badge
+                                      key={key}
+                                      tone={documentToneByState[document.state]}
+                                    >
+                                      {
+                                        documentBadgeLabels[
+                                          key as keyof typeof documentBadgeLabels
+                                        ]
+                                      }{" "}
+                                      {document.state}
+                                    </Badge>
+                                  ))}
+                              </div>
                             </div>
                             <Link
                               className="inline-flex min-h-8 shrink-0 items-center justify-center self-start border border-border/80 bg-transparent px-3 py-1.5 text-[12px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border-strong hover:bg-panel-inset hover:text-foreground"

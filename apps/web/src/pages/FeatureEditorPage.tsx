@@ -525,7 +525,7 @@ export const FeatureEditorPage = () => {
                     </Badge>
                   </NextActionBar>
                 </div>
-                <div className="grid gap-4">
+                <div className="grid content-start gap-4 self-start">
                   <ReviewPanel />
                   <Card surface="rail">
                     <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
