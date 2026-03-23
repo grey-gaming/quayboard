@@ -268,6 +268,19 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     validateLinkedUseCases: async () => [],
+    seedDefaultMilestone: async () => ({
+      id: "test-milestone-id",
+      projectId: "test-project-id",
+      position: 1,
+      title: "Repository and Toolchain Foundations",
+      summary: "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.",
+      status: "draft",
+      linkedUserFlows: [],
+      featureCount: 0,
+      approvedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }),
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),

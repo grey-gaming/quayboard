@@ -130,20 +130,33 @@ export const FeatureEditorPage = () => {
 
   const defaultTab = visibleTabs[0] ?? "product";
   const urlTab = tab && visibleTabs.includes(tab) ? tab : null;
-  const activeTab = urlTab ?? defaultTab;
-  
+  const [localTab, setLocalTab] = useState<TabKind | null>(null);
+  const activeTab = urlTab ?? localTab ?? defaultTab;
+
   useEffect(() => {
     if (visibleTabs.length === 0 || !projectQuery.data) {
       return;
     }
-    if (!tab) {
-      void navigate(`/projects/${id}/features/${featureId}/${defaultTab}`, { replace: true });
-    } else if (!visibleTabs.includes(tab)) {
-      void navigate(`/projects/${id}/features/${featureId}/${defaultTab}`, { replace: true });
+
+    if (tab && !visibleTabs.includes(tab)) {
+      void navigate(`/projects/${id}/features/${featureId}`, { replace: true });
     }
   }, [tab, visibleTabs, navigate, id, featureId, defaultTab, projectQuery.data]);
 
+  useEffect(() => {
+    if (tab || visibleTabs.length === 0) {
+      return;
+    }
+
+    setLocalTab((current) => (current && visibleTabs.includes(current) ? current : defaultTab));
+  }, [tab, visibleTabs, defaultTab]);
+
   const setActiveTab = (kind: TabKind) => {
+    if (!tab) {
+      setLocalTab(kind);
+      return;
+    }
+
     void navigate(`/projects/${id}/features/${featureId}/${kind}`);
   };
   const [pendingDependencyId, setPendingDependencyId] = useState("");

@@ -413,6 +413,42 @@ export const createMilestoneService = (db: AppDatabase) => ({
       ),
     });
   },
+
+  async seedDefaultMilestone(projectId: string) {
+    const now = new Date();
+    const [milestone] = await db
+      .insert(milestonesTable)
+      .values({
+        id: generateId(),
+        projectId,
+        position: 1,
+        title: DEFAULT_MILESTONE_ZERO_TITLE,
+        summary: DEFAULT_MILESTONE_ZERO_SUMMARY,
+        status: "draft",
+        createdByJobId: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    return milestoneSchema.parse({
+      id: milestone.id,
+      projectId: milestone.projectId,
+      position: milestone.position,
+      title: milestone.title,
+      summary: milestone.summary,
+      status: milestone.status,
+      linkedUserFlows: [],
+      featureCount: 0,
+      approvedAt: milestone.approvedAt?.toISOString() ?? null,
+      createdAt: milestone.createdAt.toISOString(),
+      updatedAt: milestone.updatedAt.toISOString(),
+    });
+  },
 });
+
+export const DEFAULT_MILESTONE_ZERO_TITLE = "Repository and Toolchain Foundations";
+export const DEFAULT_MILESTONE_ZERO_SUMMARY =
+  "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.";
 
 export type MilestoneService = ReturnType<typeof createMilestoneService>;
