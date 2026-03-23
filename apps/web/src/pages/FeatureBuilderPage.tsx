@@ -278,22 +278,13 @@ export const FeatureBuilderPage = () => {
                               <p className="mt-2 text-sm text-secondary">
                                 {feature.headRevision.summary}
                               </p>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {feature.headRevision.acceptanceCriteria.map((criterion) => (
-                                  <Badge key={criterion} tone="warning">
-                                    {criterion}
-                                  </Badge>
-                                ))}
-                              </div>
                             </div>
-                            <div className="grid gap-2 md:w-56">
-                              <Link
-                                className="inline-flex min-h-10 items-center justify-center border border-transparent bg-transparent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border hover:bg-panel-inset hover:text-foreground"
-                                to={`/projects/${id}/features/${feature.id}`}
-                              >
-                                Open editor
-                              </Link>
-                            </div>
+                            <Link
+                              className="inline-flex min-h-8 items-center justify-center border border-border/80 bg-transparent px-3 py-1.5 text-[12px] font-semibold tracking-[0.02em] text-secondary transition-colors duration-150 hover:border-border-strong hover:bg-panel-inset hover:text-foreground"
+                              to={`/projects/${id}/features/${feature.id}`}
+                            >
+                              Open editor
+                            </Link>
                           </div>
                         </div>
                       ))}
