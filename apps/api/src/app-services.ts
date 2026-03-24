@@ -98,8 +98,13 @@ import {
 import type {
   TaskPlanningService,
 } from "./services/task-planning-service.js";
+import {
+  createAutoAdvanceService,
+  type AutoAdvanceService,
+} from "./services/auto-advance.js";
 
 export type AppServices = {
+  autoAdvanceService: AutoAdvanceService;
   artifactApprovalService: ArtifactApprovalService;
   authService: AuthService;
   blueprintService: BlueprintService;
@@ -225,6 +230,13 @@ export const createAppServices = async (
     onePagerService,
     productSpecService,
     userFlowService,
+    taskPlanningService,
+  );
+  const autoAdvanceService = createAutoAdvanceService(
+    db,
+    nextActionsService,
+    jobService,
+    sseHub,
   );
   const jobRunnerService = createJobRunnerService({
     artifactApprovalService,
@@ -270,6 +282,9 @@ export const createAppServices = async (
           });
         }
       }
+      await autoAdvanceService.onJobComplete(job.id, "success").catch((err) => {
+        console.error("auto-advance onJobComplete (success) failed:", err);
+      });
     },
     getNextJob: () => jobService.claimNextQueuedJob(),
     onFailure: async (jobId, error) => {
@@ -288,6 +303,9 @@ export const createAppServices = async (
           status: failedJob.status,
         });
       }
+      await autoAdvanceService.onJobComplete(jobId, "failure").catch((err) => {
+        console.error("auto-advance onJobComplete (failure) failed:", err);
+      });
     },
   });
   await jobService.cancelRunningJobs(staleJobCancellation);
@@ -295,6 +313,7 @@ export const createAppServices = async (
 
   return {
     services: {
+    autoAdvanceService,
     artifactApprovalService,
     authService,
     blueprintService,

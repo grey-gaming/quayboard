@@ -1,18 +1,20 @@
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
+import { AutoAdvanceBanner } from "../components/workflow/AutoAdvanceBanner.js";
+import { AutoAdvanceControlsCard } from "../components/workflow/AutoAdvanceControlsCard.js";
+import { MissionActivityTimeline } from "../components/workflow/MissionActivityTimeline.js";
+import { MissionStatsStrip } from "../components/workflow/MissionStatsStrip.js";
+import { NextActionsPanel } from "../components/workflow/NextActionsPanel.js";
 import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
 import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
 import { Badge } from "../components/ui/Badge.js";
-import { Card } from "../components/ui/Card.js";
-import {
-  useNextActionsQuery,
-  useProjectJobsQuery,
-  useProjectQuery,
-} from "../hooks/use-projects.js";
+import { useAutoAdvanceQuery } from "../hooks/use-auto-advance.js";
+import { useProjectJobsQuery, useProjectQuery } from "../hooks/use-projects.js";
 import { usePhaseGates } from "../hooks/use-phase-gates.js";
+import { useNextActionsQuery } from "../hooks/use-next-actions.js";
 
 const phaseDisplayOrder = [
   "Project Setup",
@@ -35,6 +37,7 @@ export const MissionControlPage = () => {
   const phaseGatesQuery = usePhaseGates(id);
   const nextActionsQuery = useNextActionsQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
+  const autoAdvanceQuery = useAutoAdvanceQuery(id);
 
   if (!projectQuery.data) {
     return (
@@ -51,6 +54,9 @@ export const MissionControlPage = () => {
     return leftIndex - rightIndex;
   });
 
+  const session = autoAdvanceQuery.data?.session ?? null;
+  const jobs = jobsQuery.data?.jobs ?? [];
+
   return (
     <ProjectPageFrame activeSection="mission-control" project={projectQuery.data}>
       <PageIntro
@@ -63,87 +69,33 @@ export const MissionControlPage = () => {
             <Badge tone="neutral">
               {nextActionsQuery.data?.actions.length ?? 0} next actions
             </Badge>
-            <Badge tone="neutral">{jobsQuery.data?.jobs.length ?? 0} tracked jobs</Badge>
+            <Badge tone="neutral">{jobs.length} tracked jobs</Badge>
           </>
         }
       />
+
+      <AutoAdvanceBanner session={session} />
+
+      <MissionStatsStrip
+        phaseGates={phaseGatesQuery.data}
+        nextActions={nextActionsQuery.data}
+        session={session}
+      />
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_20rem]">
         <div className="grid gap-4">
-          <Card surface="panel">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Queue</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Next Actions</p>
-              </div>
-              <Badge tone="info">current focus</Badge>
-            </div>
-            <div className="mt-4 grid gap-0 border border-border/80">
-              {nextActionsQuery.data?.actions.map((action, index) => (
-                <Link
-                  key={action.key}
-                  className={[
-                    "grid gap-3 border-t border-border/80 bg-panel-inset px-4 py-4 text-sm transition-colors duration-150 first:border-t-0 hover:bg-panel-active",
-                    index === 0 ? "border-l-2 border-l-accent" : "",
-                  ].join(" ")}
-                  to={action.href}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold tracking-[-0.02em]">{action.label}</p>
-                    <Badge tone={index === 0 ? "info" : "neutral"}>
-                      {index === 0 ? "active" : "queued"}
-                    </Badge>
-                  </div>
-                  <p className="qb-meta-label">navigation target</p>
-                </Link>
-              ))}
-              {nextActionsQuery.data?.actions.length === 0 ? (
-                <div className="qb-data-row text-sm text-secondary">
-                  No next actions are queued for this project yet.
-                </div>
-              ) : null}
-            </div>
-          </Card>
-          <Card surface="panel">
-            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-              <div>
-                <p className="qb-meta-label">Review states</p>
-                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Phase Gates</p>
-              </div>
-              <Badge tone="warning">review states</Badge>
-            </div>
-            <div className="mt-4" data-testid="mission-control-phase-gates">
-              <PhaseGateChecklist phases={phases} />
-            </div>
-          </Card>
+          <NextActionsPanel actions={nextActionsQuery.data?.actions ?? []} />
+          <div data-testid="mission-control-phase-gates">
+            <PhaseGateChecklist phases={phases} />
+          </div>
         </div>
         <div className="grid gap-4">
-          <Card surface="rail" className="h-fit">
-            <p className="qb-meta-label">Project status</p>
-            <div className="mt-4 grid gap-2">
-              <div className="qb-kv">
-                <p className="qb-meta-label">Phase gates</p>
-                <p className="text-sm text-foreground">
-                  {phaseGatesQuery.data?.phases.length ?? 0} tracked phases
-                </p>
-              </div>
-              <div className="qb-kv">
-                <p className="qb-meta-label">Next actions</p>
-                <p className="text-sm text-foreground">
-                  {nextActionsQuery.data?.actions.length ?? 0} queued transitions
-                </p>
-              </div>
-              <div className="qb-kv">
-                <p className="qb-meta-label">Recent jobs</p>
-                <p className="text-sm text-foreground">
-                  {jobsQuery.data?.jobs.length ?? 0} background records
-                </p>
-              </div>
-            </div>
-          </Card>
+          <AutoAdvanceControlsCard projectId={id} session={session} />
+          <MissionActivityTimeline jobs={jobs} />
           <ProjectJobsPanel
             emptyMessage="No background jobs recorded yet."
             headerBadge="background"
-            jobs={jobsQuery.data?.jobs ?? []}
+            jobs={jobs}
             title="Recent Jobs"
           />
         </div>

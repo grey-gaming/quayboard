@@ -8,6 +8,7 @@ import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
+import type { TaskPlanningService } from "./task-planning-service.js";
 
 export const createNextActionsService = (
   artifactApprovalService: ArtifactApprovalService,
@@ -20,6 +21,7 @@ export const createNextActionsService = (
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
   userFlowService: UserFlowService,
+  taskPlanningService?: TaskPlanningService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
     const [
@@ -225,6 +227,33 @@ export const createNextActionsService = (
                   : "Author the first feature Product Spec",
                 href: `/projects/${projectId}/features/${nextFeature.id}`,
               });
+            } else if (taskPlanningService) {
+              // All features have approved product specs — check for stale implementations.
+              // A feature is stale when its implementation record references a tech revision
+              // that is not the current head revision for that feature.
+              for (const feature of orderedFeatures) {
+                const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
+                const headTechRevisionId = tracks.tracks.tech.headRevision?.id ?? null;
+
+                if (!headTechRevisionId) {
+                  continue;
+                }
+
+                const records = await taskPlanningService.getImplementationRecords(
+                  ownerUserId,
+                  feature.id,
+                );
+                const latestRecord = records[0] ?? null;
+
+                if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
+                  actions.push({
+                    key: "feature_stale_implementation",
+                    label: `Re-implement stale feature: ${feature.headRevision.title}`,
+                    href: `/projects/${projectId}/features/${feature.id}`,
+                  });
+                  break;
+                }
+              }
             }
           }
         }

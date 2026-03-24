@@ -61,7 +61,7 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
     await apiApp.register(taskPlanningRoutes(services));
     await apiApp.register(bugRoutes);
     await apiApp.register(artifactRoutes(services));
-    await apiApp.register(autoAdvanceRoutes);
+    await apiApp.register(autoAdvanceRoutes(services));
     await apiApp.register(sandboxRoutes);
     await apiApp.register(toolSystemRoutes);
     await apiApp.register(debugRoutes);
