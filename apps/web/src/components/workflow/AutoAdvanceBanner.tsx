@@ -1,5 +1,6 @@
 import type { AutoAdvanceSession } from "@quayboard/shared";
 
+import { formatStepKey } from "../../lib/format.js";
 import { Badge } from "../ui/Badge.js";
 
 const pausedReasonLabel: Record<string, string> = {
@@ -48,7 +49,7 @@ export const AutoAdvanceBanner = ({
           <Badge tone={tone}>{status}</Badge>
           {session?.currentStep ? (
             <span className="hidden text-xs text-secondary sm:inline">
-              step: {session.currentStep}
+              step: {formatStepKey(session.currentStep)}
             </span>
           ) : null}
         </div>
@@ -63,7 +64,7 @@ export const AutoAdvanceBanner = ({
           )}
           {nextStep && (
             <p className="text-xs text-secondary">
-              Next action required: <span className="font-medium text-foreground">{nextStep}</span>
+              Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
             </p>
           )}
         </div>

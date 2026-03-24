@@ -17,6 +17,7 @@ export const autoAdvancePausedReasonSchema = z.enum([
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "review_limit_reached",
 ]);
 
 export type AutoAdvancePausedReason = z.infer<
@@ -40,6 +41,9 @@ export const autoAdvanceSessionSchema = z.object({
   autoApproveWhenClear: z.boolean(),
   skipReviewSteps: z.boolean(),
   creativityMode: creativityModeSchema,
+  retryCount: z.number().int(),
+  reviewCount: z.number().int(),
+  maxConcurrentJobs: z.number().int(),
   startedAt: z.string().datetime().nullable(),
   pausedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
@@ -62,6 +66,7 @@ export const startAutoAdvanceRequestSchema = z.object({
   autoApproveWhenClear: z.boolean().optional(),
   skipReviewSteps: z.boolean().optional(),
   creativityMode: creativityModeSchema.optional(),
+  maxConcurrentJobs: z.number().int().min(1).max(10).optional(),
 });
 
 export type StartAutoAdvanceRequest = z.infer<

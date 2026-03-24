@@ -4,6 +4,8 @@ import type {
   PhaseGatesResponse,
 } from "@quayboard/shared";
 
+import { formatStepKey } from "../../lib/format.js";
+
 const Stat = ({
   label,
   value,
@@ -32,7 +34,7 @@ export const MissionStatsStrip = ({
   const phasesTotal = phaseGates?.phases.length ?? 0;
   const actionsCount = nextActions?.actions.length ?? 0;
   const autoAdvanceStatus = session?.status ?? "idle";
-  const currentStep = session?.currentStep ?? "—";
+  const currentStep = session?.currentStep ? formatStepKey(session.currentStep) : "—";
 
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

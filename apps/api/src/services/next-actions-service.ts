@@ -164,10 +164,16 @@ export const createNextActionsService = (
             label: "Approve the Technical Spec",
             href: `/projects/${projectId}/technical-spec`,
           });
+        } else if (userFlows.userFlows.length === 0) {
+          actions.push({
+            key: "user_flows_generate",
+            label: "Generate user flows",
+            href: `/projects/${projectId}/user-flows`,
+          });
         } else if (!userFlows.approvedAt) {
           actions.push({
-            key: "user_flows",
-            label: "Generate and approve user flows",
+            key: "user_flows_approve",
+            label: "Approve user flows",
             href: `/projects/${projectId}/user-flows`,
           });
         } else {
@@ -179,79 +185,138 @@ export const createNextActionsService = (
             (milestone) => milestone.status === "approved",
           );
 
-          if (milestones.milestones.length === 0) {
+          if (milestones.milestones.length <= 1) {
             actions.push({
               key: "milestones_generate",
               label: "Create or generate milestones",
               href: `/projects/${projectId}/milestones`,
             });
           } else if (!hasApprovedMilestone) {
-            actions.push({
-              key: "milestones_approve",
-              label: "Approve a milestone",
-              href: `/projects/${projectId}/milestones`,
-            });
+            const firstDraftMilestone = milestones.milestones.find((m) => m.status === "draft");
+            if (firstDraftMilestone) {
+              const designDoc = await milestoneService.getCanonicalDesignDoc(
+                ownerUserId,
+                firstDraftMilestone.id,
+              );
+              if (!designDoc) {
+                actions.push({
+                  key: "milestone_design_generate",
+                  label: "Generate milestone design document",
+                  href: `/projects/${projectId}/milestones/${firstDraftMilestone.id}`,
+                });
+              } else {
+                actions.push({
+                  key: "milestones_approve",
+                  label: "Approve a milestone",
+                  href: `/projects/${projectId}/milestones`,
+                });
+              }
+            }
           } else if (features.features.length === 0) {
+            const firstApprovedMilestone = milestones.milestones.find(
+              (m) => m.status === "approved",
+            );
             actions.push({
               key: "features_create",
               label: "Create the first feature",
-              href: `/projects/${projectId}/features`,
+              href: firstApprovedMilestone
+                ? `/projects/${projectId}/features?milestone=${firstApprovedMilestone.id}`
+                : `/projects/${projectId}/features`,
             });
           } else {
             const orderedFeatures = [...features.features].sort((left, right) =>
               left.featureKey.localeCompare(right.featureKey),
             );
-            let nextFeature = orderedFeatures[0] ?? null;
-            let needsApproval = false;
 
-            for (const feature of orderedFeatures) {
-              const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
+            // Fetch all feature tracks in parallel for reuse across phases.
+            const allTracks = await Promise.all(
+              orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
+            );
+
+            // Phase 1: product spec creation/approval.
+            let productPhaseFeature: (typeof orderedFeatures)[number] | null = null;
+            let productNeedsApproval = false;
+
+            for (let i = 0; i < orderedFeatures.length; i++) {
+              const tracks = allTracks[i]!;
               if (!tracks.tracks.product.headRevision) {
-                nextFeature = feature;
-                needsApproval = false;
+                productPhaseFeature = orderedFeatures[i]!;
+                productNeedsApproval = false;
                 break;
               }
-
               if (tracks.tracks.product.status !== "approved") {
-                nextFeature = feature;
-                needsApproval = true;
+                productPhaseFeature = orderedFeatures[i]!;
+                productNeedsApproval = true;
                 break;
               }
             }
 
-            if (nextFeature) {
+            if (productPhaseFeature) {
               actions.push({
-                key: needsApproval ? "feature_product_approval" : "feature_product_create",
-                label: needsApproval
+                key: productNeedsApproval ? "feature_product_approval" : "feature_product_create",
+                label: productNeedsApproval
                   ? "Approve a feature Product Spec"
                   : "Author the first feature Product Spec",
-                href: `/projects/${projectId}/features/${nextFeature.id}`,
+                href: `/projects/${projectId}/features/${productPhaseFeature.id}`,
               });
-            } else if (taskPlanningService) {
-              // All features have approved product specs — check for stale implementations.
-              // A feature is stale when its implementation record references a tech revision
-              // that is not the current head revision for that feature.
-              for (const feature of orderedFeatures) {
-                const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
-                const headTechRevisionId = tracks.tracks.tech.headRevision?.id ?? null;
+            } else {
+              // Phase 2: secondary workstream specs (ux → tech → user_docs → arch_docs).
+              // arch_docs requires an approved tech spec, so tech must come before it.
+              const workstreamPhases = [
+                { track: "ux" as const, createKey: "feature_ux_create", approvalKey: "feature_ux_approval", createLabel: "Generate UX spec for feature", approvalLabel: "Approve UX spec for feature" },
+                { track: "tech" as const, createKey: "feature_tech_create", approvalKey: "feature_tech_approval", createLabel: "Generate technical spec for feature", approvalLabel: "Approve technical spec for feature" },
+                { track: "userDocs" as const, createKey: "feature_user_docs_create", approvalKey: "feature_user_docs_approval", createLabel: "Generate user docs for feature", approvalLabel: "Approve user docs for feature" },
+                { track: "archDocs" as const, createKey: "feature_arch_docs_create", approvalKey: "feature_arch_docs_approval", createLabel: "Generate architecture docs for feature", approvalLabel: "Approve architecture docs for feature" },
+              ];
 
-                if (!headTechRevisionId) {
-                  continue;
+              outer: for (const phase of workstreamPhases) {
+                for (let i = 0; i < orderedFeatures.length; i++) {
+                  const feature = orderedFeatures[i]!;
+                  const trackData = allTracks[i]!.tracks[phase.track];
+                  if (!trackData.required) continue;
+                  if (!trackData.headRevision) {
+                    actions.push({
+                      key: phase.createKey,
+                      label: phase.createLabel,
+                      href: `/projects/${projectId}/features/${feature.id}`,
+                    });
+                    break outer;
+                  }
+                  if (trackData.status !== "approved") {
+                    actions.push({
+                      key: phase.approvalKey,
+                      label: phase.approvalLabel,
+                      href: `/projects/${projectId}/features/${feature.id}`,
+                    });
+                    break outer;
+                  }
                 }
+              }
 
-                const records = await taskPlanningService.getImplementationRecords(
-                  ownerUserId,
-                  feature.id,
-                );
-                const latestRecord = records[0] ?? null;
+              // Phase 3: stale implementation check (uses pre-fetched tracks).
+              if (!actions.length && taskPlanningService) {
+                for (let i = 0; i < orderedFeatures.length; i++) {
+                  const feature = orderedFeatures[i]!;
+                  const headTechRevisionId = allTracks[i]!.tracks.tech.headRevision?.id ?? null;
 
-                if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
-                  actions.push({
-                    key: "feature_stale_implementation",
-                    label: `Re-implement stale feature: ${feature.headRevision.title}`,
-                    href: `/projects/${projectId}/features/${feature.id}`,
-                  });
-                  break;
+                  if (!headTechRevisionId) {
+                    continue;
+                  }
+
+                  const records = await taskPlanningService.getImplementationRecords(
+                    ownerUserId,
+                    feature.id,
+                  );
+                  const latestRecord = records[0] ?? null;
+
+                  if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
+                    actions.push({
+                      key: "feature_stale_implementation",
+                      label: `Re-implement stale feature: ${feature.headRevision.title}`,
+                      href: `/projects/${projectId}/features/${feature.id}`,
+                    });
+                    break;
+                  }
                 }
               }
             }
@@ -261,6 +326,76 @@ export const createNextActionsService = (
     }
 
     return { actions };
+  },
+
+  /**
+   * Like build(), but for the feature workstream phase returns up to maxConcurrent
+   * parallel create-actions (same track, different features). All planning phases
+   * and human-gate steps return a single action as normal.
+   */
+  async buildBatch(ownerUserId: string, projectId: string, maxConcurrent: number) {
+    const { actions } = await this.build(ownerUserId, projectId);
+    const firstAction = actions[0] ?? null;
+
+    if (!firstAction) {
+      return { actions: [] };
+    }
+
+    const parallelCreateKeys = {
+      feature_product_create: null,
+      feature_ux_create: "ux" as const,
+      feature_tech_create: "tech" as const,
+      feature_user_docs_create: "userDocs" as const,
+      feature_arch_docs_create: "archDocs" as const,
+    };
+
+    // If the next action is not a parallelizable feature-create, return it as-is.
+    if (!(firstAction.key in parallelCreateKeys) || maxConcurrent <= 1) {
+      return { actions: [firstAction] };
+    }
+
+    // Collect all features that need the same create action.
+    const features = await featureService.list(ownerUserId, projectId);
+    const orderedFeatures = [...features.features].sort((left, right) =>
+      left.featureKey.localeCompare(right.featureKey),
+    );
+    const allTracks = await Promise.all(
+      orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
+    );
+
+    const batch: typeof actions = [];
+    const trackKey = parallelCreateKeys[firstAction.key as keyof typeof parallelCreateKeys];
+
+    if (trackKey === null) {
+      // feature_product_create
+      for (let i = 0; i < orderedFeatures.length; i++) {
+        if (batch.length >= maxConcurrent) break;
+        const feature = orderedFeatures[i]!;
+        if (!allTracks[i]!.tracks.product.headRevision) {
+          batch.push({
+            key: "feature_product_create",
+            label: "Author the first feature Product Spec",
+            href: `/projects/${projectId}/features/${feature.id}`,
+          });
+        }
+      }
+    } else {
+      // Secondary workstream (ux / tech / userDocs / archDocs)
+      for (let i = 0; i < orderedFeatures.length; i++) {
+        if (batch.length >= maxConcurrent) break;
+        const feature = orderedFeatures[i]!;
+        const trackData = allTracks[i]!.tracks[trackKey];
+        if (trackData.required && !trackData.headRevision) {
+          batch.push({
+            key: firstAction.key,
+            label: firstAction.label,
+            href: `/projects/${projectId}/features/${feature.id}`,
+          });
+        }
+      }
+    }
+
+    return { actions: batch.length > 0 ? batch : [firstAction] };
   },
 });
 

@@ -301,6 +301,7 @@ export const createStubServices = (): AppServices => ({
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),
+    buildBatch: async () => ({ actions: [] }),
   },
   onePagerService: {
     approveCanonical: async () => {

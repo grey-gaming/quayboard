@@ -81,6 +81,7 @@ const autoAdvancePausedReasonValues = [
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "review_limit_reached",
 ] as const;
 
 export const usersTable = pgTable(
@@ -1103,6 +1104,10 @@ export const autoAdvanceSessionsTable = pgTable(
       .default(false),
     skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
     creativityMode: text("creativity_mode").notNull().default("balanced"),
+    retryCount: integer("retry_count").notNull().default(0),
+    reviewCount: integer("review_count").notNull().default(0),
+    maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
+    pendingJobCount: integer("pending_job_count").notNull().default(0),
     startedAt: timestamp("started_at", { withTimezone: true }),
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),

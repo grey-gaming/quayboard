@@ -10,40 +10,36 @@ export type JobSchedulerOptions = {
   execute: JobExecutor;
   getNextJob: () => Promise<Job | null>;
   onFailure: (jobId: string, error: unknown) => Promise<void>;
+  maxConcurrent?: number;
   onIdleDelayMs?: number;
 };
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export const createJobScheduler = ({
   execute,
   getNextJob,
   onFailure,
+  maxConcurrent = 1,
   onIdleDelayMs = 250,
 }: JobSchedulerOptions) => {
   let active = false;
-  let timer: NodeJS.Timeout | null = null;
 
-  const scheduleNext = (delayMs: number) => {
-    if (!active) {
-      return;
-    }
+  const runSlot = async () => {
+    while (active) {
+      let job: Job | null = null;
 
-    timer = setTimeout(() => {
-      timer = null;
-      void loop();
-    }, delayMs);
-  };
-
-  const loop = async () => {
-    if (!active) {
-      return;
-    }
-
-    try {
-      const job = await getNextJob();
+      try {
+        job = await getNextJob();
+      } catch (error) {
+        console.error("Job scheduler poll failed.", error);
+        await sleep(onIdleDelayMs);
+        continue;
+      }
 
       if (!job) {
-        scheduleNext(onIdleDelayMs);
-        return;
+        await sleep(onIdleDelayMs);
+        continue;
       }
 
       try {
@@ -55,15 +51,8 @@ export const createJobScheduler = ({
           });
         } catch (failureError) {
           console.error("Failed to mark job as failed.", failureError);
-          scheduleNext(onIdleDelayMs);
-          return;
         }
       }
-
-      scheduleNext(0);
-    } catch (error) {
-      console.error("Job scheduler poll failed.", error);
-      scheduleNext(onIdleDelayMs);
     }
   };
 
@@ -74,14 +63,13 @@ export const createJobScheduler = ({
       }
 
       active = true;
-      void loop();
+
+      for (let i = 0; i < maxConcurrent; i++) {
+        void runSlot();
+      }
     },
     stop() {
       active = false;
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
     },
   };
 };

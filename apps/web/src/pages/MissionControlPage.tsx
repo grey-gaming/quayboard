@@ -82,11 +82,11 @@ export const MissionControlPage = () => {
         session={session}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_20rem]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_20rem] xl:items-start">
         <div className="grid gap-4">
           <NextActionsPanel actions={nextActionsQuery.data?.actions ?? []} />
           <div data-testid="mission-control-phase-gates">
-            <PhaseGateChecklist phases={phases} />
+            <PhaseGateChecklist phases={phases} projectId={id} />
           </div>
         </div>
         <div className="grid gap-4">

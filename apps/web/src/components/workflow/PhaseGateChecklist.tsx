@@ -1,11 +1,41 @@
 import type { PhaseGatesResponse } from "@quayboard/shared";
+import { Link } from "react-router-dom";
 
 import { Badge } from "../ui/Badge.js";
 
+const KEY_TO_PATH: Record<string, string> = {
+  questionnaire: "/questions",
+  setup_completed: "/setup",
+  overview: "/one-pager",
+  overview_approved: "/one-pager",
+  product_spec: "/product-spec",
+  product_spec_approved: "/product-spec",
+  ux_decision_tiles: "/ux-spec",
+  ux_decision_selections: "/ux-spec",
+  ux_decision_acceptance: "/ux-spec",
+  ux_spec_generated: "/ux-spec",
+  ux_approved: "/ux-spec",
+  tech_decision_tiles: "/technical-spec",
+  tech_decision_selections: "/technical-spec",
+  tech_decision_acceptance: "/technical-spec",
+  tech_spec_generated: "/technical-spec",
+  tech_approved: "/technical-spec",
+  technical_spec_approved: "/technical-spec",
+  flows_exist: "/user-flows",
+  flows_approved: "/user-flows",
+  user_flows_approved: "/user-flows",
+  milestones_exist: "/milestones",
+  milestone_approved: "/milestones",
+  features_exist: "/features",
+  feature_product_approved: "/features",
+};
+
 export const PhaseGateChecklist = ({
   phases,
+  projectId,
 }: {
   phases: PhaseGatesResponse["phases"];
+  projectId: string;
 }) => (
   <div className="grid gap-3 lg:grid-cols-2">
     {phases.map((phase) => (
@@ -17,17 +47,31 @@ export const PhaseGateChecklist = ({
           </Badge>
         </div>
         <div className="mt-3 grid gap-2">
-          {phase.items.map((item) => (
-            <div
-              key={item.key}
-              className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm"
-            >
+          {phase.items.map((item) => {
+            const path = KEY_TO_PATH[item.key];
+            const label = path ? (
+              <Link
+                to={`/projects/${projectId}${path}`}
+                className="hover:text-accent hover:underline transition-colors"
+              >
+                {item.label}
+              </Link>
+            ) : (
               <span>{item.label}</span>
-              <span className={item.passed ? "text-success" : "text-muted-foreground"}>
-                {item.passed ? "passed" : "pending"}
-              </span>
-            </div>
-          ))}
+            );
+
+            return (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm"
+              >
+                {label}
+                <span className={item.passed ? "text-success" : "text-muted-foreground"}>
+                  {item.passed ? "passed" : "pending"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     ))}

@@ -35,6 +35,7 @@ import {
   buildAppendFeaturesFromOnePagerPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
+  buildDeliveryReviewPrompt,
   buildFeatureArchDocsPrompt,
   buildFeatureProductSpecPrompt,
   buildFeatureTechSpecPrompt,
@@ -950,9 +951,11 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        const generateUseCasesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
           sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
+          hint: generateUseCasesInput?.hint,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
         await input.db.insert(llmRunsTable).values({
@@ -1241,6 +1244,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestones requires approved UX and Technical Specs.");
         }
 
+        const generateMilestonesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
         const prompt = buildMilestonePlanPrompt({
           projectName: project.name,
           uxSpec: blueprints.uxBlueprint.markdown,
@@ -1252,6 +1256,7 @@ export const createJobRunnerService = (input: {
             entryPoint: flow.entryPoint,
             endState: flow.endState,
           })),
+          hint: generateMilestonesInput?.hint,
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
@@ -1849,6 +1854,72 @@ export const createJobRunnerService = (input: {
         await taskPlanning.createTasks(sessionId, tasks);
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+      }
+
+      case "ReviewDelivery": {
+        if (!input.milestoneService) {
+          throw new Error("ReviewDelivery requires milestone service support.");
+        }
+
+        const [productSpec, userFlows, milestones] = await Promise.all([
+          input.productSpecService.getCanonical(ownerUserId, rawJob.projectId),
+          input.userFlowService.list(ownerUserId, rawJob.projectId),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
+        ]);
+
+        const prompt = buildDeliveryReviewPrompt({
+          projectName: project.name,
+          productSpec: productSpec?.markdown ?? "",
+          userFlows: userFlows.userFlows.map((flow) => ({
+            title: flow.title,
+            userStory: flow.userStory,
+          })),
+          milestones: milestones.milestones.map((milestone) => ({
+            title: milestone.title,
+            summary: milestone.summary,
+          })),
+        });
+
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+
+        const parsed = parseJson<{
+          complete?: boolean;
+          issues?: Array<{ jobType?: string; hint?: string }>;
+        }>(generated.content);
+
+        if (!parsed || typeof parsed.complete !== "boolean") {
+          throw new Error(
+            'ReviewDelivery returned invalid content. Expected JSON with a "complete" boolean.',
+          );
+        }
+
+        const issues = (parsed.issues ?? [])
+          .filter(
+            (issue): issue is { jobType: string; hint: string } =>
+              typeof issue.jobType === "string" && typeof issue.hint === "string",
+          );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          complete: parsed.complete,
+          issues,
+        });
       }
 
       default:

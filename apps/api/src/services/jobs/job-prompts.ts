@@ -429,6 +429,7 @@ export const buildProductSpecReviewPrompt = (input: {
 export const buildUserFlowPrompt = (input: {
   projectName: string;
   sourceMaterial: string;
+  hint?: string;
 }) =>
   [
     qualityCharter,
@@ -440,6 +441,13 @@ export const buildUserFlowPrompt = (input: {
     "Include the most important onboarding, happy-path, supporting, operational, and edge/failure journeys that are genuinely relevant to the product.",
     "Each flow must be specific, realistic, and distinct.",
     "Do not wrap the JSON in code fences.",
+    ...(input.hint
+      ? [
+          "",
+          "## Guidance",
+          input.hint,
+        ]
+      : []),
     "",
     "Approved Product Spec:",
     input.sourceMaterial,
@@ -557,6 +565,7 @@ export const buildMilestonePlanPrompt = (input: {
     entryPoint: string;
     endState: string;
   }>;
+  hint?: string;
 }) =>
   [
     qualityCharter,
@@ -571,6 +580,13 @@ export const buildMilestonePlanPrompt = (input: {
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
     "Create milestones in execution order, from foundational work to higher-level capability.",
     "Do not wrap the JSON in code fences.",
+    ...(input.hint
+      ? [
+          "",
+          "## Guidance",
+          input.hint,
+        ]
+      : []),
     "",
     "Approved UX Spec:",
     input.uxSpec,
@@ -938,3 +954,41 @@ export const buildFeatureTaskListPrompt = (input: {
     "Clarification answers:",
     JSON.stringify(input.clarifications, null, 2),
   ].join("\n");
+
+export const buildDeliveryReviewPrompt = (input: {
+  projectName: string;
+  productSpec: string;
+  userFlows: Array<{ title: string; userStory: string }>;
+  milestones: Array<{ title: string; summary: string }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review the planning deliverables for "${input.projectName}" and assess whether they sufficiently satisfy the Product Spec.`,
+    'Return valid JSON with exactly two keys: "complete" (boolean) and "issues" (array).',
+    'Set "complete" to true only when all checks below pass with no meaningful gaps.',
+    "If any gaps are found, set complete to false and list each issue in the issues array.",
+    'Each issue must be an object with exactly two string keys: "jobType" and "hint".',
+    '"jobType" must be exactly one of: "GenerateUseCases" or "GenerateMilestones".',
+    '"hint" must clearly describe what is missing and why, so the generation job can produce only the missing content.',
+    "Issues must be ordered by workflow dependency: user flow issues first, milestone issues second.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Checks to perform:",
+    "1. User Flows — do the user flows collectively cover all distinct journeys implied by the Product Spec?",
+    "   Look for missing onboarding, admin, error/recovery, and key happy-path flows.",
+    "2. Milestones — do the milestones provide a coherent, complete delivery plan that covers all approved user flows and the full product scope?",
+    "   Look for missing phases, uncovered user flows, or milestones that skip important foundational work.",
+    "3. Overall — given the product spec, user flows, and milestones together, is the planning complete enough to begin implementation?",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    "",
+    "Approved User Flows:",
+    JSON.stringify(input.userFlows, null, 2),
+    "",
+    "Approved Milestones:",
+    JSON.stringify(input.milestones, null, 2),
+  ].join("\n");
+

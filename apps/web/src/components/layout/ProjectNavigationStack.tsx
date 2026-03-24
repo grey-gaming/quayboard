@@ -30,11 +30,14 @@ const linkClassName = ({
     isActive ? tertiaryActiveClassName : tertiaryIdleClassName,
   ].join(" ");
 
-const secondaryLinkClassName = (isActive: boolean) =>
+const secondaryLinkClassName = (isActive: boolean, extra?: string) =>
   [
     "qb-project-nav-cell",
     isActive ? secondaryActiveClassName : secondaryIdleClassName,
-  ].join(" ");
+    extra ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
 const renderTertiaryItem = (item: ProjectTertiaryNavItem) => {
   if (item.kind === "label") {
@@ -111,10 +114,18 @@ export const ProjectNavigationStack = ({
   activeSection,
   project,
   tertiaryItems = [],
+  hasActiveJob = false,
+  activeJobCount = 0,
+  pendingJobCount = 0,
+  recentFailedCount = 0,
 }: {
   activeSection: ProjectNavSection;
   project: Project;
   tertiaryItems?: ProjectTertiaryNavItem[];
+  hasActiveJob?: boolean;
+  activeJobCount?: number;
+  pendingJobCount?: number;
+  recentFailedCount?: number;
 }) => {
   const setupCompleted = getSetupCompletion(project);
 
@@ -124,7 +135,13 @@ export const ProjectNavigationStack = ({
         <span className={titleLabelClassName} title={project.name}>
           {project.name}
         </span>
-        <Link className={secondaryLinkClassName(activeSection === "mission-control")} to={`/projects/${project.id}`}>
+        <Link
+          className={secondaryLinkClassName(
+            activeSection === "mission-control",
+            hasActiveJob ? "qb-nav-ai-active" : undefined,
+          )}
+          to={`/projects/${project.id}`}
+        >
           Mission Control
         </Link>
         <Link className={secondaryLinkClassName(activeSection === "setup")} to={`/projects/${project.id}/setup`}>
@@ -169,6 +186,25 @@ export const ProjectNavigationStack = ({
         >
           Implementation
         </span>
+        {(activeJobCount > 0 || pendingJobCount > 0 || recentFailedCount > 0) && (
+          <div className="ml-auto flex items-center gap-1.5">
+            {activeJobCount > 0 && (
+              <span className="qb-meta-label text-info">
+                {activeJobCount} active
+              </span>
+            )}
+            {pendingJobCount > 0 && (
+              <span className="qb-meta-label text-secondary">
+                {pendingJobCount} pending
+              </span>
+            )}
+            {recentFailedCount > 0 && (
+              <span className="qb-meta-label text-danger">
+                {recentFailedCount} failed
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {tertiaryItems.length ? <div className="qb-project-nav-row">{tertiaryItems.map(renderTertiaryItem)}</div> : null}
     </div>

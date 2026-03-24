@@ -237,6 +237,13 @@ export const createAppServices = async (
     nextActionsService,
     jobService,
     sseHub,
+    artifactApprovalService,
+    blueprintService,
+    milestoneService,
+    onePagerService,
+    productSpecService,
+    featureWorkstreamService,
+    userFlowService,
   );
   const jobRunnerService = createJobRunnerService({
     artifactApprovalService,
@@ -307,6 +314,7 @@ export const createAppServices = async (
         console.error("auto-advance onJobComplete (failure) failed:", err);
       });
     },
+    maxConcurrent: 4,
   });
   await jobService.cancelRunningJobs(staleJobCancellation);
   jobScheduler.start();

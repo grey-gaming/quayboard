@@ -92,6 +92,20 @@
       "when": 1760000012000,
       "tag": "0012_m7_auto_advance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1760000013000,
+      "tag": "0013_m7_auto_advance_retry_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1760000014000,
+      "tag": "0014_m7_parallel_feature_jobs",
+      "breakpoints": true
     }
   ]
 }

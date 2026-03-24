@@ -34,6 +34,8 @@ export const AutoAdvanceControlsCard = ({
 
   const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
   const [skipReviewSteps, setSkipReviewSteps] = useState(false);
+  const [autoApproveWhenClear, setAutoApproveWhenClear] = useState(false);
+  const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(1);
 
   const isPending =
     startMutation.isPending ||
@@ -50,6 +52,8 @@ export const AutoAdvanceControlsCard = ({
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
+  const displayAutoApproveWhenClear = isActive ? session!.autoApproveWhenClear : autoApproveWhenClear;
+  const displayMaxConcurrentJobs = isActive ? session!.maxConcurrentJobs : maxConcurrentJobs;
 
   return (
     <Card surface="rail" className="h-fit">
@@ -94,6 +98,34 @@ export const AutoAdvanceControlsCard = ({
               onChange={(e) => setSkipReviewSteps(e.target.checked)}
             />
           </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs text-secondary" htmlFor="auto-approve-when-clear">
+              Auto-approve gates
+            </label>
+            <input
+              id="auto-approve-when-clear"
+              type="checkbox"
+              className="h-4 w-4 accent-accent disabled:opacity-60"
+              checked={displayAutoApproveWhenClear}
+              disabled={isActive || isPending}
+              onChange={(e) => setAutoApproveWhenClear(e.target.checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs text-secondary" htmlFor="max-concurrent-jobs">
+              Max parallel jobs
+            </label>
+            <input
+              id="max-concurrent-jobs"
+              type="number"
+              min={1}
+              max={10}
+              className="w-14 border border-border/70 bg-panel px-2 py-1 text-xs text-foreground disabled:opacity-60"
+              value={displayMaxConcurrentJobs}
+              disabled={isActive || isPending}
+              onChange={(e) => setMaxConcurrentJobs(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -101,7 +133,7 @@ export const AutoAdvanceControlsCard = ({
             <Button
               variant="primary"
               disabled={isPending}
-              onClick={() => startMutation.mutate({ creativityMode, skipReviewSteps })}
+              onClick={() => startMutation.mutate({ creativityMode, skipReviewSteps, autoApproveWhenClear, maxConcurrentJobs })}
             >
               Start
             </Button>

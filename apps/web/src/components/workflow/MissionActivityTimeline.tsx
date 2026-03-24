@@ -1,6 +1,6 @@
 import type { Job } from "@quayboard/shared";
 
-import { formatDateTime } from "../../lib/format.js";
+import { formatDateTime, formatJobType } from "../../lib/format.js";
 import { Badge } from "../ui/Badge.js";
 import { Card } from "../ui/Card.js";
 
@@ -45,7 +45,7 @@ export const MissionActivityTimeline = ({
             className="grid gap-1 border-t border-border/80 bg-panel-inset px-4 py-3 text-sm first:border-t-0"
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="font-medium tracking-[-0.02em] truncate">{job.type}</p>
+              <p className="font-medium tracking-[-0.02em] truncate">{formatJobType(job.type)}</p>
               <Badge tone={jobTone(job.status)}>{job.status}</Badge>
             </div>
             <p className="qb-meta-label">
