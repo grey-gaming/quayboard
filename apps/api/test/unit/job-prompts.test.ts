@@ -7,6 +7,7 @@ import {
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
+  buildDeliveryReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
 const sampleAnswers = {
@@ -108,5 +109,83 @@ describe("job prompts", () => {
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
     expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
+  });
+
+  describe("buildDeliveryReviewPrompt", () => {
+    const baseInput = {
+      projectName: "Quayboard",
+      productSpec: "# Product Spec\n\nPlanning control plane.",
+      userFlows: [
+        { title: "Onboarding", userStory: "As a new user I want to set up my project." },
+        { title: "Create Milestone", userStory: "As a PM I want to create a milestone." },
+      ],
+      milestones: [
+        { title: "M1: Foundation", summary: "Core infrastructure", featureCount: 3 },
+        { title: "M2: Planning", summary: "Planning features", featureCount: 0 },
+      ],
+    };
+
+    it("includes the project name in the task description", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain('"Quayboard"');
+    });
+
+    it("returns a JSON contract with complete and issues keys", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain('"complete"');
+      expect(prompt).toContain('"issues"');
+      expect(prompt).toContain("Do not wrap the JSON in code fences.");
+    });
+
+    it("restricts jobType to GenerateUseCases or GenerateMilestones", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain('"GenerateUseCases" or "GenerateMilestones"');
+    });
+
+    it("includes milestone featureCount in the serialised milestone data", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain('"featureCount"');
+      expect(prompt).toContain("3");  // featureCount for M1
+    });
+
+    it("instructs the LLM to prioritise GenerateMilestones over GenerateUseCases", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      // Milestone check comes before user flow check in instructions
+      const milestoneCheckIdx = prompt.indexOf("Milestones —");
+      const userFlowCheckIdx = prompt.indexOf("User Flows —");
+      expect(milestoneCheckIdx).toBeGreaterThan(-1);
+      expect(userFlowCheckIdx).toBeGreaterThan(-1);
+      expect(milestoneCheckIdx).toBeLessThan(userFlowCheckIdx);
+    });
+
+    it("tells the LLM that milestones with featureCount > 0 are in-progress delivery", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("featureCount > 0");
+      expect(prompt).toContain("in-progress delivery");
+    });
+
+    it("instructs the LLM to be conservative about flagging user flow gaps", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("conservative");
+      expect(prompt).toContain("Prefer returning complete: true");
+    });
+
+    it("instructs the LLM not to flag user flow gaps when milestones don't yet cover existing flows", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("Do NOT flag user flow gaps if the milestone plan does not yet cover the existing flows");
+    });
+
+    it("includes the product spec and user flows in the prompt body", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("Approved Product Spec:");
+      expect(prompt).toContain("Planning control plane.");
+      expect(prompt).toContain("Approved User Flows:");
+      expect(prompt).toContain("Onboarding");
+    });
+
+    it("issues are ordered milestone-first, user-flow-second", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("milestone issues first, user flow issues second");
+    });
   });
 });

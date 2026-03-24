@@ -959,7 +959,7 @@ export const buildDeliveryReviewPrompt = (input: {
   projectName: string;
   productSpec: string;
   userFlows: Array<{ title: string; userStory: string }>;
-  milestones: Array<{ title: string; summary: string }>;
+  milestones: Array<{ title: string; summary: string; featureCount: number }>;
 }) =>
   [
     qualityCharter,
@@ -972,15 +972,21 @@ export const buildDeliveryReviewPrompt = (input: {
     'Each issue must be an object with exactly two string keys: "jobType" and "hint".',
     '"jobType" must be exactly one of: "GenerateUseCases" or "GenerateMilestones".',
     '"hint" must clearly describe what is missing and why, so the generation job can produce only the missing content.',
-    "Issues must be ordered by workflow dependency: user flow issues first, milestone issues second.",
+    "Issues must be ordered by priority: milestone issues first, user flow issues second.",
     "Do not wrap the JSON in code fences.",
     "",
-    "Checks to perform:",
-    "1. User Flows — do the user flows collectively cover all distinct journeys implied by the Product Spec?",
-    "   Look for missing onboarding, admin, error/recovery, and key happy-path flows.",
-    "2. Milestones — do the milestones provide a coherent, complete delivery plan that covers all approved user flows and the full product scope?",
-    "   Look for missing phases, uncovered user flows, or milestones that skip important foundational work.",
-    "3. Overall — given the product spec, user flows, and milestones together, is the planning complete enough to begin implementation?",
+    "Checks to perform (evaluate in this order — stop at the first failing check):",
+    "1. Milestones — do the milestones provide a coherent, complete delivery plan that covers all approved user flows?",
+    "   Each user flow should map to at least one milestone. Look for user flows that no milestone addresses.",
+    "   Milestones with featureCount > 0 are actively being implemented — treat them as in-progress delivery.",
+    "   If any user flows are uncovered by milestones, raise a GenerateMilestones issue (not GenerateUseCases).",
+    "2. User Flows — only check this if milestones already cover all current user flows.",
+    "   Are there fundamentally important journeys missing from the product spec that are not represented at all?",
+    "   Be conservative: only flag a genuine gap (e.g. no onboarding flow exists at all, no error-recovery flow exists at all).",
+    "   Do NOT flag minor variations, edge cases, or flows that are implied by existing ones.",
+    "   Do NOT flag user flow gaps if the milestone plan does not yet cover the existing flows — fix milestones first.",
+    "3. Overall — given the above, is the planning complete enough to begin or continue implementation?",
+    "   Prefer returning complete: true when coverage is reasonable. Only return complete: false for clear, actionable gaps.",
     "",
     "Approved Product Spec:",
     input.productSpec,
@@ -988,7 +994,7 @@ export const buildDeliveryReviewPrompt = (input: {
     "Approved User Flows:",
     JSON.stringify(input.userFlows, null, 2),
     "",
-    "Approved Milestones:",
+    "Approved Milestones (featureCount = number of features already created for that milestone):",
     JSON.stringify(input.milestones, null, 2),
   ].join("\n");
 

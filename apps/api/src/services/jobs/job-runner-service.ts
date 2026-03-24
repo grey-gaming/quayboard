@@ -1880,6 +1880,7 @@ export const createJobRunnerService = (input: {
           milestones: milestones.milestones.map((milestone) => ({
             title: milestone.title,
             summary: milestone.summary,
+            featureCount: milestone.featureCount,
           })),
         });
 

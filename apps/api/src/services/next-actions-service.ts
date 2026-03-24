@@ -191,9 +191,13 @@ export const createNextActionsService = (
               label: "Create or generate milestones",
               href: `/projects/${projectId}/milestones`,
             });
-          } else if (!hasApprovedMilestone) {
-            const firstDraftMilestone = milestones.milestones.find((m) => m.status === "draft");
-            if (firstDraftMilestone) {
+          } else {
+            // Handle any pending draft milestones — includes both the initial case (no approved
+            // milestones yet) and fix-job milestones added alongside already-approved ones.
+            const draftMilestones = milestones.milestones.filter((m) => m.status === "draft");
+
+            if (draftMilestones.length > 0) {
+              const firstDraftMilestone = draftMilestones[0]!;
               const designDoc = await milestoneService.getCanonicalDesignDoc(
                 ownerUserId,
                 firstDraftMilestone.id,
@@ -211,19 +215,27 @@ export const createNextActionsService = (
                   href: `/projects/${projectId}/milestones`,
                 });
               }
-            }
-          } else if (features.features.length === 0) {
-            const firstApprovedMilestone = milestones.milestones.find(
-              (m) => m.status === "approved",
-            );
-            actions.push({
-              key: "features_create",
-              label: "Create the first feature",
-              href: firstApprovedMilestone
-                ? `/projects/${projectId}/features?milestone=${firstApprovedMilestone.id}`
-                : `/projects/${projectId}/features`,
-            });
-          } else {
+            } else if (!hasApprovedMilestone) {
+              // All milestones are in an unexpected state — prompt to generate more.
+              actions.push({
+                key: "milestones_generate",
+                label: "Create or generate milestones",
+                href: `/projects/${projectId}/milestones`,
+              });
+            } else {
+              // All milestones approved — check if any lack features (covers both the initial
+              // zero-features case and newly approved milestones added by fix jobs).
+              const milestonesWithoutFeatures = milestones.milestones.filter(
+                (m) => m.status === "approved" && m.featureCount === 0,
+              );
+
+              if (milestonesWithoutFeatures.length > 0) {
+                actions.push({
+                  key: "features_create",
+                  label: "Create the first feature",
+                  href: `/projects/${projectId}/features?milestone=${milestonesWithoutFeatures[0]!.id}`,
+                });
+              } else {
             const orderedFeatures = [...features.features].sort((left, right) =>
               left.featureKey.localeCompare(right.featureKey),
             );
@@ -318,6 +330,8 @@ export const createNextActionsService = (
                     break;
                   }
                 }
+              }
+            }
               }
             }
           }
