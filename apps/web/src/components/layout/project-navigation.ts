@@ -167,3 +167,20 @@ export const buildFeatureBuilderTertiaryItems = (
     end: true,
   },
 ];
+
+export const getFeatureTabUrl = (
+  projectId: string,
+  featureId: string,
+  tab?: TabKind,
+): string => {
+  const basePath = `/projects/${projectId}/features/${featureId}`;
+  return tab ? `${basePath}/${tab}` : basePath;
+};
+
+export type TabKind =
+  | "product"
+  | "ux"
+  | "tech"
+  | "user_docs"
+  | "arch_docs"
+  | "tasks";

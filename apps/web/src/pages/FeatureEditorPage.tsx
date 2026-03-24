@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { EditableMarkdownDocument } from "../components/composites/EditableMarkdownDocument.js";
@@ -14,15 +14,17 @@ import {
   LatestJobFailureAlert,
 } from "../components/workflow/LatestJobFailureAlert.js";
 import { NextActionBar } from "../components/workflow/NextActionBar.js";
-import { ReviewPanel } from "../components/workflow/ReviewPanel.js";
 import { Alert } from "../components/ui/Alert.js";
 import { AiWorkflowButton } from "../components/ui/AiWorkflowButton.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
 import { Checkbox } from "../components/ui/Checkbox.js";
+import { Input } from "../components/ui/Input.js";
 import { Label } from "../components/ui/Label.js";
 import { Select } from "../components/ui/Select.js";
+import { Spinner } from "../components/ui/Spinner.js";
+import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAddFeatureDependencyMutation,
   useApproveFeatureWorkstreamRevisionMutation,
@@ -38,6 +40,17 @@ import {
   useRemoveFeatureDependencyMutation,
   useUpdateFeatureMutation,
 } from "../hooks/use-projects.js";
+import {
+  useTaskPlanningSessionQuery,
+  useGenerateClarificationsMutation,
+  useAnswerClarificationMutation,
+  useAutoAnswerClarificationsMutation,
+  useGenerateTasksMutation,
+  useTasksQuery,
+  useCreateTaskMutation,
+  useUpdateTaskMutation,
+  useDeleteTaskMutation,
+} from "../hooks/use-task-planning.js";
 import { useJobDrivenRefresh } from "../hooks/use-job-driven-refresh.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
 
@@ -73,7 +86,8 @@ const priorities = ["must_have", "should_have", "could_have", "wont_have"] as co
 const statuses = ["draft", "approved", "in_progress", "completed"] as const;
 
 export const FeatureEditorPage = () => {
-  const { id = "", featureId = "" } = useParams();
+  const { id = "", featureId = "", tab } = useParams<{ id: string; featureId: string; tab?: TabKind }>();
+  const navigate = useNavigate();
   const projectQuery = useProjectQuery(id);
   const featureQuery = useFeatureQuery(featureId);
   const featuresQuery = useFeaturesQuery(id);
@@ -114,10 +128,40 @@ export const FeatureEditorPage = () => {
     });
   }, [tracksQuery.data?.tracks]);
 
-  const [activeTab, setActiveTab] = useState<TabKind>("product");
+  const defaultTab = visibleTabs[0] ?? "product";
+  const urlTab = tab && visibleTabs.includes(tab) ? tab : null;
+  const [localTab, setLocalTab] = useState<TabKind | null>(null);
+  const activeTab = urlTab ?? localTab ?? defaultTab;
+
+  useEffect(() => {
+    if (visibleTabs.length === 0 || !projectQuery.data) {
+      return;
+    }
+
+    if (tab && !visibleTabs.includes(tab)) {
+      void navigate(`/projects/${id}/features/${featureId}`, { replace: true });
+    }
+  }, [tab, visibleTabs, navigate, id, featureId, defaultTab, projectQuery.data]);
+
+  useEffect(() => {
+    if (tab || visibleTabs.length === 0) {
+      return;
+    }
+
+    setLocalTab((current) => (current && visibleTabs.includes(current) ? current : defaultTab));
+  }, [tab, visibleTabs, defaultTab]);
+
+  const setActiveTab = (kind: TabKind) => {
+    if (!tab) {
+      setLocalTab(kind);
+      return;
+    }
+
+    void navigate(`/projects/${id}/features/${featureId}/${kind}`);
+  };
   const [pendingDependencyId, setPendingDependencyId] = useState("");
 
-  const resolvedTab = visibleTabs.includes(activeTab) ? activeTab : (visibleTabs[0] ?? "product");
+  const resolvedTab = activeTab;
   const activeKind = resolvedTab === "tasks" ? null : resolvedTab;
   const revisionsQuery = useFeatureWorkstreamRevisionsQuery(
     featureId,
@@ -196,7 +240,7 @@ export const FeatureEditorPage = () => {
     }
 
     return items;
-  }, [featureQuery.data, projectQuery.data, resolvedTab, visibleTabs]);
+  }, [featureQuery.data, id, featureId, projectQuery.data, resolvedTab, visibleTabs]);
 
   useEffect(() => {
     if (!revisions.length) {
@@ -364,17 +408,7 @@ export const FeatureEditorPage = () => {
 
       <div className="grid gap-4">
         {resolvedTab === "tasks" ? (
-          <Card surface="panel">
-            <div className="grid gap-2">
-              <p className="qb-meta-label">Tasks</p>
-              <p className="text-lg font-semibold tracking-[-0.02em]">Milestone 6 stub</p>
-              <p className="text-sm text-secondary">
-                Task clarification and delivery-task planning arrive in Milestone 6. This tab is
-                intentionally reserved so the Feature Editor navigation is stable before those
-                workflows land.
-              </p>
-            </div>
-          </Card>
+          <TasksTab featureId={featureId} projectId={id} />
         ) : (
           <>
             <Card surface="panel">
@@ -526,7 +560,6 @@ export const FeatureEditorPage = () => {
                   </NextActionBar>
                 </div>
                 <div className="grid content-start gap-4 self-start">
-                  <ReviewPanel />
                   <Card surface="rail">
                     <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
                       <div>
@@ -716,5 +749,659 @@ export const FeatureEditorPage = () => {
         )}
       </div>
     </ProjectPageFrame>
+  );
+};
+
+type TasksTabProps = {
+  featureId: string;
+  projectId: string;
+};
+
+const TasksTab = ({ featureId, projectId }: TasksTabProps) => {
+  const sessionQuery = useTaskPlanningSessionQuery(featureId);
+  const tasksQuery = useTasksQuery(featureId);
+  const jobsQuery = useProjectJobsQuery(projectId);
+  const generateClarificationsMutation = useGenerateClarificationsMutation(featureId);
+  const answerClarificationMutation = useAnswerClarificationMutation(featureId);
+  const autoAnswerMutation = useAutoAnswerClarificationsMutation(featureId);
+  const generateTasksMutation = useGenerateTasksMutation(featureId);
+  const createTaskMutation = useCreateTaskMutation(featureId);
+  const updateTaskMutation = useUpdateTaskMutation(featureId);
+  const deleteTaskMutation = useDeleteTaskMutation(featureId);
+
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [clarificationsCollapsed, setClarificationsCollapsed] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    description: "",
+    instructions: "",
+    acceptanceCriteria: "",
+    status: "pending" as "pending" | "in_progress" | "completed" | "blocked",
+  });
+
+  const session = sessionQuery.data?.session;
+  const clarifications = sessionQuery.data?.clarifications ?? [];
+  const tasks = tasksQuery.data?.tasks ?? [];
+
+  const pendingClarifications = clarifications.filter((c) => c.status === "pending");
+  const answeredClarifications = clarifications.filter((c) => c.status === "answered");
+  const allClarificationsAnswered =
+    clarifications.length > 0 && pendingClarifications.length === 0;
+
+  const taskPlanningJobTypes = [
+    "GenerateTaskClarifications",
+    "AutoAnswerTaskClarifications",
+    "GenerateFeatureTaskList",
+  ] as const;
+
+  const activeTaskPlanningJob = jobsQuery.data?.jobs.find(
+    (job) =>
+      taskPlanningJobTypes.includes(job.type as typeof taskPlanningJobTypes[number]) &&
+      (job.status === "queued" || job.status === "running") &&
+      typeof job.inputs === "object" &&
+      job.inputs !== null &&
+      "featureId" in job.inputs &&
+      job.inputs.featureId === featureId,
+  ) ?? null;
+
+  useJobDrivenRefresh({
+    active: Boolean(activeTaskPlanningJob),
+    latestJob: activeTaskPlanningJob,
+    queryKeys: [
+      ["task-planning", featureId],
+      ["clarifications", featureId],
+      ["tasks", featureId],
+    ],
+  });
+
+  const isGenerateClarificationsJobRunning =
+    activeTaskPlanningJob?.type === "GenerateTaskClarifications";
+  const isAutoAnswerJobRunning =
+    activeTaskPlanningJob?.type === "AutoAnswerTaskClarifications";
+  const isGenerateTasksJobRunning =
+    activeTaskPlanningJob?.type === "GenerateFeatureTaskList";
+
+  useEffect(() => {
+    if (allClarificationsAnswered && !clarificationsCollapsed) {
+      setClarificationsCollapsed(true);
+    }
+  }, [allClarificationsAnswered, clarificationsCollapsed]);
+
+  const handleAnswerClarification = (clarificationId: string) => {
+    const answer = answers[clarificationId];
+    if (!answer?.trim()) {
+      return;
+    }
+    answerClarificationMutation.mutate(
+      { clarificationId, answer: answer.trim() },
+      {
+        onSuccess: () => {
+          setAnswers((current) => {
+            const next = { ...current };
+            delete next[clarificationId];
+            return next;
+          });
+        },
+      },
+    );
+  };
+
+  if (sessionQuery.isLoading) {
+    return (
+      <Card surface="panel">
+        <div className="flex items-center justify-center py-8">
+          <Spinner />
+        </div>
+      </Card>
+    );
+  }
+
+  if (sessionQuery.error) {
+    const error = sessionQuery.error as Error & { code?: string };
+    const errorMessage = error.message ?? "Failed to load task planning session";
+    const isTechSpecRequired =
+      error.code === "tech_spec_required" || error.message?.includes("tech specification");
+    return (
+      <Card surface="panel">
+        <div className="grid gap-4">
+          <p className="qb-meta-label">Tasks</p>
+          <p className="text-lg font-semibold tracking-[-0.02em]">No task planning session</p>
+          {isTechSpecRequired ? (
+            <p className="text-sm text-secondary">
+              Task planning requires an approved tech specification. Generate and approve the tech
+              spec before planning tasks.
+            </p>
+          ) : (
+            <Alert tone="error">{errorMessage}</Alert>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  if (!session) {
+    return (
+      <Card surface="panel">
+        <div className="grid gap-4">
+          <p className="qb-meta-label">Tasks</p>
+          <p className="text-lg font-semibold tracking-[-0.02em]">No task planning session</p>
+          <p className="text-sm text-secondary">
+            Task planning requires an approved tech specification. Generate and approve the tech
+            spec before planning tasks.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  const isGeneratingClarifications =
+    generateClarificationsMutation.isPending ||
+    session.status === "pending_clarifications" ||
+    (session.status === "clarifications_generated" && clarifications.length === 0);
+
+  const isAutoAnswering = autoAnswerMutation.isPending || isAutoAnswerJobRunning;
+  const isGeneratingTasks = generateTasksMutation.isPending || isGenerateTasksJobRunning;
+
+  const generateError = generateClarificationsMutation.error as Error & { code?: string } | null;
+  const autoAnswerError = autoAnswerMutation.error as Error & { code?: string } | null;
+  const generateTasksError = generateTasksMutation.error as Error & { code?: string } | null;
+
+  return (
+    <div className="grid gap-4">
+      {generateError ? (
+        <Alert tone="error">
+          {generateError.message || "Failed to generate clarifications"}
+        </Alert>
+      ) : null}
+      {autoAnswerError ? (
+        <Alert tone="error">
+          {autoAnswerError.message || "Failed to auto-answer clarifications"}
+        </Alert>
+      ) : null}
+      {generateTasksError ? (
+        <Alert tone="error">
+          {generateTasksError.message || "Failed to generate tasks"}
+        </Alert>
+      ) : null}
+      <Card surface="panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
+          <div>
+            <p className="qb-meta-label">Clarifications</p>
+            <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+              {pendingClarifications.length} pending / {answeredClarifications.length} answered
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {clarificationsCollapsed && allClarificationsAnswered ? (
+              <Button
+                onClick={() => setClarificationsCollapsed(false)}
+                variant="ghost"
+              >
+                Show clarifications
+              </Button>
+            ) : null}
+            <AiWorkflowButton
+              active={generateClarificationsMutation.isPending || isGenerateClarificationsJobRunning}
+              disabled={generateClarificationsMutation.isPending || isGenerateClarificationsJobRunning}
+              label="Generate clarifications"
+              onClick={() => {
+                generateClarificationsMutation.mutate();
+              }}
+              runningLabel="Generating..."
+              variant="secondary"
+            />
+            <AiWorkflowButton
+              active={isAutoAnswering}
+              disabled={isAutoAnswering || clarifications.length === 0}
+              label="Auto-answer all"
+              onClick={() => {
+                autoAnswerMutation.mutate();
+              }}
+              runningLabel="Answering..."
+              variant="secondary"
+            />
+          </div>
+        </div>
+
+        {clarificationsCollapsed ? (
+          <p className="mt-4 text-sm text-secondary">
+            All clarifications answered.{" "}
+            <button
+              className="text-accent hover:underline"
+              onClick={() => setClarificationsCollapsed(false)}
+              type="button"
+            >
+              Show clarifications
+            </button>
+          </p>
+        ) : isGeneratingClarifications && clarifications.length === 0 ? (
+          <p className="mt-4 text-sm text-secondary">
+            Generating clarification questions...
+          </p>
+        ) : clarifications.length === 0 ? (
+          <p className="mt-4 text-sm text-secondary">
+            No clarification questions yet. Generate clarifications to identify questions about
+            the implementation approach.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-4">
+            {clarifications.map((clarification) => (
+              <div
+                key={clarification.id}
+                className="grid gap-2 border border-border/80 bg-panel-inset p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {clarification.question}
+                  </p>
+                  {clarification.status === "answered" ? (
+                    <Badge tone="success">answered</Badge>
+                  ) : clarification.status === "skipped" ? (
+                    <Badge tone="warning">skipped</Badge>
+                  ) : (
+                    <Badge tone="neutral">pending</Badge>
+                  )}
+                </div>
+                {clarification.context ? (
+                  <p className="text-sm text-secondary">{clarification.context}</p>
+                ) : null}
+                {clarification.answer ? (
+                  <p className="text-sm text-foreground">{clarification.answer}</p>
+                ) : (
+                  <div className="grid gap-2">
+                    <Textarea
+                      id={`answer-${clarification.id}`}
+                      onChange={(event) => {
+                        setAnswers((current) => ({
+                          ...current,
+                          [clarification.id]: event.target.value,
+                        }));
+                      }}
+                      placeholder="Enter your answer..."
+                      rows={3}
+                      value={answers[clarification.id] ?? ""}
+                    />
+                    <Button
+                      disabled={
+                        !answers[clarification.id]?.trim() ||
+                        answerClarificationMutation.isPending
+                      }
+                      onClick={() => {
+                        handleAnswerClarification(clarification.id);
+                      }}
+                      type="button"
+                      variant="secondary"
+                    >
+                      Submit answer
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card surface="panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
+          <div>
+            <p className="qb-meta-label">Delivery Tasks</p>
+            <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+              {tasks.length} task{tasks.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                setIsCreatingTask(true);
+                setTaskForm({
+                  title: "",
+                  description: "",
+                  instructions: "",
+                  acceptanceCriteria: "",
+                  status: "pending",
+                });
+              }}
+              variant="secondary"
+            >
+              Add task
+            </Button>
+            <AiWorkflowButton
+              active={isGeneratingTasks}
+              disabled={
+                isGeneratingTasks ||
+                !allClarificationsAnswered ||
+                tasks.length > 0
+              }
+              label="Generate tasks"
+              onClick={() => {
+                generateTasksMutation.mutate();
+              }}
+              runningLabel="Generating..."
+              variant="secondary"
+            />
+          </div>
+        </div>
+
+        {isCreatingTask ? (
+          <div className="mt-4 grid gap-4 border border-border/80 bg-panel-inset p-4">
+            <div className="grid gap-2">
+              <Label htmlFor="task-title">Title</Label>
+              <Input
+                id="task-title"
+                onChange={(event) =>
+                  setTaskForm((current) => ({ ...current, title: event.target.value }))
+                }
+                placeholder="Task title"
+                value={taskForm.title}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="task-description">Description</Label>
+              <Textarea
+                id="task-description"
+                onChange={(event) =>
+                  setTaskForm((current) => ({ ...current, description: event.target.value }))
+                }
+                placeholder="Task description"
+                rows={3}
+                value={taskForm.description}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="task-instructions">Instructions (optional)</Label>
+              <Textarea
+                id="task-instructions"
+                onChange={(event) =>
+                  setTaskForm((current) => ({ ...current, instructions: event.target.value }))
+                }
+                placeholder="Detailed instructions for completing this task"
+                rows={3}
+                value={taskForm.instructions}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="task-criteria">Acceptance criteria (one per line, optional)</Label>
+              <Textarea
+                id="task-criteria"
+                onChange={(event) =>
+                  setTaskForm((current) => ({ ...current, acceptanceCriteria: event.target.value }))
+                }
+                placeholder="Criteria 1&#10;Criteria 2&#10;Criteria 3"
+                rows={3}
+                value={taskForm.acceptanceCriteria}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="task-status">Status</Label>
+              <Select
+                id="task-status"
+                onChange={(event) =>
+                  setTaskForm((current) => ({
+                    ...current,
+                    status: event.target.value as typeof taskForm.status,
+                  }))
+                }
+                value={taskForm.status}
+              >
+                <option value="pending">Pending</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="blocked">Blocked</option>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                disabled={!taskForm.title.trim() || !taskForm.description.trim() || createTaskMutation.isPending}
+                onClick={() => {
+                  createTaskMutation.mutate(
+                    {
+                      title: taskForm.title.trim(),
+                      description: taskForm.description.trim(),
+                      instructions: taskForm.instructions.trim() || undefined,
+                      acceptanceCriteria: taskForm.acceptanceCriteria
+                        .split("\n")
+                        .map((line) => line.trim())
+                        .filter((line) => line.length > 0),
+                      status: taskForm.status,
+                    },
+                    {
+                      onSuccess: () => {
+                        setIsCreatingTask(false);
+                        setTaskForm({
+                          title: "",
+                          description: "",
+                          instructions: "",
+                          acceptanceCriteria: "",
+                          status: "pending",
+                        });
+                      },
+                    },
+                  );
+                }}
+                type="button"
+                variant="primary"
+              >
+                Create task
+              </Button>
+              <Button
+                onClick={() => {
+                  setIsCreatingTask(false);
+                  setTaskForm({
+                    title: "",
+                    description: "",
+                    instructions: "",
+                    acceptanceCriteria: "",
+                    status: "pending",
+                  });
+                }}
+                type="button"
+                variant="ghost"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {tasks.length === 0 && !isCreatingTask ? (
+          <p className="mt-4 text-sm text-secondary">
+            {session.status === "tasks_generated"
+              ? "Task generation is in progress or no tasks were generated."
+              : allClarificationsAnswered
+                ? "All clarifications answered. Generate tasks to create the delivery task list."
+                : "Answer all clarification questions before generating tasks."}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid gap-3">
+          {tasks.map((task) => {
+            const isEditing = editingTaskId === task.id;
+            return (
+              <div
+                key={task.id}
+                className="grid gap-2 border border-border/80 bg-panel-inset p-4"
+              >
+                {isEditing ? (
+                  <>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`edit-title-${task.id}`}>Title</Label>
+                      <Input
+                        id={`edit-title-${task.id}`}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({ ...current, title: event.target.value }))
+                        }
+                        placeholder="Task title"
+                        value={taskForm.title}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`edit-description-${task.id}`}>Description</Label>
+                      <Textarea
+                        id={`edit-description-${task.id}`}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({ ...current, description: event.target.value }))
+                        }
+                        placeholder="Task description"
+                        rows={2}
+                        value={taskForm.description}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`edit-instructions-${task.id}`}>Instructions</Label>
+                      <Textarea
+                        id={`edit-instructions-${task.id}`}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({ ...current, instructions: event.target.value }))
+                        }
+                        placeholder="Detailed instructions"
+                        rows={2}
+                        value={taskForm.instructions}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`edit-criteria-${task.id}`}>Acceptance criteria (one per line)</Label>
+                      <Textarea
+                        id={`edit-criteria-${task.id}`}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({ ...current, acceptanceCriteria: event.target.value }))
+                        }
+                        placeholder="Criteria 1&#10;Criteria 2"
+                        rows={2}
+                        value={taskForm.acceptanceCriteria}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor={`edit-status-${task.id}`}>Status</Label>
+                      <Select
+                        id={`edit-status-${task.id}`}
+                        onChange={(event) =>
+                          setTaskForm((current) => ({
+                            ...current,
+                            status: event.target.value as typeof taskForm.status,
+                          }))
+                        }
+                        value={taskForm.status}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="blocked">Blocked</option>
+                      </Select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        disabled={!taskForm.title.trim() || !taskForm.description.trim() || updateTaskMutation.isPending}
+                        onClick={() => {
+                          updateTaskMutation.mutate(
+                            {
+                              taskId: task.id,
+                              data: {
+                                title: taskForm.title.trim(),
+                                description: taskForm.description.trim(),
+                                instructions: taskForm.instructions.trim() || null,
+                                acceptanceCriteria: taskForm.acceptanceCriteria
+                                  .split("\n")
+                                  .map((line) => line.trim())
+                                  .filter((line) => line.length > 0),
+                                status: taskForm.status,
+                              },
+                            },
+                            {
+                              onSuccess: () => {
+                                setEditingTaskId(null);
+                              },
+                            },
+                          );
+                        }}
+                        type="button"
+                        variant="primary"
+                      >
+                        Save changes
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setEditingTaskId(null);
+                        }}
+                        type="button"
+                        variant="ghost"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        disabled={deleteTaskMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to delete this task?")) {
+                            deleteTaskMutation.mutate(task.id);
+                          }
+                        }}
+                        type="button"
+                        variant="danger"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="grid gap-1 flex-1">
+                        <p className="text-sm font-medium text-foreground">{task.title}</p>
+                        <p className="text-sm text-secondary">{task.description}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          tone={
+                            task.status === "completed"
+                              ? "success"
+                              : task.status === "in_progress"
+                                ? "warning"
+                                : task.status === "blocked"
+                                  ? "danger"
+                                  : "neutral"
+                          }
+                        >
+                          {task.status}
+                        </Badge>
+                        <Button
+                          onClick={() => {
+                            setEditingTaskId(task.id);
+                            setTaskForm({
+                              title: task.title,
+                              description: task.description,
+                              instructions: task.instructions ?? "",
+                              acceptanceCriteria: task.acceptanceCriteria.join("\n"),
+                              status: task.status as typeof taskForm.status,
+                            });
+                          }}
+                          variant="ghost"
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                    </div>
+                    {task.instructions ? (
+                      <p className="text-sm text-secondary">{task.instructions}</p>
+                    ) : null}
+                    {task.acceptanceCriteria.length > 0 ? (
+                      <div className="grid gap-1">
+                        <p className="text-xs font-medium text-secondary">Acceptance criteria:</p>
+                        <ul className="list-inside list-disc text-sm text-secondary">
+                          {task.acceptanceCriteria.map((criterion, index) => (
+                            <li key={index}>{criterion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
   );
 };

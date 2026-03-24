@@ -2,39 +2,46 @@
 
 ## Status
 
-Post-M5 UX Sweep And Bug Fixes
+Milestone 6 — Approval and Task Planning
 
 This milestone is the active implementation target.
 
 ## Goal
 
-Stabilize the completed M1-M5 planning workflow before starting M6 by fixing defects, tightening UX rough edges, and making small workflow improvements without expanding scope into task-planning implementation.
+Enable task planning for features with approved technical specifications. Users can generate clarification questions, answer them (manually or via LLM auto-answer), generate ordered delivery task lists, and track implementation records that link features to implemented tech revisions.
 
 ## In Scope
 
-- UX polish and bug fixes across the completed M1-M5 planning workflow
-- small copy, layout, interaction, validation, and navigation improvements that reduce user friction without expanding milestone scope
-- fixes for regressions or rough edges in Mission Control, setup, document editors, milestones, features, and the Feature Editor
-- test coverage and documentation updates needed to reflect corrected repo behavior
-- branch and planning state updates required to hold M6 feature work until this sweep is complete
+- Task planning database schema and migrations
+- Clarification question generation and answering workflow
+- Delivery task list generation from answered clarifications
+- Implementation record tracking (which tech revision was implemented, commit SHA)
+- Frontend Tasks tab in Feature Editor (replace existing stub)
+- Job executors: `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `RecommendNextFeature`
 
 ## Out Of Scope
 
-- M6 delivery-task data modeling, task generation routes, or standalone task workflow implementation
-- new planning stages, new execution surfaces, or feature expansion beyond what M1-M5 already define
-- broad architecture rewrites that are not required to fix a concrete UX or bug issue
-- sandbox execution, PR creation, verification runs, or later-milestone delivery features not already implemented
-- OAuth, RBAC, API keys, or other M12 auth extensions
+- Feature review routes and LLM executors (deferred to future milestone)
+- Bug reports, bug fix tasks, and verification workflow (deferred to M8 or later)
+- Quality gates for task plans (`ReviewFeatureCohesion`, `StressTestTaskPlan`)
+- Sandbox execution and PR creation (M8)
+- Auto-advance orchestration (M7)
 
 ## Acceptance Criteria
 
 The milestone is complete when the repo can support the following:
 
-- M1-M5 workflow screens remain functional after the sweep, with targeted UX and bug issues resolved without introducing M6 scope
-- existing planning phase gates and approvals still behave as documented
-- any bug fix that changes observable behavior is covered by tests or documentation where appropriate
-- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass for the sweep changes
-- repo docs clearly state that M5 is complete and M6 has not started yet
+- Database migration creates all new task planning and implementation record tables without errors
+- Task planning session is created when a feature has an approved tech specification
+- Clarification questions can be generated via LLM and listed
+- Clarification questions can be answered manually or via auto-answer
+- Delivery task list can be generated from answered clarifications
+- Implementation records can be created to link a feature to an implemented tech revision
+- Tasks tab in Feature Editor shows clarification questions and delivery tasks with appropriate states
+- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
+- `pnpm db:migrate` succeeds on a fresh database
+- User-facing documentation exists for all new screens and flows introduced in this milestone
+- Internal architecture documentation exists for all new services, schema tables, and API routes
 
 ## Relevant ADRs
 
@@ -44,8 +51,8 @@ The milestone is complete when the repo can support the following:
 
 ## Working Rules
 
-- Treat completed M1-M5 behavior as the baseline and prefer targeted corrections over redesign.
-- Do not start M6 task-planning implementation during this sweep; keep existing task surfaces at their current stub or placeholder level.
-- Keep live implementation-staleness tracking deferred until M6 implementation-record support exists.
-- Update repo-facing docs only when the sweep changes actual repo truth.
-- If implementation needs to deviate further from the outline’s cookie-session, SSE, or project-scoped secret model, capture that in an ADR first.
+- Keep task planning workflow independent of sandbox execution, which arrives in M8
+- Implementation records capture the relationship between features and implemented revisions; they do not trigger sandbox runs
+- Clarification questions and delivery tasks are scoped to a single feature and stored per-feature
+- Remove any existing M6 placeholder or stub code related to feature review (e.g., ReviewPanel)
+- Update repo-facing docs after all implementation is verified

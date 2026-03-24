@@ -189,6 +189,10 @@ export const appRouter = createBrowserRouter([
                                 path: "/projects/:id/features/:featureId",
                                 element: <FeatureEditorPage />,
                               },
+                              {
+                                path: "/projects/:id/features/:featureId/:tab",
+                                element: <FeatureEditorPage />,
+                              },
                             ],
                           },
                         ],

@@ -1030,6 +1030,47 @@ describe("API integration", () => {
     }
   });
 
+  it("seeds a default Milestone 0 when creating a new project", async () => {
+    const restoreReadiness = withHealthyAuthReadiness();
+
+    try {
+      const registerResponse = await server.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: {
+          displayName: "Milestone Seeding Test",
+          email: "milestone-seed@example.com",
+          password: "correct-horse-battery",
+        },
+      });
+
+      expect(registerResponse.statusCode).toBe(200);
+      const cookie = registerResponse.cookies.find(({ name }) => name === "qb_session");
+      expect(cookie?.value).toBeTruthy();
+
+      const projectResponse = await server.inject({
+        method: "POST",
+        url: "/api/projects",
+        cookies: { qb_session: cookie!.value },
+        payload: { name: "Seeded Project" },
+      });
+
+      expect(projectResponse.statusCode).toBe(200);
+      const projectId = projectResponse.json().id as string;
+
+      const milestones = await appServices.services.db.query.milestonesTable.findMany({
+        where: (table, { eq }) => eq(table.projectId, projectId),
+      });
+
+      expect(milestones.length).toBe(1);
+      expect(milestones[0].title).toBe("Repository and Toolchain Foundations");
+      expect(milestones[0].status).toBe("draft");
+      expect(milestones[0].position).toBe(1);
+    } finally {
+      restoreReadiness();
+    }
+  });
+
   it("serves instance readiness without authentication", async () => {
     const readinessResponse = await server.inject({
       method: "GET",

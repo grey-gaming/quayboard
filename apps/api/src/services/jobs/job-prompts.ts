@@ -841,3 +841,100 @@ export const buildFeatureArchDocsPrompt = (input: {
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
   ].join("\n");
+
+export const buildTaskClarificationsPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  techSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate clarification questions for implementing "${input.feature.title}".`,
+    "Return valid JSON as a non-empty array of objects.",
+    "Each object must have a \"question\" key with a clear, specific question for the implementation.",
+    "Each object may have an optional \"context\" key with additional context.",
+    "Focus on ambiguous areas in the tech spec, acceptance criteria, or implementation approach.",
+    "Ask about edge cases, error handling, integration points, and data model decisions.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved feature Technical Spec:",
+    input.techSpec,
+  ].join("\n");
+
+export const buildAutoAnswerClarificationsPrompt = (input: {
+  clarifications: Array<{ question: string; context?: string | null }>;
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  techSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Answer clarification questions for implementing "${input.feature.title}".`,
+    "Return valid JSON as an array of objects matching the input order.",
+    "Each object must have an \"answer\" key with a helpful, implementation-focused answer.",
+    "Derive answers from the tech spec, feature context, and standard software engineering practices.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved feature Technical Spec:",
+    input.techSpec,
+    "",
+    "Clarification questions:",
+    JSON.stringify(
+      input.clarifications.map((c) => ({ question: c.question, context: c.context })),
+      null,
+      2,
+    ),
+  ].join("\n");
+
+export const buildFeatureTaskListPrompt = (input: {
+  clarifications: Array<{ question: string; answer: string }>;
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  techSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Generate an ordered implementation task list for "${input.feature.title}".`,
+    "Return valid JSON as a non-empty array of objects.",
+    "Each object must have: \"title\", \"description\", \"instructions\" (optional), \"acceptanceCriteria\" (array).",
+    "Order tasks in implementation sequence: setup, core logic, integration, testing.",
+    "Each task should be completable in a single implementation session.",
+    "Instructions should provide concrete guidance for how to implement.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved feature Technical Spec:",
+    input.techSpec,
+    "",
+    "Clarification answers:",
+    JSON.stringify(input.clarifications, null, 2),
+  ].join("\n");

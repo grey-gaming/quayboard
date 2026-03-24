@@ -57,10 +57,6 @@ const publishProjectUpdate = (
 export const featureRoutes = (
   services: AppServices,
 ): FastifyPluginAsync => async (app) => {
-  registerNotImplementedRoutes(app, [
-    { method: "GET", url: "/projects/:id/features/:featureId/tasks" },
-  ]);
-
   app.get(
     "/projects/:id/features/graph",
     {

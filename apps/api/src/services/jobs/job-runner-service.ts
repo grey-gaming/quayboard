@@ -15,6 +15,8 @@ import {
   milestoneUseCasesTable,
   milestonesTable,
   useCasesTable,
+  featureTechSpecsTable,
+  featureTechRevisionsTable,
 } from "../../db/schema.js";
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
@@ -47,6 +49,9 @@ import {
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
+  buildTaskClarificationsPrompt,
+  buildAutoAnswerClarificationsPrompt,
+  buildFeatureTaskListPrompt,
 } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
 
@@ -411,6 +416,94 @@ const parseGeneratedFeaturesResult = (
       priority?: string;
     }>
   | null => parseJson(value);
+
+const parseTaskClarificationsResult = (
+  value: string,
+): Array<{ question: string; context?: string | null }> => {
+  const parsed = parseJson<Array<{ question?: string; context?: string }>>(value);
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error(
+      "GenerateTaskClarifications returned invalid content. Expected a non-empty JSON array.",
+    );
+  }
+
+  return parsed.map((item) => {
+    if (!item.question?.trim()) {
+      throw new Error(
+        "GenerateTaskClarifications returned an item without a question.",
+      );
+    }
+
+    return {
+      question: item.question.trim(),
+      context: item.context?.trim() ?? null,
+    };
+  });
+};
+
+const parseAutoAnswerResult = (
+  value: string,
+): Array<{ answer: string }> => {
+  const parsed = parseJson<Array<{ answer?: string }>>(value);
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      "AutoAnswerTaskClarifications returned invalid content. Expected a JSON array.",
+    );
+  }
+
+  return parsed.map((item) => {
+    if (!item.answer?.trim()) {
+      throw new Error(
+        "AutoAnswerTaskClarifications returned an item without an answer.",
+      );
+    }
+
+    return { answer: item.answer.trim() };
+  });
+};
+
+const parseTaskListResult = (
+  value: string,
+): Array<{
+  title: string;
+  description: string;
+  instructions?: string | null;
+  acceptanceCriteria: string[];
+}> => {
+  const parsed = parseJson<
+    Array<{
+      title?: string;
+      description?: string;
+      instructions?: string;
+      acceptanceCriteria?: string[];
+    }>
+  >(value);
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error(
+      "GenerateFeatureTaskList returned invalid content. Expected a non-empty JSON array.",
+    );
+  }
+
+  return parsed.map((item) => {
+    if (!item.title?.trim() || !item.description?.trim()) {
+      throw new Error(
+        "GenerateFeatureTaskList returned an item without title or description.",
+      );
+    }
+
+    return {
+      title: item.title.trim(),
+      description: item.description.trim(),
+      instructions: item.instructions?.trim() ?? null,
+      acceptanceCriteria: Array.isArray(item.acceptanceCriteria)
+        ? item.acceptanceCriteria.map((c) => c.trim())
+        : [],
+    };
+  });
+};
 
 const validateGeneratedFeatures = (
   items: Array<{
@@ -1582,6 +1675,180 @@ export const createJobRunnerService = (input: {
         );
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, kind });
+      }
+
+      case "GenerateTaskClarifications":
+      case "AutoAnswerTaskClarifications":
+      case "GenerateFeatureTaskList": {
+        if (!input.db) {
+          throw new Error(`${rawJob.type} requires database access.`);
+        }
+
+        const { createTaskPlanningService } = await import("../task-planning-service.js");
+        const taskPlanning = createTaskPlanningService(input.db);
+
+        const featureId = (rawJob.inputs as { featureId?: string; sessionId?: string }).featureId;
+        const sessionId = (rawJob.inputs as { featureId?: string; sessionId?: string }).sessionId;
+
+        if (!featureId || !sessionId) {
+          throw new Error(`${rawJob.type} requires featureId and sessionId.`);
+        }
+
+        const context = await taskPlanning.getFeatureContext(ownerUserId, featureId);
+
+        const techSpec = await input.db.query.featureTechSpecsTable.findFirst({
+          where: eq(featureTechSpecsTable.featureId, featureId),
+        });
+
+        if (!techSpec?.headRevisionId) {
+          throw new Error(`${rawJob.type} requires an approved tech specification.`);
+        }
+
+        const techRevision = await input.db.query.featureTechRevisionsTable.findFirst({
+          where: eq(featureTechRevisionsTable.id, techSpec.headRevisionId),
+        });
+
+        if (!techRevision) {
+          throw new Error(`${rawJob.type} requires an approved tech specification.`);
+        }
+
+        const featureContext = {
+          acceptanceCriteria: context.headFeatureRevision.acceptanceCriteria as string[],
+          featureKey: context.feature.featureKey,
+          milestoneTitle: context.feature.milestoneId,
+          summary: context.headFeatureRevision.summary,
+          title: context.headFeatureRevision.title,
+        };
+
+        if (rawJob.type === "GenerateTaskClarifications") {
+          const prompt = buildTaskClarificationsPrompt({
+            feature: featureContext,
+            techSpec: techRevision.markdown,
+          });
+
+          const generated = await input.llmProviderService.generate(provider, prompt, {
+            responseFormat: "json",
+          });
+
+          await input.db.insert(llmRunsTable).values({
+            id: generateId(),
+            projectId: rawJob.projectId,
+            jobId: rawJob.id,
+            provider: provider.provider,
+            model: provider.model,
+            templateId: rawJob.type,
+            parameters: { featureId, sessionId },
+            input: { prompt },
+            output: { content: generated.content },
+            promptTokens: generated.promptTokens,
+            completionTokens: generated.completionTokens,
+            createdAt: new Date(),
+          });
+
+          const clarifications = parseTaskClarificationsResult(generated.content);
+          await taskPlanning.createClarifications(sessionId, clarifications);
+
+          return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+        }
+
+        if (rawJob.type === "AutoAnswerTaskClarifications") {
+          const existingClarifications = await taskPlanning.getClarifications(
+            ownerUserId,
+            sessionId,
+          );
+
+          const pendingClarifications = existingClarifications.filter(
+            (c) => c.status === "pending",
+          );
+
+          if (pendingClarifications.length === 0) {
+            return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+          }
+
+          const prompt = buildAutoAnswerClarificationsPrompt({
+            clarifications: pendingClarifications.map((c) => ({
+              question: c.question,
+              context: c.context,
+            })),
+            feature: featureContext,
+            techSpec: techRevision.markdown,
+          });
+
+          const generated = await input.llmProviderService.generate(provider, prompt, {
+            responseFormat: "json",
+          });
+
+          await input.db.insert(llmRunsTable).values({
+            id: generateId(),
+            projectId: rawJob.projectId,
+            jobId: rawJob.id,
+            provider: provider.provider,
+            model: provider.model,
+            templateId: rawJob.type,
+            parameters: { featureId, sessionId },
+            input: { prompt },
+            output: { content: generated.content },
+            promptTokens: generated.promptTokens,
+            completionTokens: generated.completionTokens,
+            createdAt: new Date(),
+          });
+
+          const answers = parseAutoAnswerResult(generated.content);
+
+          for (let i = 0; i < Math.min(pendingClarifications.length, answers.length); i++) {
+            await taskPlanning.answerClarification(
+              ownerUserId,
+              featureId,
+              pendingClarifications[i].id,
+              answers[i].answer,
+              "auto",
+            );
+          }
+
+          return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+        }
+
+        const existingClarifications = await taskPlanning.getClarifications(
+          ownerUserId,
+          sessionId,
+        );
+
+        const answeredClarifications = existingClarifications.filter(
+          (c) => c.status === "answered",
+        );
+
+        const prompt = buildFeatureTaskListPrompt({
+          clarifications: answeredClarifications.map((c) => ({
+            question: c.question,
+            answer: c.answer ?? "",
+          })),
+          feature: featureContext,
+          techSpec: techRevision.markdown,
+        });
+
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { featureId, sessionId },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+
+        const tasks = parseTaskListResult(generated.content);
+        await taskPlanning.createTasks(sessionId, tasks);
+
+        return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
       }
 
       default:

@@ -92,6 +92,12 @@ import {
   createUserFlowService,
   type UserFlowService,
 } from "./services/user-flow-service.js";
+import {
+  createTaskPlanningService,
+} from "./services/task-planning-service.js";
+import type {
+  TaskPlanningService,
+} from "./services/task-planning-service.js";
 
 export type AppServices = {
   artifactApprovalService: ArtifactApprovalService;
@@ -119,6 +125,7 @@ export type AppServices = {
   settingsService: SettingsService;
   sseHub: SseHub;
   systemReadinessService: SystemReadinessService;
+  taskPlanningService: TaskPlanningService;
   userFlowService: UserFlowService;
 };
 
@@ -161,6 +168,7 @@ export const createAppServices = async (
   const milestoneService = createMilestoneService(db);
   const featureService = createFeatureService(db);
   const featureWorkstreamService = createFeatureWorkstreamService(db);
+  const taskPlanningService = createTaskPlanningService(db);
   const artifactApprovalService = createArtifactApprovalService(
     db,
     blueprintService,
@@ -312,6 +320,7 @@ export const createAppServices = async (
       settingsService,
       sseHub,
       systemReadinessService,
+      taskPlanningService,
       userFlowService,
     },
     async close() {

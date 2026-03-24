@@ -268,6 +268,19 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     validateLinkedUseCases: async () => [],
+    seedDefaultMilestone: async () => ({
+      id: "test-milestone-id",
+      projectId: "test-project-id",
+      position: 1,
+      title: "Repository and Toolchain Foundations",
+      summary: "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.",
+      status: "draft",
+      linkedUserFlows: [],
+      featureCount: 0,
+      approvedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }),
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),
@@ -496,6 +509,51 @@ export const createStubServices = (): AppServices => ({
       userFlows: [],
     }),
     update: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
+  taskPlanningService: {
+    answerClarification: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    autoAnswerClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createImplementationRecord: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createTasks: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    generateClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    generateTasks: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getClarifications: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getOrCreateSession: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getSession: async () => null,
+    getFeatureContext: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getImplementationRecords: async () => [],
+    getTasks: async () => [],
+    setSessionStatus: async () => undefined,
+    createTask: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    updateTask: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    deleteTask: async () => {
       throw new Error("Not implemented in test stub.");
     },
   },

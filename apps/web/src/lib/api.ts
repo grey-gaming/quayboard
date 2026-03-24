@@ -672,4 +672,204 @@ export const api = {
       method: "POST",
     });
   },
+  getTaskPlanningSession(featureId: string) {
+    return apiRequest<{
+      session: {
+        id: string;
+        featureId: string;
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      };
+      clarifications: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        question: string;
+        context: string | null;
+        status: string;
+        answer: string | null;
+        answerSource: string | null;
+        answeredAt: string | null;
+        createdAt: string;
+      }>;
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session`);
+  },
+  getClarifications(featureId: string) {
+    return apiRequest<{
+      clarifications: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        question: string;
+        context: string | null;
+        status: string;
+        answer: string | null;
+        answerSource: string | null;
+        answeredAt: string | null;
+        createdAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/clarifications`);
+  },
+  generateClarifications(featureId: string) {
+    return apiRequest<Job>(
+      `/api/features/${featureId}/task-planning-session/clarifications`,
+      { method: "POST", body: JSON.stringify({}) },
+    );
+  },
+  answerClarification(featureId: string, clarificationId: string, answer: string) {
+    return apiRequest<{
+      id: string;
+      sessionId: string;
+      position: number;
+      question: string;
+      context: string | null;
+      status: string;
+      answer: string | null;
+      answerSource: string | null;
+      answeredAt: string | null;
+      createdAt: string;
+    }>(`/api/features/${featureId}/task-planning-session/clarifications/${clarificationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ answer }),
+    });
+  },
+  autoAnswerClarifications(featureId: string) {
+    return apiRequest<Job>(
+      `/api/features/${featureId}/task-planning-session/clarifications/auto-answer`,
+      { method: "POST", body: JSON.stringify({}) },
+    );
+  },
+  generateTasks(featureId: string) {
+    return apiRequest<Job>(`/api/features/${featureId}/task-planning-session/tasks/generate`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  getTasks(featureId: string) {
+    return apiRequest<{
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/tasks`);
+  },
+  createTask(
+    featureId: string,
+    data: {
+      title: string;
+      description: string;
+      instructions?: string;
+      acceptanceCriteria?: string[];
+      status?: "pending" | "in_progress" | "completed" | "blocked";
+    },
+  ) {
+    return apiRequest<{
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/tasks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateTask(
+    featureId: string,
+    taskId: string,
+    data: {
+      title?: string;
+      description?: string;
+      instructions?: string | null;
+      acceptanceCriteria?: string[];
+      status?: "pending" | "in_progress" | "completed" | "blocked";
+    },
+  ) {
+    return apiRequest<{
+      tasks: Array<{
+        id: string;
+        sessionId: string;
+        position: number;
+        title: string;
+        description: string;
+        instructions: string | null;
+        acceptanceCriteria: string[];
+        status: string;
+        createdByJobId: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/task-planning-session/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteTask(featureId: string, taskId: string) {
+    return apiRequest<{ success: boolean }>(
+      `/api/features/${featureId}/task-planning-session/tasks/${taskId}`,
+      { method: "DELETE" },
+    );
+  },
+  getImplementationRecords(featureId: string) {
+    return apiRequest<{
+      records: Array<{
+        id: string;
+        featureId: string;
+        techRevisionId: string;
+        commitSha: string | null;
+        sandboxRunId: string | null;
+        implementedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/implementation-records`);
+  },
+  createImplementationRecord(
+    featureId: string,
+    payload: { techRevisionId: string; commitSha?: string; sandboxRunId?: string },
+  ) {
+    return apiRequest<{
+      records: Array<{
+        id: string;
+        featureId: string;
+        techRevisionId: string;
+        commitSha: string | null;
+        sandboxRunId: string | null;
+        implementedAt: string;
+      }>;
+    }>(`/api/features/${featureId}/implementation-records`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
 };
