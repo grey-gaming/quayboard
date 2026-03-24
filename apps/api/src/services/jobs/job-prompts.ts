@@ -838,7 +838,7 @@ export const buildFeatureUserDocsPrompt = (input: {
   ].join("\n");
 
 export const buildFeatureArchDocsPrompt = (input: {
-  featureTechSpec: string;
+  featureTechSpec: string | null;
   featureTitle: string;
   projectTechnicalSpec: string;
 }) =>
@@ -851,9 +851,9 @@ export const buildFeatureArchDocsPrompt = (input: {
     "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
     "Do not wrap the JSON in code fences.",
     "",
-    "Approved feature Technical Spec:",
-    input.featureTechSpec,
-    "",
+    ...(input.featureTechSpec
+      ? ["Approved feature Technical Spec:", input.featureTechSpec, ""]
+      : []),
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
   ].join("\n");

@@ -384,8 +384,13 @@ export const createNextActionsService = (
       for (let i = 0; i < orderedFeatures.length; i++) {
         if (batch.length >= maxConcurrent) break;
         const feature = orderedFeatures[i]!;
-        const trackData = allTracks[i]!.tracks[trackKey];
+        const tracks = allTracks[i]!.tracks;
+        const trackData = tracks[trackKey];
         if (trackData.required && !trackData.headRevision) {
+          // arch_docs requires an approved tech spec when tech is required — skip features that aren't ready yet.
+          if (trackKey === "archDocs" && tracks.tech.required && tracks.tech.status !== "approved") {
+            continue;
+          }
           batch.push({
             key: firstAction.key,
             label: firstAction.label,

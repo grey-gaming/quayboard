@@ -1637,13 +1637,16 @@ export const createJobRunnerService = (input: {
             projectUxSpec: uxSpec.markdown,
           });
         } else {
-          if (!tracks.tracks.tech.headRevision?.approval) {
-            throw new Error("GenerateFeatureArchDocs requires an approved feature Tech Spec.");
+          if (tracks.tracks.tech.required && !tracks.tracks.tech.headRevision?.approval) {
+            const featureTitle = context.headFeatureRevision?.title ?? featureId;
+            throw new Error(
+              `Cannot generate architecture docs for "${featureTitle}": the feature tech spec must be approved first.`,
+            );
           }
 
           kind = "arch_docs";
           prompt = buildFeatureArchDocsPrompt({
-            featureTechSpec: tracks.tracks.tech.headRevision.markdown,
+            featureTechSpec: tracks.tracks.tech.headRevision?.markdown ?? null,
             featureTitle: context.headFeatureRevision.title,
             projectTechnicalSpec: technicalSpec.markdown,
           });
