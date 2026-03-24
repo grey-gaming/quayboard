@@ -31,6 +31,7 @@ const autoAdvanceSessionJsonSchema = {
     creativityMode: { type: "string" },
     retryCount: { type: "integer" },
     reviewCount: { type: "integer" },
+    maxConcurrentJobs: { type: "integer" },
     startedAt: { type: ["string", "null"] },
     pausedAt: { type: ["string", "null"] },
     completedAt: { type: ["string", "null"] },
@@ -48,6 +49,7 @@ const autoAdvanceSessionJsonSchema = {
     "creativityMode",
     "retryCount",
     "reviewCount",
+    "maxConcurrentJobs",
     "startedAt",
     "pausedAt",
     "completedAt",
@@ -75,6 +77,7 @@ const startBodyJsonSchema = {
     autoApproveWhenClear: { type: "boolean" },
     skipReviewSteps: { type: "boolean" },
     creativityMode: { type: "string", enum: ["conservative", "balanced", "creative"] },
+    maxConcurrentJobs: { type: "integer", minimum: 1, maximum: 10 },
   },
   additionalProperties: false,
 } as const;
