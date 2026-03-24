@@ -9,7 +9,6 @@ import { MissionActivityTimeline } from "../components/workflow/MissionActivityT
 import { MissionStatsStrip } from "../components/workflow/MissionStatsStrip.js";
 import { NextActionsPanel } from "../components/workflow/NextActionsPanel.js";
 import { PhaseGateChecklist } from "../components/workflow/PhaseGateChecklist.js";
-import { ProjectJobsPanel } from "../components/workflow/ProjectJobsPanel.js";
 import { Badge } from "../components/ui/Badge.js";
 import { useAutoAdvanceQuery } from "../hooks/use-auto-advance.js";
 import { useProjectJobsQuery, useProjectQuery } from "../hooks/use-projects.js";
@@ -55,6 +54,7 @@ export const MissionControlPage = () => {
   });
 
   const session = autoAdvanceQuery.data?.session ?? null;
+  const nextStep = autoAdvanceQuery.data?.nextStep ?? null;
   const jobs = jobsQuery.data?.jobs ?? [];
 
   return (
@@ -74,7 +74,7 @@ export const MissionControlPage = () => {
         }
       />
 
-      <AutoAdvanceBanner session={session} />
+      <AutoAdvanceBanner session={session} nextStep={nextStep} />
 
       <MissionStatsStrip
         phaseGates={phaseGatesQuery.data}
@@ -92,12 +92,6 @@ export const MissionControlPage = () => {
         <div className="grid gap-4">
           <AutoAdvanceControlsCard projectId={id} session={session} />
           <MissionActivityTimeline jobs={jobs} />
-          <ProjectJobsPanel
-            emptyMessage="No background jobs recorded yet."
-            headerBadge="background"
-            jobs={jobs}
-            title="Recent Jobs"
-          />
         </div>
       </div>
     </ProjectPageFrame>

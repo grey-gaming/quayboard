@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { AutoAdvanceSession, CreativityMode } from "@quayboard/shared";
 
 import {
@@ -30,6 +32,9 @@ export const AutoAdvanceControlsCard = ({
   const resetMutation = useAutoAdvanceReset(projectId);
   const stepMutation = useAutoAdvanceStep(projectId);
 
+  const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
+  const [skipReviewSteps, setSkipReviewSteps] = useState(false);
+
   const isPending =
     startMutation.isPending ||
     stopMutation.isPending ||
@@ -41,6 +46,10 @@ export const AutoAdvanceControlsCard = ({
   const isRunning = status === "running";
   const isPaused = status === "paused";
   const isCompleted = status === "completed" || status === "failed";
+  const isActive = isRunning || isPaused;
+
+  const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
+  const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
 
   return (
     <Card surface="rail" className="h-fit">
@@ -53,12 +62,46 @@ export const AutoAdvanceControlsCard = ({
       </div>
 
       <div className="mt-4 grid gap-3">
+        <div className="grid gap-2 border-b border-border/60 pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs text-secondary" htmlFor="creativity-mode">
+              Creativity mode
+            </label>
+            <select
+              id="creativity-mode"
+              className="border border-border/70 bg-panel px-2 py-1 text-xs text-foreground disabled:opacity-60"
+              value={displayCreativityMode}
+              disabled={isActive || isPending}
+              onChange={(e) => setCreativityMode(e.target.value as CreativityMode)}
+            >
+              {creativityModeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs text-secondary" htmlFor="skip-review-steps">
+              Skip review steps
+            </label>
+            <input
+              id="skip-review-steps"
+              type="checkbox"
+              className="h-4 w-4 accent-accent disabled:opacity-60"
+              checked={displaySkipReviewSteps}
+              disabled={isActive || isPending}
+              onChange={(e) => setSkipReviewSteps(e.target.checked)}
+            />
+          </div>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {(status === "idle" || isCompleted) && (
             <Button
               variant="primary"
               disabled={isPending}
-              onClick={() => startMutation.mutate(undefined)}
+              onClick={() => startMutation.mutate({ creativityMode, skipReviewSteps })}
             >
               Start
             </Button>
@@ -100,38 +143,6 @@ export const AutoAdvanceControlsCard = ({
             </Button>
           )}
         </div>
-
-        {session && (
-          <div className="grid gap-2 border-t border-border/60 pt-3">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-xs text-secondary" htmlFor="creativity-mode">
-                Creativity mode
-              </label>
-              <select
-                id="creativity-mode"
-                className="border border-border/70 bg-panel px-2 py-1 text-xs text-foreground"
-                value={session.creativityMode}
-                disabled
-              >
-                {creativityModeOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-xs text-secondary">Skip review steps</label>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-accent"
-                checked={session.skipReviewSteps}
-                disabled
-                readOnly
-              />
-            </div>
-          </div>
-        )}
 
         {(startMutation.isError || stopMutation.isError || resumeMutation.isError || resetMutation.isError || stepMutation.isError) && (
           <p className="text-xs text-danger">

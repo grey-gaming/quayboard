@@ -14,6 +14,10 @@ export const useAutoAdvanceQuery = (projectId: string) =>
   useQuery({
     queryKey: autoAdvanceKey(projectId),
     queryFn: () => missionControlApi.getAutoAdvanceStatus(projectId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.session?.status;
+      return status === "running" ? 3_000 : false;
+    },
   });
 
 export const useAutoAdvanceStart = (projectId: string) => {
