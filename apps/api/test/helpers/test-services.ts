@@ -2,6 +2,23 @@ import type { AppServices } from "../../src/app-services.js";
 import { createSseHub } from "../../src/services/sse.js";
 
 export const createStubServices = (): AppServices => ({
+  autoAdvanceService: {
+    getStatus: async () => ({ session: null, nextStep: null }),
+    start: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    stop: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    resume: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    reset: async () => undefined,
+    step: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    onJobComplete: async () => undefined,
+  },
   artifactApprovalService: {
     approve: async () => {
       throw new Error("Not implemented in test stub.");
@@ -217,6 +234,7 @@ export const createStubServices = (): AppServices => ({
     listOwnedJobs: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    cancelActiveAutoAdvanceJobsForProject: async () => [],
     cancelRunningJobs: async () => [],
     markFailed: async () => {
       throw new Error("Not implemented in test stub.");
@@ -284,6 +302,7 @@ export const createStubServices = (): AppServices => ({
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),
+    buildBatch: async () => ({ actions: [] }),
   },
   onePagerService: {
     approveCanonical: async () => {

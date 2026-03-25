@@ -33,6 +33,7 @@ import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { WorkflowSettingsPage } from "./pages/WorkflowSettingsPage.js";
 import { TechnicalSpecPage } from "./pages/TechnicalSpecPage.js";
 import { UxSpecPage } from "./pages/UxSpecPage.js";
 import { UserFlowsPage } from "./pages/UserFlowsPage.js";
@@ -120,6 +121,10 @@ export const appRouter = createBrowserRouter([
           {
             path: "/settings",
             element: <SettingsPage />,
+          },
+          {
+            path: "/settings/workflow",
+            element: <WorkflowSettingsPage />,
           },
           {
             path: "/projects/:id",

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { createPostgresDatabase, type AppDatabase } from "./db/client.js";
 import { readAppConfig } from "./config.js";
-import { projectsTable } from "./db/schema.js";
+import { autoAdvanceSessionsTable, projectsTable } from "./db/schema.js";
 import {
   createArtifactApprovalService,
   type ArtifactApprovalService,
@@ -98,8 +98,13 @@ import {
 import type {
   TaskPlanningService,
 } from "./services/task-planning-service.js";
+import {
+  createAutoAdvanceService,
+  type AutoAdvanceService,
+} from "./services/auto-advance.js";
 
 export type AppServices = {
+  autoAdvanceService: AutoAdvanceService;
   artifactApprovalService: ArtifactApprovalService;
   authService: AuthService;
   blueprintService: BlueprintService;
@@ -225,6 +230,20 @@ export const createAppServices = async (
     onePagerService,
     productSpecService,
     userFlowService,
+    taskPlanningService,
+  );
+  const autoAdvanceService = createAutoAdvanceService(
+    db,
+    nextActionsService,
+    jobService,
+    sseHub,
+    artifactApprovalService,
+    blueprintService,
+    milestoneService,
+    onePagerService,
+    productSpecService,
+    featureWorkstreamService,
+    userFlowService,
   );
   const jobRunnerService = createJobRunnerService({
     artifactApprovalService,
@@ -270,6 +289,9 @@ export const createAppServices = async (
           });
         }
       }
+      await autoAdvanceService.onJobComplete(job.id, "success").catch((err) => {
+        console.error("auto-advance onJobComplete (success) failed:", err);
+      });
     },
     getNextJob: () => jobService.claimNextQueuedJob(),
     onFailure: async (jobId, error) => {
@@ -288,13 +310,33 @@ export const createAppServices = async (
           status: failedJob.status,
         });
       }
+      await autoAdvanceService.onJobComplete(jobId, "failure").catch((err) => {
+        console.error("auto-advance onJobComplete (failure) failed:", err);
+      });
     },
+    maxConcurrent: 4,
   });
   await jobService.cancelRunningJobs(staleJobCancellation);
+
+  // Any auto-advance session left in "running" after stale job cancellation has no
+  // in-flight jobs to trigger onJobComplete, so it would be permanently stuck.
+  // Reconcile these to paused so users can resume cleanly.
+  await db
+    .update(autoAdvanceSessionsTable)
+    .set({
+      status: "paused",
+      pausedReason: "job_failed",
+      pendingJobCount: 0,
+      pausedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(autoAdvanceSessionsTable.status, "running"));
+
   jobScheduler.start();
 
   return {
     services: {
+    autoAdvanceService,
     artifactApprovalService,
     authService,
     blueprintService,

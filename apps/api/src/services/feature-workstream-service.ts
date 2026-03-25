@@ -441,13 +441,17 @@ export const createFeatureWorkstreamService = (db: AppDatabase) => ({
     }
 
     if (kind === "arch_docs") {
-      const techRevision = await this.getHeadRevision(ownerUserId, featureId, "tech");
-      if (!techRevision?.approval) {
-        throw new HttpError(
-          409,
-          "approved_feature_tech_required",
-          "Approve the feature Tech Spec before approving architecture documentation.",
-        );
+      const productRevision = await this.getHeadRevision(ownerUserId, featureId, "product");
+      const techRequired = productRevision?.requirements?.techRequired ?? false;
+      if (techRequired) {
+        const techRevision = await this.getHeadRevision(ownerUserId, featureId, "tech");
+        if (!techRevision?.approval) {
+          throw new HttpError(
+            409,
+            "approved_feature_tech_required",
+            "Approve the feature Tech Spec before approving architecture documentation.",
+          );
+        }
       }
       return;
     }

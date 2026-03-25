@@ -68,6 +68,7 @@ export const useSseEvents = (projectId?: string) => {
         ["project", activeProjectId, "tech-spec-versions"],
         ["project", activeProjectId, "phase-gates"],
         ["project", activeProjectId, "next-actions"],
+        ["project", activeProjectId, "auto-advance"],
         ["project", activeProjectId, "milestones"],
         ["project", activeProjectId, "features"],
         ["project", activeProjectId, "features-graph"],
@@ -136,10 +137,12 @@ export const useSseEvents = (projectId?: string) => {
 
     source.addEventListener("job:updated", handleProjectEvent);
     source.addEventListener("project:updated", handleProjectEvent);
+    source.addEventListener("auto-advance:updated", handleProjectEvent);
 
     return () => {
       source.removeEventListener("job:updated", handleProjectEvent);
       source.removeEventListener("project:updated", handleProjectEvent);
+      source.removeEventListener("auto-advance:updated", handleProjectEvent);
       source.close();
     };
   }, [projectId, queryClient]);

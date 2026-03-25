@@ -2292,8 +2292,8 @@ describe("API integration", () => {
       expect(nextActionsResponse.statusCode).toBe(200);
       expect(nextActionsResponse.json().actions).toEqual([
         expect.objectContaining({
-          key: "user_flows",
-          label: "Generate and approve user flows",
+          key: "user_flows_approve",
+          label: "Approve user flows",
         }),
       ]);
     } finally {

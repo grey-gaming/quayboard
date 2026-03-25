@@ -34,6 +34,11 @@ type JobTerminalError = {
   code?: string;
 };
 
+type ActiveAutoAdvanceJobCancelInput = {
+  error: JobTerminalError;
+  projectId: string;
+};
+
 type ActiveJobConflict = {
   code: string;
   message: string;
@@ -192,6 +197,29 @@ export const createJobService = (db: AppDatabase) => ({
         completedAt: new Date(),
       })
       .where(eq(jobsTable.status, "running"))
+      .returning();
+
+    return cancelledJobs.map(toJob);
+  },
+
+  async cancelActiveAutoAdvanceJobsForProject({
+    error,
+    projectId,
+  }: ActiveAutoAdvanceJobCancelInput) {
+    const cancelledJobs = await db
+      .update(jobsTable)
+      .set({
+        status: "cancelled",
+        error,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(jobsTable.projectId, projectId),
+          inArray(jobsTable.status, ["queued", "running"]),
+          sql`${jobsTable.inputs} ? '_autoAdvance'`,
+        ),
+      )
       .returning();
 
     return cancelledJobs.map(toJob);

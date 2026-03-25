@@ -11,6 +11,7 @@ import {
 
 import type { AppDatabase } from "../../db/client.js";
 import {
+  autoAdvanceSessionsTable,
   llmRunsTable,
   milestoneUseCasesTable,
   milestonesTable,
@@ -35,6 +36,7 @@ import {
   buildAppendFeaturesFromOnePagerPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
+  buildDeliveryReviewPrompt,
   buildFeatureArchDocsPrompt,
   buildFeatureProductSpecPrompt,
   buildFeatureTechSpecPrompt,
@@ -577,11 +579,30 @@ export const createJobRunnerService = (input: {
 
     const ownerUserId = rawJob.createdByUserId;
     const projectId = rawJob.projectId;
+    const autoAdvanceBatch = (rawJob.inputs as { _autoAdvance?: { batchToken?: string; sessionId?: string } } | null)?._autoAdvance;
     const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
       ownerUserId,
       projectId,
     );
+    const assertAutoAdvanceBatchIsCurrent = async () => {
+      if (!autoAdvanceBatch?.batchToken || !autoAdvanceBatch.sessionId) {
+        return;
+      }
+
+      const session = await input.db.query.autoAdvanceSessionsTable.findFirst({
+        where: eq(autoAdvanceSessionsTable.projectId, projectId),
+      });
+
+      if (
+        !session ||
+        session.id !== autoAdvanceBatch.sessionId ||
+        session.activeBatchToken !== autoAdvanceBatch.batchToken
+      ) {
+        throw new Error("Auto-advance batch is no longer current.");
+      }
+    };
+
     const loadApprovedProjectSpecs = async () => {
       const [productSpec, uxSpec, technicalSpec] = await Promise.all([
         input.productSpecService.getCanonical(ownerUserId, projectId),
@@ -630,6 +651,7 @@ export const createJobRunnerService = (input: {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -672,6 +694,7 @@ export const createJobRunnerService = (input: {
           answers: questionnaire.answers,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -815,6 +838,7 @@ export const createJobRunnerService = (input: {
           evalCount: generated.evalCount,
           totalDuration: generated.totalDuration,
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -882,6 +906,7 @@ export const createJobRunnerService = (input: {
           evalCount: reviewed.evalCount,
           totalDuration: reviewed.totalDuration,
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -950,11 +975,14 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        const generateUseCasesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
           sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
+          hint: generateUseCasesInput?.hint,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1054,6 +1082,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1146,6 +1175,7 @@ export const createJobRunnerService = (input: {
         const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1178,6 +1208,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1241,6 +1272,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestones requires approved UX and Technical Specs.");
         }
 
+        const generateMilestonesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
         const prompt = buildMilestonePlanPrompt({
           projectName: project.name,
           uxSpec: blueprints.uxBlueprint.markdown,
@@ -1252,10 +1284,12 @@ export const createJobRunnerService = (input: {
             entryPoint: flow.entryPoint,
             endState: flow.endState,
           })),
+          hint: generateMilestonesInput?.hint,
         });
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1344,6 +1378,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1451,6 +1486,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1533,6 +1569,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1632,13 +1669,16 @@ export const createJobRunnerService = (input: {
             projectUxSpec: uxSpec.markdown,
           });
         } else {
-          if (!tracks.tracks.tech.headRevision?.approval) {
-            throw new Error("GenerateFeatureArchDocs requires an approved feature Tech Spec.");
+          if (tracks.tracks.tech.required && !tracks.tracks.tech.headRevision?.approval) {
+            const featureTitle = context.headFeatureRevision?.title ?? featureId;
+            throw new Error(
+              `Cannot generate architecture docs for "${featureTitle}": the feature tech spec must be approved first.`,
+            );
           }
 
           kind = "arch_docs";
           prompt = buildFeatureArchDocsPrompt({
-            featureTechSpec: tracks.tracks.tech.headRevision.markdown,
+            featureTechSpec: tracks.tracks.tech.headRevision?.markdown ?? null,
             featureTitle: context.headFeatureRevision.title,
             projectTechnicalSpec: technicalSpec.markdown,
           });
@@ -1647,6 +1687,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1849,6 +1890,73 @@ export const createJobRunnerService = (input: {
         await taskPlanning.createTasks(sessionId, tasks);
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+      }
+
+      case "ReviewDelivery": {
+        if (!input.milestoneService) {
+          throw new Error("ReviewDelivery requires milestone service support.");
+        }
+
+        const [productSpec, userFlows, milestones] = await Promise.all([
+          input.productSpecService.getCanonical(ownerUserId, rawJob.projectId),
+          input.userFlowService.list(ownerUserId, rawJob.projectId),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
+        ]);
+
+        const prompt = buildDeliveryReviewPrompt({
+          projectName: project.name,
+          productSpec: productSpec?.markdown ?? "",
+          userFlows: userFlows.userFlows.map((flow) => ({
+            title: flow.title,
+            userStory: flow.userStory,
+          })),
+          milestones: milestones.milestones.map((milestone) => ({
+            title: milestone.title,
+            summary: milestone.summary,
+            featureCount: milestone.featureCount,
+          })),
+        });
+
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: {},
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+
+        const parsed = parseJson<{
+          complete?: boolean;
+          issues?: Array<{ jobType?: string; hint?: string }>;
+        }>(generated.content);
+
+        if (!parsed || typeof parsed.complete !== "boolean") {
+          throw new Error(
+            'ReviewDelivery returned invalid content. Expected JSON with a "complete" boolean.',
+          );
+        }
+
+        const issues = (parsed.issues ?? [])
+          .filter(
+            (issue): issue is { jobType: string; hint: string } =>
+              typeof issue.jobType === "string" && typeof issue.hint === "string",
+          );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          complete: parsed.complete,
+          issues,
+        });
       }
 
       default:

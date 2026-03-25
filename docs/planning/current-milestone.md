@@ -2,45 +2,52 @@
 
 ## Status
 
-Milestone 6 — Approval and Task Planning
+Milestone 7 — Mission Control Auto-Advance and Orchestration
 
 This milestone is the active implementation target.
 
 ## Goal
 
-Enable task planning for features with approved technical specifications. Users can generate clarification questions, answer them (manually or via LLM auto-answer), generate ordered delivery task lists, and track implementation records that link features to implemented tech revisions.
+Extend Mission Control with auto-advance session controls, stage orchestration, implementation staleness detection, and supporting UI panels. Users can start/stop/resume/reset/step an auto-advance session that automatically progresses the project through planning stages.
 
 ## In Scope
 
-- Task planning database schema and migrations
-- Clarification question generation and answering workflow
-- Delivery task list generation from answered clarifications
-- Implementation record tracking (which tech revision was implemented, commit SHA)
-- Frontend Tasks tab in Feature Editor (replace existing stub)
-- Job executors: `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `RecommendNextFeature`
+- `auto_advance_sessions` database table and migration
+- Auto-advance service: full session state machine (start, stop, resume, reset, step, onJobComplete)
+- Auto-advance routes: `POST start/stop/resume/reset`, `GET status`, `POST step`
+- `onJobComplete` callback wired from JobScheduler into auto-advance service
+- Implementation staleness detection in next-actions service
+- Shared Zod schemas for auto-advance types
+- Frontend: `AutoAdvanceBanner`, `AutoAdvanceControlsCard`, `MissionActivityTimeline`, `MissionStatsStrip`, `NextActionsPanel` (extracted)
+- Frontend: `useAutoAdvance` hook, `useNextActions` hook, `mission-control-api.ts` client module
+- `WorkflowSettingsPage` at `/settings/workflow`
+- Integration tests for all auto-advance session state transitions
+- User-facing and internal architecture documentation
 
 ## Out Of Scope
 
-- Feature review routes and LLM executors (deferred to future milestone)
-- Bug reports, bug fix tasks, and verification workflow (deferred to M8 or later)
-- Quality gates for task plans (`ReviewFeatureCohesion`, `StressTestTaskPlan`)
+- `MissionControlTubeMap` tube-map stage visualiser (deferred per user instruction)
 - Sandbox execution and PR creation (M8)
-- Auto-advance orchestration (M7)
+- Bug management, review workflows, quality gates (M8+)
+- Feature review routes and LLM executors
 
 ## Acceptance Criteria
 
-The milestone is complete when the repo can support the following:
+The milestone is complete when:
 
-- Database migration creates all new task planning and implementation record tables without errors
-- Task planning session is created when a feature has an approved tech specification
-- Clarification questions can be generated via LLM and listed
-- Clarification questions can be answered manually or via auto-answer
-- Delivery task list can be generated from answered clarifications
-- Implementation records can be created to link a feature to an implemented tech revision
-- Tasks tab in Feature Editor shows clarification questions and delivery tasks with appropriate states
-- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
 - `pnpm db:migrate` succeeds on a fresh database
-- User-facing documentation exists for all new screens and flows introduced in this milestone
+- `auto_advance_sessions` table exists with correct columns and constraints
+- Auto-advance start/stop/resume/reset/step all work end-to-end via API
+- Auto-advance pauses when a job fails (`paused_reason: job_failed`)
+- Auto-advance resumes and picks up the next step after blocker is resolved
+- Next-actions panel shows the correct next automatable step given current project state
+- Features with a stale implementation record are flagged in Mission Control
+- Phase gate checklist reflects live state in real time (SSE-reactive)
+- All session state transitions have integration test coverage
+- `WorkflowSettingsPage` renders at `/settings/workflow`
+- `MissionControlPage` shows `AutoAdvanceBanner`, `AutoAdvanceControlsCard`, `MissionActivityTimeline`, `MissionStatsStrip`
+- `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
+- User-facing documentation exists for all new screens and flows
 - Internal architecture documentation exists for all new services, schema tables, and API routes
 
 ## Relevant ADRs
@@ -51,8 +58,7 @@ The milestone is complete when the repo can support the following:
 
 ## Working Rules
 
-- Keep task planning workflow independent of sandbox execution, which arrives in M8
-- Implementation records capture the relationship between features and implemented revisions; they do not trigger sandbox runs
-- Clarification questions and delivery tasks are scoped to a single feature and stored per-feature
-- Remove any existing M6 placeholder or stub code related to feature review (e.g., ReviewPanel)
-- Update repo-facing docs after all implementation is verified
+- Do not scaffold the tube-map visualiser (`MissionControlTubeMap`) — explicitly deferred
+- Auto-advance sessions are project-scoped (one session per project at a time)
+- The `onJobComplete` wiring must not break existing job behaviour when no auto-advance session is active
+- Keep auto-advance service independent of sandbox execution (M8)

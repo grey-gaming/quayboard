@@ -66,6 +66,24 @@ const featureEdgeTypeValues = ["depends_on", "leads_to", "contains"] as const;
 
 const now = () => sql`now()`;
 
+const autoAdvanceStatusValues = [
+  "idle",
+  "running",
+  "paused",
+  "completed",
+  "failed",
+] as const;
+
+const autoAdvancePausedReasonValues = [
+  "quality_gate_blocker",
+  "job_failed",
+  "policy_mismatch",
+  "manual_pause",
+  "budget_exceeded",
+  "needs_human",
+  "review_limit_reached",
+] as const;
+
 export const usersTable = pgTable(
   "users",
   {
@@ -1067,6 +1085,58 @@ export const implementationRecordsTable = pgTable(
   }),
 );
 
+export const autoAdvanceSessionsTable = pgTable(
+  "auto_advance_sessions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    status: text("status")
+      .notNull()
+      .$type<(typeof autoAdvanceStatusValues)[number]>(),
+    currentStep: text("current_step"),
+    pausedReason: text("paused_reason").$type<
+      (typeof autoAdvancePausedReasonValues)[number]
+    >(),
+    autoApproveWhenClear: boolean("auto_approve_when_clear")
+      .notNull()
+      .default(false),
+    skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
+    creativityMode: text("creativity_mode").notNull().default("balanced"),
+    retryCount: integer("retry_count").notNull().default(0),
+    reviewCount: integer("review_count").notNull().default(0),
+    maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
+    pendingJobCount: integer("pending_job_count").notNull().default(0),
+    activeBatchToken: text("active_batch_token"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    pausedAt: timestamp("paused_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("auto_advance_sessions_project_id_idx").on(
+      table.projectId,
+    ),
+    projectUnique: uniqueIndex("auto_advance_sessions_project_id_key").on(
+      table.projectId,
+    ),
+    statusCheck: check(
+      "auto_advance_sessions_status_check",
+      sql`${table.status} in (${sql.join(autoAdvanceStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    pausedReasonCheck: check(
+      "auto_advance_sessions_paused_reason_check",
+      sql`${table.pausedReason} is null or ${table.pausedReason} in (${sql.join(autoAdvancePausedReasonValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
 export const jobsTable = pgTable(
   "jobs",
   {
@@ -1184,6 +1254,7 @@ export const encryptedSecretsTable = pgTable(
 
 export type DatabaseSchema = {
   artifactApprovalsTable: typeof artifactApprovalsTable;
+  autoAdvanceSessionsTable: typeof autoAdvanceSessionsTable;
   encryptedSecretsTable: typeof encryptedSecretsTable;
   featureArchDocRevisionsTable: typeof featureArchDocRevisionsTable;
   featureArchDocSpecsTable: typeof featureArchDocSpecsTable;

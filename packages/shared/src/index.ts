@@ -21,4 +21,5 @@ export * from "./schemas/milestones.js";
 export * from "./schemas/features.js";
 export * from "./schemas/feature-workstreams.js";
 export * from "./schemas/task-planning.js";
+export * from "./schemas/auto-advance.js";
 export * from "./questionnaire-definition.js";
