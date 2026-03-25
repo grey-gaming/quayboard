@@ -200,7 +200,7 @@ describe("workflow pages", () => {
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
     expect(screen.getByText("Review overview draft")).toBeTruthy();
-    expect(screen.getByText("Recent Jobs")).toBeTruthy();
+    expect(screen.getByText("Activity")).toBeTruthy();
     expect(screen.queryByText("Pipeline map")).toBeNull();
   });
 
