@@ -223,115 +223,130 @@ export const createNextActionsService = (
                 href: `/projects/${projectId}/milestones`,
               });
             } else {
-              // All milestones approved — check if any lack features (covers both the initial
-              // zero-features case and newly approved milestones added by fix jobs).
-              const milestonesWithoutFeatures = milestones.milestones.filter(
-                (m) => m.status === "approved" && m.featureCount === 0,
+              // All milestones approved — process feature workstreams, then
+              // populate empty milestones only when no workstream work remains.
+              const orderedFeatures = [...features.features].sort((left, right) =>
+                left.featureKey.localeCompare(right.featureKey),
               );
 
-              if (milestonesWithoutFeatures.length > 0) {
-                actions.push({
-                  key: "features_create",
-                  label: "Create the first feature",
-                  href: `/projects/${projectId}/features?milestone=${milestonesWithoutFeatures[0]!.id}`,
-                });
-              } else {
-            const orderedFeatures = [...features.features].sort((left, right) =>
-              left.featureKey.localeCompare(right.featureKey),
-            );
+              if (orderedFeatures.length > 0) {
+                // Fetch all feature tracks in parallel for reuse across phases.
+                const allTracks = await Promise.all(
+                  orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
+                );
 
-            // Fetch all feature tracks in parallel for reuse across phases.
-            const allTracks = await Promise.all(
-              orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
-            );
+                // Phase 1: product spec creation/approval.
+                let productPhaseFeature: (typeof orderedFeatures)[number] | null = null;
+                let productNeedsApproval = false;
 
-            // Phase 1: product spec creation/approval.
-            let productPhaseFeature: (typeof orderedFeatures)[number] | null = null;
-            let productNeedsApproval = false;
-
-            for (let i = 0; i < orderedFeatures.length; i++) {
-              const tracks = allTracks[i]!;
-              if (!tracks.tracks.product.headRevision) {
-                productPhaseFeature = orderedFeatures[i]!;
-                productNeedsApproval = false;
-                break;
-              }
-              if (tracks.tracks.product.status !== "approved") {
-                productPhaseFeature = orderedFeatures[i]!;
-                productNeedsApproval = true;
-                break;
-              }
-            }
-
-            if (productPhaseFeature) {
-              actions.push({
-                key: productNeedsApproval ? "feature_product_approval" : "feature_product_create",
-                label: productNeedsApproval
-                  ? "Approve a feature Product Spec"
-                  : "Author the first feature Product Spec",
-                href: `/projects/${projectId}/features/${productPhaseFeature.id}`,
-              });
-            } else {
-              // Phase 2: secondary workstream specs (ux → tech → user_docs → arch_docs).
-              // arch_docs requires an approved tech spec, so tech must come before it.
-              const workstreamPhases = [
-                { track: "ux" as const, createKey: "feature_ux_create", approvalKey: "feature_ux_approval", createLabel: "Generate UX spec for feature", approvalLabel: "Approve UX spec for feature" },
-                { track: "tech" as const, createKey: "feature_tech_create", approvalKey: "feature_tech_approval", createLabel: "Generate technical spec for feature", approvalLabel: "Approve technical spec for feature" },
-                { track: "userDocs" as const, createKey: "feature_user_docs_create", approvalKey: "feature_user_docs_approval", createLabel: "Generate user docs for feature", approvalLabel: "Approve user docs for feature" },
-                { track: "archDocs" as const, createKey: "feature_arch_docs_create", approvalKey: "feature_arch_docs_approval", createLabel: "Generate architecture docs for feature", approvalLabel: "Approve architecture docs for feature" },
-              ];
-
-              outer: for (const phase of workstreamPhases) {
                 for (let i = 0; i < orderedFeatures.length; i++) {
-                  const feature = orderedFeatures[i]!;
-                  const trackData = allTracks[i]!.tracks[phase.track];
-                  if (!trackData.required) continue;
-                  if (!trackData.headRevision) {
-                    actions.push({
-                      key: phase.createKey,
-                      label: phase.createLabel,
-                      href: `/projects/${projectId}/features/${feature.id}`,
-                    });
-                    break outer;
+                  const tracks = allTracks[i]!;
+                  if (!tracks.tracks.product.headRevision) {
+                    productPhaseFeature = orderedFeatures[i]!;
+                    productNeedsApproval = false;
+                    break;
                   }
-                  if (trackData.status !== "approved") {
-                    actions.push({
-                      key: phase.approvalKey,
-                      label: phase.approvalLabel,
-                      href: `/projects/${projectId}/features/${feature.id}`,
-                    });
-                    break outer;
-                  }
-                }
-              }
-
-              // Phase 3: stale implementation check (uses pre-fetched tracks).
-              if (!actions.length && taskPlanningService) {
-                for (let i = 0; i < orderedFeatures.length; i++) {
-                  const feature = orderedFeatures[i]!;
-                  const headTechRevisionId = allTracks[i]!.tracks.tech.headRevision?.id ?? null;
-
-                  if (!headTechRevisionId) {
-                    continue;
-                  }
-
-                  const records = await taskPlanningService.getImplementationRecords(
-                    ownerUserId,
-                    feature.id,
-                  );
-                  const latestRecord = records[0] ?? null;
-
-                  if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
-                    actions.push({
-                      key: "feature_stale_implementation",
-                      label: `Re-implement stale feature: ${feature.headRevision.title}`,
-                      href: `/projects/${projectId}/features/${feature.id}`,
-                    });
+                  if (tracks.tracks.product.status !== "approved") {
+                    productPhaseFeature = orderedFeatures[i]!;
+                    productNeedsApproval = true;
                     break;
                   }
                 }
+
+                if (productPhaseFeature) {
+                  actions.push({
+                    key: productNeedsApproval ? "feature_product_approval" : "feature_product_create",
+                    label: productNeedsApproval
+                      ? "Approve a feature Product Spec"
+                      : "Author the first feature Product Spec",
+                    href: `/projects/${projectId}/features/${productPhaseFeature.id}`,
+                  });
+                } else {
+                  // Phase 2: per-feature secondary workstream specs.
+                  // Each feature advances independently through its required tracks
+                  // (ux → tech → user_docs → arch_docs), so one stuck feature
+                  // does not block others from progressing.
+                  const workstreamPhases = [
+                    { track: "ux" as const, createKey: "feature_ux_create", approvalKey: "feature_ux_approval", createLabel: "Generate UX spec for feature", approvalLabel: "Approve UX spec for feature" },
+                    { track: "tech" as const, createKey: "feature_tech_create", approvalKey: "feature_tech_approval", createLabel: "Generate technical spec for feature", approvalLabel: "Approve technical spec for feature" },
+                    { track: "userDocs" as const, createKey: "feature_user_docs_create", approvalKey: "feature_user_docs_approval", createLabel: "Generate user docs for feature", approvalLabel: "Approve user docs for feature" },
+                    { track: "archDocs" as const, createKey: "feature_arch_docs_create", approvalKey: "feature_arch_docs_approval", createLabel: "Generate architecture docs for feature", approvalLabel: "Approve architecture docs for feature" },
+                  ];
+
+                  for (let i = 0; i < orderedFeatures.length; i++) {
+                    const feature = orderedFeatures[i]!;
+                    const featureTracks = allTracks[i]!.tracks;
+
+                    for (const phase of workstreamPhases) {
+                      const trackData = featureTracks[phase.track];
+                      if (!trackData.required) continue;
+
+                      // arch_docs requires an approved tech spec when tech is required.
+                      if (phase.track === "archDocs" && featureTracks.tech.required && featureTracks.tech.status !== "approved") {
+                        continue;
+                      }
+
+                      if (!trackData.headRevision) {
+                        actions.push({
+                          key: phase.createKey,
+                          label: phase.createLabel,
+                          href: `/projects/${projectId}/features/${feature.id}`,
+                        });
+                        break;
+                      }
+                      if (trackData.status !== "approved") {
+                        actions.push({
+                          key: phase.approvalKey,
+                          label: phase.approvalLabel,
+                          href: `/projects/${projectId}/features/${feature.id}`,
+                        });
+                        break;
+                      }
+                    }
+                    if (actions.length > 0) break;
+                  }
+
+                  // Phase 3: stale implementation check (uses pre-fetched tracks).
+                  if (!actions.length && taskPlanningService) {
+                    for (let i = 0; i < orderedFeatures.length; i++) {
+                      const feature = orderedFeatures[i]!;
+                      const headTechRevisionId = allTracks[i]!.tracks.tech.headRevision?.id ?? null;
+
+                      if (!headTechRevisionId) {
+                        continue;
+                      }
+
+                      const records = await taskPlanningService.getImplementationRecords(
+                        ownerUserId,
+                        feature.id,
+                      );
+                      const latestRecord = records[0] ?? null;
+
+                      if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
+                        actions.push({
+                          key: "feature_stale_implementation",
+                          label: `Re-implement stale feature: ${feature.headRevision.title}`,
+                          href: `/projects/${projectId}/features/${feature.id}`,
+                        });
+                        break;
+                      }
+                    }
+                  }
+                }
               }
-            }
+
+              // Populate empty milestones only when no feature workstream work remains.
+              if (!actions.length) {
+                const milestonesWithoutFeatures = milestones.milestones.filter(
+                  (m) => m.status === "approved" && m.featureCount === 0,
+                );
+                if (milestonesWithoutFeatures.length > 0) {
+                  actions.push({
+                    key: "features_create",
+                    label: "Create the first feature",
+                    href: `/projects/${projectId}/features?milestone=${milestonesWithoutFeatures[0]!.id}`,
+                  });
+                }
               }
             }
           }

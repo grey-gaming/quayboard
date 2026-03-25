@@ -275,8 +275,16 @@ export const createAutoAdvanceService = (
             try {
               await milestoneService.transition(ownerUserId, milestone.id, { action: "approve" });
               return true;
-            } catch {
-              // No design doc yet — try the next milestone
+            } catch (error) {
+              if (
+                error instanceof HttpError &&
+                (error.code === "milestone_design_doc_required" ||
+                  error.code === "invalid_milestone_transition")
+              ) {
+                // Expected — this milestone isn't ready yet, try the next one.
+                continue;
+              }
+              throw error;
             }
           }
         }
@@ -297,14 +305,16 @@ export const createAutoAdvanceService = (
         if (stepKey === entry.key) {
           const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);
           const featureId = featureIdMatch?.[1];
-          if (featureId) {
-            const tracks = await featureWorkstreamService.getTracks(ownerUserId, featureId);
-            const trackData = tracks.tracks[entry.track];
-            const headRevisionId = trackData.headRevision?.id;
-            if (headRevisionId && trackData.status !== "approved") {
-              await featureWorkstreamService.approveRevision(ownerUserId, featureId, entry.kind, headRevisionId);
-              return true;
-            }
+          if (!featureId) {
+            console.warn(`[auto-advance] Could not extract featureId from href: ${stepHref}`);
+            break;
+          }
+          const tracks = await featureWorkstreamService.getTracks(ownerUserId, featureId);
+          const trackData = tracks.tracks[entry.track];
+          const headRevisionId = trackData.headRevision?.id;
+          if (headRevisionId && trackData.status !== "approved") {
+            await featureWorkstreamService.approveRevision(ownerUserId, featureId, entry.kind, headRevisionId);
+            return true;
           }
           break;
         }
@@ -353,6 +363,7 @@ export const createAutoAdvanceService = (
         .set({
           reviewCount: currentReviewCount + 1,
           currentStep: "delivery_review",
+          pendingJobCount: 1,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, sessionId));
@@ -471,7 +482,6 @@ export const createAutoAdvanceService = (
             creativityMode: opts.creativityMode ?? existing.creativityMode,
             maxConcurrentJobs: opts.maxConcurrentJobs ?? existing.maxConcurrentJobs,
             retryCount: 0,
-            reviewCount: 0,
             pendingJobCount: 0,
             startedAt: now,
             pausedAt: null,
@@ -754,6 +764,10 @@ export const createAutoAdvanceService = (
         // Only GenerateUseCases and GenerateMilestones are valid fix job types.
         const firstIssue = output.issues[0];
         if (firstIssue && (firstIssue.jobType === "GenerateUseCases" || firstIssue.jobType === "GenerateMilestones")) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({ pendingJobCount: 1, updatedAt: new Date() })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
           await jobService.createJob({
             createdByUserId: project.ownerUserId,
             projectId: job.projectId,

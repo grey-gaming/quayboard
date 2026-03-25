@@ -659,4 +659,203 @@ describe("auto-advance service", () => {
       );
     });
   });
+
+  describe("milestones_approve catch narrowing (Bug 1)", () => {
+    it("propagates non-HttpError exceptions from milestone transition", async () => {
+      // build() returns milestones_approve on first call; after the error the test ends
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [{
+              key: "milestones_approve",
+              label: "Approve a milestone",
+              href: `/projects/${PROJECT_ID}/milestones`,
+            }],
+          };
+        }
+        return { actions: [] };
+      });
+      milestoneService.list.mockResolvedValue({
+        milestones: [{ id: "m1", status: "draft" }],
+      });
+      milestoneService.transition.mockRejectedValue(new Error("DB connection failed"));
+
+      const session = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", autoApproveWhenClear: true });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockResolvedValue(
+        makeSessionRow({ status: "running" as const, autoApproveWhenClear: true }),
+      );
+      // First call returns paused for the resume guard check
+      db.query.autoAdvanceSessionsTable.findFirst
+        .mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await expect(service.resume(USER_ID, PROJECT_ID)).rejects.toThrow("DB connection failed");
+    });
+
+    it("catches expected milestone_design_doc_required errors and continues", async () => {
+      const { HttpError: HttpErrorClass } = await import("../../src/services/http-error.js");
+
+      // First buildBatch call returns milestones_approve; subsequent return empty (delivery review)
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [{
+              key: "milestones_approve",
+              label: "Approve a milestone",
+              href: `/projects/${PROJECT_ID}/milestones`,
+            }],
+          };
+        }
+        return { actions: [] };
+      });
+      milestoneService.list.mockResolvedValue({
+        milestones: [
+          { id: "m1", status: "draft" },
+          { id: "m2", status: "draft" },
+        ],
+      });
+      // First milestone has no design doc (caught), second one succeeds
+      milestoneService.transition
+        .mockRejectedValueOnce(new HttpErrorClass(409, "milestone_design_doc_required", "No design doc"))
+        .mockResolvedValueOnce(undefined);
+
+      const session = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", autoApproveWhenClear: true });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockResolvedValue(
+        makeSessionRow({ status: "running" as const, autoApproveWhenClear: true }),
+      );
+      db.query.autoAdvanceSessionsTable.findFirst
+        .mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      // m1 fails (caught), m2 succeeds, then advanceStep recurses with milestones_approve again,
+      // but the second time through both milestones are still draft — transition defaults to
+      // undefined (success) for subsequent calls after the first two mocks are consumed.
+      expect(milestoneService.transition).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("pendingJobCount for delivery review (Bug 2)", () => {
+    it("sets pendingJobCount to 1 when dispatching ReviewDelivery", async () => {
+      nextActionsService.build.mockResolvedValue({ actions: [] });
+      const session = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", reviewCount: 0 });
+      let callCount = 0;
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) return session;
+        return makeSessionRow({ status: "running" as const, reviewCount: 0 });
+      });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      const reviewUpdate = updates.find((u) => u.currentStep === "delivery_review");
+      expect(reviewUpdate?.pendingJobCount).toBe(1);
+    });
+
+    it("sets pendingJobCount to 1 before creating fix job from review issues", async () => {
+      const runningSession = makeSessionRow({ status: "running" as const, reviewCount: 1 });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewDelivery",
+        outputs: {
+          complete: false,
+          issues: [{ jobType: "GenerateUseCases", hint: "Missing flow" }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      const pendingUpdate = updates.find((u) => u.pendingJobCount === 1);
+      expect(pendingUpdate).toBeDefined();
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "GenerateUseCases" }),
+      );
+    });
+  });
+
+  describe("reviewCount preserved on restart (Bug 3)", () => {
+    it("does not reset reviewCount when restarting an existing session", async () => {
+      const existingSession = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", reviewCount: 2 });
+      const db = makeDb({ session: existingSession });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.start(USER_ID, PROJECT_ID, {});
+
+      // The first update is the restart — verify no reviewCount reset
+      const restartUpdate = updates.find((u) => u.status === "running");
+      expect(restartUpdate).toBeDefined();
+      expect(restartUpdate).not.toHaveProperty("reviewCount");
+    });
+  });
+
+  describe("feature approval regex warning (Bug 6)", () => {
+    it("returns false and warns when href does not contain featureId", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_product_approval",
+            label: "Approve a feature Product Spec",
+            href: `/projects/${PROJECT_ID}/milestones/some-id`,
+          },
+        ],
+      });
+
+      const session = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", autoApproveWhenClear: true });
+      let callCount = 0;
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) return session;
+        return makeSessionRow({ status: "running" as const, autoApproveWhenClear: true });
+      });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Could not extract featureId"));
+      const pauseUpdate = updates.find((u) => u.pausedReason === "needs_human");
+      expect(pauseUpdate).toBeDefined();
+      warnSpy.mockRestore();
+    });
+  });
 });
