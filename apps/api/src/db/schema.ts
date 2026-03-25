@@ -1108,6 +1108,7 @@ export const autoAdvanceSessionsTable = pgTable(
     reviewCount: integer("review_count").notNull().default(0),
     maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
     pendingJobCount: integer("pending_job_count").notNull().default(0),
+    activeBatchToken: text("active_batch_token"),
     startedAt: timestamp("started_at", { withTimezone: true }),
     pausedAt: timestamp("paused_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),

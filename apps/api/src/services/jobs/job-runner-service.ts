@@ -11,6 +11,7 @@ import {
 
 import type { AppDatabase } from "../../db/client.js";
 import {
+  autoAdvanceSessionsTable,
   llmRunsTable,
   milestoneUseCasesTable,
   milestonesTable,
@@ -578,11 +579,30 @@ export const createJobRunnerService = (input: {
 
     const ownerUserId = rawJob.createdByUserId;
     const projectId = rawJob.projectId;
+    const autoAdvanceBatch = (rawJob.inputs as { _autoAdvance?: { batchToken?: string; sessionId?: string } } | null)?._autoAdvance;
     const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
       ownerUserId,
       projectId,
     );
+    const assertAutoAdvanceBatchIsCurrent = async () => {
+      if (!autoAdvanceBatch?.batchToken || !autoAdvanceBatch.sessionId) {
+        return;
+      }
+
+      const session = await input.db.query.autoAdvanceSessionsTable.findFirst({
+        where: eq(autoAdvanceSessionsTable.projectId, projectId),
+      });
+
+      if (
+        !session ||
+        session.id !== autoAdvanceBatch.sessionId ||
+        session.activeBatchToken !== autoAdvanceBatch.batchToken
+      ) {
+        throw new Error("Auto-advance batch is no longer current.");
+      }
+    };
+
     const loadApprovedProjectSpecs = async () => {
       const [productSpec, uxSpec, technicalSpec] = await Promise.all([
         input.productSpecService.getCanonical(ownerUserId, projectId),
@@ -631,6 +651,7 @@ export const createJobRunnerService = (input: {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -673,6 +694,7 @@ export const createJobRunnerService = (input: {
           answers: questionnaire.answers,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -816,6 +838,7 @@ export const createJobRunnerService = (input: {
           evalCount: generated.evalCount,
           totalDuration: generated.totalDuration,
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -883,6 +906,7 @@ export const createJobRunnerService = (input: {
           evalCount: reviewed.evalCount,
           totalDuration: reviewed.totalDuration,
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -958,6 +982,7 @@ export const createJobRunnerService = (input: {
           hint: generateUseCasesInput?.hint,
         });
         const generated = await input.llmProviderService.generate(provider, prompt);
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1057,6 +1082,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1149,6 +1175,7 @@ export const createJobRunnerService = (input: {
         const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1181,6 +1208,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1261,6 +1289,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1349,6 +1378,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1456,6 +1486,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1538,6 +1569,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,
@@ -1655,6 +1687,7 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
+        await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
           projectId: rawJob.projectId,

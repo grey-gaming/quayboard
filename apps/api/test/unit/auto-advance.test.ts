@@ -21,6 +21,7 @@ const makeSessionRow = (
     reviewCount: number;
     maxConcurrentJobs: number;
     pendingJobCount: number;
+    activeBatchToken: string | null;
     startedAt: Date | null;
     pausedAt: Date | null;
     completedAt: Date | null;
@@ -38,6 +39,7 @@ const makeSessionRow = (
   reviewCount: 0,
   maxConcurrentJobs: 1,
   pendingJobCount: 0,
+  activeBatchToken: null,
   startedAt: null,
   pausedAt: null,
   completedAt: null,
@@ -64,7 +66,12 @@ const makeJob = (projectId = PROJECT_ID) => ({
   projectId,
   type: "GenerateProjectOverview",
   status: "succeeded" as const,
-  inputs: {},
+  inputs: {
+    _autoAdvance: {
+      sessionId: SESSION_ID,
+      batchToken: "batch-1",
+    },
+  },
   outputs: null,
   error: null,
   parentJobId: null,
@@ -117,7 +124,10 @@ const makeDb = (overrides: Partial<{
 
 describe("auto-advance service", () => {
   let nextActionsService: { build: ReturnType<typeof vi.fn>; buildBatch: ReturnType<typeof vi.fn> };
-  let jobService: { createJob: ReturnType<typeof vi.fn> };
+  let jobService: {
+    cancelActiveAutoAdvanceJobsForProject: ReturnType<typeof vi.fn>;
+    createJob: ReturnType<typeof vi.fn>;
+  };
   let sseHub: { publish: ReturnType<typeof vi.fn> };
   let artifactApprovalService: { approve: ReturnType<typeof vi.fn> };
   let blueprintService: {
@@ -166,6 +176,7 @@ describe("auto-advance service", () => {
       }),
     };
     jobService = {
+      cancelActiveAutoAdvanceJobsForProject: vi.fn().mockResolvedValue([]),
       createJob: vi.fn().mockResolvedValue({ id: JOB_ID }),
     };
     sseHub = {
@@ -385,6 +396,10 @@ describe("auto-advance service", () => {
 
       await service.reset(USER_ID, PROJECT_ID);
 
+      expect(jobService.cancelActiveAutoAdvanceJobsForProject).toHaveBeenCalledWith({
+        projectId: PROJECT_ID,
+        error: expect.objectContaining({ code: "auto_advance_reset" }),
+      });
       expect(db.delete).toHaveBeenCalled();
       expect(sseHub.publish).toHaveBeenCalled();
     });
@@ -392,7 +407,11 @@ describe("auto-advance service", () => {
 
   describe("onJobComplete", () => {
     it("retries on failure when retryCount < 3", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, retryCount: 0 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 0,
+        activeBatchToken: "batch-1",
+      });
       const db = makeDb({ session: runningSession, job: makeJob() });
       const updates: Array<{ status?: string; retryCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
@@ -413,7 +432,11 @@ describe("auto-advance service", () => {
     });
 
     it("pauses session with job_failed after 3 retries", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, retryCount: 3 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 3,
+        activeBatchToken: "batch-1",
+      });
       const db = makeDb({ session: runningSession, job: makeJob() });
       const failureUpdates: Array<{ status?: string; pausedReason?: string }> = [];
       db.update = vi.fn().mockReturnValue({
@@ -432,7 +455,11 @@ describe("auto-advance service", () => {
     });
 
     it("advances to next step on job success and resets retryCount", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, retryCount: 2 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 2,
+        activeBatchToken: "batch-1",
+      });
       const db = makeDb({ session: runningSession, job: makeJob() });
       const updates: Array<{ retryCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
@@ -452,7 +479,11 @@ describe("auto-advance service", () => {
     });
 
     it("marks session completed when ReviewDelivery reports complete:true", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, reviewCount: 1 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 1,
+        activeBatchToken: "batch-1",
+      });
       const reviewJob = { ...makeJob(), type: "ReviewDelivery", outputs: { complete: true, issues: [] } as never };
       const db = makeDb({ session: runningSession, job: reviewJob });
       const updates: Array<{ status?: string }> = [];
@@ -472,7 +503,11 @@ describe("auto-advance service", () => {
     });
 
     it("enqueues fix job when ReviewDelivery reports issues and reviewCount < 3", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, reviewCount: 1 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 1,
+        activeBatchToken: "batch-1",
+      });
       const reviewJob = {
         ...makeJob(),
         type: "ReviewDelivery",
@@ -494,13 +529,17 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "GenerateUseCases",
-          inputs: { hint: "Missing onboarding flow" },
+          inputs: expect.objectContaining({ hint: "Missing onboarding flow" }),
         }),
       );
     });
 
     it("pauses with review_limit_reached when ReviewDelivery reports issues and reviewCount >= 3", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, reviewCount: 3 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 3,
+        activeBatchToken: "batch-1",
+      });
       const reviewJob = {
         ...makeJob(),
         type: "ReviewDelivery",
@@ -546,6 +585,30 @@ describe("auto-advance service", () => {
       expect(db.update).not.toHaveBeenCalled();
       expect(sseHub.publish).not.toHaveBeenCalled();
     });
+    it("ignores completions from an older batch after resume", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 2,
+        activeBatchToken: "new-batch",
+      });
+      const staleJob = {
+        ...makeJob(),
+        inputs: {
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "old-batch",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: staleJob });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(nextActionsService.buildBatch).not.toHaveBeenCalled();
+      expect(jobService.createJob).not.toHaveBeenCalled();
+    });
   });
 
   describe("parallel batch dispatch", () => {
@@ -570,12 +633,22 @@ describe("auto-advance service", () => {
       await service.resume(USER_ID, PROJECT_ID);
 
       expect(jobService.createJob).toHaveBeenCalledTimes(2);
-      expect(jobService.createJob).toHaveBeenCalledWith(expect.objectContaining({ type: "GenerateFeatureProductSpec", inputs: { featureId: featureId1 } }));
-      expect(jobService.createJob).toHaveBeenCalledWith(expect.objectContaining({ type: "GenerateFeatureProductSpec", inputs: { featureId: featureId2 } }));
+      expect(jobService.createJob).toHaveBeenCalledWith(expect.objectContaining({
+        type: "GenerateFeatureProductSpec",
+        inputs: expect.objectContaining({ featureId: featureId1 }),
+      }));
+      expect(jobService.createJob).toHaveBeenCalledWith(expect.objectContaining({
+        type: "GenerateFeatureProductSpec",
+        inputs: expect.objectContaining({ featureId: featureId2 }),
+      }));
     });
 
     it("does not advance when pendingJobCount > 0 after job success", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, pendingJobCount: 2 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 2,
+        activeBatchToken: "batch-1",
+      });
       const db = makeDb({ session: runningSession, job: makeJob() });
       // Decrement returns pendingJobCount: 1 (still > 0)
       db.update = vi.fn().mockReturnValue({
@@ -592,7 +665,12 @@ describe("auto-advance service", () => {
     });
 
     it("pauses immediately on failure when other parallel jobs still pending", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, pendingJobCount: 3, retryCount: 0 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 3,
+        retryCount: 0,
+        activeBatchToken: "batch-1",
+      });
       const db = makeDb({ session: runningSession, job: makeJob() });
       const updates: Array<{ status?: string; pausedReason?: string }> = [];
       db.update = vi.fn().mockReturnValue({
@@ -630,7 +708,7 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "GenerateDecisionDeck",
-          inputs: { kind: "ux" },
+          inputs: expect.objectContaining({ kind: "ux" }),
         }),
       );
     });
@@ -654,7 +732,7 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "GenerateFeatureProductSpec",
-          inputs: { featureId },
+          inputs: expect.objectContaining({ featureId }),
         }),
       );
     });
@@ -769,7 +847,11 @@ describe("auto-advance service", () => {
     });
 
     it("sets pendingJobCount to 1 before creating fix job from review issues", async () => {
-      const runningSession = makeSessionRow({ status: "running" as const, reviewCount: 1 });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 1,
+        activeBatchToken: "batch-1",
+      });
       const reviewJob = {
         ...makeJob(),
         type: "ReviewDelivery",

@@ -106,6 +106,13 @@
       "when": 1760000014000,
       "tag": "0014_m7_parallel_feature_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1760000015000,
+      "tag": "0015_m7_auto_advance_batch_tokens",
+      "breakpoints": true
     }
   ]
 }

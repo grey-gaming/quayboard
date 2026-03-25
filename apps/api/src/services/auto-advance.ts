@@ -28,6 +28,13 @@ import type { UserFlowService } from "./user-flow-service.js";
 
 type AutoAdvanceSessionRow = typeof autoAdvanceSessionsTable.$inferSelect;
 
+type AutoAdvanceJobInputs = Record<string, unknown> & {
+  _autoAdvance?: {
+    batchToken: string;
+    sessionId: string;
+  };
+};
+
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
   projectId: row.projectId,
@@ -181,6 +188,18 @@ export const createAutoAdvanceService = (
   const publishSessionUpdate = async (ownerUserId: string, projectId: string) => {
     sseHub.publish(ownerUserId, "auto-advance:updated", { projectId });
   };
+
+  const buildAutoAdvanceInputs = (
+    inputs: Record<string, unknown>,
+    sessionId: string,
+    batchToken: string,
+  ): AutoAdvanceJobInputs => ({
+    ...inputs,
+    _autoAdvance: {
+      sessionId,
+      batchToken,
+    },
+  });
 
   /**
    * Auto-selects the recommended option for all unselected decision cards of the given kind.
@@ -358,12 +377,14 @@ export const createAutoAdvanceService = (
       }
 
       // All workflow steps done — run a delivery review pass.
+      const batchToken = generateId();
       await db
         .update(autoAdvanceSessionsTable)
         .set({
           reviewCount: currentReviewCount + 1,
           currentStep: "delivery_review",
           pendingJobCount: 1,
+          activeBatchToken: batchToken,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, sessionId));
@@ -372,7 +393,7 @@ export const createAutoAdvanceService = (
         createdByUserId: ownerUserId,
         projectId,
         type: "ReviewDelivery",
-        inputs: {},
+        inputs: buildAutoAdvanceInputs({}, sessionId, batchToken),
       });
       return;
     }
@@ -416,11 +437,13 @@ export const createAutoAdvanceService = (
     }
 
     // Update current step and enqueue job(s)
+    const batchToken = generateId();
     await db
       .update(autoAdvanceSessionsTable)
       .set({
         currentStep: nextAction.key,
         pendingJobCount: actions.length,
+        activeBatchToken: batchToken,
         updatedAt: new Date(),
       })
       .where(eq(autoAdvanceSessionsTable.id, sessionId));
@@ -434,7 +457,7 @@ export const createAutoAdvanceService = (
           createdByUserId: ownerUserId,
           projectId,
           type: cfg.type,
-          inputs,
+          inputs: buildAutoAdvanceInputs(inputs, sessionId, batchToken),
         });
       }),
     );
@@ -483,6 +506,7 @@ export const createAutoAdvanceService = (
             maxConcurrentJobs: opts.maxConcurrentJobs ?? existing.maxConcurrentJobs,
             retryCount: 0,
             pendingJobCount: 0,
+            activeBatchToken: null,
             startedAt: now,
             pausedAt: null,
             completedAt: null,
@@ -508,6 +532,7 @@ export const createAutoAdvanceService = (
           creativityMode: opts.creativityMode ?? "balanced",
           maxConcurrentJobs: opts.maxConcurrentJobs ?? 1,
           pendingJobCount: 0,
+          activeBatchToken: null,
           startedAt: now,
           createdAt: now,
           updatedAt: now,
@@ -559,6 +584,7 @@ export const createAutoAdvanceService = (
           status: "running",
           pausedReason: null,
           pausedAt: null,
+          activeBatchToken: null,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
@@ -572,6 +598,14 @@ export const createAutoAdvanceService = (
 
     async reset(ownerUserId: string, projectId: string): Promise<void> {
       await requireProject(ownerUserId, projectId);
+
+      await jobService.cancelActiveAutoAdvanceJobsForProject({
+        projectId,
+        error: {
+          code: "auto_advance_reset",
+          message: "The auto-advance session was reset before this job finished.",
+        },
+      });
 
       await db
         .delete(autoAdvanceSessionsTable)
@@ -599,6 +633,7 @@ export const createAutoAdvanceService = (
           status: "running",
           pausedReason: null,
           pausedAt: null,
+          activeBatchToken: null,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
@@ -640,6 +675,15 @@ export const createAutoAdvanceService = (
       const session = await getSession(job.projectId);
 
       if (!session || session.status !== "running") {
+        return;
+      }
+
+      const autoAdvanceMeta = (job.inputs as AutoAdvanceJobInputs | null)?._autoAdvance;
+      if (!autoAdvanceMeta || autoAdvanceMeta.sessionId !== session.id) {
+        return;
+      }
+
+      if (session.activeBatchToken !== autoAdvanceMeta.batchToken) {
         return;
       }
 
@@ -687,7 +731,11 @@ export const createAutoAdvanceService = (
           // Retry: increment count and re-advance (will re-enqueue the same step since artifact wasn't created).
           await db
             .update(autoAdvanceSessionsTable)
-            .set({ retryCount: currentRetryCount + 1, updatedAt: new Date() })
+            .set({
+              retryCount: currentRetryCount + 1,
+              activeBatchToken: null,
+              updatedAt: new Date(),
+            })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
 
           await advanceStep(project.ownerUserId, job.projectId, session.id);
@@ -700,6 +748,7 @@ export const createAutoAdvanceService = (
               status: "paused",
               pausedReason: "job_failed",
               retryCount: 0,
+              activeBatchToken: null,
               pausedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -735,6 +784,7 @@ export const createAutoAdvanceService = (
             .set({
               status: "completed",
               currentStep: null,
+              activeBatchToken: null,
               completedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -752,6 +802,7 @@ export const createAutoAdvanceService = (
               status: "paused",
               pausedReason: "review_limit_reached",
               pausedAt: new Date(),
+              activeBatchToken: null,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
@@ -764,15 +815,24 @@ export const createAutoAdvanceService = (
         // Only GenerateUseCases and GenerateMilestones are valid fix job types.
         const firstIssue = output.issues[0];
         if (firstIssue && (firstIssue.jobType === "GenerateUseCases" || firstIssue.jobType === "GenerateMilestones")) {
+          const batchToken = generateId();
           await db
             .update(autoAdvanceSessionsTable)
-            .set({ pendingJobCount: 1, updatedAt: new Date() })
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              updatedAt: new Date(),
+            })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
           await jobService.createJob({
             createdByUserId: project.ownerUserId,
             projectId: job.projectId,
             type: firstIssue.jobType,
-            inputs: { hint: firstIssue.hint },
+            inputs: buildAutoAdvanceInputs(
+              { hint: firstIssue.hint },
+              session.id,
+              batchToken,
+            ),
           });
         }
         // The fix job will be picked up by the scheduler; onJobComplete will advance naturally after it runs.
