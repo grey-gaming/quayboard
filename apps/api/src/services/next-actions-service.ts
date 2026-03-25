@@ -337,14 +337,14 @@ export const createNextActionsService = (
 
               // Populate empty milestones only when no feature workstream work remains.
               if (!actions.length) {
-                const milestonesWithoutFeatures = milestones.milestones.filter(
+                const emptyMilestone = milestones.milestones.find(
                   (m) => m.status === "approved" && m.featureCount === 0,
                 );
-                if (milestonesWithoutFeatures.length > 0) {
+                if (emptyMilestone) {
                   actions.push({
                     key: "features_create",
                     label: "Create the first feature",
-                    href: `/projects/${projectId}/features?milestone=${milestonesWithoutFeatures[0]!.id}`,
+                    href: `/projects/${projectId}/features?milestone=${emptyMilestone.id}`,
                   });
                 }
               }
