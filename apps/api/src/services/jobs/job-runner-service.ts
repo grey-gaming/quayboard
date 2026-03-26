@@ -42,8 +42,11 @@ import {
   buildFeatureTechSpecPrompt,
   buildFeatureUserDocsPrompt,
   buildFeatureUxSpecPrompt,
+  buildMilestoneDesignConsistencyPrompt,
   buildMilestoneDesignPrompt,
+  buildMilestoneDesignReviewPrompt,
   buildMilestonePlanPrompt,
+  buildMilestonePlanReviewPrompt,
   buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
@@ -1312,7 +1315,39 @@ export const createJobRunnerService = (input: {
           );
         }
 
-        const milestones = validateGeneratedMilestones(parsed);
+        const firstPassMilestones = validateGeneratedMilestones(parsed);
+        const reviewTemplateId = `${rawJob.type}Review`;
+        const reviewPrompt = buildMilestonePlanReviewPrompt({
+          projectName: project.name,
+          draftMilestones: firstPassMilestones,
+        });
+        const reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+          responseFormat: "json",
+        });
+        await assertAutoAdvanceBatchIsCurrent();
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: reviewTemplateId,
+          parameters: {},
+          input: { prompt: reviewPrompt },
+          output: { content: reviewed.content },
+          promptTokens: reviewed.promptTokens,
+          completionTokens: reviewed.completionTokens,
+          createdAt: new Date(),
+        });
+        const reviewedParsed = parseMilestonesResult(reviewed.content);
+
+        if (!reviewedParsed) {
+          throw new Error(
+            `${reviewTemplateId} returned invalid content. Expected a JSON array of milestones.`,
+          );
+        }
+
+        const milestones = validateGeneratedMilestones(reviewedParsed);
         for (const milestone of milestones) {
           await input.milestoneService.create(
             ownerUserId,
@@ -1342,7 +1377,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneDesign only runs for milestones that are not approved yet.");
         }
 
-        const [blueprints, milestoneRecord, linkedFlows] = await Promise.all([
+        const [blueprints, milestoneRecord, linkedFlows, milestoneList] = await Promise.all([
           input.blueprintService.getCanonical(ownerUserId, rawJob.projectId),
           input.db.query.milestonesTable.findFirst({
             where: eq(milestonesTable.id, milestoneId),
@@ -1357,6 +1392,7 @@ export const createJobRunnerService = (input: {
             .from(milestoneUseCasesTable)
             .innerJoin(useCasesTable, eq(useCasesTable.id, milestoneUseCasesTable.useCaseId))
             .where(eq(milestoneUseCasesTable.milestoneId, milestoneId)),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
         ]);
 
         if (!milestoneRecord) {
@@ -1367,10 +1403,23 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneDesign requires approved UX and Technical Specs.");
         }
 
+        const milestoneContext = {
+          position: milestoneRecord.position,
+          title: milestoneRecord.title,
+          summary: milestoneRecord.summary,
+        };
+        const orderedMilestones = milestoneList.milestones.map((item) => ({
+          position: item.position,
+          title: item.title,
+          summary: item.summary,
+        }));
+
         const prompt = buildMilestoneDesignPrompt({
           projectName: project.name,
+          milestonePosition: milestoneRecord.position,
           milestoneTitle: milestoneRecord.title,
           milestoneSummary: milestoneRecord.summary,
+          orderedMilestones,
           linkedUserFlows: linkedFlows,
           uxSpec: blueprints.uxBlueprint.markdown,
           technicalSpec: blueprints.techBlueprint.markdown,
@@ -1393,7 +1442,94 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const designDoc = parseBlueprintResult(generated.content, rawJob.type);
+        const firstPassDesignDoc = parseBlueprintResult(generated.content, rawJob.type);
+        const reviewTemplateId = `${rawJob.type}Review`;
+        const reviewPrompt = buildMilestoneDesignReviewPrompt({
+          projectName: project.name,
+          milestone: milestoneContext,
+          orderedMilestones,
+          draftTitle: firstPassDesignDoc.title,
+          draftMarkdown: firstPassDesignDoc.markdown,
+        });
+        const reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+          responseFormat: "json",
+        });
+        await assertAutoAdvanceBatchIsCurrent();
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: reviewTemplateId,
+          parameters: { milestoneId },
+          input: { prompt: reviewPrompt },
+          output: { content: reviewed.content },
+          promptTokens: reviewed.promptTokens,
+          completionTokens: reviewed.completionTokens,
+          createdAt: new Date(),
+        });
+        const repairedDesignDoc = parseBlueprintResult(reviewed.content, reviewTemplateId);
+        const consistencyTemplateId = `${rawJob.type}ConsistencyReview`;
+        const existingCanonicalDesignDocs = (
+          await Promise.all(
+            milestoneList.milestones
+              .filter((item) => item.id !== milestoneId)
+              .map(async (item) => {
+                const doc = await input.milestoneService!.getCanonicalDesignDoc(ownerUserId, item.id);
+                if (!doc) {
+                  return null;
+                }
+
+                return {
+                  position: item.position,
+                  milestoneTitle: item.title,
+                  designDocTitle: doc.title,
+                  markdown: doc.markdown,
+                };
+              }),
+          )
+        ).filter(
+          (
+            doc,
+          ): doc is {
+            position: number;
+            milestoneTitle: string;
+            designDocTitle: string;
+            markdown: string;
+          } => doc !== null,
+        );
+        const consistencyPrompt = buildMilestoneDesignConsistencyPrompt({
+          projectName: project.name,
+          milestone: milestoneContext,
+          orderedMilestones,
+          currentDraft: repairedDesignDoc,
+          existingCanonicalDesignDocs,
+        });
+        const consistencyReviewed = await input.llmProviderService.generate(
+          provider,
+          consistencyPrompt,
+          { responseFormat: "json" },
+        );
+        await assertAutoAdvanceBatchIsCurrent();
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: consistencyTemplateId,
+          parameters: { milestoneId },
+          input: { prompt: consistencyPrompt },
+          output: { content: consistencyReviewed.content },
+          promptTokens: consistencyReviewed.promptTokens,
+          completionTokens: consistencyReviewed.completionTokens,
+          createdAt: new Date(),
+        });
+        const designDoc = parseBlueprintResult(
+          consistencyReviewed.content,
+          consistencyTemplateId,
+        );
         const created = await input.milestoneService.createDesignDocVersion({
           milestoneId,
           title: designDoc.title,

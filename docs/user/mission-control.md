@@ -106,7 +106,7 @@ Generates a set of UX decision cards covering layout approach, navigation patter
 Same pattern as Phase 3 but for the technology stack — database, API style, auth strategy, and other architectural choices.
 
 **Phase 5 — User Flows & Milestones**
-Generates user flows (use cases and journeys), an overall milestone plan, and a milestone design document that describes what gets delivered in each phase.
+Generates user flows (use cases and journeys), an overall milestone plan, and a milestone design document that describes what gets delivered in each phase. Milestone order is canonical, generated milestone titles stay thematic, and milestone generation runs an internal review pass before results are saved. Milestone design-doc generation also runs a repair and cross-milestone consistency pass so vague deferrals to an unspecified future phase are not silently left behind.
 
 **Phase 6 — Feature Documentation**
 Creates individual feature records from the milestone plan, then generates five documents per feature. Features can be processed in parallel (controlled by *Max concurrent jobs*), so this phase scales with the size of your project.

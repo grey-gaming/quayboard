@@ -574,7 +574,8 @@ export const buildMilestonePlanPrompt = (input: {
     `Propose an initial milestone plan for "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
-    "title must be short and specific.",
+    "title must be short, specific, and thematic.",
+    'Do not include milestone numbers, ordinal labels, or prefixes such as "Milestone 1", "Phase 2", or "M3" in title.',
     "summary must explain the release intent and scope for the milestone.",
     "useCaseIds must be a non-empty array of approved user-flow IDs covered by the milestone.",
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
@@ -598,10 +599,42 @@ export const buildMilestonePlanPrompt = (input: {
     JSON.stringify(input.userFlows, null, 2),
   ].join("\n");
 
+export const buildMilestonePlanReviewPrompt = (input: {
+  projectName: string;
+  draftMilestones: Array<{
+    title: string;
+    summary: string;
+    useCaseIds: string[];
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and repair the draft milestone plan for "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
+    "Preserve the milestone count, execution order, and overall flow coverage unless a minimal wording fix is required.",
+    "Keep milestone titles thematic, short, and specific.",
+    'Remove milestone numbers, ordinal labels, and prefixes such as "Milestone 1", "Phase 2", or "M3" from title.',
+    "Do not merge, split, reorder, or drop milestones.",
+    "Do not remove any useCaseIds unless they are duplicates within the same milestone.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Draft milestone plan:",
+    JSON.stringify(input.draftMilestones, null, 2),
+  ].join("\n");
+
 export const buildMilestoneDesignPrompt = (input: {
   projectName: string;
+  milestonePosition: number;
   milestoneTitle: string;
   milestoneSummary: string;
+  orderedMilestones: Array<{
+    position: number;
+    title: string;
+    summary: string;
+  }>;
   linkedUserFlows: Array<{
     title: string;
     userStory: string;
@@ -619,7 +652,25 @@ export const buildMilestoneDesignPrompt = (input: {
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
     "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
     "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
+    "Treat the milestone order supplied below as canonical. The stored milestone title is thematic and does not need a number prefix.",
+    "If the document needs to mention milestone order, use the provided milestone position and ordered milestone list.",
+    'Do not defer required work to an unnamed future phase such as "a later milestone", "future milestone", or similar vague wording.',
+    "Any sequencing references must point to concrete milestones from the ordered milestone list.",
     "Do not wrap the JSON in code fences.",
+    "",
+    "Current milestone:",
+    JSON.stringify(
+      {
+        position: input.milestonePosition,
+        title: input.milestoneTitle,
+        summary: input.milestoneSummary,
+      },
+      null,
+      2,
+    ),
+    "",
+    "Ordered milestone list:",
+    JSON.stringify(input.orderedMilestones, null, 2),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -632,6 +683,96 @@ export const buildMilestoneDesignPrompt = (input: {
     "",
     "Approved Technical Spec:",
     input.technicalSpec,
+  ].join("\n");
+
+export const buildMilestoneDesignReviewPrompt = (input: {
+  projectName: string;
+  milestone: {
+    position: number;
+    title: string;
+    summary: string;
+  };
+  orderedMilestones: Array<{
+    position: number;
+    title: string;
+    summary: string;
+  }>;
+  draftTitle: string;
+  draftMarkdown: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and repair the milestone design document for "${input.milestone.title}" in "${input.projectName}".`,
+    'Return valid JSON with exactly two string keys: "title" and "markdown".',
+    "Preserve the scope and structure of the draft unless a wording repair is needed.",
+    "Treat the supplied milestone order as canonical. The milestone title is thematic and does not need a number prefix.",
+    'Remove vague deferrals such as "later milestone", "future milestone", or equivalent wording.',
+    "If sequencing must be mentioned, refer only to concrete milestones from the ordered milestone list.",
+    "Do not add new milestones or change the ordered milestone list.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Current milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Ordered milestone list:",
+    JSON.stringify(input.orderedMilestones, null, 2),
+    "",
+    "Draft design document title:",
+    input.draftTitle,
+    "",
+    "Draft design document markdown:",
+    input.draftMarkdown,
+  ].join("\n");
+
+export const buildMilestoneDesignConsistencyPrompt = (input: {
+  projectName: string;
+  milestone: {
+    position: number;
+    title: string;
+    summary: string;
+  };
+  orderedMilestones: Array<{
+    position: number;
+    title: string;
+    summary: string;
+  }>;
+  currentDraft: {
+    title: string;
+    markdown: string;
+  };
+  existingCanonicalDesignDocs: Array<{
+    position: number;
+    milestoneTitle: string;
+    designDocTitle: string;
+    markdown: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Run a consistency review on the milestone design document for "${input.milestone.title}" in "${input.projectName}".`,
+    'Return valid JSON with exactly two string keys: "title" and "markdown".',
+    "Only revise the current milestone design document.",
+    "Use the ordered milestone list as the canonical release order.",
+    "Ensure the current draft does not silently defer required work to unspecified later milestones.",
+    "Ensure sequencing references in the current draft point only to concrete milestones from the ordered milestone list.",
+    "Do not change milestone count or invent new milestone names.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Current milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Ordered milestone list:",
+    JSON.stringify(input.orderedMilestones, null, 2),
+    "",
+    "Current milestone draft:",
+    JSON.stringify(input.currentDraft, null, 2),
+    "",
+    "Existing canonical milestone design docs from the project:",
+    JSON.stringify(input.existingCanonicalDesignDocs, null, 2),
   ].join("\n");
 
 export const buildAppendFeaturesFromOnePagerPrompt = (input: {
@@ -997,4 +1138,3 @@ export const buildDeliveryReviewPrompt = (input: {
     "Approved Milestones (featureCount = number of features already created for that milestone):",
     JSON.stringify(input.milestones, null, 2),
   ].join("\n");
-

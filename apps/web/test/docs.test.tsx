@@ -236,6 +236,7 @@ describe("docs pages", () => {
 
     expect(screen.getByRole("heading", { name: "Planning Workflow" })).toBeTruthy();
     expect(screen.getByText(/the import path remains a stub for now/i)).toBeTruthy();
+    expect(screen.getByText(/generated milestone order is canonical/i)).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });
 });
