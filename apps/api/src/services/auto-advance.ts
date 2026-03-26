@@ -201,6 +201,15 @@ export const createAutoAdvanceService = (
     },
   });
 
+  const stripAutoAdvanceInputs = (inputs: Record<string, unknown> | null | undefined) => {
+    if (!inputs) {
+      return {};
+    }
+
+    const { _autoAdvance: _ignored, ...rest } = inputs as AutoAdvanceJobInputs;
+    return rest;
+  };
+
   /**
    * Auto-selects the recommended option for all unselected decision cards of the given kind.
    */
@@ -728,17 +737,30 @@ export const createAutoAdvanceService = (
         }
 
         if (currentRetryCount < MAX_RETRIES) {
-          // Retry: increment count and re-advance (will re-enqueue the same step since artifact wasn't created).
+          // Retry the same failed job instead of inferring the next step from current state.
+          // Some jobs can create draft artifacts before failing, which would otherwise
+          // make advanceStep() land on a manual approval step and stall the session.
+          const batchToken = generateId();
           await db
             .update(autoAdvanceSessionsTable)
             .set({
+              pendingJobCount: 1,
               retryCount: currentRetryCount + 1,
-              activeBatchToken: null,
+              activeBatchToken: batchToken,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
 
-          await advanceStep(project.ownerUserId, job.projectId, session.id);
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: job.type,
+            inputs: buildAutoAdvanceInputs(
+              stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+              session.id,
+              batchToken,
+            ),
+          });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
         } else {
           // Max retries exhausted — pause and reset count for next run.
