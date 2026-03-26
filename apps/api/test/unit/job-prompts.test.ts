@@ -4,6 +4,11 @@ import {
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
+  buildMilestoneDesignConsistencyPrompt,
+  buildMilestoneDesignPrompt,
+  buildMilestoneDesignReviewPrompt,
+  buildMilestonePlanPrompt,
+  buildMilestonePlanReviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
@@ -109,6 +114,120 @@ describe("job prompts", () => {
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
     expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
+  });
+
+  it("asks milestone generation for thematic titles without numeric prefixes", () => {
+    const prompt = buildMilestonePlanPrompt({
+      projectName: "Quayboard",
+      uxSpec: "# UX Spec\n\nApproved UX direction.",
+      technicalSpec: "# Technical Spec\n\nApproved implementation direction.",
+      userFlows: [
+        {
+          id: "flow-1",
+          title: "Plan milestones",
+          userStory: "As a planner, I want coherent milestone sequencing.",
+          entryPoint: "Mission Control",
+          endState: "Approved milestones exist.",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("title must be short, specific, and thematic.");
+    expect(prompt).toContain('Do not include milestone numbers, ordinal labels, or prefixes such as "Milestone 1", "Phase 2", or "M3" in title.');
+  });
+
+  it("asks milestone review to preserve order while removing numeric title labels", () => {
+    const prompt = buildMilestonePlanReviewPrompt({
+      projectName: "Quayboard",
+      draftMilestones: [
+        {
+          title: "Milestone 1: Foundations",
+          summary: "Stand up the planning core.",
+          useCaseIds: ["flow-1"],
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Preserve the milestone count, execution order, and overall flow coverage");
+    expect(prompt).toContain('Remove milestone numbers, ordinal labels, and prefixes such as "Milestone 1", "Phase 2", or "M3" from title.');
+  });
+
+  it("grounds milestone design generation in canonical order and bans vague future deferrals", () => {
+    const prompt = buildMilestoneDesignPrompt({
+      projectName: "Quayboard",
+      milestonePosition: 2,
+      milestoneTitle: "Workflow Automation",
+      milestoneSummary: "Automate project planning progression.",
+      orderedMilestones: [
+        { position: 1, title: "Foundations", summary: "Core setup" },
+        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
+      ],
+      linkedUserFlows: [
+        {
+          title: "Run auto-advance",
+          userStory: "As a planner, I want automated planning progression.",
+          entryPoint: "Mission Control",
+          endState: "The project advances automatically.",
+        },
+      ],
+      uxSpec: "# UX Spec\n\nApproved UX direction.",
+      technicalSpec: "# Technical Spec\n\nApproved implementation direction.",
+    });
+
+    expect(prompt).toContain("Treat the milestone order supplied below as canonical.");
+    expect(prompt).toContain('Do not defer required work to an unnamed future phase such as "a later milestone", "future milestone", or similar vague wording.');
+    expect(prompt).toContain("Ordered milestone list:");
+  });
+
+  it("asks milestone design review to remove vague future deferrals", () => {
+    const prompt = buildMilestoneDesignReviewPrompt({
+      projectName: "Quayboard",
+      milestone: {
+        position: 2,
+        title: "Workflow Automation",
+        summary: "Automate project planning progression.",
+      },
+      orderedMilestones: [
+        { position: 1, title: "Foundations", summary: "Core setup" },
+        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
+      ],
+      draftTitle: "Workflow Automation Design",
+      draftMarkdown: "# Workflow Automation\n\nShip the rest in a later milestone.",
+    });
+
+    expect(prompt).toContain('Remove vague deferrals such as "later milestone", "future milestone", or equivalent wording.');
+    expect(prompt).toContain("If sequencing must be mentioned, refer only to concrete milestones");
+  });
+
+  it("asks milestone consistency review to reconcile the current draft against existing milestone docs", () => {
+    const prompt = buildMilestoneDesignConsistencyPrompt({
+      projectName: "Quayboard",
+      milestone: {
+        position: 2,
+        title: "Workflow Automation",
+        summary: "Automate project planning progression.",
+      },
+      orderedMilestones: [
+        { position: 1, title: "Foundations", summary: "Core setup" },
+        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
+      ],
+      currentDraft: {
+        title: "Workflow Automation Design",
+        markdown: "# Workflow Automation\n\nDraft milestone scope.",
+      },
+      existingCanonicalDesignDocs: [
+        {
+          position: 1,
+          milestoneTitle: "Foundations",
+          designDocTitle: "Foundations Design",
+          markdown: "# Foundations\n\nCore setup.",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Only revise the current milestone design document.");
+    expect(prompt).toContain("Existing canonical milestone design docs from the project:");
+    expect(prompt).toContain("Ensure the current draft does not silently defer required work to unspecified later milestones.");
   });
 
   describe("buildDeliveryReviewPrompt", () => {
