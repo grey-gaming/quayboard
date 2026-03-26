@@ -1,5 +1,25 @@
 import { z } from "zod";
 
+export const MAX_PROJECT_DESCRIPTION_WORDS = 500;
+
+const countWords = (value: string) => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return 0;
+  }
+
+  return trimmed.split(/\s+/).length;
+};
+
+export const projectDescriptionSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => countWords(value) <= MAX_PROJECT_DESCRIPTION_WORDS,
+    `Description must not have more than ${MAX_PROJECT_DESCRIPTION_WORDS} words.`,
+  );
+
 export const projectStateSchema = z.enum([
   "EMPTY",
   "BOOTSTRAPPING",
@@ -25,7 +45,7 @@ export type Project = z.infer<typeof projectSchema>;
 
 export const createProjectRequestSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  description: z.string().trim().max(500).optional().nullable(),
+  description: projectDescriptionSchema.optional().nullable(),
 });
 
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
