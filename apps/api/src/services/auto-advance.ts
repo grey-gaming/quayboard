@@ -719,34 +719,17 @@ export const createAutoAdvanceService = (
       if (outcome === "failure") {
         const MAX_RETRIES = 3;
         const currentRetryCount = session.retryCount ?? 0;
+        const nextRetryCount = currentRetryCount + 1;
 
-        if (remaining > 0) {
-          // Other parallel jobs are still running — pause immediately so they don't trigger advancement.
-          await db
-            .update(autoAdvanceSessionsTable)
-            .set({
-              status: "paused",
-              pausedReason: "job_failed",
-              retryCount: 0,
-              pausedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(autoAdvanceSessionsTable.id, session.id));
-          await publishSessionUpdate(project.ownerUserId, job.projectId);
-          return;
-        }
-
-        if (currentRetryCount < MAX_RETRIES) {
+        if (nextRetryCount < MAX_RETRIES) {
           // Retry the same failed job instead of inferring the next step from current state.
           // Some jobs can create draft artifacts before failing, which would otherwise
           // make advanceStep() land on a manual approval step and stall the session.
-          const batchToken = generateId();
           await db
             .update(autoAdvanceSessionsTable)
             .set({
-              pendingJobCount: 1,
-              retryCount: currentRetryCount + 1,
-              activeBatchToken: batchToken,
+              pendingJobCount: remaining + 1,
+              retryCount: nextRetryCount,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
@@ -758,7 +741,7 @@ export const createAutoAdvanceService = (
             inputs: buildAutoAdvanceInputs(
               stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
               session.id,
-              batchToken,
+              autoAdvanceMeta.batchToken,
             ),
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
@@ -770,7 +753,6 @@ export const createAutoAdvanceService = (
               status: "paused",
               pausedReason: "job_failed",
               retryCount: 0,
-              activeBatchToken: null,
               pausedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -781,16 +763,17 @@ export const createAutoAdvanceService = (
         return;
       }
 
+      if ((session.retryCount ?? 0) > 0) {
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({ retryCount: 0, updatedAt: new Date() })
+          .where(eq(autoAdvanceSessionsTable.id, session.id));
+      }
+
       // Success path — if other parallel jobs are still pending, wait for them.
       if (remaining > 0) {
         return;
       }
-
-      // All parallel jobs in the batch have completed — reset retryCount.
-      await db
-        .update(autoAdvanceSessionsTable)
-        .set({ retryCount: 0, updatedAt: new Date() })
-        .where(eq(autoAdvanceSessionsTable.id, session.id));
 
       // Special handling for the delivery review job.
       if (job.type === "ReviewDelivery") {
