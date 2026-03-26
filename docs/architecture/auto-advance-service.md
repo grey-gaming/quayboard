@@ -1,6 +1,6 @@
 # Auto-Advance Service
 
-The auto-advance service (`apps/api/src/services/auto-advance.ts`) orchestrates the Quayboard planning workflow by automatically enqueuing background jobs in response to the current project state. It owns the `auto_advance_sessions` table and publishes SSE events so the frontend stays up to date within 2 seconds of every state change.
+The auto-advance service (`apps/api/src/services/auto-advance.ts`) orchestrates the Quayboard planning workflow by automatically enqueuing background jobs in response to the current project state. It owns the `auto_advance_sessions` table and publishes SSE events so the frontend stays up to date within 2 seconds of every state change. The workflow is active-milestone driven: Quayboard generates the milestone map once, then fully plans only the active milestone before advancing to the next one.
 
 ---
 
@@ -107,7 +107,7 @@ This is the core of the automation logic. It is called from `start`, `resume`, `
 advanceStep(ownerUserId, projectId, session):
   1. Call nextActionsService.build(ownerUserId, projectId)
   2. Take the first action from the returned list
-  3. If no actions remain → update session to completed
+  3. If no actions remain → run final delivery review or update session to completed
   4. Look up action.key in AUTOMATABLE_STEPS map
   5. If no mapping exists → pause with needs_human
   6. Otherwise:
@@ -134,11 +134,28 @@ The mapping table connects next-action keys to the job types and input factories
 | `feature_product_regenerate` | `GenerateFeatureProductSpec` | `{ featureId }` (from href) |
 | `feature_tech_create` | `GenerateFeatureTechSpec` | `{ featureId }` (from href) |
 | `feature_tech_regenerate` | `GenerateFeatureTechSpec` | `{ featureId }` (from href) |
-| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` (from href) |
-| `milestones` | `GenerateMilestones` | `{}` |
-| `blueprint` | `GenerateBlueprint` | `{}` |
+| `milestones_generate` | `GenerateMilestones` | `{}` |
+| `milestone_design_generate` | `GenerateMilestoneDesign` | `{ milestoneId }` |
+| `milestone_reconciliation_review` | `ReviewMilestoneCoverage` | `{ milestoneId }` |
+| `features_create` | `AppendFeatureFromOnePager` | `{ milestoneId }` |
+| `feature_product_create` | `GenerateFeatureProductSpec` | `{ featureId }` |
+| `feature_ux_create` | `GenerateFeatureUxSpec` | `{ featureId }` |
+| `feature_tech_create` | `GenerateFeatureTechSpec` | `{ featureId }` |
+| `feature_user_docs_create` | `GenerateFeatureUserDocs` | `{ featureId }` |
+| `feature_arch_docs_create` | `GenerateFeatureArchDocs` | `{ featureId }` |
+| `feature_task_clarifications_generate` | `GenerateTaskClarifications` | `{ featureId, sessionId }` |
+| `feature_task_list_generate` | `GenerateFeatureTaskList` | `{ featureId, sessionId }` |
+| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` |
 
 Any key not in this map causes the session to pause with `needs_human`, prompting the user to take the manual action and then Resume.
+
+## Milestone Reconciliation
+
+When the active milestone has no remaining feature, workstream, or task-planning actions, auto-advance queues `ReviewMilestoneCoverage`. That review compares the canonical milestone design doc against the active milestone's approved feature workstreams and generated delivery tasks.
+
+- If reconciliation passes, the next step becomes milestone completion.
+- If reconciliation finds gaps on the first pass, auto-advance creates one catch-up feature inside the current milestone and sends it through the normal workstream and task-planning flow.
+- If reconciliation still finds gaps after that catch-up pass, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
 
 ---
 

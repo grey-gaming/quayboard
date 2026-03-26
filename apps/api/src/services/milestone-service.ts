@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   type ArtifactApproval,
@@ -6,6 +6,7 @@ import {
   milestoneActionRequestSchema,
   milestoneDesignDocListResponseSchema,
   milestoneDesignDocSchema,
+  milestoneReconciliationIssueSchema,
   milestoneListResponseSchema,
   milestoneSchema,
   updateMilestoneRequestSchema,
@@ -38,6 +39,11 @@ const toMilestoneDesignDoc = (
     createdAt: record.createdAt.toISOString(),
     approval,
   });
+
+const parseReconciliationIssues = (value: unknown) => {
+  const parsed = Array.isArray(value) ? value : [];
+  return parsed.map((issue) => milestoneReconciliationIssueSchema.parse(issue));
+};
 
 export const createMilestoneService = (db: AppDatabase) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
@@ -89,13 +95,87 @@ export const createMilestoneService = (db: AppDatabase) => ({
     return milestone;
   },
 
-  async list(ownerUserId: string, projectId: string) {
-    await this.assertApprovedUserFlows(ownerUserId, projectId);
-
-    const milestones = await db.query.milestonesTable.findMany({
+  async getProjectMilestones(projectId: string) {
+    return db.query.milestonesTable.findMany({
       where: eq(milestonesTable.projectId, projectId),
       orderBy: [asc(milestonesTable.position)],
     });
+  },
+
+  async getActiveMilestone(ownerUserId: string, projectId: string) {
+    await this.assertApprovedUserFlows(ownerUserId, projectId);
+
+    return db.query.milestonesTable.findFirst({
+      where: and(
+        eq(milestonesTable.projectId, projectId),
+        inArray(milestonesTable.status, ["draft", "approved"]),
+      ),
+      orderBy: [asc(milestonesTable.position)],
+    });
+  },
+
+  async assertActiveMilestone(ownerUserId: string, projectId: string, milestoneId: string) {
+    const activeMilestone = await this.getActiveMilestone(ownerUserId, projectId);
+
+    if (!activeMilestone || activeMilestone.id !== milestoneId) {
+      throw new HttpError(
+        409,
+        "active_milestone_required",
+        "Only the active milestone can be changed at this stage.",
+      );
+    }
+
+    return activeMilestone;
+  },
+
+  async invalidateReconciliation(milestoneId: string) {
+    await db
+      .update(milestonesTable)
+      .set({
+        reconciliationStatus: "not_started",
+        reconciliationIssues: [],
+        reconciliationReviewedAt: null,
+        reconciliationLastJobId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(milestonesTable.id, milestoneId));
+  },
+
+  async recordReconciliationResult(input: {
+    milestoneId: string;
+    issues: Array<{ action: "create_catch_up_feature" | "needs_human_review"; hint: string }>;
+    jobId: string;
+    status: "passed" | "failed_first_pass" | "failed_needs_human";
+  }) {
+    await db
+      .update(milestonesTable)
+      .set({
+        reconciliationStatus: input.status,
+        reconciliationIssues: input.issues,
+        reconciliationReviewedAt: new Date(),
+        reconciliationLastJobId: input.jobId,
+        updatedAt: new Date(),
+      })
+      .where(eq(milestonesTable.id, input.milestoneId));
+  },
+
+  async incrementAutoCatchUpCount(milestoneId: string) {
+    const [updated] = await db
+      .update(milestonesTable)
+      .set({
+        autoCatchUpCount: sql`${milestonesTable.autoCatchUpCount} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(milestonesTable.id, milestoneId))
+      .returning();
+
+    return updated;
+  },
+
+  async list(ownerUserId: string, projectId: string) {
+    await this.assertApprovedUserFlows(ownerUserId, projectId);
+
+    const milestones = await this.getProjectMilestones(projectId);
 
     const milestoneIds = milestones.map((milestone) => milestone.id);
     const [links, activeFlows, activeFeatures] = await Promise.all([
@@ -142,6 +222,8 @@ export const createMilestoneService = (db: AppDatabase) => ({
     }
 
     const coveredUserFlowIds = new Set(links.map((link) => link.useCaseId));
+    const activeMilestoneId =
+      milestones.find((milestone) => milestone.status !== "completed")?.id ?? null;
 
     return milestoneListResponseSchema.parse({
       milestones: milestones.map((milestone) =>
@@ -154,7 +236,12 @@ export const createMilestoneService = (db: AppDatabase) => ({
           status: milestone.status,
           linkedUserFlows: linksByMilestone.get(milestone.id) ?? [],
           featureCount: featureCountByMilestone.get(milestone.id) ?? 0,
+          isActive: milestone.id === activeMilestoneId,
           approvedAt: milestone.approvedAt?.toISOString() ?? null,
+          completedAt: milestone.completedAt?.toISOString() ?? null,
+          reconciliationStatus: milestone.reconciliationStatus,
+          reconciliationIssues: parseReconciliationIssues(milestone.reconciliationIssues),
+          reconciliationReviewedAt: milestone.reconciliationReviewedAt?.toISOString() ?? null,
           createdAt: milestone.createdAt.toISOString(),
           updatedAt: milestone.updatedAt.toISOString(),
         }),
@@ -196,6 +283,14 @@ export const createMilestoneService = (db: AppDatabase) => ({
     createdByJobId?: string,
   ) {
     await this.assertApprovedUserFlows(ownerUserId, projectId);
+    const activeMilestone = await this.getActiveMilestone(ownerUserId, projectId);
+    if (activeMilestone && !createdByJobId) {
+      throw new HttpError(
+        409,
+        "milestone_generation_locked",
+        "Finish the active milestone before adding more milestones.",
+      );
+    }
     const payload = createMilestoneRequestSchema.parse(input);
     await this.validateLinkedUseCases(projectId, payload.useCaseIds);
 
@@ -240,6 +335,7 @@ export const createMilestoneService = (db: AppDatabase) => ({
 
   async update(ownerUserId: string, milestoneId: string, input: unknown) {
     const context = await this.getContext(ownerUserId, milestoneId);
+    await this.assertActiveMilestone(ownerUserId, context.projectId, milestoneId);
     if (context.status !== "draft") {
       throw new HttpError(
         409,
@@ -288,34 +384,72 @@ export const createMilestoneService = (db: AppDatabase) => ({
 
   async transition(ownerUserId: string, milestoneId: string, input: unknown) {
     const context = await this.getContext(ownerUserId, milestoneId);
+    await this.assertActiveMilestone(ownerUserId, context.projectId, milestoneId);
     const payload = milestoneActionRequestSchema.parse(input);
     const now = new Date();
 
-    if (context.status !== "draft") {
-      throw new HttpError(
-        409,
-        "invalid_milestone_transition",
-        "Only draft milestones can be approved.",
-      );
-    }
+    if (payload.action === "approve") {
+      if (context.status !== "draft") {
+        throw new HttpError(
+          409,
+          "invalid_milestone_transition",
+          "Only draft milestones can be approved.",
+        );
+      }
 
-    const designDoc = await this.getCanonicalDesignDoc(ownerUserId, milestoneId);
-    if (!designDoc) {
-      throw new HttpError(
-        409,
-        "milestone_design_doc_required",
-        "Create a milestone design document before approving the milestone.",
-      );
-    }
+      const designDoc = await this.getCanonicalDesignDoc(ownerUserId, milestoneId);
+      if (!designDoc) {
+        throw new HttpError(
+          409,
+          "milestone_design_doc_required",
+          "Create a milestone design document before approving the milestone.",
+        );
+      }
 
-    await db
-      .update(milestonesTable)
-      .set({
-        status: "approved",
-        approvedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(milestonesTable.id, milestoneId));
+      await db
+        .update(milestonesTable)
+        .set({
+          status: "approved",
+          approvedAt: now,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          reconciliationLastJobId: null,
+          autoCatchUpCount: 0,
+          updatedAt: now,
+        })
+        .where(eq(milestonesTable.id, milestoneId));
+    } else {
+      if (context.status !== "approved") {
+        throw new HttpError(
+          409,
+          "invalid_milestone_transition",
+          "Only approved milestones can be completed.",
+        );
+      }
+
+      const milestone = await db.query.milestonesTable.findFirst({
+        where: eq(milestonesTable.id, milestoneId),
+      });
+
+      if (milestone?.reconciliationStatus !== "passed") {
+        throw new HttpError(
+          409,
+          "milestone_reconciliation_required",
+          "Run milestone reconciliation and resolve all gaps before completing the milestone.",
+        );
+      }
+
+      await db
+        .update(milestonesTable)
+        .set({
+          status: "completed",
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(milestonesTable.id, milestoneId));
+    }
 
     return this.list(ownerUserId, context.projectId).then((response) => {
       const milestone = response.milestones.find((item) => item.id === milestoneId);
@@ -396,6 +530,17 @@ export const createMilestoneService = (db: AppDatabase) => ({
         })
         .returning();
 
+      await tx
+        .update(milestonesTable)
+        .set({
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          reconciliationLastJobId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(milestonesTable.id, input.milestoneId));
+
       return created;
     });
   },
@@ -440,7 +585,12 @@ export const createMilestoneService = (db: AppDatabase) => ({
       status: milestone.status,
       linkedUserFlows: [],
       featureCount: 0,
+      isActive: true,
       approvedAt: milestone.approvedAt?.toISOString() ?? null,
+      completedAt: milestone.completedAt?.toISOString() ?? null,
+      reconciliationStatus: milestone.reconciliationStatus,
+      reconciliationIssues: [],
+      reconciliationReviewedAt: milestone.reconciliationReviewedAt?.toISOString() ?? null,
       createdAt: milestone.createdAt.toISOString(),
       updatedAt: milestone.updatedAt.toISOString(),
     });

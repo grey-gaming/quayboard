@@ -175,6 +175,7 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        const payload = milestoneActionRequestSchema.parse(request.body);
         const canonicalDesignDoc = await services.milestoneService.getCanonicalDesignDoc(
           request.user!.id,
           milestoneId,
@@ -182,9 +183,9 @@ export const milestoneRoutes = (
         const milestone = await services.milestoneService.transition(
           request.user!.id,
           milestoneId,
-          milestoneActionRequestSchema.parse(request.body),
+          payload,
         );
-        if (canonicalDesignDoc) {
+        if (payload.action === "approve" && canonicalDesignDoc) {
           await services.artifactApprovalService.approve(
             request.user!.id,
             context.projectId,
@@ -195,6 +196,38 @@ export const milestoneRoutes = (
         publishProjectUpdate(services, request.user!.id, context.projectId, "phase_gates");
 
         return milestoneSchema.parse(milestone);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/milestones/:id/reconciliation/review",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        await services.milestoneService.assertActiveMilestone(
+          request.user!.id,
+          context.projectId,
+          milestoneId,
+        );
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId: context.projectId,
+          type: "ReviewMilestoneCoverage",
+          inputs: { milestoneId },
+        });
+        publishProjectUpdate(services, request.user!.id, context.projectId, "milestone");
+
+        return reply.status(202).send(jobSchema.parse(job));
       } catch (error) {
         return handleRouteError(reply, error);
       }
@@ -254,6 +287,11 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        await services.milestoneService.assertActiveMilestone(
+          request.user!.id,
+          context.projectId,
+          milestoneId,
+        );
 
         if (context.status !== "draft") {
           throw new HttpError(
@@ -291,6 +329,11 @@ export const milestoneRoutes = (
         const milestoneId = (request.params as { id: string }).id;
         const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
         await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        await services.milestoneService.assertActiveMilestone(
+          request.user!.id,
+          context.projectId,
+          milestoneId,
+        );
 
         if (context.status !== "draft") {
           throw new HttpError(409, "milestone_locked", "Only draft milestones can be edited.");

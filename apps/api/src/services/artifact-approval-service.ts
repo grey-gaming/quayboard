@@ -116,7 +116,7 @@ export const createArtifactApprovalService = (
       }
 
       const milestone = await milestoneService.getContext(ownerUserId, designDocs.milestoneId);
-      if (milestone.status !== "approved") {
+      if (milestone.status !== "approved" && milestone.status !== "completed") {
         throw new HttpError(
           409,
           "milestone_approval_required",

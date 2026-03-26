@@ -136,11 +136,18 @@ describe("auto-advance service", () => {
     acceptDecisionDeck: ReturnType<typeof vi.fn>;
     getCanonicalByKind: ReturnType<typeof vi.fn>;
   };
-  let milestoneService: { list: ReturnType<typeof vi.fn>; transition: ReturnType<typeof vi.fn> };
+  let milestoneService: {
+    getActiveMilestone: ReturnType<typeof vi.fn>;
+    incrementAutoCatchUpCount: ReturnType<typeof vi.fn>;
+    list: ReturnType<typeof vi.fn>;
+    recordReconciliationResult: ReturnType<typeof vi.fn>;
+    transition: ReturnType<typeof vi.fn>;
+  };
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
   let featureWorkstreamService: { getTracks: ReturnType<typeof vi.fn>; approveRevision: ReturnType<typeof vi.fn> };
   let userFlowService: { list: ReturnType<typeof vi.fn>; approve: ReturnType<typeof vi.fn> };
+  let taskPlanningService: { autoAnswerClarifications: ReturnType<typeof vi.fn>; getOrCreateSession: ReturnType<typeof vi.fn> };
 
   const makeService = (db: ReturnType<typeof makeDb>) =>
     createAutoAdvanceService(
@@ -155,6 +162,7 @@ describe("auto-advance service", () => {
       productSpecService as never,
       featureWorkstreamService as never,
       userFlowService as never,
+      taskPlanningService as never,
     );
 
   beforeEach(() => {
@@ -191,6 +199,9 @@ describe("auto-advance service", () => {
     };
     milestoneService = {
       list: vi.fn().mockResolvedValue({ milestones: [] }),
+      getActiveMilestone: vi.fn().mockResolvedValue(null),
+      recordReconciliationResult: vi.fn().mockResolvedValue(undefined),
+      incrementAutoCatchUpCount: vi.fn().mockResolvedValue(undefined),
       transition: vi.fn().mockResolvedValue(undefined),
     };
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
@@ -202,6 +213,10 @@ describe("auto-advance service", () => {
     userFlowService = {
       list: vi.fn().mockResolvedValue({ userFlows: [], coverage: { warnings: [] }, approvedAt: null }),
       approve: vi.fn().mockResolvedValue(undefined),
+    };
+    taskPlanningService = {
+      autoAnswerClarifications: vi.fn().mockResolvedValue(undefined),
+      getOrCreateSession: vi.fn().mockResolvedValue({ id: "session-id" }),
     };
   });
 
@@ -811,8 +826,9 @@ describe("auto-advance service", () => {
         }
         return { actions: [] };
       });
-      milestoneService.list.mockResolvedValue({
-        milestones: [{ id: "m1", status: "draft" }],
+      milestoneService.getActiveMilestone.mockResolvedValue({
+        id: "m1",
+        status: "draft",
       });
       milestoneService.transition.mockRejectedValue(new Error("DB connection failed"));
 
@@ -829,10 +845,7 @@ describe("auto-advance service", () => {
       await expect(service.resume(USER_ID, PROJECT_ID)).rejects.toThrow("DB connection failed");
     });
 
-    it("catches expected milestone_design_doc_required errors and continues", async () => {
-      const { HttpError: HttpErrorClass } = await import("../../src/services/http-error.js");
-
-      // First buildBatch call returns milestones_approve; subsequent return empty (delivery review)
+    it("approves only the active milestone when milestones_approve is auto-handled", async () => {
       let buildCallCount = 0;
       nextActionsService.buildBatch.mockImplementation(async () => {
         buildCallCount++;
@@ -847,16 +860,13 @@ describe("auto-advance service", () => {
         }
         return { actions: [] };
       });
-      milestoneService.list.mockResolvedValue({
-        milestones: [
-          { id: "m1", status: "draft" },
-          { id: "m2", status: "draft" },
-        ],
-      });
-      // First milestone has no design doc (caught), second one succeeds
-      milestoneService.transition
-        .mockRejectedValueOnce(new HttpErrorClass(409, "milestone_design_doc_required", "No design doc"))
-        .mockResolvedValueOnce(undefined);
+      milestoneService.getActiveMilestone
+        .mockResolvedValueOnce({
+          id: "m1",
+          status: "draft",
+        })
+        .mockResolvedValue(undefined);
+      milestoneService.transition.mockResolvedValue(undefined);
 
       const session = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", autoApproveWhenClear: true });
       const db = makeDb({ session });
@@ -869,10 +879,10 @@ describe("auto-advance service", () => {
 
       await service.resume(USER_ID, PROJECT_ID);
 
-      // m1 fails (caught), m2 succeeds, then advanceStep recurses with milestones_approve again,
-      // but the second time through both milestones are still draft — transition defaults to
-      // undefined (success) for subsequent calls after the first two mocks are consumed.
-      expect(milestoneService.transition).toHaveBeenCalledTimes(2);
+      expect(milestoneService.transition).toHaveBeenCalledTimes(1);
+      expect(milestoneService.transition).toHaveBeenCalledWith(USER_ID, "m1", {
+        action: "approve",
+      });
     });
   });
 

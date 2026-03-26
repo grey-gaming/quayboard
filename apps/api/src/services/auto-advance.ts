@@ -11,6 +11,7 @@ import type { AppDatabase } from "../db/client.js";
 import {
   autoAdvanceSessionsTable,
   jobsTable,
+  milestonesTable,
   projectsTable,
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
@@ -24,6 +25,7 @@ import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
+import type { TaskPlanningService } from "./task-planning-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 type AutoAdvanceSessionRow = typeof autoAdvanceSessionsTable.$inferSelect;
@@ -101,6 +103,15 @@ const AUTOMATABLE_STEPS: Record<
     },
   },
   milestones_approve: null,
+  milestone_reconciliation_review: {
+    type: "ReviewMilestoneCoverage",
+    buildInputs: (href) => {
+      const match = href.match(/\/milestones\/([^/?]+)/);
+      return { milestoneId: match?.[1] ?? "" };
+    },
+  },
+  milestone_complete: null,
+  milestone_reconciliation_resolve: null,
   features_create: {
     type: "AppendFeatureFromOnePager",
     buildInputs: (href) => {
@@ -148,6 +159,29 @@ const AUTOMATABLE_STEPS: Record<
     },
   },
   feature_arch_docs_approval: null,
+  feature_task_clarifications_generate: {
+    type: "GenerateTaskClarifications",
+    buildInputs: (href) => {
+      const featureIdMatch = href.match(/\/features\/([^/?]+)/);
+      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
+      return {
+        featureId: featureIdMatch?.[1] ?? "",
+        sessionId: sessionMatch?.[1] === "missing" ? "" : sessionMatch?.[1] ?? "",
+      };
+    },
+  },
+  feature_task_clarifications_answer: null,
+  feature_task_list_generate: {
+    type: "GenerateFeatureTaskList",
+    buildInputs: (href) => {
+      const featureIdMatch = href.match(/\/features\/([^/?]+)/);
+      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
+      return {
+        featureId: featureIdMatch?.[1] ?? "",
+        sessionId: sessionMatch?.[1] ?? "",
+      };
+    },
+  },
   feature_stale_implementation: null,
 };
 
@@ -163,6 +197,7 @@ export const createAutoAdvanceService = (
   productSpecService: ProductSpecService,
   featureWorkstreamService: FeatureWorkstreamService,
   userFlowService: UserFlowService,
+  taskPlanningService: TaskPlanningService,
 ) => {
   const requireProject = async (ownerUserId: string, projectId: string) => {
     const project = await db.query.projectsTable.findFirst({
@@ -296,25 +331,27 @@ export const createAutoAdvanceService = (
         }
       }
       if (stepKey === "milestones_approve") {
-        // Approve the first draft milestone that has a design doc
-        const { milestones } = await milestoneService.list(ownerUserId, projectId);
-        for (const milestone of milestones) {
-          if (milestone.status === "draft") {
-            try {
-              await milestoneService.transition(ownerUserId, milestone.id, { action: "approve" });
-              return true;
-            } catch (error) {
-              if (
-                error instanceof HttpError &&
-                (error.code === "milestone_design_doc_required" ||
-                  error.code === "invalid_milestone_transition")
-              ) {
-                // Expected — this milestone isn't ready yet, try the next one.
-                continue;
-              }
-              throw error;
-            }
-          }
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "draft") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "approve" });
+          return true;
+        }
+        return false;
+      }
+      if (stepKey === "feature_task_clarifications_answer") {
+        const featureIdMatch = stepHref.match(/\/features\/([^/?]+)/);
+        const featureId = featureIdMatch?.[1];
+        if (featureId) {
+          await taskPlanningService.autoAnswerClarifications(ownerUserId, featureId);
+          return true;
+        }
+        return false;
+      }
+      if (stepKey === "milestone_complete") {
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "approved") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "complete" });
+          return true;
         }
         return false;
       }
@@ -362,114 +399,133 @@ export const createAutoAdvanceService = (
     projectId: string,
     sessionId: string,
   ) => {
-    const session = await getSession(projectId);
-    const maxConcurrent = session?.maxConcurrentJobs ?? 1;
-    const { actions } = await nextActionsService.buildBatch(ownerUserId, projectId, maxConcurrent);
-    const nextAction = actions[0] ?? null;
+    const MAX_AUTO_HANDLED_STEPS = 25;
 
-    if (!nextAction) {
-      const MAX_REVIEWS = 3;
-      const currentReviewCount = session?.reviewCount ?? 0;
+    for (let autoHandledSteps = 0; autoHandledSteps < MAX_AUTO_HANDLED_STEPS; autoHandledSteps++) {
+      const session = await getSession(projectId);
+      const maxConcurrent = session?.maxConcurrentJobs ?? 1;
+      const { actions } = await nextActionsService.buildBatch(ownerUserId, projectId, maxConcurrent);
+      const nextAction = actions[0] ?? null;
 
-      if (currentReviewCount >= MAX_REVIEWS) {
-        // Already exhausted review cycles (session resumed by human after review_limit_reached) — complete now.
+      if (!nextAction) {
+        const MAX_REVIEWS = 3;
+        const currentReviewCount = session?.reviewCount ?? 0;
+
+        if (currentReviewCount >= MAX_REVIEWS) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "completed",
+              currentStep: null,
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, sessionId));
+          return;
+        }
+
+        const batchToken = generateId();
         await db
           .update(autoAdvanceSessionsTable)
           .set({
-            status: "completed",
-            currentStep: null,
-            completedAt: new Date(),
+            reviewCount: currentReviewCount + 1,
+            currentStep: "delivery_review",
+            pendingJobCount: 1,
+            activeBatchToken: batchToken,
+            updatedAt: new Date(),
+          })
+          .where(eq(autoAdvanceSessionsTable.id, sessionId));
+
+        await jobService.createJob({
+          createdByUserId: ownerUserId,
+          projectId,
+          type: "ReviewDelivery",
+          inputs: buildAutoAdvanceInputs({}, sessionId, batchToken),
+        });
+        return;
+      }
+
+      const stepConfig = AUTOMATABLE_STEPS[nextAction.key];
+
+      if (stepConfig === undefined || stepConfig === null) {
+        if (session) {
+          const handled = await tryAutoHandle(
+            ownerUserId,
+            projectId,
+            nextAction.key,
+            nextAction.href,
+            session,
+          );
+
+          if (handled) {
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({ currentStep: nextAction.key, updatedAt: new Date() })
+              .where(eq(autoAdvanceSessionsTable.id, sessionId));
+            continue;
+          }
+        }
+
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({
+            status: "paused",
+            currentStep: nextAction.key,
+            pausedReason: "needs_human",
+            pausedAt: new Date(),
             updatedAt: new Date(),
           })
           .where(eq(autoAdvanceSessionsTable.id, sessionId));
         return;
       }
 
-      // All workflow steps done — run a delivery review pass.
       const batchToken = generateId();
       await db
         .update(autoAdvanceSessionsTable)
         .set({
-          reviewCount: currentReviewCount + 1,
-          currentStep: "delivery_review",
-          pendingJobCount: 1,
+          currentStep: nextAction.key,
+          pendingJobCount: actions.length,
           activeBatchToken: batchToken,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, sessionId));
 
-      await jobService.createJob({
-        createdByUserId: ownerUserId,
-        projectId,
-        type: "ReviewDelivery",
-        inputs: buildAutoAdvanceInputs({}, sessionId, batchToken),
-      });
+      await Promise.all(
+        actions.map(async (action) => {
+          const cfg = AUTOMATABLE_STEPS[action.key];
+          if (!cfg) return Promise.resolve();
+          const inputs = cfg.buildInputs ? cfg.buildInputs(action.href) : {};
+          if (action.key === "feature_task_clarifications_generate") {
+            const taskInputs = inputs as { featureId?: string; sessionId?: string };
+            if (taskInputs.featureId && !taskInputs.sessionId) {
+              const planningSession = await taskPlanningService.getOrCreateSession(
+                ownerUserId,
+                taskInputs.featureId,
+              );
+              taskInputs.sessionId = planningSession.id;
+            }
+          }
+          return jobService.createJob({
+            createdByUserId: ownerUserId,
+            projectId,
+            type: cfg.type,
+            inputs: buildAutoAdvanceInputs(inputs, sessionId, batchToken),
+          });
+        }),
+      );
       return;
     }
 
-    const stepConfig = AUTOMATABLE_STEPS[nextAction.key];
-
-    if (stepConfig === undefined || stepConfig === null) {
-      // Try auto-handling via session options before pausing
-      if (session) {
-        const handled = await tryAutoHandle(
-          ownerUserId,
-          projectId,
-          nextAction.key,
-          nextAction.href,
-          session,
-        );
-
-        if (handled) {
-          // Record the step we just auto-handled, then continue
-          await db
-            .update(autoAdvanceSessionsTable)
-            .set({ currentStep: nextAction.key, updatedAt: new Date() })
-            .where(eq(autoAdvanceSessionsTable.id, sessionId));
-          await advanceStep(ownerUserId, projectId, sessionId);
-          return;
-        }
-      }
-
-      // Not automatable and no session option handled it — pause for human
-      await db
-        .update(autoAdvanceSessionsTable)
-        .set({
-          status: "paused",
-          currentStep: nextAction.key,
-          pausedReason: "needs_human",
-          pausedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(autoAdvanceSessionsTable.id, sessionId));
-      return;
-    }
-
-    // Update current step and enqueue job(s)
-    const batchToken = generateId();
     await db
       .update(autoAdvanceSessionsTable)
       .set({
-        currentStep: nextAction.key,
-        pendingJobCount: actions.length,
-        activeBatchToken: batchToken,
+        status: "paused",
+        currentStep: "auto_handle_limit_reached",
+        pausedReason: "needs_human",
+        pausedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(autoAdvanceSessionsTable.id, sessionId));
-
-    await Promise.all(
-      actions.map((action) => {
-        const cfg = AUTOMATABLE_STEPS[action.key];
-        if (!cfg) return Promise.resolve();
-        const inputs = cfg.buildInputs ? cfg.buildInputs(action.href) : {};
-        return jobService.createJob({
-          createdByUserId: ownerUserId,
-          projectId,
-          type: cfg.type,
-          inputs: buildAutoAdvanceInputs(inputs, sessionId, batchToken),
-        });
-      }),
-    );
   };
 
   return {
@@ -772,6 +828,117 @@ export const createAutoAdvanceService = (
 
       // Success path — if other parallel jobs are still pending, wait for them.
       if (remaining > 0) {
+        return;
+      }
+
+      if (job.type === "ReviewMilestoneCoverage") {
+        const output = job.outputs as {
+          complete: boolean;
+          milestoneId: string;
+          issues: Array<{ action: "create_catch_up_feature" | "needs_human_review"; hint: string }>;
+        } | null;
+
+        const milestoneId =
+          output?.milestoneId ||
+          ((job.inputs as { milestoneId?: string } | null | undefined)?.milestoneId ?? null);
+
+        if (!milestoneId) {
+          throw new Error("ReviewMilestoneCoverage did not include a milestoneId.");
+        }
+
+        if (!output || output.complete || !output.issues?.length) {
+          await milestoneService.recordReconciliationResult({
+            milestoneId,
+            issues: [],
+            jobId: job.id,
+            status: "passed",
+          });
+
+          await advanceStep(project.ownerUserId, job.projectId, session.id);
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        const milestone = await db.query.milestonesTable.findFirst({
+          where: eq(milestonesTable.id, milestoneId),
+        });
+        const firstIssue = output.issues[0];
+
+        if (!milestone || !firstIssue) {
+          await milestoneService.recordReconciliationResult({
+            milestoneId,
+            issues: output.issues,
+            jobId: job.id,
+            status: "failed_needs_human",
+          });
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "paused",
+              pausedReason: "needs_human",
+              pausedAt: new Date(),
+              activeBatchToken: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (
+          firstIssue.action === "create_catch_up_feature" &&
+          (milestone.autoCatchUpCount ?? 0) < 1
+        ) {
+          await milestoneService.recordReconciliationResult({
+            milestoneId,
+            issues: output.issues,
+            jobId: job.id,
+            status: "failed_first_pass",
+          });
+          await milestoneService.incrementAutoCatchUpCount(milestoneId);
+
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: "GenerateMilestoneCatchUpFeature",
+            inputs: buildAutoAdvanceInputs(
+              { milestoneId, hint: firstIssue.hint },
+              session.id,
+              batchToken,
+            ),
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        await milestoneService.recordReconciliationResult({
+          milestoneId,
+          issues: output.issues,
+          jobId: job.id,
+          status: "failed_needs_human",
+        });
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({
+            status: "paused",
+            pausedReason: "needs_human",
+            pausedAt: new Date(),
+            activeBatchToken: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(autoAdvanceSessionsTable.id, session.id));
+
+        await publishSessionUpdate(project.ownerUserId, job.projectId);
         return;
       }
 

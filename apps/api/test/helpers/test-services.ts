@@ -256,6 +256,9 @@ export const createStubServices = (): AppServices => ({
     assertCanonicalDesignDoc: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    assertActiveMilestone: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     assertOwnedProject: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -266,10 +269,32 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     formatDesignDocList: async () => ({ designDocs: [] }),
+    getActiveMilestone: async () => undefined,
     getCanonicalDesignDoc: async () => undefined,
     getContext: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    getProjectMilestones: async () => [],
+    incrementAutoCatchUpCount: async () => ({
+      id: "test-milestone-id",
+      projectId: "test-project-id",
+      position: 1,
+      title: "Repository and Toolchain Foundations",
+      summary:
+        "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.",
+      status: "approved" as const,
+      approvedAt: null,
+      completedAt: null,
+      reconciliationStatus: "failed_first_pass" as const,
+      reconciliationIssues: [],
+      reconciliationReviewedAt: null,
+      reconciliationLastJobId: null,
+      autoCatchUpCount: 1,
+      createdByJobId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    invalidateReconciliation: async () => undefined,
     list: async () => ({
       milestones: [],
       coverage: {
@@ -279,6 +304,7 @@ export const createStubServices = (): AppServices => ({
       },
     }),
     listDesignDocs: async () => [],
+    recordReconciliationResult: async () => undefined,
     transition: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -295,7 +321,12 @@ export const createStubServices = (): AppServices => ({
       status: "draft",
       linkedUserFlows: [],
       featureCount: 0,
+      isActive: true,
       approvedAt: null,
+      completedAt: null,
+      reconciliationStatus: "not_started",
+      reconciliationIssues: [],
+      reconciliationReviewedAt: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }),
