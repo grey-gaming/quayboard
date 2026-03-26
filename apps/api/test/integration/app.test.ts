@@ -515,6 +515,32 @@ describe("API integration", () => {
       dependencies: [{ featureId: firstFeatureId, dependsOnFeatureId: secondFeatureId }],
     });
 
+    const listFeaturesResponse = await server.inject({
+      method: "GET",
+      url: `/api/projects/${seeded.projectId}/features`,
+      cookies: { qb_session: seeded.cookieValue },
+    });
+
+    expect(listFeaturesResponse.statusCode).toBe(200);
+    expect(listFeaturesResponse.json().features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: firstFeatureId,
+          taskPlanning: {
+            hasTasks: false,
+            taskCount: 0,
+          },
+        }),
+        expect.objectContaining({
+          id: secondFeatureId,
+          taskPlanning: {
+            hasTasks: false,
+            taskCount: 0,
+          },
+        }),
+      ]),
+    );
+
     const graphResponse = await server.inject({
       method: "GET",
       url: `/api/projects/${seeded.projectId}/features/graph`,
