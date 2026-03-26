@@ -414,10 +414,33 @@ describe("auto-advance service", () => {
         retryCount: 0,
         activeBatchToken: "batch-1",
       });
-      const db = makeDb({ session: runningSession, job: makeJob() });
-      const updates: Array<{ status?: string; retryCount?: number; batchFailureCount?: number }> = [];
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateFeatureTechSpec",
+        inputs: {
+          featureId: "feature-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const updates: Array<{
+        status?: string;
+        retryCount?: number;
+        pendingJobCount?: number;
+        batchFailureCount?: number;
+        activeBatchToken?: string | null;
+      }> = [];
       db.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockImplementation((data: { status?: string; retryCount?: number; batchFailureCount?: number }) => {
+        set: vi.fn().mockImplementation((data: {
+          status?: string;
+          retryCount?: number;
+          pendingJobCount?: number;
+          batchFailureCount?: number;
+          activeBatchToken?: string | null;
+        }) => {
           updates.push(data);
           const row = "retryCount" in data
             ? makeSessionRow({ status: "running" as const, retryCount: data.retryCount ?? 0 })
@@ -432,7 +455,22 @@ describe("auto-advance service", () => {
       // Should increment retryCount (no pause)
       const retryUpdate = updates.find((u) => u.retryCount !== undefined);
       expect(retryUpdate?.retryCount).toBe(1);
+      expect(retryUpdate?.pendingJobCount).toBe(1);
+      expect(retryUpdate?.activeBatchToken).toBeTruthy();
       expect(updates.find((u) => u.status === "paused")).toBeUndefined();
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureTechSpec",
+          projectId: PROJECT_ID,
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+              batchToken: expect.any(String),
+            }),
+          }),
+        }),
+      );
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
