@@ -75,6 +75,42 @@ const parseJson = <T>(value: string): T | null => {
   }
 };
 
+const normalizeGeneratedFlowSteps = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((step) => {
+      if (typeof step === "string") {
+        return step.trim();
+      }
+
+      if (!step || typeof step !== "object") {
+        return "";
+      }
+
+      const stepRecord = step as Record<string, unknown>;
+      const action = typeof stepRecord.action === "string" ? stepRecord.action.trim() : "";
+      const followUp = [
+        typeof stepRecord.outcome === "string" ? stepRecord.outcome.trim() : "",
+        typeof stepRecord.systemResponse === "string" ? stepRecord.systemResponse.trim() : "",
+        typeof stepRecord.notes === "string" ? stepRecord.notes.trim() : "",
+      ].filter(Boolean);
+
+      if (action && followUp.length > 0) {
+        return `${action} Outcome: ${followUp.join(" ")}`;
+      }
+
+      if (action) {
+        return action;
+      }
+
+      return followUp.join(" ");
+    })
+    .filter((step) => step.length > 0);
+};
+
 const parseGeneratedUserFlowsResult = (
   value: string,
 ):
@@ -84,7 +120,7 @@ const parseGeneratedUserFlowsResult = (
       doneCriteriaRefs?: string[];
       endState?: string;
       entryPoint?: string;
-      flowSteps?: string[];
+      flowSteps?: unknown;
       source?: string;
       title?: string;
       userStory?: string;
@@ -227,7 +263,7 @@ const validateGeneratedUserFlows = (
     doneCriteriaRefs?: string[];
     endState?: string;
     entryPoint?: string;
-    flowSteps?: string[];
+    flowSteps?: unknown;
     source?: string;
     title?: string;
     userStory?: string;
@@ -240,12 +276,14 @@ const validateGeneratedUserFlows = (
   }
 
   return flows.map((flow) => {
+    const flowSteps = normalizeGeneratedFlowSteps(flow.flowSteps);
+
     if (
       !flow.title?.trim() ||
       !flow.userStory?.trim() ||
       !flow.entryPoint?.trim() ||
       !flow.endState?.trim() ||
-      !flow.flowSteps?.length
+      flowSteps.length === 0
     ) {
       throw new Error(
         "GenerateUseCases returned an incomplete user flow. Each flow must include title, userStory, entryPoint, endState, and at least one flow step.",
@@ -258,7 +296,7 @@ const validateGeneratedUserFlows = (
       doneCriteriaRefs: flow.doneCriteriaRefs ?? ["product-spec"],
       endState: flow.endState,
       entryPoint: flow.entryPoint,
-      flowSteps: flow.flowSteps,
+      flowSteps,
       source: flow.source ?? "generated",
       title: flow.title,
       userStory: flow.userStory,
