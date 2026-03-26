@@ -257,6 +257,15 @@ describe("API integration", () => {
       acceptedWarnings: [],
     });
 
+    await sql`
+      update "milestones"
+      set
+        "status" = 'completed',
+        "completed_at" = now(),
+        "updated_at" = now()
+      where "project_id" = ${seeded.projectId}
+    `;
+
     return {
       ...seeded,
       flow,
@@ -448,11 +457,11 @@ describe("API integration", () => {
       payload: { action: "complete" },
     });
 
-    expect(completeMilestoneResponse.statusCode).toBe(400);
+    expect(completeMilestoneResponse.statusCode).toBe(409);
     expect(completeMilestoneResponse.json()).toEqual({
       error: {
-        code: "invalid_request",
-        message: "Invalid enum value. Expected 'approve', received 'complete'",
+        code: "milestone_reconciliation_required",
+        message: "Run milestone reconciliation and resolve all gaps before completing the milestone.",
       },
     });
 
@@ -864,6 +873,23 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+
+    await appServices.services.milestoneService.createDesignDocVersion({
+      milestoneId: firstMilestone.id,
+      title: "Milestone alpha design",
+      markdown: "# Milestone alpha\n\nDesign details.",
+      source: "ManualSave",
+    });
+
+    await sql`
+      update "milestones"
+      set
+        "status" = 'completed',
+        "completed_at" = now(),
+        "updated_at" = now()
+      where "id" = ${firstMilestone.id}
+    `;
+
     const secondMilestone = await appServices.services.milestoneService.create(
       seeded.ownerUserId,
       seeded.projectId,
@@ -875,23 +901,10 @@ describe("API integration", () => {
     );
 
     await appServices.services.milestoneService.createDesignDocVersion({
-      milestoneId: firstMilestone.id,
-      title: "Milestone alpha design",
-      markdown: "# Milestone alpha\n\nDesign details.",
-      source: "ManualSave",
-    });
-    await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: secondMilestone.id,
       title: "Milestone beta design",
       markdown: "# Milestone beta\n\nDesign details.",
       source: "ManualSave",
-    });
-
-    await appServices.services.milestoneService.transition(seeded.ownerUserId, firstMilestone.id, {
-      action: "approve",
-    });
-    await appServices.services.milestoneService.transition(seeded.ownerUserId, secondMilestone.id, {
-      action: "approve",
     });
 
     const secondDesignDoc = await appServices.services.milestoneService.getCanonicalDesignDoc(

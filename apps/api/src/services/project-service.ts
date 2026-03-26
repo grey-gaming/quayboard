@@ -26,6 +26,13 @@ type ProjectPatch = {
   userFlowsApprovedAt?: Date | null;
 };
 
+const omitUndefined = <T extends Record<string, unknown>>(value: T) =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as {
+    [K in keyof T as T[K] extends undefined ? never : K]: Exclude<T[K], undefined>;
+  };
+
 export const createProjectService = (db: AppDatabase) => ({
   async createProject(ownerUserId: string, input: CreateProjectRequest) {
     const now = new Date();
@@ -81,7 +88,7 @@ export const createProjectService = (db: AppDatabase) => ({
     const [project] = await db
       .update(projectsTable)
       .set({
-        ...patch,
+        ...omitUndefined(patch),
         updatedAt: new Date(),
       })
       .where(eq(projectsTable.id, projectId))
