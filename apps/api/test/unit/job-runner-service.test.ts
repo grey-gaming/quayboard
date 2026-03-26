@@ -1680,6 +1680,10 @@ describe("job runner service", () => {
                 source: "manual",
                 createdAt: "2026-03-18T00:00:00.000Z",
               },
+              taskPlanning: {
+                hasTasks: false,
+                taskCount: 0,
+              },
               dependencyIds: [],
               createdAt: "2026-03-18T00:00:00.000Z",
               updatedAt: "2026-03-18T00:00:00.000Z",

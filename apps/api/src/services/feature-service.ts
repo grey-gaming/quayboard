@@ -26,10 +26,12 @@ import {
   featureArchDocSpecsTable,
   featureCasesTable,
   featureDependenciesTable,
+  featureDeliveryTasksTable,
   featureEdgesTable,
   featureProductRevisionsTable,
   featureProductSpecsTable,
   featureRevisionsTable,
+  featureTaskPlanningSessionsTable,
   featureTechSpecsTable,
   featureUserDocSpecsTable,
   featureUxSpecsTable,
@@ -52,6 +54,7 @@ const buildFeature = (
   milestoneTitle: string,
   headRevision: typeof featureRevisionsTable.$inferSelect,
   documents: ReturnType<typeof featureDocumentsSchema.parse>,
+  taskPlanning: { hasTasks: boolean; taskCount: number },
   dependencyIds: string[],
 ) =>
   featureSchema.parse({
@@ -74,6 +77,7 @@ const buildFeature = (
       createdAt: headRevision.createdAt.toISOString(),
     }),
     documents,
+    taskPlanning,
     dependencyIds,
     createdAt: feature.createdAt.toISOString(),
     updatedAt: feature.updatedAt.toISOString(),
@@ -170,7 +174,18 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       return featureListResponseSchema.parse({ features: [] });
     }
 
-    const [milestones, revisions, dependencies, productSpecs, productRevisions, uxSpecs, techSpecs, userDocSpecs, archDocSpecs] = await Promise.all([
+    const [
+      milestones,
+      revisions,
+      dependencies,
+      productSpecs,
+      productRevisions,
+      uxSpecs,
+      techSpecs,
+      userDocSpecs,
+      archDocSpecs,
+      taskPlanningSessions,
+    ] = await Promise.all([
       db.query.milestonesTable.findMany({
         where: inArray(
           milestonesTable.id,
@@ -212,6 +227,12 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       db.query.featureArchDocSpecsTable.findMany({
         where: inArray(featureArchDocSpecsTable.featureId, features.map((feature) => feature.id)),
       }),
+      db.query.featureTaskPlanningSessionsTable.findMany({
+        where: inArray(
+          featureTaskPlanningSessionsTable.featureId,
+          features.map((feature) => feature.id),
+        ),
+      }),
     ]);
 
     const milestoneTitleById = new Map(milestones.map((milestone) => [milestone.id, milestone.title]));
@@ -232,7 +253,30 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
     const techSpecByFeatureId = new Map(techSpecs.map((spec) => [spec.featureId, spec]));
     const userDocSpecByFeatureId = new Map(userDocSpecs.map((spec) => [spec.featureId, spec]));
     const archDocSpecByFeatureId = new Map(archDocSpecs.map((spec) => [spec.featureId, spec]));
+    const taskPlanningSessionByFeatureId = new Map(
+      taskPlanningSessions.map((session) => [session.featureId, session]),
+    );
     const productRevisionById = new Map(productRevisions.map((revision) => [revision.id, revision]));
+    const taskCountsBySessionId =
+      taskPlanningSessions.length > 0
+        ? new Map(
+            (
+              await db
+                .select({
+                  sessionId: featureDeliveryTasksTable.sessionId,
+                  taskCount: sql<number>`count(*)::int`,
+                })
+                .from(featureDeliveryTasksTable)
+                .where(
+                  inArray(
+                    featureDeliveryTasksTable.sessionId,
+                    taskPlanningSessions.map((session) => session.id),
+                  ),
+                )
+                .groupBy(featureDeliveryTasksTable.sessionId)
+            ).map((record) => [record.sessionId, record.taskCount]),
+          )
+        : new Map<string, number>();
     const headRevisionIds = [
       ...productSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
       ...uxSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
@@ -302,12 +346,20 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
             state: resolveState(archDocSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
           },
         });
+        const taskPlanningSession = taskPlanningSessionByFeatureId.get(feature.id);
+        const taskCount = taskPlanningSession
+          ? taskCountsBySessionId.get(taskPlanningSession.id) ?? 0
+          : 0;
 
         return buildFeature(
           feature,
           milestoneTitleById.get(feature.milestoneId) ?? "Unknown milestone",
           headRevision,
           documents,
+          {
+            hasTasks: taskCount > 0,
+            taskCount,
+          },
           dependencyIdsByFeatureId.get(feature.id) ?? [],
         );
       }),

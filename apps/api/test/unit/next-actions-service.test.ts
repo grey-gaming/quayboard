@@ -50,6 +50,10 @@ const makeFeature = (id: string, milestoneId: string) => ({
     userDocs: { required: false, state: "missing" as const },
     archDocs: { required: false, state: "missing" as const },
   },
+  taskPlanning: {
+    hasTasks: false,
+    taskCount: 0,
+  },
   dependencyIds: [],
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

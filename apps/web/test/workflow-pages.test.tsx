@@ -1461,6 +1461,10 @@ describe("workflow pages", () => {
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: false, state: "missing" },
                 },
+                taskPlanning: {
+                  hasTasks: false,
+                  taskCount: 0,
+                },
                 dependencyIds: ["88888888-8888-4888-8888-888888888888"],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -1492,6 +1496,10 @@ describe("workflow pages", () => {
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: true, state: "draft" },
                 },
+                taskPlanning: {
+                  hasTasks: true,
+                  taskCount: 3,
+                },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -1522,6 +1530,10 @@ describe("workflow pages", () => {
                   tech: { required: false, state: "missing" },
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: false, state: "missing" },
+                },
+                taskPlanning: {
+                  hasTasks: false,
+                  taskCount: 0,
                 },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:04:00.000Z",
@@ -1648,6 +1660,8 @@ describe("workflow pages", () => {
     expect(screen.getByText("Legacy feature shell")).toBeTruthy();
     expect(screen.getAllByText("Product accepted").length).toBeGreaterThan(0);
     expect(screen.getByText("UX draft")).toBeTruthy();
+    expect(screen.getAllByText("Tasks not written").length).toBeGreaterThan(0);
+    expect(screen.getByText("Tasks written")).toBeTruthy();
     expect(screen.queryByText("Dependency graph")).toBeNull();
     expect(screen.queryByText("Wire dependency")).toBeNull();
   });
@@ -5126,6 +5140,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5158,6 +5176,10 @@ describe("workflow pages", () => {
               tech: { required: false, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5290,6 +5312,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5322,6 +5348,10 @@ describe("workflow pages", () => {
               tech: { required: true, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5533,6 +5563,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5565,6 +5599,10 @@ describe("workflow pages", () => {
               tech: { required: false, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
