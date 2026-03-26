@@ -437,6 +437,7 @@ export const buildUserFlowPrompt = (input: {
     "Task:",
     `Generate a broad first-pass set of user flows for "${input.projectName}".`,
     'Return valid JSON as an array of objects with these keys: "title", "userStory", "entryPoint", "endState", "flowSteps", "coverageTags", "acceptanceCriteria", and "doneCriteriaRefs".',
+    'Each "flowSteps" value must be an array of plain strings only. Do not return step objects, numbered objects, or nested structures.',
     "Produce a diverse and extensive set of flows, not slight variations of the same journey.",
     "Include the most important onboarding, happy-path, supporting, operational, and edge/failure journeys that are genuinely relevant to the product.",
     "Each flow must be specific, realistic, and distinct.",
@@ -997,4 +998,3 @@ export const buildDeliveryReviewPrompt = (input: {
     "Approved Milestones (featureCount = number of features already created for that milestone):",
     JSON.stringify(input.milestones, null, 2),
   ].join("\n");
-
