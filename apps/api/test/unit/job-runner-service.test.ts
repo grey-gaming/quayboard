@@ -1827,12 +1827,21 @@ describe("job runner service", () => {
       expect.stringContaining("Selected milestone design document:"),
       { responseFormat: "json" },
     );
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(prompt).toContain("Approved project Product Spec:");
     expect(prompt).toContain("Approved project UX Spec:");
     expect(prompt).toContain("Approved project Technical Spec:");
-    expect(prompt).toContain("Approved user flows:");
+    expect(prompt).toContain("User flows linked to the selected milestone:");
     expect(prompt).toContain("Ordered milestone list:");
     expect(prompt).toContain("Platform setup");
+    const reviewPrompt =
+      (
+        generate as unknown as {
+          mock: { calls: Array<[unknown, string, unknown]> };
+        }
+      ).mock.calls[1]?.[1] ?? "";
+    expect(reviewPrompt).toContain("Review the full set as a whole");
+    expect(reviewPrompt).toContain("First-pass draft feature set:");
     expect(appendGeneratedFeatures).toHaveBeenCalledWith(
       expect.objectContaining({
         milestoneId: "milestone-id",
@@ -1968,6 +1977,33 @@ describe("job runner service", () => {
     const createFeature = vi.fn(async () => ({ id: "feature-id" }));
     const createRevision = vi.fn(async () => undefined);
     const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({
+        feature: {
+          title: "Complete Initial ADR Set",
+          summary: "Add the missing ADRs.",
+          acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
+          kind: "documentation",
+          priority: "high",
+        },
+        product: {
+          title: "Product",
+          markdown: "# Product",
+          requirements: {
+            uxRequired: true,
+            techRequired: true,
+            userDocsRequired: true,
+            archDocsRequired: true,
+          },
+        },
+        ux: { title: "UX", markdown: "# UX" },
+        tech: { title: "Tech", markdown: "# Tech" },
+        userDocs: { title: "User Docs", markdown: "# User Docs" },
+        archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
+      }),
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
     const service = createJobRunnerService({
       artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -2003,33 +2039,7 @@ describe("job runner service", () => {
         markSucceeded,
       } as never,
       llmProviderService: {
-        generate: vi.fn(async () => ({
-          content: JSON.stringify({
-            feature: {
-              title: "Complete Initial ADR Set",
-              summary: "Add the missing ADRs.",
-              acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
-              kind: "documentation",
-              priority: "high",
-            },
-            product: {
-              title: "Product",
-              markdown: "# Product",
-              requirements: {
-                uxRequired: true,
-                techRequired: true,
-                userDocsRequired: true,
-                archDocsRequired: true,
-              },
-            },
-            ux: { title: "UX", markdown: "# UX" },
-            tech: { title: "Tech", markdown: "# Tech" },
-            userDocs: { title: "User Docs", markdown: "# User Docs" },
-            archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
-          }),
-          promptTokens: 10,
-          completionTokens: 12,
-        })),
+        generate,
       } as never,
       milestoneService: {
         assertActiveMilestone: vi.fn(async () => undefined),
@@ -2077,6 +2087,14 @@ describe("job runner service", () => {
 
     await service.run("job-catch-up");
 
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(
+      (
+        generate as unknown as {
+          mock: { calls: Array<[unknown, string, unknown]> };
+        }
+      ).mock.calls[1]?.[1] ?? "",
+    ).toContain("First-pass catch-up feature bundle:");
     expect(createFeature).toHaveBeenCalledWith(
       userId,
       projectId,

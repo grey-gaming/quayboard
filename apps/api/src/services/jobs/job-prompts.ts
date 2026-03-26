@@ -620,6 +620,7 @@ export const buildMilestoneDesignPrompt = (input: {
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
     "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
     "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
+    "In Delivery Shape, explicitly call out the cohesive feature-sized capability groupings for this milestone, any cross-cutting work that should stay grouped into one feature, and any work that must not be split into task-sized features.",
     "Do not wrap the JSON in code fences.",
     "",
     "Milestone summary:",
@@ -633,6 +634,51 @@ export const buildMilestoneDesignPrompt = (input: {
     "",
     "Approved Technical Spec:",
     input.technicalSpec,
+  ].join("\n");
+
+export const buildMilestoneDesignReviewPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  uxSpec: string;
+  technicalSpec: string;
+  draftTitle: string;
+  draftMarkdown: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly two string keys: "title" and "markdown".',
+    "Preserve the same milestone scope and structure, but improve feature-shaping clarity, coverage, and internal consistency.",
+    "Ensure Delivery Shape clearly defines feature-sized capability groupings, grouped cross-cutting work, and boundaries that prevent task-sized feature fragmentation.",
+    "Do not invent future-milestone scope.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+    "",
+    "First-pass milestone design title:",
+    input.draftTitle,
+    "",
+    "First-pass milestone design markdown:",
+    input.draftMarkdown,
   ].join("\n");
 
 export const buildAppendFeaturesFromOnePagerPrompt = (input: {
@@ -656,11 +702,9 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
   projectProductSpec: string;
   projectTechnicalSpec: string;
   projectUxSpec: string;
-  userFlows: Array<{
-    flowSteps: string[];
+  linkedUserFlows: Array<{
+    id: string;
     title: string;
-    acceptanceCriteria: string[];
-    userStory: string;
   }>;
 }) =>
   [
@@ -675,8 +719,11 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Create features only for the selected milestone.",
     "Use the approved planning documents and milestone design document to understand the current context.",
+    "A feature must represent one coherent capability or one deliberately grouped cross-cutting workstream, not an implementation task, review step, or single document fragment.",
     "Build on work already planned in earlier or parallel milestones instead of recreating it.",
     "Do not repeat or lightly rename an existing feature from any milestone.",
+    "Prefer the smallest set of coherent features that fully covers the milestone without overlap.",
+    "If documentation, architecture follow-up, or another cross-cutting concern belongs together for this milestone, keep it in one shared feature instead of splitting it across multiple small features.",
     "Order the proposed features so they can be implemented in a sensible sequence within the milestone.",
     "Prefer concrete vertical slices over vague epics.",
     "Do not wrap the JSON in code fences.",
@@ -693,8 +740,8 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
     "",
-    "Approved user flows:",
-    JSON.stringify(input.userFlows, null, 2),
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
     "",
     "Ordered milestone list:",
     JSON.stringify(input.milestones, null, 2),
@@ -707,6 +754,59 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "",
     "Existing feature catalogue across all milestones:",
     JSON.stringify(input.existingFeatures, null, 2),
+  ].join("\n");
+
+export const buildFeatureSetReviewPrompt = (input: {
+  projectName: string;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  draftFeatures: Array<{
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    kind: string;
+    priority: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and rewrite the draft feature set for milestone "${input.milestone.title}" in "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "Review the full set as a whole. Merge task-sized or overlapping features, close obvious milestone coverage gaps, and keep sibling features non-overlapping.",
+    "Prefer fewer, feature-sized items over many tiny items.",
+    "Keep the result scoped only to the selected milestone.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
+    JSON.stringify(input.existingFeatures, null, 2),
+    "",
+    "First-pass draft feature set:",
+    JSON.stringify(input.draftFeatures, null, 2),
   ].join("\n");
 
 const renderFeatureContext = (input: {
@@ -728,6 +828,14 @@ const renderFeatureContext = (input: {
     2,
   );
 
+const renderSiblingFeatures = (
+  siblings: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>,
+) => JSON.stringify(siblings, null, 2);
+
 export const buildFeatureProductSpecPrompt = (input: {
   feature: {
     acceptanceCriteria: string[];
@@ -736,6 +844,12 @@ export const buildFeatureProductSpecPrompt = (input: {
     summary: string;
     title: string;
   };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
   productSpec: string;
   technicalSpec: string;
   uxSpec: string;
@@ -748,10 +862,17 @@ export const buildFeatureProductSpecPrompt = (input: {
     "Return valid JSON with top-level keys: \"title\", \"markdown\", and \"requirements\".",
     "The markdown must be detailed, implementation-oriented, and scoped only to the feature described below.",
     "The requirements object must contain boolean keys: uxRequired, techRequired, userDocsRequired, archDocsRequired.",
+    "Use the milestone design doc and sibling feature list to keep ownership boundaries clear. Do not narrow the feature into a task-sized slice or expand it into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
     "Feature context:",
     renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.productSpec,
@@ -763,11 +884,69 @@ export const buildFeatureProductSpecPrompt = (input: {
     input.technicalSpec,
   ].join("\n");
 
+export const buildFeatureProductSpecReviewPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  draftTitle: string;
+  draftMarkdown: string;
+  requirements: {
+    uxRequired: boolean;
+    techRequired: boolean;
+    userDocsRequired: boolean;
+    archDocsRequired: boolean;
+  };
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the feature Product Spec for "${input.feature.title}".`,
+    'Return valid JSON with top-level keys: "title", "markdown", and "requirements".',
+    "Preserve the intended feature scope while improving coverage, ownership boundaries, and consistency with the milestone design.",
+    "Do not let the reviewed draft collapse into task-sized work or bleed into sibling features.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
+    "First-pass feature Product Spec title:",
+    input.draftTitle,
+    "",
+    "First-pass feature Product Spec markdown:",
+    input.draftMarkdown,
+    "",
+    "First-pass feature Product Spec requirements:",
+    JSON.stringify(input.requirements, null, 2),
+  ].join("\n");
+
 export const buildFeatureUxSpecPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectUxSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
 }) =>
   [
     qualityCharter,
@@ -776,10 +955,17 @@ export const buildFeatureUxSpecPrompt = (input: {
     `Generate the feature-scoped UX Spec for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project UX Spec as the UX-system reference.",
+    "Use the milestone design doc and sibling feature summaries to avoid drifting into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -791,8 +977,14 @@ export const buildFeatureUxSpecPrompt = (input: {
 export const buildFeatureTechSpecPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectTechnicalSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
 }) =>
   [
     qualityCharter,
@@ -801,10 +993,17 @@ export const buildFeatureTechSpecPrompt = (input: {
     `Generate the feature-scoped Technical Spec for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project Technical Spec as the technical-system reference.",
+    "Use the milestone design doc and sibling feature summaries to keep the implementation boundary clear.",
     "Do not wrap the JSON in code fences.",
     "",
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -816,8 +1015,14 @@ export const buildFeatureTechSpecPrompt = (input: {
 export const buildFeatureUserDocsPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectUxSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
 }) =>
   [
     qualityCharter,
@@ -826,10 +1031,17 @@ export const buildFeatureUserDocsPrompt = (input: {
     `Generate user-facing documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on user-facing behavior, setup expectations, and walkthrough guidance rather than implementation details.",
+    "Keep documentation ownership aligned to this feature only. If related documentation belongs to a sibling feature, do not absorb it here.",
     "Do not wrap the JSON in code fences.",
     "",
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -841,7 +1053,13 @@ export const buildFeatureUserDocsPrompt = (input: {
 export const buildFeatureArchDocsPrompt = (input: {
   featureTechSpec: string | null;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectTechnicalSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
 }) =>
   [
     qualityCharter,
@@ -850,13 +1068,64 @@ export const buildFeatureArchDocsPrompt = (input: {
     `Generate internal architecture documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
+    "Keep the document scoped to this feature's owned architecture. Use the milestone design doc and sibling feature summaries to avoid duplicating another feature's architecture notes.",
     "Do not wrap the JSON in code fences.",
     "",
     ...(input.featureTechSpec
       ? ["Approved feature Technical Spec:", input.featureTechSpec, ""]
       : []),
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
+  ].join("\n");
+
+export const buildFeatureWorkstreamReviewPrompt = (input: {
+  workstreamLabel: string;
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  draftTitle: string;
+  draftMarkdown: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the ${input.workstreamLabel} for "${input.feature.title}".`,
+    'Return valid JSON with non-empty "title" and "markdown" keys.',
+    "Preserve the same feature scope while improving completeness, consistency, and ownership boundaries.",
+    "Do not widen the scope into sibling features and do not collapse it into a task-sized fragment.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
+    `First-pass ${input.workstreamLabel} title:`,
+    input.draftTitle,
+    "",
+    `First-pass ${input.workstreamLabel} markdown:`,
+    input.draftMarkdown,
   ].join("\n");
 
 export const buildMilestoneCoverageReviewPrompt = (input: {
@@ -930,6 +1199,7 @@ export const buildMilestoneCatchUpFeaturePrompt = (input: {
     'The "product" object must contain: title, markdown, requirements.',
     'The "ux", "tech", "userDocs", and "archDocs" objects must each contain: title, markdown.',
     "The feature should be tightly scoped to the missing milestone coverage and should not duplicate an existing feature.",
+    "Keep the catch-up work in one coherent feature. Do not split the gap into task-sized fragments or separate document-only slivers.",
     "Generate complete, draft-ready workstreams in one pass so the feature can go through the normal approval and task-planning flow next.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -955,6 +1225,67 @@ export const buildMilestoneCatchUpFeaturePrompt = (input: {
     input.projectTechnicalSpec,
   ].join("\n");
 
+export const buildMilestoneCatchUpFeatureReviewPrompt = (input: {
+  hint: string;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  existingFeatures: Array<{
+    title: string;
+    summary: string;
+  }>;
+  draftCatchUp: {
+    feature: {
+      title: string;
+      summary: string;
+      acceptanceCriteria: string[];
+      kind: string;
+      priority: string;
+    };
+    product: {
+      title: string;
+      markdown: string;
+      requirements: {
+        uxRequired: boolean;
+        techRequired: boolean;
+        userDocsRequired: boolean;
+        archDocsRequired: boolean;
+      };
+    };
+    ux: { title: string; markdown: string };
+    tech: { title: string; markdown: string };
+    userDocs: { title: string; markdown: string };
+    archDocs: { title: string; markdown: string };
+  };
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the catch-up feature for milestone "${input.milestone.title}".`,
+    'Return valid JSON with exactly these top-level keys: "feature", "product", "ux", "tech", "userDocs", "archDocs".',
+    "Preserve the single-feature shape, close the named gap cleanly, and avoid duplicating existing features.",
+    "Merge any task-sized fragmentation back into one coherent catch-up feature.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Coverage gap to close:",
+    input.hint,
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Existing milestone features:",
+    JSON.stringify(input.existingFeatures, null, 2),
+    "",
+    "First-pass catch-up feature bundle:",
+    JSON.stringify(input.draftCatchUp, null, 2),
+  ].join("\n");
+
 export const buildTaskClarificationsPrompt = (input: {
   feature: {
     acceptanceCriteria: string[];
@@ -974,6 +1305,7 @@ export const buildTaskClarificationsPrompt = (input: {
     "Each object must have a \"question\" key with a clear, specific question for the implementation.",
     "Each object may have an optional \"context\" key with additional context.",
     "Focus on ambiguous areas in the tech spec, acceptance criteria, or implementation approach.",
+    "Ask only blocker-level questions that materially change implementation. Do not ask low-value polish questions or questions already answered clearly by the provided specs.",
     "Ask about edge cases, error handling, integration points, and data model decisions.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1028,6 +1360,8 @@ export const buildFeatureTaskListPrompt = (input: {
     summary: string;
     title: string;
   };
+  featureProductSpec: string;
+  milestoneDesignDoc: string;
   techSpec: string;
 }) =>
   [
@@ -1038,18 +1372,71 @@ export const buildFeatureTaskListPrompt = (input: {
     "Return valid JSON as a non-empty array of objects.",
     "Each object must have: \"title\", \"description\", \"instructions\" (optional), \"acceptanceCriteria\" (array).",
     "Order tasks in implementation sequence: setup, core logic, integration, testing.",
-    "Each task should be completable in a single implementation session.",
+    "Prefer the smallest set of coherent implementation phases that can deliver this feature safely. Do not split the work into micro-tasks just because the steps are individually small.",
+    "Merge tightly related coding, testing, and documentation work when they belong to the same implementation phase.",
     "Instructions should provide concrete guidance for how to implement.",
+    "Ensure the full task list covers the feature acceptance criteria and any required testing, integration, migration, or documentation work implied by the specs.",
     "Do not wrap the JSON in code fences.",
     "",
     "Feature context:",
     renderFeatureContext(input.feature),
+    "",
+    "Approved feature Product Spec:",
+    input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
     "",
     "Approved feature Technical Spec:",
     input.techSpec,
     "",
     "Clarification answers:",
     JSON.stringify(input.clarifications, null, 2),
+  ].join("\n");
+
+export const buildFeatureTaskListReviewPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  featureProductSpec: string;
+  milestoneDesignDoc: string;
+  techSpec: string;
+  draftTasks: Array<{
+    title: string;
+    description: string;
+    instructions?: string | null;
+    acceptanceCriteria: string[];
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the implementation task list for "${input.feature.title}".`,
+    "Return valid JSON as a non-empty array of objects.",
+    'Each object must have: "title", "description", "instructions" (optional), "acceptanceCriteria" (array).',
+    "Review the full task list as a whole. Merge micro-tasks, restore missing coverage, and keep each task aligned to this feature's owned scope.",
+    "The final task list should cover the feature acceptance criteria without spilling work into neighboring features.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved feature Product Spec:",
+    input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Approved feature Technical Spec:",
+    input.techSpec,
+    "",
+    "First-pass task list:",
+    JSON.stringify(input.draftTasks, null, 2),
   ].join("\n");
 
 export const buildDeliveryReviewPrompt = (input: {

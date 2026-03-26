@@ -99,6 +99,9 @@ const makeDb = (overrides: Partial<{
       autoAdvanceSessionsTable: {
         findFirst: vi.fn().mockResolvedValue(session),
       },
+      milestonesTable: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       projectsTable: {
         findFirst: vi.fn().mockResolvedValue(project),
       },
@@ -604,6 +607,191 @@ describe("auto-advance service", () => {
       const pauseUpdate = updates.find((u) => u.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("review_limit_reached");
       expect(jobService.createJob).not.toHaveBeenCalled();
+    });
+
+    it("queues a catch-up feature when milestone reconciliation finds a first-pass gap", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneCoverage",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "create_catch_up_feature", hint: "Missing milestone docs." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+          autoCatchUpCount: 0,
+        }),
+      } as never;
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: "batch-1",
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordReconciliationResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+          status: "failed_first_pass",
+        }),
+      );
+      expect(milestoneService.incrementAutoCatchUpCount).toHaveBeenCalledWith("milestone-1");
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateMilestoneCatchUpFeature",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-1",
+            hint: "Missing milestone docs.",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+            }),
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
+    });
+
+    it("pauses when milestone reconciliation still has gaps after the catch-up limit", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneCoverage",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "create_catch_up_feature", hint: "Still missing milestone docs." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+          autoCatchUpCount: 1,
+        }),
+      } as never;
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: updateCall === 2 ? ("paused" as const) : ("running" as const),
+                  pendingJobCount: 0,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordReconciliationResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+          status: "failed_needs_human",
+        }),
+      );
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      const pauseUpdate = updates.find((update) => update.status === "paused");
+      expect(pauseUpdate?.pausedReason).toBe("needs_human");
+    });
+
+    it("continues into normal feature planning after a catch-up feature job succeeds", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const catchUpJob = {
+        ...makeJob(),
+        type: "GenerateMilestoneCatchUpFeature",
+      };
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_product_create",
+            label: "Author the first feature Product Spec",
+            href: `/projects/${PROJECT_ID}/features/feature-123`,
+          },
+        ],
+      });
+      const db = makeDb({ session: runningSession, job: catchUpJob });
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((_data: Record<string, unknown>) => {
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: "batch-1",
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureProductSpec",
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+          }),
+        }),
+      );
     });
 
     it("does nothing when no running session exists for the job's project", async () => {

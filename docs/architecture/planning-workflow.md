@@ -49,6 +49,8 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `phaseGateService` now treats the Features phase as requiring at least one feature with an approved Product workstream revision
 - `nextActionsService` now scopes detailed planning to the active milestone only, then continues through task planning and milestone reconciliation before milestone completion
 - `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, overview-seeded feature creation, and feature workstream generation
+- milestone design, milestone feature-set generation, catch-up feature generation, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
+- feature and task generation prompts now use milestone design guidance and sibling-boundary context to reduce task-sized feature fragmentation and milestone-coverage gaps
 
 ## External Adapters
 

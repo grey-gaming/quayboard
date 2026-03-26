@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAppendFeaturesFromOnePagerPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
+  buildFeatureSetReviewPrompt,
+  buildFeatureTaskListPrompt,
+  buildFeatureTaskListReviewPrompt,
   buildUserFlowPrompt,
   buildDeliveryReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
@@ -109,6 +113,114 @@ describe("job prompts", () => {
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
     expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
+  });
+
+  it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
+    const prompt = buildAppendFeaturesFromOnePagerPrompt({
+      existingFeatures: [
+        {
+          dependencies: [],
+          milestoneTitle: "Platform",
+          summary: "Bootstrap shared setup.",
+          title: "Platform setup",
+        },
+      ],
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      milestones: [
+        { title: "Platform", summary: "Shared setup." },
+        { title: "Foundations", summary: "First releasable slice." },
+      ],
+      overviewDocument: "# Overview",
+      projectName: "Quayboard",
+      projectProductSpec: "# Product Spec",
+      projectTechnicalSpec: "# Technical Spec",
+      projectUxSpec: "# UX Spec",
+      linkedUserFlows: [{ id: "11111111-1111-4111-8111-111111111111", title: "Create project" }],
+    });
+
+    expect(prompt).toContain("one coherent capability or one deliberately grouped cross-cutting workstream");
+    expect(prompt).toContain("Prefer the smallest set of coherent features");
+    expect(prompt).toContain("User flows linked to the selected milestone:");
+    expect(prompt).toContain("keep it in one shared feature");
+  });
+
+  it("asks the feature-set review pass to merge task-sized fragmentation", () => {
+    const prompt = buildFeatureSetReviewPrompt({
+      projectName: "Quayboard",
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      linkedUserFlows: [{ id: "11111111-1111-4111-8111-111111111111", title: "Create project" }],
+      existingFeatures: [],
+      draftFeatures: [
+        {
+          title: "Write docs part 1",
+          summary: "Docs slice.",
+          acceptanceCriteria: ["Docs exist."],
+          kind: "system",
+          priority: "must_have",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Review the full set as a whole");
+    expect(prompt).toContain("Merge task-sized or overlapping features");
+    expect(prompt).toContain("Prefer fewer, feature-sized items");
+    expect(prompt).toContain("First-pass draft feature set:");
+  });
+
+  it("adds milestone and product context to task-list generation", () => {
+    const prompt = buildFeatureTaskListPrompt({
+      clarifications: [{ question: "What about failures?", answer: "Show a retry path." }],
+      feature: {
+        acceptanceCriteria: ["User can recover from failure."],
+        featureKey: "F-001",
+        milestoneTitle: "Foundations",
+        summary: "Failure recovery flow.",
+        title: "Recovery flow",
+      },
+      featureProductSpec: "# Feature Product Spec",
+      milestoneDesignDoc: "# Milestone Design",
+      techSpec: "# Tech Spec",
+    });
+
+    expect(prompt).toContain("smallest set of coherent implementation phases");
+    expect(prompt).toContain("Approved feature Product Spec:");
+    expect(prompt).toContain("Milestone design document:");
+    expect(prompt).toContain("full task list covers the feature acceptance criteria");
+  });
+
+  it("asks the task-list review pass to review the whole list and merge micro-tasks", () => {
+    const prompt = buildFeatureTaskListReviewPrompt({
+      feature: {
+        acceptanceCriteria: ["User can recover from failure."],
+        featureKey: "F-001",
+        milestoneTitle: "Foundations",
+        summary: "Failure recovery flow.",
+        title: "Recovery flow",
+      },
+      featureProductSpec: "# Feature Product Spec",
+      milestoneDesignDoc: "# Milestone Design",
+      techSpec: "# Tech Spec",
+      draftTasks: [
+        {
+          title: "Add API field",
+          description: "Add a field.",
+          instructions: null,
+          acceptanceCriteria: ["Field exists."],
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Review the full task list as a whole");
+    expect(prompt).toContain("Merge micro-tasks");
+    expect(prompt).toContain("First-pass task list:");
   });
 
   describe("buildDeliveryReviewPrompt", () => {

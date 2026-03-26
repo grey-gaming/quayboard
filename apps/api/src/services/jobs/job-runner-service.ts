@@ -35,6 +35,10 @@ import type { UserFlowService } from "../user-flow-service.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
   buildAppendFeaturesFromOnePagerPrompt,
+  buildFeatureProductSpecReviewPrompt,
+  buildFeatureSetReviewPrompt,
+  buildFeatureTaskListReviewPrompt,
+  buildFeatureWorkstreamReviewPrompt,
   buildDecisionConsistencyPrompt,
   buildDecisionDeckPrompt,
   buildDeliveryReviewPrompt,
@@ -44,8 +48,10 @@ import {
   buildFeatureUserDocsPrompt,
   buildFeatureUxSpecPrompt,
   buildMilestoneDesignPrompt,
+  buildMilestoneDesignReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
   buildMilestoneCatchUpFeaturePrompt,
+  buildMilestoneCatchUpFeatureReviewPrompt,
   buildMilestonePlanPrompt,
   buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
@@ -817,6 +823,116 @@ export const createJobRunnerService = (input: {
       };
     };
 
+    const storeLlmRun = async (inputArgs: {
+      templateId: string;
+      parameters: Record<string, unknown>;
+      prompt: string;
+      generated: Awaited<ReturnType<LlmProviderService["generate"]>>;
+    }) => {
+      await assertAutoAdvanceBatchIsCurrent();
+      await input.db.insert(llmRunsTable).values({
+        id: generateId(),
+        projectId: rawJob.projectId,
+        jobId: rawJob.id,
+        provider: provider.provider,
+        model: provider.model,
+        templateId: inputArgs.templateId,
+        parameters: inputArgs.parameters,
+        input: { prompt: inputArgs.prompt },
+        output: {
+          content: inputArgs.generated.content,
+          doneReason: inputArgs.generated.doneReason ?? null,
+          evalCount: inputArgs.generated.evalCount ?? null,
+          promptEvalCount: inputArgs.generated.promptEvalCount ?? null,
+          totalDuration: inputArgs.generated.totalDuration ?? null,
+        },
+        promptTokens: inputArgs.generated.promptTokens,
+        completionTokens: inputArgs.generated.completionTokens,
+        createdAt: new Date(),
+      });
+    };
+
+    const runReviewedJsonGeneration = async <TDraft, TFinal = TDraft>(inputArgs: {
+      templateId: string;
+      reviewTemplateId?: string;
+      parameters: Record<string, unknown>;
+      prompt: string;
+      parseDraft: (content: string, templateId: string) => TDraft;
+      buildReviewPrompt: (draft: TDraft) => string;
+      parseReviewed?: (content: string, templateId: string) => TFinal;
+    }) => {
+      const generated = await input.llmProviderService.generate(provider, inputArgs.prompt, {
+        responseFormat: "json",
+      });
+      await storeLlmRun({
+        templateId: inputArgs.templateId,
+        parameters: inputArgs.parameters,
+        prompt: inputArgs.prompt,
+        generated,
+      });
+
+      const draft = inputArgs.parseDraft(generated.content, inputArgs.templateId);
+      const reviewTemplateId = inputArgs.reviewTemplateId ?? `${inputArgs.templateId}Review`;
+      const reviewPrompt = inputArgs.buildReviewPrompt(draft);
+      const reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+        responseFormat: "json",
+      });
+      await storeLlmRun({
+        templateId: reviewTemplateId,
+        parameters: inputArgs.parameters,
+        prompt: reviewPrompt,
+        generated: reviewed,
+      });
+
+      const parseReviewed = inputArgs.parseReviewed ?? ((content, templateId) =>
+        inputArgs.parseDraft(content, templateId) as unknown as TFinal);
+
+      return parseReviewed(reviewed.content, reviewTemplateId);
+    };
+
+    const loadMilestonePromptContext = async (
+      milestoneId: string,
+      currentFeatureId?: string,
+    ) => {
+      if (!input.milestoneService) {
+        throw new Error("Feature planning prompts require milestone support.");
+      }
+
+      const milestone = await input.db.query.milestonesTable.findFirst({
+        where: eq(milestonesTable.id, milestoneId),
+      });
+      const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
+        ownerUserId,
+        milestoneId,
+      );
+
+      if (!milestone || !milestoneDesignDoc) {
+        throw new Error("Feature planning prompts require a canonical milestone design document.");
+      }
+
+      const siblingFeatures =
+        input.featureService
+          ? (
+              await input.featureService.list(ownerUserId, projectId)
+            ).features
+              .filter(
+                (feature) =>
+                  feature.milestoneId === milestoneId && feature.id !== currentFeatureId,
+              )
+              .map((feature) => ({
+                featureKey: feature.featureKey,
+                title: feature.headRevision.title,
+                summary: feature.headRevision.summary,
+              }))
+          : [];
+
+      return {
+        milestone,
+        milestoneDesignDoc: milestoneDesignDoc.markdown,
+        siblingFeatures,
+      };
+    };
+
     switch (rawJob.type) {
       case "GenerateProjectDescription": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
@@ -1542,34 +1658,34 @@ export const createJobRunnerService = (input: {
         if (!blueprints.uxBlueprint || !blueprints.techBlueprint) {
           throw new Error("GenerateMilestoneDesign requires approved UX and Technical Specs.");
         }
+        const uxBlueprint = blueprints.uxBlueprint;
+        const techBlueprint = blueprints.techBlueprint;
 
         const prompt = buildMilestoneDesignPrompt({
           projectName: project.name,
           milestoneTitle: milestoneRecord.title,
           milestoneSummary: milestoneRecord.summary,
           linkedUserFlows: linkedFlows,
-          uxSpec: blueprints.uxBlueprint.markdown,
-          technicalSpec: blueprints.techBlueprint.markdown,
+          uxSpec: uxBlueprint.markdown,
+          technicalSpec: techBlueprint.markdown,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const designDoc = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { milestoneId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: parseBlueprintResult,
+          buildReviewPrompt: (draft) =>
+            buildMilestoneDesignReviewPrompt({
+              projectName: project.name,
+              milestoneTitle: milestoneRecord.title,
+              milestoneSummary: milestoneRecord.summary,
+              linkedUserFlows: linkedFlows,
+              uxSpec: uxBlueprint.markdown,
+              technicalSpec: techBlueprint.markdown,
+              draftTitle: draft.title,
+              draftMarkdown: draft.markdown,
+            }),
         });
-        const designDoc = parseBlueprintResult(generated.content, rawJob.type);
         const created = await input.milestoneService.createDesignDocVersion({
           milestoneId,
           title: designDoc.title,
@@ -1726,6 +1842,8 @@ export const createJobRunnerService = (input: {
         const featureTitleById = new Map(
           features.features.map((feature) => [feature.id, feature.headRevision.title]),
         );
+        const selectedMilestone =
+          milestoneList.milestones.find((item) => item.id === milestoneId) ?? null;
 
         const prompt = buildAppendFeaturesFromOnePagerPrompt({
           existingFeatures: features.features.map((feature) => ({
@@ -1750,40 +1868,49 @@ export const createJobRunnerService = (input: {
           projectProductSpec: projectSpecs.productSpec.markdown,
           projectTechnicalSpec: projectSpecs.technicalSpec.markdown,
           projectUxSpec: projectSpecs.uxSpec.markdown,
-          userFlows: userFlows.userFlows.map((flow) => ({
-            acceptanceCriteria: flow.acceptanceCriteria,
-            flowSteps: flow.flowSteps,
+          linkedUserFlows: (selectedMilestone?.linkedUserFlows ?? []).map((flow) => ({
+            id: flow.id,
             title: flow.title,
-            userStory: flow.userStory,
           })),
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const items = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { milestoneId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: (content, templateId) => {
+            const parsed = parseGeneratedFeaturesResult(content);
+
+            if (!parsed) {
+              throw new Error(
+                `${templateId} returned invalid content. Expected a JSON array of features.`,
+              );
+            }
+
+            return validateGeneratedFeatures(parsed, templateId);
+          },
+          buildReviewPrompt: (draftFeatures) =>
+            buildFeatureSetReviewPrompt({
+              projectName: project.name,
+              milestone: {
+                title: milestoneRecord.title,
+                summary: milestoneRecord.summary,
+              },
+              milestoneDesignDoc: milestoneDesignDoc.markdown,
+              linkedUserFlows: (selectedMilestone?.linkedUserFlows ?? []).map((flow) => ({
+                id: flow.id,
+                title: flow.title,
+              })),
+              existingFeatures: features.features.map((feature) => ({
+                dependencies: feature.dependencyIds.map(
+                  (dependencyId) => featureTitleById.get(dependencyId) ?? dependencyId,
+                ),
+                milestoneTitle: feature.milestoneTitle,
+                summary: feature.headRevision.summary,
+                title: feature.headRevision.title,
+              })),
+              draftFeatures,
+            }),
         });
-        const parsed = parseGeneratedFeaturesResult(generated.content);
-
-        if (!parsed) {
-          throw new Error(
-            "AppendFeatureFromOnePager returned invalid content. Expected a JSON array of features.",
-          );
-        }
-
-        const items = validateGeneratedFeatures(parsed);
         const appended = await input.featureService.appendGeneratedFeatures({
           ownerUserId,
           projectId: rawJob.projectId,
@@ -1847,27 +1974,46 @@ export const createJobRunnerService = (input: {
           projectTechnicalSpec: projectSpecs.technicalSpec.markdown,
           projectUxSpec: projectSpecs.uxSpec.markdown,
         });
-
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const existingMilestoneFeatures = featureList.features
+          .filter((feature) => feature.milestoneId === milestoneId)
+          .map((feature) => ({
+            title: feature.headRevision.title,
+            summary: feature.headRevision.summary,
+          }));
+        const catchUp = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { milestoneId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: (content) => parseMilestoneCatchUpFeatureResult(content),
+          buildReviewPrompt: (draftCatchUp) =>
+            buildMilestoneCatchUpFeatureReviewPrompt({
+              hint: jobInput?.hint ?? "Close the missing milestone coverage.",
+              milestone: {
+                title: milestoneRecord.title,
+                summary: milestoneRecord.summary,
+              },
+              milestoneDesignDoc: milestoneDesignDoc.markdown,
+              existingFeatures: existingMilestoneFeatures,
+              draftCatchUp: {
+                feature: draftCatchUp.feature,
+                product: {
+                  title: draftCatchUp.product.title,
+                  markdown: draftCatchUp.product.markdown,
+                  requirements:
+                    draftCatchUp.product.requirements ?? {
+                      uxRequired: true,
+                      techRequired: true,
+                      userDocsRequired: true,
+                      archDocsRequired: true,
+                    },
+                },
+                ux: draftCatchUp.ux,
+                tech: draftCatchUp.tech,
+                userDocs: draftCatchUp.userDocs,
+                archDocs: draftCatchUp.archDocs,
+              },
+            }),
         });
-
-        const catchUp = parseMilestoneCatchUpFeatureResult(generated.content);
         const createdFeature = await input.featureService.create(
           ownerUserId,
           rawJob.projectId,
@@ -1953,7 +2099,7 @@ export const createJobRunnerService = (input: {
       }
 
       case "GenerateFeatureProductSpec": {
-        if (!input.featureWorkstreamService) {
+        if (!input.featureWorkstreamService || !input.milestoneService) {
           throw new Error("GenerateFeatureProductSpec requires feature workstream support.");
         }
 
@@ -1969,13 +2115,10 @@ export const createJobRunnerService = (input: {
           ownerUserId,
           featureId,
         );
-        const milestone = await input.db.query.milestonesTable.findFirst({
-          where: eq(milestonesTable.id, context.feature.milestoneId),
-        });
-
-        if (!milestone) {
-          throw new Error("GenerateFeatureProductSpec could not load the target milestone.");
-        }
+        const milestoneContext = await loadMilestonePromptContext(
+          context.feature.milestoneId,
+          featureId,
+        );
 
         const prompt = buildFeatureProductSpecPrompt({
           feature: {
@@ -1985,33 +2128,48 @@ export const createJobRunnerService = (input: {
                 )
               : [],
             featureKey: context.feature.featureKey,
-            milestoneTitle: milestone.title,
+            milestoneTitle: milestoneContext.milestone.title,
             summary: context.headFeatureRevision.summary,
             title: context.headFeatureRevision.title,
           },
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          siblingFeatures: milestoneContext.siblingFeatures,
           productSpec: productSpec.markdown,
           technicalSpec: technicalSpec.markdown,
           uxSpec: uxSpec.markdown,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const featureContext = {
+          acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
+            ? context.headFeatureRevision.acceptanceCriteria.filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [],
+          featureKey: context.feature.featureKey,
+          milestoneTitle: milestoneContext.milestone.title,
+          summary: context.headFeatureRevision.summary,
+          title: context.headFeatureRevision.title,
+        };
+        const generatedSpec = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { featureId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: parseFeatureWorkstreamResult,
+          buildReviewPrompt: (draft) =>
+            buildFeatureProductSpecReviewPrompt({
+              feature: featureContext,
+              milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+              siblingFeatures: milestoneContext.siblingFeatures,
+              draftTitle: draft.title,
+              draftMarkdown: draft.markdown,
+              requirements:
+                draft.requirements ?? {
+                  uxRequired: true,
+                  techRequired: true,
+                  userDocsRequired: true,
+                  archDocsRequired: true,
+                },
+            }),
         });
-        const generatedSpec = parseFeatureWorkstreamResult(generated.content, rawJob.type);
         await input.featureWorkstreamService.createRevision(
           ownerUserId,
           featureId,
@@ -2038,7 +2196,7 @@ export const createJobRunnerService = (input: {
       case "GenerateFeatureTechSpec":
       case "GenerateFeatureUserDocs":
       case "GenerateFeatureArchDocs": {
-        if (!input.featureWorkstreamService) {
+        if (!input.featureWorkstreamService || !input.milestoneService) {
           throw new Error(`${rawJob.type} requires feature workstream support.`);
         }
 
@@ -2055,9 +2213,14 @@ export const createJobRunnerService = (input: {
           featureId,
         );
         const tracks = await input.featureWorkstreamService.getTracks(ownerUserId, featureId);
+        const milestoneContext = await loadMilestonePromptContext(
+          context.feature.milestoneId,
+          featureId,
+        );
 
         let prompt = "";
         let kind: "ux" | "tech" | "user_docs" | "arch_docs";
+        let workstreamLabel = "";
 
         if (rawJob.type === "GenerateFeatureUxSpec") {
           if (!tracks.tracks.product.headRevision?.approval) {
@@ -2065,11 +2228,14 @@ export const createJobRunnerService = (input: {
           }
 
           kind = "ux";
+          workstreamLabel = "feature UX Spec";
           prompt = buildFeatureUxSpecPrompt({
             featureProductSpec: tracks.tracks.product.headRevision.markdown,
             featureTitle: context.headFeatureRevision.title,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             projectProductSpec: productSpec.markdown,
             projectUxSpec: uxSpec.markdown,
+            siblingFeatures: milestoneContext.siblingFeatures,
           });
         } else if (rawJob.type === "GenerateFeatureTechSpec") {
           if (!tracks.tracks.product.headRevision?.approval) {
@@ -2077,11 +2243,14 @@ export const createJobRunnerService = (input: {
           }
 
           kind = "tech";
+          workstreamLabel = "feature Technical Spec";
           prompt = buildFeatureTechSpecPrompt({
             featureProductSpec: tracks.tracks.product.headRevision.markdown,
             featureTitle: context.headFeatureRevision.title,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             projectProductSpec: productSpec.markdown,
             projectTechnicalSpec: technicalSpec.markdown,
+            siblingFeatures: milestoneContext.siblingFeatures,
           });
         } else if (rawJob.type === "GenerateFeatureUserDocs") {
           if (!tracks.tracks.product.headRevision?.approval) {
@@ -2089,11 +2258,14 @@ export const createJobRunnerService = (input: {
           }
 
           kind = "user_docs";
+          workstreamLabel = "feature User Documentation";
           prompt = buildFeatureUserDocsPrompt({
             featureProductSpec: tracks.tracks.product.headRevision.markdown,
             featureTitle: context.headFeatureRevision.title,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             projectProductSpec: productSpec.markdown,
             projectUxSpec: uxSpec.markdown,
+            siblingFeatures: milestoneContext.siblingFeatures,
           });
         } else {
           if (tracks.tracks.tech.required && !tracks.tracks.tech.headRevision?.approval) {
@@ -2104,32 +2276,41 @@ export const createJobRunnerService = (input: {
           }
 
           kind = "arch_docs";
+          workstreamLabel = "feature Architecture Documentation";
           prompt = buildFeatureArchDocsPrompt({
             featureTechSpec: tracks.tracks.tech.headRevision?.markdown ?? null,
             featureTitle: context.headFeatureRevision.title,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             projectTechnicalSpec: technicalSpec.markdown,
+            siblingFeatures: milestoneContext.siblingFeatures,
           });
         }
-
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const featureContext = {
+          acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
+            ? context.headFeatureRevision.acceptanceCriteria.filter(
+                (item): item is string => typeof item === "string",
+              )
+            : [],
+          featureKey: context.feature.featureKey,
+          milestoneTitle: milestoneContext.milestone.title,
+          summary: context.headFeatureRevision.summary,
+          title: context.headFeatureRevision.title,
+        };
+        const generatedSpec = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { featureId, kind },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: parseFeatureWorkstreamResult,
+          buildReviewPrompt: (draft) =>
+            buildFeatureWorkstreamReviewPrompt({
+              workstreamLabel,
+              feature: featureContext,
+              milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+              siblingFeatures: milestoneContext.siblingFeatures,
+              draftTitle: draft.title,
+              draftMarkdown: draft.markdown,
+            }),
         });
-        const generatedSpec = parseFeatureWorkstreamResult(generated.content, rawJob.type);
         await input.featureWorkstreamService.createRevision(
           ownerUserId,
           featureId,
@@ -2148,7 +2329,7 @@ export const createJobRunnerService = (input: {
       case "GenerateTaskClarifications":
       case "AutoAnswerTaskClarifications":
       case "GenerateFeatureTaskList": {
-        if (!input.db) {
+        if (!input.db || !input.milestoneService) {
           throw new Error(`${rawJob.type} requires database access.`);
         }
 
@@ -2183,7 +2364,11 @@ export const createJobRunnerService = (input: {
         const featureContext = {
           acceptanceCriteria: context.headFeatureRevision.acceptanceCriteria as string[],
           featureKey: context.feature.featureKey,
-          milestoneTitle: context.feature.milestoneId,
+          milestoneTitle: (
+            await input.db.query.milestonesTable.findFirst({
+              where: eq(milestonesTable.id, context.feature.milestoneId),
+            })
+          )?.title ?? context.feature.milestoneId,
           summary: context.headFeatureRevision.summary,
           title: context.headFeatureRevision.title,
         };
@@ -2284,6 +2469,12 @@ export const createJobRunnerService = (input: {
         const answeredClarifications = existingClarifications.filter(
           (c) => c.status === "answered",
         );
+        const milestoneContext = await loadMilestonePromptContext(
+          context.feature.milestoneId,
+          featureId,
+        );
+        const tracks = await input.featureWorkstreamService?.getTracks(ownerUserId, featureId);
+        const featureProductSpec = tracks?.tracks.product.headRevision?.markdown ?? "";
 
         const prompt = buildFeatureTaskListPrompt({
           clarifications: answeredClarifications.map((c) => ({
@@ -2291,29 +2482,24 @@ export const createJobRunnerService = (input: {
             answer: c.answer ?? "",
           })),
           feature: featureContext,
+          featureProductSpec,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
           techSpec: techRevision.markdown,
         });
-
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const tasks = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { featureId, sessionId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parseDraft: (content) => parseTaskListResult(content),
+          buildReviewPrompt: (draftTasks) =>
+            buildFeatureTaskListReviewPrompt({
+              feature: featureContext,
+              featureProductSpec,
+              milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+              techSpec: techRevision.markdown,
+              draftTasks,
+            }),
         });
-
-        const tasks = parseTaskListResult(generated.content);
         await taskPlanning.createTasks(sessionId, tasks);
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
