@@ -201,6 +201,12 @@ export const createAutoAdvanceService = (
     },
   });
 
+  const clearBatchState = {
+    pendingJobCount: 0,
+    batchFailureCount: 0,
+    activeBatchToken: null,
+  };
+
   /**
    * Auto-selects the recommended option for all unselected decision cards of the given kind.
    */
@@ -384,6 +390,7 @@ export const createAutoAdvanceService = (
           reviewCount: currentReviewCount + 1,
           currentStep: "delivery_review",
           pendingJobCount: 1,
+          batchFailureCount: 0,
           activeBatchToken: batchToken,
           updatedAt: new Date(),
         })
@@ -443,6 +450,7 @@ export const createAutoAdvanceService = (
       .set({
         currentStep: nextAction.key,
         pendingJobCount: actions.length,
+        batchFailureCount: 0,
         activeBatchToken: batchToken,
         updatedAt: new Date(),
       })
@@ -505,8 +513,7 @@ export const createAutoAdvanceService = (
             creativityMode: opts.creativityMode ?? existing.creativityMode,
             maxConcurrentJobs: opts.maxConcurrentJobs ?? existing.maxConcurrentJobs,
             retryCount: 0,
-            pendingJobCount: 0,
-            activeBatchToken: null,
+            ...clearBatchState,
             startedAt: now,
             pausedAt: null,
             completedAt: null,
@@ -531,8 +538,7 @@ export const createAutoAdvanceService = (
           skipReviewSteps: opts.skipReviewSteps ?? false,
           creativityMode: opts.creativityMode ?? "balanced",
           maxConcurrentJobs: opts.maxConcurrentJobs ?? 1,
-          pendingJobCount: 0,
-          activeBatchToken: null,
+          ...clearBatchState,
           startedAt: now,
           createdAt: now,
           updatedAt: now,
@@ -584,7 +590,7 @@ export const createAutoAdvanceService = (
           status: "running",
           pausedReason: null,
           pausedAt: null,
-          activeBatchToken: null,
+          ...clearBatchState,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
@@ -633,7 +639,7 @@ export const createAutoAdvanceService = (
           status: "running",
           pausedReason: null,
           pausedAt: null,
-          activeBatchToken: null,
+          ...clearBatchState,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
@@ -700,40 +706,32 @@ export const createAutoAdvanceService = (
         .update(autoAdvanceSessionsTable)
         .set({
           pendingJobCount: sql`greatest(0, ${autoAdvanceSessionsTable.pendingJobCount} - 1)`,
+          batchFailureCount: outcome === "failure"
+            ? sql`${autoAdvanceSessionsTable.batchFailureCount} + 1`
+            : autoAdvanceSessionsTable.batchFailureCount,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
         .returning();
 
       const remaining = afterDecrement?.pendingJobCount ?? 0;
+      const batchFailureCount = afterDecrement?.batchFailureCount ?? 0;
 
-      if (outcome === "failure") {
+      if (remaining > 0) {
+        return;
+      }
+
+      if (batchFailureCount > 0) {
         const MAX_RETRIES = 3;
         const currentRetryCount = session.retryCount ?? 0;
 
-        if (remaining > 0) {
-          // Other parallel jobs are still running — pause immediately so they don't trigger advancement.
-          await db
-            .update(autoAdvanceSessionsTable)
-            .set({
-              status: "paused",
-              pausedReason: "job_failed",
-              retryCount: 0,
-              pausedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(autoAdvanceSessionsTable.id, session.id));
-          await publishSessionUpdate(project.ownerUserId, job.projectId);
-          return;
-        }
-
         if (currentRetryCount < MAX_RETRIES) {
-          // Retry: increment count and re-advance (will re-enqueue the same step since artifact wasn't created).
+          // Retry: increment count and re-advance. buildBatch() will only re-enqueue unfinished work.
           await db
             .update(autoAdvanceSessionsTable)
             .set({
               retryCount: currentRetryCount + 1,
-              activeBatchToken: null,
+              ...clearBatchState,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
@@ -748,7 +746,7 @@ export const createAutoAdvanceService = (
               status: "paused",
               pausedReason: "job_failed",
               retryCount: 0,
-              activeBatchToken: null,
+              ...clearBatchState,
               pausedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -759,15 +757,10 @@ export const createAutoAdvanceService = (
         return;
       }
 
-      // Success path — if other parallel jobs are still pending, wait for them.
-      if (remaining > 0) {
-        return;
-      }
-
       // All parallel jobs in the batch have completed — reset retryCount.
       await db
         .update(autoAdvanceSessionsTable)
-        .set({ retryCount: 0, updatedAt: new Date() })
+        .set({ retryCount: 0, batchFailureCount: 0, updatedAt: new Date() })
         .where(eq(autoAdvanceSessionsTable.id, session.id));
 
       // Special handling for the delivery review job.
@@ -784,7 +777,7 @@ export const createAutoAdvanceService = (
             .set({
               status: "completed",
               currentStep: null,
-              activeBatchToken: null,
+              ...clearBatchState,
               completedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -802,7 +795,7 @@ export const createAutoAdvanceService = (
               status: "paused",
               pausedReason: "review_limit_reached",
               pausedAt: new Date(),
-              activeBatchToken: null,
+              ...clearBatchState,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, session.id));
@@ -820,6 +813,7 @@ export const createAutoAdvanceService = (
             .update(autoAdvanceSessionsTable)
             .set({
               pendingJobCount: 1,
+              batchFailureCount: 0,
               activeBatchToken: batchToken,
               updatedAt: new Date(),
             })

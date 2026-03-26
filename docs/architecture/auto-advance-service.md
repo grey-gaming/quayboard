@@ -153,6 +153,8 @@ Called by the job scheduler after every job completes (success or failure).
 5. On `failure`: updates session to `paused` with `paused_reason: job_failed`. Publishes SSE.
 6. On `success`: calls `advanceStep` to enqueue the next job. Publishes SSE.
 
+For parallel feature batches, `onJobComplete` waits until the active batch fully settles before deciding whether to retry or pause. Any mixed-success batch with at least one failed job counts as a single retry attempt; already-succeeded feature work is left in place, and only unfinished work is re-enqueued on the next pass. The session pauses with `job_failed` only after three consecutive failed batch attempts.
+
 Errors inside `onJobComplete` are caught and logged; they do not propagate to the job runner so a failed auto-advance callback cannot break normal job processing.
 
 ---

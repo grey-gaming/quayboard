@@ -113,6 +113,13 @@
       "when": 1760000015000,
       "tag": "0015_m7_auto_advance_batch_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1760000016000,
+      "tag": "0016_m7_auto_advance_batch_failure_count",
+      "breakpoints": true
     }
   ]
 }

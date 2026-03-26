@@ -187,7 +187,7 @@ Each step in the workflow is executed as a background job. Here is what happens 
 
 ### Automatic retries
 
-If a job fails, Auto-Advance retries it automatically up to **three times** before pausing. Transient failures — network hiccups, LLM timeouts — typically resolve within a retry or two without any action needed from you.
+If a job fails, Auto-Advance retries it automatically up to **three times** before pausing. In Phase 6, where features may be running in parallel, Quayboard waits for the active batch to finish and counts the whole batch as one retry attempt if any item failed. Transient failures — network hiccups, LLM timeouts — typically resolve within a retry or two without any action needed from you.
 
 ### Parallel feature processing
 

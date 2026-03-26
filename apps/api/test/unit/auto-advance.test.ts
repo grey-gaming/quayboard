@@ -21,6 +21,7 @@ const makeSessionRow = (
     reviewCount: number;
     maxConcurrentJobs: number;
     pendingJobCount: number;
+    batchFailureCount: number;
     activeBatchToken: string | null;
     startedAt: Date | null;
     pausedAt: Date | null;
@@ -39,6 +40,7 @@ const makeSessionRow = (
   reviewCount: 0,
   maxConcurrentJobs: 1,
   pendingJobCount: 0,
+  batchFailureCount: 0,
   activeBatchToken: null,
   startedAt: null,
   pausedAt: null,
@@ -413,11 +415,14 @@ describe("auto-advance service", () => {
         activeBatchToken: "batch-1",
       });
       const db = makeDb({ session: runningSession, job: makeJob() });
-      const updates: Array<{ status?: string; retryCount?: number }> = [];
+      const updates: Array<{ status?: string; retryCount?: number; batchFailureCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockImplementation((data: { status?: string; retryCount?: number }) => {
+        set: vi.fn().mockImplementation((data: { status?: string; retryCount?: number; batchFailureCount?: number }) => {
           updates.push(data);
-          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]) }) };
+          const row = "retryCount" in data
+            ? makeSessionRow({ status: "running" as const, retryCount: data.retryCount ?? 0 })
+            : makeSessionRow({ status: "running" as const, pendingJobCount: 0, batchFailureCount: 1 });
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([row]) }) };
         }),
       });
       const service = makeService(db);
@@ -438,11 +443,14 @@ describe("auto-advance service", () => {
         activeBatchToken: "batch-1",
       });
       const db = makeDb({ session: runningSession, job: makeJob() });
-      const failureUpdates: Array<{ status?: string; pausedReason?: string }> = [];
+      const failureUpdates: Array<{ status?: string; pausedReason?: string; batchFailureCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string }) => {
+        set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string; batchFailureCount?: number }) => {
           failureUpdates.push(data);
-          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }) };
+          const row = "status" in data
+            ? makeSessionRow({ status: "paused" as const, pausedReason: "job_failed" })
+            : makeSessionRow({ status: "running" as const, pendingJobCount: 0, batchFailureCount: 1 });
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([row]) }) };
         }),
       });
       const service = makeService(db);
@@ -461,9 +469,9 @@ describe("auto-advance service", () => {
         activeBatchToken: "batch-1",
       });
       const db = makeDb({ session: runningSession, job: makeJob() });
-      const updates: Array<{ retryCount?: number }> = [];
+      const updates: Array<{ retryCount?: number; batchFailureCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockImplementation((data: { retryCount?: number }) => {
+        set: vi.fn().mockImplementation((data: { retryCount?: number; batchFailureCount?: number }) => {
           updates.push(data);
           return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]) }) };
         }),
@@ -664,7 +672,7 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).not.toHaveBeenCalled();
     });
 
-    it("pauses immediately on failure when other parallel jobs still pending", async () => {
+    it("does not pause while a failed parallel batch still has pending jobs", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 3,
@@ -672,19 +680,92 @@ describe("auto-advance service", () => {
         activeBatchToken: "batch-1",
       });
       const db = makeDb({ session: runningSession, job: makeJob() });
-      const updates: Array<{ status?: string; pausedReason?: string }> = [];
+      const updates: Array<{ status?: string; pausedReason?: string; batchFailureCount?: number }> = [];
       db.update = vi.fn().mockReturnValue({
-        set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string }) => {
+        set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string; batchFailureCount?: number }) => {
           updates.push(data);
-          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ pendingJobCount: 2 })]) }) };
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([makeSessionRow({ pendingJobCount: 2, batchFailureCount: 1 })]),
+            }),
+          };
         }),
       });
       const service = makeService(db);
 
       await service.onJobComplete(JOB_ID, "failure");
 
-      const pauseUpdate = updates.find((u) => u.status === "paused");
-      expect(pauseUpdate?.pausedReason).toBe("job_failed");
+      expect(updates).toHaveLength(1);
+      expect(updates[0]?.status).toBeUndefined();
+      expect(nextActionsService.buildBatch).not.toHaveBeenCalled();
+    });
+
+    it("retries once after a mixed parallel batch finishes with a failure", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        retryCount: 1,
+        batchFailureCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: runningSession, job: makeJob() });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          const row = "retryCount" in data && !("status" in data)
+            ? makeSessionRow({ status: "running" as const, retryCount: 2 })
+            : makeSessionRow({ status: "running" as const, pendingJobCount: 0, batchFailureCount: 2 });
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([row]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      const retryUpdate = updates.find((update) => update.retryCount === 2);
+      expect(retryUpdate).toBeDefined();
+      expect(retryUpdate).toMatchObject({
+        retryCount: 2,
+        pendingJobCount: 0,
+        batchFailureCount: 0,
+        activeBatchToken: null,
+      });
+      expect(nextActionsService.buildBatch).toHaveBeenCalled();
+    });
+
+    it("pauses only after three failed parallel batch retries", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        retryCount: 3,
+        batchFailureCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: runningSession, job: makeJob() });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          const row = "status" in data
+            ? makeSessionRow({ status: "paused" as const, pausedReason: "job_failed" })
+            : makeSessionRow({ status: "running" as const, pendingJobCount: 0, batchFailureCount: 2 });
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([row]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      const pauseUpdate = updates.find((update) => update.status === "paused");
+      expect(pauseUpdate).toMatchObject({
+        status: "paused",
+        pausedReason: "job_failed",
+        retryCount: 0,
+        pendingJobCount: 0,
+        batchFailureCount: 0,
+        activeBatchToken: null,
+      });
       expect(nextActionsService.buildBatch).not.toHaveBeenCalled();
     });
   });
@@ -844,6 +925,7 @@ describe("auto-advance service", () => {
 
       const reviewUpdate = updates.find((u) => u.currentStep === "delivery_review");
       expect(reviewUpdate?.pendingJobCount).toBe(1);
+      expect(reviewUpdate?.batchFailureCount).toBe(0);
     });
 
     it("sets pendingJobCount to 1 before creating fix job from review issues", async () => {
@@ -874,6 +956,7 @@ describe("auto-advance service", () => {
 
       const pendingUpdate = updates.find((u) => u.pendingJobCount === 1);
       expect(pendingUpdate).toBeDefined();
+      expect(pendingUpdate?.batchFailureCount).toBe(0);
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({ type: "GenerateUseCases" }),
       );
