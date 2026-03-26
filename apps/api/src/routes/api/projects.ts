@@ -8,6 +8,7 @@ import {
   nextActionsResponseSchema,
   phaseGatesResponseSchema,
   projectListResponseSchema,
+  projectDescriptionSchema,
   projectSchema,
   projectSetupStateSchema,
   projectSetupStatusSchema,
@@ -45,7 +46,7 @@ const createProjectBodyJsonSchema = {
   type: "object",
   properties: {
     name: { type: "string", minLength: 1, maxLength: 120 },
-    description: { type: ["string", "null"], maxLength: 500 },
+    description: { type: ["string", "null"] },
   },
   required: ["name"],
   additionalProperties: false,
@@ -61,7 +62,7 @@ const projectParamsJsonSchema = {
 } as const;
 
 const updateProjectRequestSchema = z.object({
-  description: z.string().trim().max(500).optional().nullable(),
+  description: projectDescriptionSchema.optional().nullable(),
   evidencePolicy: z
     .object({
       requireArchitectureDocs: z.boolean(),
@@ -98,7 +99,7 @@ const updateProjectBodyJsonSchema = {
   additionalProperties: false,
   properties: {
     name: { type: "string", minLength: 1, maxLength: 120 },
-    description: { type: ["string", "null"], maxLength: 500 },
+    description: { type: ["string", "null"] },
     repoConfig: {
       type: "object",
       properties: {
