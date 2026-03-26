@@ -290,6 +290,11 @@ export const createFeatureWorkstreamService = (db: AppDatabase, milestoneService
     createdByJobId?: string,
   ) {
     const { feature, headFeatureRevision } = await this.getFeatureContext(ownerUserId, featureId);
+    await milestoneService?.assertActiveMilestone(
+      ownerUserId,
+      feature.projectId,
+      feature.milestoneId,
+    );
     await this.ensureSpecRecord(featureId, kind);
     const now = new Date();
 
