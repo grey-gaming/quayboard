@@ -170,7 +170,17 @@ const AUTOMATABLE_STEPS: Record<
       };
     },
   },
-  feature_task_clarifications_answer: null,
+  feature_task_clarifications_answer: {
+    type: "AutoAnswerTaskClarifications",
+    buildInputs: (href) => {
+      const featureIdMatch = href.match(/\/features\/([^/?]+)/);
+      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
+      return {
+        featureId: featureIdMatch?.[1] ?? "",
+        sessionId: sessionMatch?.[1] ?? "",
+      };
+    },
+  },
   feature_task_list_generate: {
     type: "GenerateFeatureTaskList",
     buildInputs: (href) => {
@@ -334,15 +344,6 @@ export const createAutoAdvanceService = (
         const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
         if (activeMilestone?.status === "draft") {
           await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "approve" });
-          return true;
-        }
-        return false;
-      }
-      if (stepKey === "feature_task_clarifications_answer") {
-        const featureIdMatch = stepHref.match(/\/features\/([^/?]+)/);
-        const featureId = featureIdMatch?.[1];
-        if (featureId) {
-          await taskPlanningService.autoAnswerClarifications(ownerUserId, featureId);
           return true;
         }
         return false;

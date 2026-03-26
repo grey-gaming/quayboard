@@ -807,6 +807,40 @@ describe("auto-advance service", () => {
         }),
       );
     });
+
+    it("queues AutoAnswerTaskClarifications once with auto-advance metadata", async () => {
+      const featureId = "66666666-6666-4666-8666-666666666666";
+      const taskSessionId = "77777777-7777-4777-8777-777777777777";
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_task_clarifications_answer",
+            label: "Answer task clarifications",
+            href: `/projects/${PROJECT_ID}/features/${featureId}?taskSession=${taskSessionId}`,
+          },
+        ],
+      });
+      const db = makeDb({ session: null });
+      const service = makeService(db);
+
+      await service.start(USER_ID, PROJECT_ID, {});
+
+      expect(taskPlanningService.autoAnswerClarifications).not.toHaveBeenCalled();
+      expect(jobService.createJob).toHaveBeenCalledTimes(1);
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "AutoAnswerTaskClarifications",
+          projectId: PROJECT_ID,
+          inputs: expect.objectContaining({
+            featureId,
+            sessionId: taskSessionId,
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+            }),
+          }),
+        }),
+      );
+    });
   });
 
   describe("milestones_approve catch narrowing (Bug 1)", () => {
