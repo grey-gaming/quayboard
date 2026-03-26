@@ -476,12 +476,21 @@ describe("auto-advance service", () => {
     });
 
     it("pauses session with job_failed on the third consecutive failure", async () => {
+      const failedJob = {
+        ...makeJob(),
+        inputs: {
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+            retryAttempt: 2,
+          },
+        },
+      };
       const runningSession = makeSessionRow({
         status: "running" as const,
-        retryCount: 2,
         activeBatchToken: "batch-1",
       });
-      const db = makeDb({ session: runningSession, job: makeJob() });
+      const db = makeDb({ session: runningSession, job: failedJob });
       const failureUpdates: Array<{ status?: string; pausedReason?: string }> = [];
       db.update = vi.fn().mockReturnValue({
         set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string }) => {
@@ -496,6 +505,58 @@ describe("auto-advance service", () => {
       const pauseUpdate = failureUpdates.find((u) => u.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("job_failed");
       expect(sseHub.publish).toHaveBeenCalled();
+    });
+
+    it("uses per-job retry metadata instead of the session retry count", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 2,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateFeatureTechSpec",
+        inputs: {
+          featureId: "feature-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const updates: Array<{ status?: string; retryCount?: number; pendingJobCount?: number }> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(
+          (data: { status?: string; retryCount?: number; pendingJobCount?: number }) => {
+            updates.push(data);
+            return {
+              where: vi
+                .fn()
+                .mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }),
+            };
+          },
+        ),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(updates.find((update) => update.status === "paused")).toBeUndefined();
+      expect(updates.find((update) => update.retryCount === 1)).toBeDefined();
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureTechSpec",
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+              batchToken: "batch-1",
+              retryAttempt: 1,
+            }),
+          }),
+        }),
+      );
     });
 
     it("advances to next step on job success and resets retryCount", async () => {
@@ -607,6 +668,55 @@ describe("auto-advance service", () => {
       const pauseUpdate = updates.find((u) => u.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("review_limit_reached");
       expect(jobService.createJob).not.toHaveBeenCalled();
+    });
+
+    it("reruns ReviewDelivery after resuming from a review-limit pause", async () => {
+      const pausedSession = makeSessionRow({
+        status: "paused" as const,
+        currentStep: "delivery_review",
+        pausedReason: "review_limit_reached",
+        reviewCount: 3,
+      });
+      const resumedSession = makeSessionRow({
+        status: "running" as const,
+        currentStep: "delivery_review",
+        reviewCount: 3,
+      });
+      nextActionsService.buildBatch.mockResolvedValue({ actions: [] });
+      const db = makeDb({ session: pausedSession });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValueOnce(pausedSession)
+        .mockResolvedValueOnce(resumedSession);
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                resumedSession,
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "ReviewDelivery",
+          projectId: PROJECT_ID,
+          inputs: expect.objectContaining({
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+            }),
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "completed")).toBe(false);
     });
 
     it("queues a catch-up feature when milestone reconciliation finds a first-pass gap", async () => {

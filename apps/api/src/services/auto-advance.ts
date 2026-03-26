@@ -34,6 +34,7 @@ type AutoAdvanceJobInputs = Record<string, unknown> & {
   _autoAdvance?: {
     batchToken: string;
     sessionId: string;
+    retryAttempt?: number;
   };
 };
 
@@ -238,11 +239,13 @@ export const createAutoAdvanceService = (
     inputs: Record<string, unknown>,
     sessionId: string,
     batchToken: string,
+    retryAttempt?: number,
   ): AutoAdvanceJobInputs => ({
     ...inputs,
     _autoAdvance: {
       sessionId,
       batchToken,
+      ...(retryAttempt !== undefined ? { retryAttempt } : {}),
     },
   });
 
@@ -412,7 +415,7 @@ export const createAutoAdvanceService = (
         const MAX_REVIEWS = 3;
         const currentReviewCount = session?.reviewCount ?? 0;
 
-        if (currentReviewCount >= MAX_REVIEWS) {
+        if (currentReviewCount >= MAX_REVIEWS && session?.currentStep !== "delivery_review") {
           await db
             .update(autoAdvanceSessionsTable)
             .set({
@@ -775,7 +778,7 @@ export const createAutoAdvanceService = (
 
       if (outcome === "failure") {
         const MAX_RETRIES = 3;
-        const currentRetryCount = session.retryCount ?? 0;
+        const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
 
         if (nextRetryCount < MAX_RETRIES) {
@@ -799,6 +802,7 @@ export const createAutoAdvanceService = (
               stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
               session.id,
               autoAdvanceMeta.batchToken,
+              nextRetryCount,
             ),
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
