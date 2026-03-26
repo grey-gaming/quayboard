@@ -33,6 +33,7 @@ import {
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import type { MilestoneService } from "./milestone-service.js";
 
 const workstreamLabels: Record<FeatureWorkstreamKind, string> = {
   product: "Product Spec",
@@ -80,7 +81,7 @@ const toRevisionTitle = (
   explicitTitle?: string,
 ) => explicitTitle?.trim() || `${baseTitle} ${workstreamLabels[kind]}`;
 
-export const createFeatureWorkstreamService = (db: AppDatabase) => ({
+export const createFeatureWorkstreamService = (db: AppDatabase, milestoneService?: MilestoneService) => ({
   async getFeatureContext(ownerUserId: string, featureId: string) {
     const [record] = await db
       .select({
@@ -422,6 +423,8 @@ export const createFeatureWorkstreamService = (db: AppDatabase) => ({
       default:
         throw new Error(`Unsupported workstream kind ${kind satisfies never}.`);
     }
+
+    await milestoneService?.invalidateReconciliation(feature.milestoneId);
 
     return this.listRevisions(ownerUserId, featureId, kind);
   },

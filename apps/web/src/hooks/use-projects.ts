@@ -776,10 +776,21 @@ export const useTransitionMilestoneMutation = (projectId: string) => {
       action,
     }: {
       milestoneId: string;
-      action: "approve";
+      action: "approve" | "complete";
     }) => api.transitionMilestone(milestoneId, action),
     onSuccess: (_data, variables) => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId, variables.milestoneId);
+    },
+  });
+};
+
+export const useReviewMilestoneCoverageMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (milestoneId: string) => api.reviewMilestoneCoverage(milestoneId),
+    onSuccess: (_data, milestoneId) => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
     },
   });
 };

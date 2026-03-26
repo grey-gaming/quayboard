@@ -90,7 +90,9 @@ export const createPhaseGateService = (
         ? featureService.list(ownerUserId, projectId)
         : Promise.resolve({ features: [] }),
     ]);
-    const hasApprovedMilestone = milestones.milestones.some((milestone) => milestone.status === "approved");
+    const hasApprovedMilestone = milestones.milestones.some(
+      (milestone) => milestone.status === "approved" || milestone.status === "completed",
+    );
     const hasFeatures = features.features.length > 0;
     const approvedFeatureProductCount = userFlowsPassed
       ? (

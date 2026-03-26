@@ -288,10 +288,15 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  transitionMilestone(milestoneId: string, action: "approve") {
+  transitionMilestone(milestoneId: string, action: "approve" | "complete") {
     return apiRequest<Milestone>(`/api/milestones/${milestoneId}`, {
       method: "POST",
       body: JSON.stringify({ action }),
+    });
+  },
+  reviewMilestoneCoverage(milestoneId: string) {
+    return apiRequest<Job>(`/api/milestones/${milestoneId}/reconciliation/review`, {
+      method: "POST",
     });
   },
   generateMilestones(projectId: string) {

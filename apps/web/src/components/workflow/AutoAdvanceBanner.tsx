@@ -67,6 +67,11 @@ export const AutoAdvanceBanner = ({
               Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
             </p>
           )}
+          {nextStep === "milestone_reconciliation_resolve" ? (
+            <p className="text-xs text-warning">
+              Review the active milestone gaps in Milestones, update the plan, then rerun reconciliation.
+            </p>
+          ) : null}
         </div>
       )}
     </div>

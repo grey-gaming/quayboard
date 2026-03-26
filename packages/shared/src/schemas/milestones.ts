@@ -2,9 +2,29 @@ import { z } from "zod";
 
 import { artifactApprovalSchema } from "./artifacts.js";
 
-export const milestoneStatusSchema = z.enum(["draft", "approved"]);
+export const milestoneStatusSchema = z.enum(["draft", "approved", "completed"]);
 
 export type MilestoneStatus = z.infer<typeof milestoneStatusSchema>;
+
+export const milestoneReconciliationStatusSchema = z.enum([
+  "not_started",
+  "passed",
+  "failed_first_pass",
+  "failed_needs_human",
+]);
+
+export type MilestoneReconciliationStatus = z.infer<
+  typeof milestoneReconciliationStatusSchema
+>;
+
+export const milestoneReconciliationIssueSchema = z.object({
+  action: z.enum(["create_catch_up_feature", "needs_human_review"]),
+  hint: z.string().min(1),
+});
+
+export type MilestoneReconciliationIssue = z.infer<
+  typeof milestoneReconciliationIssueSchema
+>;
 
 export const milestoneLinkedUseCaseSchema = z.object({
   id: z.string().uuid(),
@@ -22,7 +42,12 @@ export const milestoneSchema = z.object({
   status: milestoneStatusSchema,
   linkedUserFlows: z.array(milestoneLinkedUseCaseSchema),
   featureCount: z.number().int().nonnegative(),
+  isActive: z.boolean(),
   approvedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  reconciliationStatus: milestoneReconciliationStatusSchema,
+  reconciliationIssues: z.array(milestoneReconciliationIssueSchema),
+  reconciliationReviewedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -46,7 +71,7 @@ export const updateMilestoneRequestSchema = z.object({
 export type UpdateMilestoneRequest = z.infer<typeof updateMilestoneRequestSchema>;
 
 export const milestoneActionRequestSchema = z.object({
-  action: z.enum(["approve"]),
+  action: z.enum(["approve", "complete"]),
 });
 
 export type MilestoneActionRequest = z.infer<typeof milestoneActionRequestSchema>;

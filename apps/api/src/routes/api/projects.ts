@@ -783,6 +783,7 @@ export const projectsRoutes = (
                     key: { type: "string" },
                     label: { type: "string" },
                     href: { type: "string" },
+                    description: { type: ["string", "null"] },
                   },
                   required: ["key", "label", "href"],
                   additionalProperties: false,

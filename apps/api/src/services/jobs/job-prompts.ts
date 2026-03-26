@@ -1000,6 +1000,102 @@ export const buildFeatureArchDocsPrompt = (input: {
     input.projectTechnicalSpec,
   ].join("\n");
 
+export const buildMilestoneCoverageReviewPrompt = (input: {
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  features: Array<{
+    title: string;
+    summary: string;
+    productSpec: string | null;
+    uxSpec: string | null;
+    techSpec: string | null;
+    userDocs: string | null;
+    archDocs: string | null;
+    tasks: Array<{
+      title: string;
+      description: string;
+      acceptanceCriteria: string[];
+    }>;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review whether the planned work fully covers milestone "${input.milestone.title}".`,
+    'Return valid JSON with exactly three keys: "complete" (boolean), "milestoneId" (string placeholder ignored by the prompt consumer), and "issues" (array).',
+    'Each issue must be an object with exactly two keys: "action" and "hint".',
+    '"action" must be either "create_catch_up_feature" or "needs_human_review".',
+    "Only report material coverage gaps between the milestone design doc and the current feature/task plan.",
+    "Be conservative. Do not report minor wording differences or implied detail that is already covered.",
+    'Use "create_catch_up_feature" when a single additional feature can reasonably close the gap.',
+    'Use "needs_human_review" when the gap is ambiguous, structural, or likely requires manual milestone/feature/task changes.',
+    "If coverage is complete, return complete=true and an empty issues array.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Approved feature workstreams and generated tasks for this milestone:",
+    JSON.stringify(input.features, null, 2),
+  ].join("\n");
+
+export const buildMilestoneCatchUpFeaturePrompt = (input: {
+  hint: string;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  existingFeatures: Array<{
+    title: string;
+    summary: string;
+  }>;
+  projectProductSpec: string;
+  projectTechnicalSpec: string;
+  projectUxSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Create one catch-up feature for milestone "${input.milestone.title}" that closes the described coverage gap.`,
+    'Return valid JSON with exactly these top-level keys: "feature", "product", "ux", "tech", "userDocs", "archDocs".',
+    'The "feature" object must contain: title, summary, acceptanceCriteria, kind, priority.',
+    'The "product" object must contain: title, markdown, requirements.',
+    'The "ux", "tech", "userDocs", and "archDocs" objects must each contain: title, markdown.',
+    "The feature should be tightly scoped to the missing milestone coverage and should not duplicate an existing feature.",
+    "Generate complete, draft-ready workstreams in one pass so the feature can go through the normal approval and task-planning flow next.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Coverage gap to close:",
+    input.hint,
+    "",
+    "Milestone summary:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Existing milestone features:",
+    JSON.stringify(input.existingFeatures, null, 2),
+    "",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project UX Spec:",
+    input.projectUxSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.projectTechnicalSpec,
+  ].join("\n");
+
 export const buildTaskClarificationsPrompt = (input: {
   feature: {
     acceptanceCriteria: string[];

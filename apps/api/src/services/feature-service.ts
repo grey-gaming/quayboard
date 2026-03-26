@@ -39,6 +39,7 @@ import {
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import type { MilestoneService } from "./milestone-service.js";
 
 const formatFeatureKey = (counter: number) => `F-${counter.toString().padStart(3, "0")}`;
 const normalizeFeatureTitle = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -79,7 +80,7 @@ const buildFeature = (
     archivedAt: feature.archivedAt?.toISOString() ?? null,
   });
 
-export const createFeatureService = (db: AppDatabase) => ({
+export const createFeatureService = (db: AppDatabase, milestoneService?: MilestoneService) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
@@ -131,6 +132,24 @@ export const createFeatureService = (db: AppDatabase) => ({
         "approved_milestone_required",
         "Features must belong to an approved milestone.",
       );
+    }
+
+    if (milestoneService) {
+      const activeMilestone = await db.query.milestonesTable.findFirst({
+        where: and(
+          eq(milestonesTable.projectId, projectId),
+          inArray(milestonesTable.status, ["draft", "approved"]),
+        ),
+        orderBy: [asc(milestonesTable.position)],
+      });
+
+      if (!activeMilestone || activeMilestone.id !== milestoneId) {
+        throw new HttpError(
+          409,
+          "active_milestone_required",
+          "Features can only be created for the active milestone.",
+        );
+      }
     }
 
     return milestone;
@@ -359,6 +378,8 @@ export const createFeatureService = (db: AppDatabase) => ({
       return featureId;
     });
 
+    await milestoneService?.invalidateReconciliation(payload.milestoneId);
+
     return this.get(ownerUserId, featureId);
   },
 
@@ -380,6 +401,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         updatedAt: new Date(),
       })
       .where(eq(featureCasesTable.id, featureId));
+
+    await milestoneService?.invalidateReconciliation(payload.milestoneId ?? context.milestoneId);
 
     return this.get(ownerUserId, featureId);
   },
@@ -410,6 +433,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         );
     });
 
+    await milestoneService?.invalidateReconciliation(context.milestoneId);
+
     return this.list(ownerUserId, context.projectId);
   },
 
@@ -437,7 +462,7 @@ export const createFeatureService = (db: AppDatabase) => ({
   },
 
   async createRevision(ownerUserId: string, featureId: string, input: unknown) {
-    await this.getContext(ownerUserId, featureId);
+    const context = await this.getContext(ownerUserId, featureId);
     const payload = createFeatureRevisionRequestSchema.parse(input);
 
     await db.transaction(async (tx) => {
@@ -462,6 +487,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         .set({ updatedAt: new Date() })
         .where(eq(featureCasesTable.id, featureId));
     });
+
+    await milestoneService?.invalidateReconciliation(context.milestoneId);
 
     return this.listRevisions(ownerUserId, featureId);
   },

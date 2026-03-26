@@ -22,6 +22,7 @@ export const nextActionSchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
   href: z.string().min(1),
+  description: z.string().min(1).nullable().optional(),
 });
 
 export const nextActionsResponseSchema = z.object({

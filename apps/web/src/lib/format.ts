@@ -21,9 +21,15 @@ const STEP_KEY_LABELS: Record<string, string> = {
   milestones_generate: "Generate Milestones",
   milestone_design_generate: "Generate Milestone Design",
   milestones_approve: "Approve Milestone",
+  milestone_reconciliation_review: "Run Milestone Reconciliation",
+  milestone_reconciliation_resolve: "Resolve Milestone Coverage Gaps",
+  milestone_complete: "Complete Milestone",
   features_create: "Create Features",
   feature_product_create: "Generate Feature Spec",
   feature_product_approval: "Approve Feature Spec",
+  feature_task_clarifications_generate: "Generate Task Clarifications",
+  feature_task_clarifications_answer: "Answer Task Clarifications",
+  feature_task_list_generate: "Generate Task List",
   feature_stale_implementation: "Re-implement Feature",
 };
 
