@@ -475,7 +475,11 @@ export const MilestonesPage = () => {
           ) : null}
         </Card>
         <div className="grid gap-4">
-          {activeMilestones.map((milestone) => (
+          {activeMilestones.map((milestone) => {
+            const reconciliationStatus = milestone.reconciliationStatus ?? "not_started";
+            const reconciliationIssues = milestone.reconciliationIssues ?? [];
+
+            return (
             <Card key={milestone.id} surface="panel">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -495,14 +499,14 @@ export const MilestonesPage = () => {
                     {milestone.isActive ? <Badge tone="info">active</Badge> : null}
                     <Badge
                       tone={
-                        milestone.reconciliationStatus === "passed"
+                        reconciliationStatus === "passed"
                           ? "success"
-                          : milestone.reconciliationStatus === "failed_needs_human"
+                          : reconciliationStatus === "failed_needs_human"
                             ? "warning"
                             : "neutral"
                       }
                     >
-                      reconciliation: {milestone.reconciliationStatus.replaceAll("_", " ")}
+                      reconciliation: {reconciliationStatus.replaceAll("_", " ")}
                     </Badge>
                   </div>
                   <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
@@ -556,8 +560,7 @@ export const MilestonesPage = () => {
                       Approve
                     </Button>
                   ) : null}
-                  {milestone.status === "approved" &&
-                  milestone.reconciliationStatus === "passed" ? (
+                  {milestone.status === "approved" && reconciliationStatus === "passed" ? (
                     <Button
                       onClick={() => {
                         void transitionMilestoneMutation.mutateAsync({
@@ -580,15 +583,15 @@ export const MilestonesPage = () => {
                 ))}
                 <Badge tone="neutral">{milestone.featureCount} features</Badge>
               </div>
-              {milestone.reconciliationIssues.length > 0 ? (
-                <Alert tone={milestone.reconciliationStatus === "failed_needs_human" ? "error" : "info"}>
+              {reconciliationIssues.length > 0 ? (
+                <Alert tone={reconciliationStatus === "failed_needs_human" ? "error" : "info"}>
                   <p className="font-medium">
-                    {milestone.reconciliationStatus === "failed_needs_human"
+                    {reconciliationStatus === "failed_needs_human"
                       ? "Milestone completion is blocked until these coverage gaps are resolved."
                       : "Milestone reconciliation identified a coverage gap and generated a catch-up feature."}
                   </p>
                   <ul className="mt-2 list-disc pl-5 text-sm">
-                    {milestone.reconciliationIssues.map((issue, index) => (
+                    {reconciliationIssues.map((issue, index) => (
                       <li key={`${milestone.id}-issue-${index}`}>{issue.hint}</li>
                     ))}
                   </ul>
@@ -601,7 +604,8 @@ export const MilestonesPage = () => {
                 projectId={id}
               />
             </Card>
-          ))}
+            );
+          })}
         </div>
         <Card surface="rail">
           <p className="qb-meta-label">Coverage check</p>

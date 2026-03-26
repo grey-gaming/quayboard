@@ -309,6 +309,13 @@ export const createMilestoneService = (db: AppDatabase) => ({
           title: payload.title,
           summary: payload.summary,
           status: "draft",
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          reconciliationLastJobId: null,
+          autoCatchUpCount: 0,
           createdByJobId: createdByJobId ?? null,
           createdAt: now,
           updatedAt: now,
@@ -351,13 +358,18 @@ export const createMilestoneService = (db: AppDatabase) => ({
 
     await db.transaction(async (tx) => {
       if (payload.title || payload.summary) {
+        const milestonePatch = {
+          title: payload.title,
+          summary: payload.summary,
+          updatedAt: new Date(),
+        };
         await tx
           .update(milestonesTable)
-          .set({
-            title: payload.title,
-            summary: payload.summary,
-            updatedAt: new Date(),
-          })
+          .set(
+            Object.fromEntries(
+              Object.entries(milestonePatch).filter(([, value]) => value !== undefined),
+            ),
+          )
           .where(eq(milestonesTable.id, milestoneId));
       }
 
@@ -570,6 +582,13 @@ export const createMilestoneService = (db: AppDatabase) => ({
         title: DEFAULT_MILESTONE_ZERO_TITLE,
         summary: DEFAULT_MILESTONE_ZERO_SUMMARY,
         status: "draft",
+        approvedAt: null,
+        completedAt: null,
+        reconciliationStatus: "not_started",
+        reconciliationIssues: [],
+        reconciliationReviewedAt: null,
+        reconciliationLastJobId: null,
+        autoCatchUpCount: 0,
         createdByJobId: null,
         createdAt: now,
         updatedAt: now,
