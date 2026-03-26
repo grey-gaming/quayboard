@@ -2297,4 +2297,248 @@ describe("job runner service", () => {
     );
     expect(generate).not.toHaveBeenCalled();
   });
+
+  it("normalizes common catch-up feature kind and priority aliases", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const createFeature = vi.fn(async () => ({ id: "feature-id" }));
+    const createRevision = vi.fn(async () => undefined);
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async (_ownerUserId: string, targetProjectId: string, kind: string) => ({
+          id: `${kind}-spec-id`,
+          projectId: targetProjectId,
+          kind,
+          version: 1,
+          title: kind === "ux" ? "UX Spec" : "Technical Spec",
+          markdown: `# ${kind} spec`,
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      featureService: {
+        assertApprovedMilestone: vi.fn(async () => undefined),
+        create: createFeature,
+        list: vi.fn(async () => ({ features: [] })),
+      } as never,
+      featureWorkstreamService: {
+        createRevision,
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-catch-up",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneCatchUpFeature",
+          inputs: { milestoneId: "milestone-id", hint: "Create missing ADR docs." },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate: vi.fn(async () => ({
+          content: JSON.stringify({
+            feature: {
+              title: "Complete Initial ADR Set",
+              summary: "Add the missing ADRs.",
+              acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
+              kind: "documentation",
+              priority: "high",
+            },
+            product: {
+              title: "Product",
+              markdown: "# Product",
+              requirements: {
+                uxRequired: true,
+                techRequired: true,
+                userDocsRequired: true,
+                archDocsRequired: true,
+              },
+            },
+            ux: { title: "UX", markdown: "# UX" },
+            tech: { title: "Tech", markdown: "# Tech" },
+            userDocs: { title: "User Docs", markdown: "# User Docs" },
+            archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
+          }),
+          promptTokens: 10,
+          completionTokens: 12,
+        })),
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getCanonicalDesignDoc: vi.fn(async () => ({
+          id: "design-doc-id",
+          milestoneId: "milestone-id",
+          version: 1,
+          title: "Milestone Design",
+          markdown: "# Milestone Design",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-catch-up");
+
+    expect(createFeature).toHaveBeenCalledWith(
+      userId,
+      projectId,
+      expect.objectContaining({
+        kind: "system",
+        priority: "must_have",
+      }),
+      "job-catch-up",
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-catch-up",
+      expect.objectContaining({ featureId: "feature-id", milestoneId: "milestone-id" }),
+    );
+  });
+
+  it("reports catch-up-specific validation errors for unsupported feature enums", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async (_ownerUserId: string, targetProjectId: string, kind: string) => ({
+          id: `${kind}-spec-id`,
+          projectId: targetProjectId,
+          kind,
+          version: 1,
+          title: kind === "ux" ? "UX Spec" : "Technical Spec",
+          markdown: `# ${kind} spec`,
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      db: db as never,
+      featureService: {
+        assertApprovedMilestone: vi.fn(async () => undefined),
+        create: vi.fn(async () => ({ id: "feature-id" })),
+        list: vi.fn(async () => ({ features: [] })),
+      } as never,
+      featureWorkstreamService: {
+        createRevision: vi.fn(async () => undefined),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-catch-up",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneCatchUpFeature",
+          inputs: { milestoneId: "milestone-id", hint: "Create missing ADR docs." },
+        })),
+        markSucceeded: vi.fn(async () => undefined),
+      } as never,
+      llmProviderService: {
+        generate: vi.fn(async () => ({
+          content: JSON.stringify({
+            feature: {
+              title: "Complete Initial ADR Set",
+              summary: "Add the missing ADRs.",
+              acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
+              kind: "backend",
+              priority: "high",
+            },
+            product: { title: "Product", markdown: "# Product" },
+            ux: { title: "UX", markdown: "# UX" },
+            tech: { title: "Tech", markdown: "# Tech" },
+            userDocs: { title: "User Docs", markdown: "# User Docs" },
+            archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
+          }),
+          promptTokens: 10,
+          completionTokens: 12,
+        })),
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getCanonicalDesignDoc: vi.fn(async () => ({
+          id: "design-doc-id",
+          milestoneId: "milestone-id",
+          version: 1,
+          title: "Milestone Design",
+          markdown: "# Milestone Design",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-catch-up")).rejects.toThrow(
+      "GenerateMilestoneCatchUpFeature returned an unsupported feature kind.",
+    );
+  });
 });
