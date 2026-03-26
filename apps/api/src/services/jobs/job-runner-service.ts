@@ -256,6 +256,38 @@ const parseFeatureWorkstreamResult = (value: string, templateId: string) => {
   };
 };
 
+const normalizeFeatureKind = (value: string | undefined) => {
+  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+  switch (normalized) {
+    case "documentation":
+    case "docs":
+    case "doc":
+      return "system";
+    default:
+      return value;
+  }
+};
+
+const normalizeFeaturePriority = (value: string | undefined) => {
+  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+  switch (normalized) {
+    case "critical":
+    case "urgent":
+    case "high":
+      return "must_have";
+    case "medium":
+    case "normal":
+      return "should_have";
+    case "low":
+    case "nice_to_have":
+      return "could_have";
+    default:
+      return value;
+  }
+};
+
 const validateGeneratedUserFlows = (
   flows: Array<{
     acceptanceCriteria?: string[];
@@ -604,7 +636,16 @@ const parseMilestoneCatchUpFeatureResult = (value: string) => {
     throw new Error("GenerateMilestoneCatchUpFeature returned invalid content.");
   }
 
-  const [feature] = validateGeneratedFeatures([parsed.feature]);
+  const [feature] = validateGeneratedFeatures(
+    [
+      {
+        ...parsed.feature,
+        kind: normalizeFeatureKind(parsed.feature.kind),
+        priority: normalizeFeaturePriority(parsed.feature.priority),
+      },
+    ],
+    "GenerateMilestoneCatchUpFeature",
+  );
   const product = parseFeatureWorkstreamResult(
     JSON.stringify(parsed.product ?? null),
     "GenerateMilestoneCatchUpFeature.product",
@@ -644,10 +685,11 @@ const validateGeneratedFeatures = (
     kind?: string;
     priority?: string;
   }>,
+  templateId = "AppendFeatureFromOnePager",
 ) => {
   if (items.length === 0) {
     throw new Error(
-      "AppendFeatureFromOnePager returned invalid content. Expected a non-empty JSON array of features.",
+      `${templateId} returned invalid content. Expected a non-empty JSON array of features.`,
     );
   }
 
@@ -659,18 +701,18 @@ const validateGeneratedFeatures = (
       item.acceptanceCriteria.length === 0
     ) {
       throw new Error(
-        "AppendFeatureFromOnePager returned an incomplete feature. Each feature must include title, summary, and at least one acceptance criterion.",
+        `${templateId} returned an incomplete feature. Each feature must include title, summary, and at least one acceptance criterion.`,
       );
     }
 
     const kind = featureKindSchema.safeParse(item.kind);
     if (!kind.success) {
-      throw new Error("AppendFeatureFromOnePager returned an unsupported feature kind.");
+      throw new Error(`${templateId} returned an unsupported feature kind.`);
     }
 
     const priority = prioritySchema.safeParse(item.priority);
     if (!priority.success) {
-      throw new Error("AppendFeatureFromOnePager returned an unsupported feature priority.");
+      throw new Error(`${templateId} returned an unsupported feature priority.`);
     }
 
     return {
