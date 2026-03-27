@@ -90,7 +90,7 @@ export const MissionControlPage = () => {
           </div>
         </div>
         <div className="grid gap-4 items-start">
-          <AutoAdvanceControlsCard projectId={id} session={session} />
+          <AutoAdvanceControlsCard projectId={id} session={session} nextStep={nextStep} />
           <MissionActivityTimeline jobs={jobs} />
         </div>
       </div>

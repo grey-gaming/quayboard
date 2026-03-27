@@ -19,6 +19,8 @@ One row per project (enforced by a unique index on `project_id`).
 | `paused_reason` | TEXT CHECK nullable | Why the session is paused (see below) |
 | `auto_approve_when_clear` | BOOLEAN | Reserved for future auto-approval logic |
 | `skip_review_steps` | BOOLEAN | When true, approval gates are bypassed |
+| `auto_resolve_ambiguous_reconciliation` | BOOLEAN | Opt-in repair loop for `needs_human_review` milestone reconciliation gaps |
+| `ambiguous_reconciliation_repair_count` | INTEGER | Counts bounded ambiguous-repair attempts in the current session |
 | `creativity_mode` | TEXT | `conservative \| balanced \| creative` |
 | `started_at` | TIMESTAMPTZ nullable | Set when status transitions to `running` |
 | `paused_at` | TIMESTAMPTZ nullable | Set when status transitions to `paused` |
@@ -69,9 +71,10 @@ createAutoAdvanceService(db, nextActionsService, jobService, sseHub) => {
 ### `start(ownerUserId, projectId, opts)`
 
 1. Checks for an existing session. Throws if status is `running`.
-2. Inserts a new session row with `status: running` and `started_at: now`.
-3. Calls `advanceStep` (see below).
-4. Publishes `auto-advance:updated` SSE event.
+2. Inserts a new session row with `status: running`, `started_at: now`, and any requested session options.
+3. Resets the bounded ambiguous reconciliation repair counter to `0`.
+4. Calls `advanceStep` (see below).
+5. Publishes `auto-advance:updated` SSE event.
 
 ### `stop(ownerUserId, projectId)`
 
@@ -155,7 +158,31 @@ When the active milestone has no remaining feature, workstream, or task-planning
 
 - If reconciliation passes, the next step becomes milestone completion.
 - If reconciliation finds gaps on the first pass, auto-advance rewrites the current milestone's feature set and then resumes the normal workstream and task-planning flow for the replacement features.
-- If reconciliation still finds gaps after that rewrite pass, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
+- If reconciliation returns only `needs_human_review` issues and `auto_resolve_ambiguous_reconciliation` is enabled, auto-advance queues one bounded `ResolveMilestoneCoverageIssues` repair attempt before pausing.
+- If that repair attempt cannot produce a valid generic plan, or if reconciliation still fails after the single repair attempt, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
+
+### `ResolveMilestoneCoverageIssues`
+
+This internal job is a generic LLM-driven repair loop for ambiguous milestone reconciliation blockers.
+
+- Inputs: `milestoneId` and the unresolved `needs_human_review` issues from `ReviewMilestoneCoverage`
+- Allowed edits:
+  - create a new revision for an existing active-milestone feature
+  - regenerate and self-approve downstream feature workstreams
+  - regenerate task clarifications and delivery tasks
+- Disallowed edits:
+  - milestone design docs
+  - milestone titles/summaries
+  - creating or archiving features
+  - touching non-active milestones
+
+The repair planner produces structured JSON only. The executor validates the plan before applying it:
+
+- every referenced `featureKey` must belong to the active milestone
+- unsupported refresh targets are rejected
+- malformed or non-executable plans fail closed and return `resolved: false`
+
+The repair loop is deliberately bounded to one attempt per auto-advance session to avoid self-reinforcing retry loops.
 
 ---
 
@@ -226,6 +253,6 @@ Defined in `packages/shared/src/schemas/auto-advance.ts`:
 
 - `AutoAdvanceSession` — full session row type
 - `AutoAdvanceStatusResponse` — `{ session: AutoAdvanceSession | null, nextStep: string | null }`
-- `StartAutoAdvanceRequest` — `{ autoApproveWhenClear?, skipReviewSteps?, creativityMode? }`
+- `StartAutoAdvanceRequest` — `{ autoApproveWhenClear?, skipReviewSteps?, autoResolveAmbiguousReconciliation?, creativityMode? }`
 
 All types are re-exported from `@quayboard/shared`.

@@ -28,6 +28,7 @@ const autoAdvanceSessionJsonSchema = {
     pausedReason: { type: ["string", "null"] },
     autoApproveWhenClear: { type: "boolean" },
     skipReviewSteps: { type: "boolean" },
+    autoResolveAmbiguousReconciliation: { type: "boolean" },
     creativityMode: { type: "string" },
     retryCount: { type: "integer" },
     reviewCount: { type: "integer" },
@@ -46,6 +47,7 @@ const autoAdvanceSessionJsonSchema = {
     "pausedReason",
     "autoApproveWhenClear",
     "skipReviewSteps",
+    "autoResolveAmbiguousReconciliation",
     "creativityMode",
     "retryCount",
     "reviewCount",
@@ -76,6 +78,7 @@ const startBodyJsonSchema = {
   properties: {
     autoApproveWhenClear: { type: "boolean" },
     skipReviewSteps: { type: "boolean" },
+    autoResolveAmbiguousReconciliation: { type: "boolean" },
     creativityMode: { type: "string", enum: ["conservative", "balanced", "creative"] },
     maxConcurrentJobs: { type: "integer", minimum: 1, maximum: 10 },
   },

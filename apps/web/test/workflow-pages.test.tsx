@@ -193,6 +193,10 @@ describe("workflow pages", () => {
           },
         ],
       },
+      [`/api/projects/${projectId}/auto-advance/status`]: {
+        session: null,
+        nextStep: null,
+      },
     });
 
     renderRoute("/projects/:id", <MissionControlPage />);
@@ -235,6 +239,10 @@ describe("workflow pages", () => {
       [`/api/projects/${orderedProjectId}/jobs`]: {
         jobs: [],
       },
+      [`/api/projects/${orderedProjectId}/auto-advance/status`]: {
+        session: null,
+        nextStep: null,
+      },
     });
 
     renderRoute("/projects/:id", <MissionControlPage />, orderedProjectId);
@@ -255,6 +263,74 @@ describe("workflow pages", () => {
       "Technical Spec",
       "User Flows",
     ]);
+  });
+
+  it("shows a milestone-gap CTA instead of resume controls for a human-blocked reconciliation pause", async () => {
+    const blockedProjectId = "70707070-7070-4070-8070-707070707070";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${blockedProjectId}`]: {
+        id: blockedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: blockedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${blockedProjectId}/phase-gates`]: {
+        phases: [],
+      },
+      [`/api/projects/${blockedProjectId}/next-actions`]: {
+        actions: [
+          {
+            key: "milestone_reconciliation_resolve",
+            label: "Resolve milestone reconciliation gaps",
+            href: `/projects/${blockedProjectId}/milestones`,
+          },
+        ],
+      },
+      [`/api/projects/${blockedProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${blockedProjectId}/auto-advance/status`]: {
+        session: {
+          id: "auto-session-1",
+          projectId: blockedProjectId,
+          status: "paused",
+          currentStep: "milestone_reconciliation_resolve",
+          pausedReason: "needs_human",
+          autoApproveWhenClear: false,
+          skipReviewSteps: false,
+          autoResolveAmbiguousReconciliation: true,
+          creativityMode: "balanced",
+          retryCount: 0,
+          reviewCount: 0,
+          maxConcurrentJobs: 1,
+          pendingJobCount: 0,
+          activeBatchToken: null,
+          startedAt: "2026-03-16T10:00:00.000Z",
+          pausedAt: "2026-03-16T10:02:00.000Z",
+          completedAt: null,
+          createdAt: "2026-03-16T10:00:00.000Z",
+          updatedAt: "2026-03-16T10:02:00.000Z",
+        },
+        nextStep: "milestone_reconciliation_resolve",
+      },
+    });
+
+    renderRoute("/projects/:id", <MissionControlPage />, blockedProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
+    expect(screen.getByText(/Auto-advance cannot continue until the active milestone gaps are resolved/i)).toBeTruthy();
+    expect(screen.getByText("Ambiguous milestone reconciliation repair is enabled for this session.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Review milestone gaps" }).getAttribute("href")).toBe(
+      `/projects/${blockedProjectId}/milestones`,
+    );
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Step once" })).toBeNull();
   });
 
   it("renders milestone planning with design-doc approval controls", async () => {

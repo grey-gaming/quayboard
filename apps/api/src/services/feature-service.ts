@@ -513,7 +513,12 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
     });
   },
 
-  async createRevision(ownerUserId: string, featureId: string, input: unknown) {
+  async createRevision(
+    ownerUserId: string,
+    featureId: string,
+    input: unknown,
+    createdByJobId?: string,
+  ) {
     const context = await this.getContext(ownerUserId, featureId);
     const payload = createFeatureRevisionRequestSchema.parse(input);
 
@@ -531,6 +536,7 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
         summary: payload.summary,
         acceptanceCriteria: payload.acceptanceCriteria,
         source: payload.source,
+        createdByJobId: createdByJobId ?? null,
         createdAt: new Date(),
       });
 
