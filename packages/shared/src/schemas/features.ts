@@ -137,12 +137,12 @@ export const createFeatureDependencyRequestSchema = z.object({
 
 export type CreateFeatureDependencyRequest = z.infer<typeof createFeatureDependencyRequestSchema>;
 
-export const appendFeatureFromOnePagerRequestSchema = z.object({
+export const generateMilestoneFeatureSetRequestSchema = z.object({
   milestoneId: z.string().uuid(),
 });
 
-export type AppendFeatureFromOnePagerRequest = z.infer<
-  typeof appendFeatureFromOnePagerRequestSchema
+export type GenerateMilestoneFeatureSetRequest = z.infer<
+  typeof generateMilestoneFeatureSetRequestSchema
 >;
 
 export const featureListResponseSchema = z.object({

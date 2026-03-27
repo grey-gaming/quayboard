@@ -211,7 +211,6 @@ export const createAppServices = async (
     artifactApprovalService,
     blueprintService,
     featureService,
-    featureWorkstreamService,
     milestoneService,
     onePagerService,
     productSpecService,

@@ -365,7 +365,7 @@ export const createNextActionsService = (
             if (!actions.length && activeMilestone.featureCount === 0) {
               actions.push({
                 key: "features_create",
-                label: "Create the first feature",
+                label: "Generate milestone feature set",
                 href: `/projects/${projectId}/features?milestone=${activeMilestone.id}`,
               });
             }

@@ -588,7 +588,7 @@ export const MilestonesPage = () => {
                   <p className="font-medium">
                     {reconciliationStatus === "failed_needs_human"
                       ? "Milestone completion is blocked until these coverage gaps are resolved."
-                      : "Milestone reconciliation identified a coverage gap and generated a catch-up feature."}
+                      : "Milestone reconciliation identified a coverage gap and rewrote the milestone feature set."}
                   </p>
                   <ul className="mt-2 list-disc pl-5 text-sm">
                     {reconciliationIssues.map((issue, index) => (

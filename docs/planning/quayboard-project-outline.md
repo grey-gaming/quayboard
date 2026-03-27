@@ -662,7 +662,7 @@ The **JobScheduler** (`apps/api/src/services/job-scheduler.ts`) runs a 5-second 
 | Project description | `GenerateProjectDescription`, `SuggestProjectNames`, `AutoAnswerQuestionnaire` |
 | User flows | `GenerateUseCases`, `DeduplicateUseCases` |
 | UX / Technical Spec | `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency` |
-| Feature builder | `GenerateFeatureProductSpec`, `GenerateFeatureUxSpec`, `GenerateFeatureTechSpec`, `AppendFeatureFromOnePager` |
+| Feature builder | `GenerateFeatureProductSpec`, `GenerateFeatureUxSpec`, `GenerateFeatureTechSpec`, `GenerateMilestoneFeatureSet` |
 | Feature review/refine | `ReviewProductInContext`, `ReviewUxInContext`, `ReviewTechInContext`, `RefineProductFromIssues`, `RefineUxFromIssues`, `RefineTechFromIssues`, `ReviewFeatureInContext`, `RefineFeatureFromIssues` |
 | Milestones | `GenerateMilestones`, `GenerateMilestoneDesign` |
 | Task planning | `GenerateTaskClarifications`, `AutoAnswerTaskClarifications`, `GenerateFeatureTaskList`, `RecommendNextFeature`, `ReviewFeatureCohesion` |
@@ -1272,7 +1272,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - Feature CRUD routes (`POST/GET /projects/:id/features`, `GET/PATCH/DELETE /features/:id`)
 - Feature revision routes (create, list)
 - Feature dependency routes (add, remove, list)
-- `AppendFeatureFromOnePager` LLM executor (seed features from overview document)
+- `GenerateMilestoneFeatureSet` LLM executor (seed the milestone feature set from approved planning documents and the milestone design doc)
 - Feature rollup route (`GET /projects/:id/features/rollup`)
 
 **Frontend**:

@@ -16,7 +16,7 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - Technical decision-tile generation, selection persistence, acceptance, and Technical Spec approval
 - user-flow generation, manual editing, deduplication, and approval
 - milestone planning, active-milestone lifecycle control, milestone design doc generation, milestone reconciliation, and milestone completion
-- feature catalogue management, feature revisions, dependency graph reads, overview-seeded feature intake, and feature rollups
+- feature catalogue management, feature revisions, dependency graph reads, milestone feature-set generation, and feature rollups
 - feature workstream editing for Product, UX, Tech, User Docs, and Architecture Docs, including revision history and approvals
 
 ## Data Model
@@ -48,8 +48,8 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, `milestoneService`, `featureService`, `featureWorkstreamService`, and `artifactApprovalService` manage planning artifacts
 - `phaseGateService` now treats the Features phase as requiring at least one feature with an approved Product workstream revision
 - `nextActionsService` now scopes detailed planning to the active milestone only, then continues through task planning and milestone reconciliation before milestone completion
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, overview-seeded feature creation, and feature workstream generation
-- milestone design, milestone feature-set generation, catch-up feature generation, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, milestone feature-set generation, milestone feature-set rewrite, and feature workstream generation
+- milestone design, milestone feature-set generation, milestone feature-set rewrite, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
 - feature and task generation prompts now use milestone design guidance and sibling-boundary context to reduce task-sized feature fragmentation and milestone-coverage gaps
 
 ## External Adapters

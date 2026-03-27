@@ -18,7 +18,11 @@ export type MilestoneReconciliationStatus = z.infer<
 >;
 
 export const milestoneReconciliationIssueSchema = z.object({
-  action: z.enum(["create_catch_up_feature", "needs_human_review"]),
+  action: z.enum([
+    "rewrite_feature_set",
+    "create_catch_up_feature",
+    "needs_human_review",
+  ]),
   hint: z.string().min(1),
 });
 

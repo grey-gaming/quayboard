@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import {
   type FeatureDocumentState,
@@ -778,6 +778,120 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       createdIds,
       skippedCount: input.items.length - createdIds.length,
     };
+  },
+
+  async replaceGeneratedMilestoneFeatures(input: {
+    ownerUserId: string;
+    projectId: string;
+    milestoneId: string;
+    createdByJobId?: string;
+    items: Array<{
+      title: string;
+      summary: string;
+      acceptanceCriteria: string[];
+      kind: FeatureKind;
+      priority: Priority;
+    }>;
+  }) {
+    await this.assertOwnedProject(input.ownerUserId, input.projectId);
+    await this.assertApprovedMilestone(input.projectId, input.milestoneId);
+
+    const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const activeMilestoneFeatures = await tx.query.featureCasesTable.findMany({
+        where: and(
+          eq(featureCasesTable.projectId, input.projectId),
+          eq(featureCasesTable.milestoneId, input.milestoneId),
+          isNull(featureCasesTable.archivedAt),
+        ),
+      });
+      const archivedFeatureIds = activeMilestoneFeatures.map((feature) => feature.id);
+
+      if (archivedFeatureIds.length > 0) {
+        await tx
+          .update(featureCasesTable)
+          .set({
+            status: "archived",
+            archivedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(featureCasesTable.id, archivedFeatureIds));
+
+        await tx
+          .delete(featureDependenciesTable)
+          .where(
+            or(
+              inArray(featureDependenciesTable.featureId, archivedFeatureIds),
+              inArray(featureDependenciesTable.dependsOnFeatureId, archivedFeatureIds),
+            ),
+          );
+        await tx
+          .delete(featureEdgesTable)
+          .where(
+            or(
+              inArray(featureEdgesTable.featureId, archivedFeatureIds),
+              inArray(featureEdgesTable.relatedFeatureId, archivedFeatureIds),
+            ),
+          );
+      }
+
+      const counter = await tx.query.projectCountersTable.findFirst({
+        where: eq(projectCountersTable.projectId, input.projectId),
+      });
+
+      if (!counter) {
+        throw new Error(`Missing project counter for project ${input.projectId}.`);
+      }
+
+      if (input.items.length > 0) {
+        await tx
+          .update(projectCountersTable)
+          .set({
+            featureCounter: counter.featureCounter + input.items.length,
+            updatedAt: now,
+          })
+          .where(eq(projectCountersTable.projectId, input.projectId));
+      }
+
+      const createdIds = input.items.map(() => generateId());
+      if (createdIds.length > 0) {
+        await tx.insert(featureCasesTable).values(
+          input.items.map((item, index) => ({
+            id: createdIds[index]!,
+            projectId: input.projectId,
+            milestoneId: input.milestoneId,
+            featureKey: formatFeatureKey(counter.featureCounter + index + 1),
+            kind: item.kind,
+            priority: item.priority,
+            status: "draft" as const,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+        await tx.insert(featureRevisionsTable).values(
+          input.items.map((item, index) => ({
+            id: generateId(),
+            featureId: createdIds[index]!,
+            version: 1,
+            title: item.title,
+            summary: item.summary,
+            acceptanceCriteria: item.acceptanceCriteria,
+            source: "generated",
+            createdByJobId: input.createdByJobId ?? null,
+            createdAt: now,
+          })),
+        );
+      }
+
+      return {
+        archivedCount: archivedFeatureIds.length,
+        createdIds,
+      };
+    });
+
+    await milestoneService?.invalidateReconciliation(input.milestoneId);
+
+    return result;
   },
 });
 

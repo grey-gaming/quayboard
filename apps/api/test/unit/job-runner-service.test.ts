@@ -1697,7 +1697,7 @@ describe("job runner service", () => {
           id: "job-append-features",
           projectId,
           createdByUserId: userId,
-          type: "AppendFeatureFromOnePager",
+          type: "GenerateMilestoneFeatureSet",
           inputs: { milestoneId: "milestone-id" },
         })),
         markSucceeded,
@@ -2230,7 +2230,7 @@ describe("job runner service", () => {
           id: "job-append-features",
           projectId,
           createdByUserId: userId,
-          type: "AppendFeatureFromOnePager",
+          type: "GenerateMilestoneFeatureSet",
           inputs: { milestoneId: "milestone-id" },
         })),
         markSucceeded: vi.fn(async () => undefined),
@@ -2302,45 +2302,33 @@ describe("job runner service", () => {
     });
 
     await expect(service.run("job-append-features")).rejects.toThrow(
-      "AppendFeatureFromOnePager requires a canonical milestone design document.",
+      "GenerateMilestoneFeatureSet requires a canonical milestone design document.",
     );
     expect(generate).not.toHaveBeenCalled();
   });
 
-  it("normalizes common catch-up feature kind and priority aliases", async () => {
+  it("replaces the active milestone feature set when rewriting milestone coverage", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
       title: "Foundations",
       summary: "First releasable slice.",
     });
-    const createFeature = vi.fn(async () => ({ id: "feature-id" }));
-    const createRevision = vi.fn(async () => undefined);
+    const replaceGeneratedMilestoneFeatures = vi.fn(async () => ({
+      archivedCount: 2,
+      createdIds: ["feature-1", "feature-2"],
+    }));
     const markSucceeded = vi.fn(async () => undefined);
     const generate = vi.fn(async () => ({
-      content: JSON.stringify({
-        feature: {
-          title: "Complete Initial ADR Set",
-          summary: "Add the missing ADRs.",
-          acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
-          kind: "documentation",
-          priority: "high",
+      content: JSON.stringify([
+        {
+          title: "Cross-feature orchestration",
+          summary: "Fix the interaction boundary between milestone features.",
+          acceptanceCriteria: ["Shared orchestration flow is covered."],
+          kind: "system",
+          priority: "must_have",
         },
-        product: {
-          title: "Product",
-          markdown: "# Product",
-          requirements: {
-            uxRequired: true,
-            techRequired: true,
-            userDocsRequired: true,
-            archDocsRequired: true,
-          },
-        },
-        ux: { title: "UX", markdown: "# UX" },
-        tech: { title: "Tech", markdown: "# Tech" },
-        userDocs: { title: "User Docs", markdown: "# User Docs" },
-        archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
-      }),
+      ]),
       promptTokens: 10,
       completionTokens: 12,
     }));
@@ -2362,18 +2350,50 @@ describe("job runner service", () => {
       db: db as never,
       featureService: {
         assertApprovedMilestone: vi.fn(async () => undefined),
-        create: createFeature,
-        list: vi.fn(async () => ({ features: [] })),
-      } as never,
-      featureWorkstreamService: {
-        createRevision,
+        list: vi.fn(async () => ({
+          features: [
+            {
+              id: "feature-a",
+              projectId,
+              milestoneId: "milestone-id",
+              milestoneTitle: "Foundations",
+              featureKey: "F-001",
+              kind: "service",
+              priority: "must_have",
+              status: "draft",
+              headRevision: {
+                id: "feature-a-revision",
+                featureId: "feature-a",
+                version: 1,
+                title: "Notifications",
+                summary: "Handle milestone notifications.",
+                acceptanceCriteria: ["Notifications are delivered."],
+                source: "manual",
+                createdAt: "2026-03-18T00:00:00.000Z",
+              },
+              documents: {
+                product: { required: true, state: "accepted" },
+                ux: { required: true, state: "draft" },
+                tech: { required: true, state: "draft" },
+                userDocs: { required: false, state: "missing" },
+                archDocs: { required: false, state: "missing" },
+              },
+              taskPlanning: { hasTasks: false, taskCount: 0 },
+              dependencyIds: [],
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+              archivedAt: null,
+            },
+          ],
+        })),
+        replaceGeneratedMilestoneFeatures,
       } as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
           id: "job-catch-up",
           projectId,
           createdByUserId: userId,
-          type: "GenerateMilestoneCatchUpFeature",
+          type: "RewriteMilestoneFeatureSet",
           inputs: { milestoneId: "milestone-id", hint: "Create missing ADR docs." },
         })),
         markSucceeded,
@@ -2393,8 +2413,47 @@ describe("job runner service", () => {
           isCanonical: true,
           createdAt: "2026-03-18T00:00:00.000Z",
         })),
+        list: vi.fn(async () => ({
+          milestones: [
+            {
+              id: "milestone-id",
+              projectId,
+              position: 1,
+              title: "Foundations",
+              summary: "First releasable slice.",
+              status: "approved",
+              linkedUserFlows: [{ id: "flow-1", title: "Plan milestone" }],
+              featureCount: 1,
+              isActive: true,
+              approvedAt: "2026-03-18T00:00:00.000Z",
+              completedAt: null,
+              reconciliationStatus: "failed_first_pass",
+              reconciliationIssues: [],
+              reconciliationReviewedAt: "2026-03-18T00:00:00.000Z",
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 1,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: [],
+          },
+        })),
       } as never,
-      onePagerService: {} as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "overview-id",
+          projectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       productSpecService: {
         getCanonical: vi.fn(async () => ({
           id: "product-spec-id",
@@ -2434,23 +2493,23 @@ describe("job runner service", () => {
           mock: { calls: Array<[unknown, string, unknown]> };
         }
       ).mock.calls[1]?.[1] ?? "",
-    ).toContain("First-pass catch-up feature bundle:");
-    expect(createFeature).toHaveBeenCalledWith(
-      userId,
-      projectId,
+    ).toContain("First-pass rewritten feature set:");
+    expect(replaceGeneratedMilestoneFeatures).toHaveBeenCalledWith(
       expect.objectContaining({
-        kind: "system",
-        priority: "must_have",
+        milestoneId: "milestone-id",
       }),
-      "job-catch-up",
     );
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-catch-up",
-      expect.objectContaining({ featureId: "feature-id", milestoneId: "milestone-id" }),
+      expect.objectContaining({
+        archivedCount: 2,
+        createdCount: 2,
+        milestoneId: "milestone-id",
+      }),
     );
   });
 
-  it("reports catch-up-specific validation errors for unsupported feature enums", async () => {
+  it("reports rewrite-specific validation errors for unsupported feature enums", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
@@ -2475,38 +2534,33 @@ describe("job runner service", () => {
       db: db as never,
       featureService: {
         assertApprovedMilestone: vi.fn(async () => undefined),
-        create: vi.fn(async () => ({ id: "feature-id" })),
         list: vi.fn(async () => ({ features: [] })),
-      } as never,
-      featureWorkstreamService: {
-        createRevision: vi.fn(async () => undefined),
+        replaceGeneratedMilestoneFeatures: vi.fn(async () => ({
+          archivedCount: 0,
+          createdIds: [],
+        })),
       } as never,
       jobService: {
         getRawJob: vi.fn(async () => ({
           id: "job-catch-up",
           projectId,
           createdByUserId: userId,
-          type: "GenerateMilestoneCatchUpFeature",
+          type: "RewriteMilestoneFeatureSet",
           inputs: { milestoneId: "milestone-id", hint: "Create missing ADR docs." },
         })),
         markSucceeded: vi.fn(async () => undefined),
       } as never,
       llmProviderService: {
         generate: vi.fn(async () => ({
-          content: JSON.stringify({
-            feature: {
+          content: JSON.stringify([
+            {
               title: "Complete Initial ADR Set",
               summary: "Add the missing ADRs.",
               acceptanceCriteria: ["ADR-0004 and ADR-0005 exist."],
               kind: "backend",
               priority: "high",
             },
-            product: { title: "Product", markdown: "# Product" },
-            ux: { title: "UX", markdown: "# UX" },
-            tech: { title: "Tech", markdown: "# Tech" },
-            userDocs: { title: "User Docs", markdown: "# User Docs" },
-            archDocs: { title: "Architecture Docs", markdown: "# Architecture Docs" },
-          }),
+          ]),
           promptTokens: 10,
           completionTokens: 12,
         })),
@@ -2523,8 +2577,47 @@ describe("job runner service", () => {
           isCanonical: true,
           createdAt: "2026-03-18T00:00:00.000Z",
         })),
+        list: vi.fn(async () => ({
+          milestones: [
+            {
+              id: "milestone-id",
+              projectId,
+              position: 1,
+              title: "Foundations",
+              summary: "First releasable slice.",
+              status: "approved",
+              linkedUserFlows: [],
+              featureCount: 0,
+              isActive: true,
+              approvedAt: "2026-03-18T00:00:00.000Z",
+              completedAt: null,
+              reconciliationStatus: "failed_first_pass",
+              reconciliationIssues: [],
+              reconciliationReviewedAt: "2026-03-18T00:00:00.000Z",
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 0,
+            coveredUserFlowCount: 0,
+            uncoveredUserFlowIds: [],
+          },
+        })),
       } as never,
-      onePagerService: {} as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "overview-id",
+          projectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
       productSpecService: {
         getCanonical: vi.fn(async () => ({
           id: "product-spec-id",
@@ -2556,7 +2649,7 @@ describe("job runner service", () => {
     });
 
     await expect(service.run("job-catch-up")).rejects.toThrow(
-      "GenerateMilestoneCatchUpFeature returned an unsupported feature kind.",
+      "RewriteMilestoneFeatureSet returned an unsupported feature kind.",
     );
   });
 });

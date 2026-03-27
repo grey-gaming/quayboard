@@ -18,9 +18,9 @@ import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAddFeatureDependencyMutation,
-  useAppendFeaturesFromOnePagerMutation,
   useCreateFeatureMutation,
   useFeaturesQuery,
+  useGenerateMilestoneFeatureSetMutation,
   useMilestonesQuery,
   useProjectQuery,
 } from "../hooks/use-projects.js";
@@ -63,7 +63,7 @@ export const FeatureBuilderPage = () => {
   const milestonesQuery = useMilestonesQuery(id);
   const featuresQuery = useFeaturesQuery(id);
   const createFeatureMutation = useCreateFeatureMutation(id);
-  const appendFeaturesMutation = useAppendFeaturesFromOnePagerMutation(id);
+  const appendFeaturesMutation = useGenerateMilestoneFeatureSetMutation(id);
   const addDependencyMutation = useAddFeatureDependencyMutation(id);
   const milestones = milestonesQuery.data?.milestones ?? [];
   const approvedMilestones = milestones.filter((milestone) => milestone.status === "approved");

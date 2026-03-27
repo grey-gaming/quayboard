@@ -30,7 +30,7 @@ export const MissionActivityTimeline = ({
   const visible = jobs.slice(0, limit);
 
   return (
-    <Card surface="rail" className="h-fit">
+    <Card surface="rail" className="h-fit w-full max-w-80">
       <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
         <div>
           <p className="qb-meta-label">History</p>
@@ -44,8 +44,13 @@ export const MissionActivityTimeline = ({
             key={job.id}
             className="grid gap-1 border-t border-border/80 bg-panel-inset px-4 py-3 text-sm first:border-t-0"
           >
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-medium tracking-[-0.02em] truncate">{formatJobType(job.type)}</p>
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <p
+                className="min-w-0 flex-1 truncate font-medium tracking-[-0.02em]"
+                title={formatJobType(job.type)}
+              >
+                {formatJobType(job.type)}
+              </p>
               <Badge tone={jobTone(job.status)}>{job.status}</Badge>
             </div>
             <p className="qb-meta-label">
