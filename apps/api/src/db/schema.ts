@@ -1126,9 +1126,15 @@ export const autoAdvanceSessionsTable = pgTable(
       .notNull()
       .default(false),
     skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
+    autoResolveAmbiguousReconciliation: boolean("auto_resolve_ambiguous_reconciliation")
+      .notNull()
+      .default(false),
     creativityMode: text("creativity_mode").notNull().default("balanced"),
     retryCount: integer("retry_count").notNull().default(0),
     reviewCount: integer("review_count").notNull().default(0),
+    ambiguousReconciliationRepairCount: integer("ambiguous_reconciliation_repair_count")
+      .notNull()
+      .default(0),
     maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
     pendingJobCount: integer("pending_job_count").notNull().default(0),
     activeBatchToken: text("active_batch_token"),

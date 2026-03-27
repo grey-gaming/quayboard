@@ -2312,4 +2312,147 @@ describe("job runner service", () => {
       "RewriteMilestoneFeatureSet returned an unsupported feature kind.",
     );
   });
+
+  it("fails closed when ambiguous milestone repair references an unknown feature key", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({
+        resolved: true,
+        defaultsChosen: [
+          {
+            issueIndex: 0,
+            decision: "Keep the milestone scope conservative.",
+            rationale: "Avoid expanding beyond the current milestone boundary.",
+          },
+        ],
+        operations: [
+          {
+            featureKey: "F-999",
+            featurePatch: null,
+            refresh: {
+              product: true,
+              ux: false,
+              tech: false,
+              userDocs: false,
+              archDocs: false,
+              tasks: false,
+            },
+            hint: "Clarify the missing ownership boundary conservatively.",
+          },
+        ],
+        unresolvedReasons: [],
+      }),
+      promptTokens: 10,
+      completionTokens: 12,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonicalByKind: vi.fn(async () => null),
+      } as never,
+      db: db as never,
+      featureService: {
+        list: vi.fn(async () => ({ features: [] })),
+      } as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-repair",
+          projectId,
+          createdByUserId: userId,
+          type: "ResolveMilestoneCoverageIssues",
+          inputs: {
+            milestoneId: "milestone-id",
+            issues: [{ action: "needs_human_review", hint: "Clarify ownership." }],
+          },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getCanonicalDesignDoc: vi.fn(async () => ({
+          id: "design-doc-id",
+          milestoneId: "milestone-id",
+          version: 1,
+          title: "Milestone Design",
+          markdown: "# Milestone Design",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      onePagerService: {
+        getCanonical: vi.fn(async () => ({
+          id: "overview-id",
+          projectId,
+          version: 1,
+          title: "Overview",
+          markdown: "# Overview\n\nApproved project intent.",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec\n\nApproved product scope.",
+          source: "GenerateProductSpec",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-repair");
+
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-repair",
+      expect.objectContaining({
+        resolved: false,
+        operationsApplied: [],
+        unresolvedReasons: [
+          'Repair planner referenced unknown active-milestone feature "F-999".',
+        ],
+      }),
+    );
+  });
 });

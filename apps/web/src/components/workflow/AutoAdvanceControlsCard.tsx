@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { AutoAdvanceSession, CreativityMode } from "@quayboard/shared";
 
@@ -22,9 +23,11 @@ const creativityModeOptions: { value: CreativityMode; label: string }[] = [
 export const AutoAdvanceControlsCard = ({
   projectId,
   session,
+  nextStep,
 }: {
   projectId: string;
   session: AutoAdvanceSession | null;
+  nextStep: string | null;
 }) => {
   const startMutation = useAutoAdvanceStart(projectId);
   const stopMutation = useAutoAdvanceStop(projectId);
@@ -35,6 +38,8 @@ export const AutoAdvanceControlsCard = ({
   const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
   const [skipReviewSteps, setSkipReviewSteps] = useState(false);
   const [autoApproveWhenClear, setAutoApproveWhenClear] = useState(false);
+  const [autoResolveAmbiguousReconciliation, setAutoResolveAmbiguousReconciliation] =
+    useState(false);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(1);
 
   const isPending =
@@ -49,10 +54,17 @@ export const AutoAdvanceControlsCard = ({
   const isPaused = status === "paused";
   const isCompleted = status === "completed" || status === "failed";
   const isActive = isRunning || isPaused;
+  const isHumanBlockedMilestoneReconciliation =
+    isPaused &&
+    session?.pausedReason === "needs_human" &&
+    nextStep === "milestone_reconciliation_resolve";
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
   const displayAutoApproveWhenClear = isActive ? session!.autoApproveWhenClear : autoApproveWhenClear;
+  const displayAutoResolveAmbiguousReconciliation = isActive
+    ? session!.autoResolveAmbiguousReconciliation
+    : autoResolveAmbiguousReconciliation;
   const displayMaxConcurrentJobs = isActive ? session!.maxConcurrentJobs : maxConcurrentJobs;
 
   return (
@@ -112,6 +124,22 @@ export const AutoAdvanceControlsCard = ({
             />
           </div>
           <div className="flex items-center justify-between gap-3">
+            <label
+              className="text-xs text-secondary"
+              htmlFor="auto-resolve-ambiguous-reconciliation"
+            >
+              Auto-resolve ambiguous milestone gaps
+            </label>
+            <input
+              id="auto-resolve-ambiguous-reconciliation"
+              type="checkbox"
+              className="h-4 w-4 accent-accent disabled:opacity-60"
+              checked={displayAutoResolveAmbiguousReconciliation}
+              disabled={isActive || isPending}
+              onChange={(e) => setAutoResolveAmbiguousReconciliation(e.target.checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
             <label className="text-xs text-secondary" htmlFor="max-concurrent-jobs">
               Max parallel jobs
             </label>
@@ -133,7 +161,15 @@ export const AutoAdvanceControlsCard = ({
             <Button
               variant="primary"
               disabled={isPending}
-              onClick={() => startMutation.mutate({ creativityMode, skipReviewSteps, autoApproveWhenClear, maxConcurrentJobs })}
+              onClick={() =>
+                startMutation.mutate({
+                  creativityMode,
+                  skipReviewSteps,
+                  autoApproveWhenClear,
+                  autoResolveAmbiguousReconciliation,
+                  maxConcurrentJobs,
+                })
+              }
             >
               Start
             </Button>
@@ -149,20 +185,31 @@ export const AutoAdvanceControlsCard = ({
           )}
           {isPaused && (
             <>
-              <Button
-                variant="primary"
-                disabled={isPending}
-                onClick={() => resumeMutation.mutate()}
-              >
-                Resume
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={isPending}
-                onClick={() => stepMutation.mutate()}
-              >
-                Step once
-              </Button>
+              {isHumanBlockedMilestoneReconciliation ? (
+                <Link
+                  className="inline-flex min-h-10 items-center justify-center border border-accent bg-accent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-background transition-colors duration-150 hover:border-accent-hover hover:bg-accent-hover"
+                  to={`/projects/${projectId}/milestones`}
+                >
+                  Review milestone gaps
+                </Link>
+              ) : (
+                <>
+                  <Button
+                    variant="primary"
+                    disabled={isPending}
+                    onClick={() => resumeMutation.mutate()}
+                  >
+                    Resume
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={isPending}
+                    onClick={() => stepMutation.mutate()}
+                  >
+                    Step once
+                  </Button>
+                </>
+              )}
             </>
           )}
           {session && (

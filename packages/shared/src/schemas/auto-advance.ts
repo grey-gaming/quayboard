@@ -40,6 +40,7 @@ export const autoAdvanceSessionSchema = z.object({
   pausedReason: autoAdvancePausedReasonSchema.nullable(),
   autoApproveWhenClear: z.boolean(),
   skipReviewSteps: z.boolean(),
+  autoResolveAmbiguousReconciliation: z.boolean(),
   creativityMode: creativityModeSchema,
   retryCount: z.number().int(),
   reviewCount: z.number().int(),
@@ -65,6 +66,7 @@ export type AutoAdvanceStatusResponse = z.infer<
 export const startAutoAdvanceRequestSchema = z.object({
   autoApproveWhenClear: z.boolean().optional(),
   skipReviewSteps: z.boolean().optional(),
+  autoResolveAmbiguousReconciliation: z.boolean().optional(),
   creativityMode: creativityModeSchema.optional(),
   maxConcurrentJobs: z.number().int().min(1).max(10).optional(),
 });

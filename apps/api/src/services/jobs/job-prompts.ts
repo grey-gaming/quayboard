@@ -836,6 +836,9 @@ const renderSiblingFeatures = (
   }>,
 ) => JSON.stringify(siblings, null, 2);
 
+const renderRepairHint = (hint?: string | null) =>
+  hint?.trim() ? ["Repair objective:", hint.trim(), ""] : [];
+
 export const buildFeatureProductSpecPrompt = (input: {
   feature: {
     acceptanceCriteria: string[];
@@ -853,6 +856,7 @@ export const buildFeatureProductSpecPrompt = (input: {
   productSpec: string;
   technicalSpec: string;
   uxSpec: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -865,6 +869,7 @@ export const buildFeatureProductSpecPrompt = (input: {
     "Use the milestone design doc and sibling feature list to keep ownership boundaries clear. Do not narrow the feature into a task-sized slice or expand it into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
@@ -906,6 +911,7 @@ export const buildFeatureProductSpecReviewPrompt = (input: {
     userDocsRequired: boolean;
     archDocsRequired: boolean;
   };
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -917,6 +923,7 @@ export const buildFeatureProductSpecReviewPrompt = (input: {
     "Do not let the reviewed draft collapse into task-sized work or bleed into sibling features.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
@@ -947,6 +954,7 @@ export const buildFeatureUxSpecPrompt = (input: {
     title: string;
     summary: string;
   }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -958,6 +966,7 @@ export const buildFeatureUxSpecPrompt = (input: {
     "Use the milestone design doc and sibling feature summaries to avoid drifting into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
     "",
@@ -985,6 +994,7 @@ export const buildFeatureTechSpecPrompt = (input: {
     title: string;
     summary: string;
   }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -996,6 +1006,7 @@ export const buildFeatureTechSpecPrompt = (input: {
     "Use the milestone design doc and sibling feature summaries to keep the implementation boundary clear.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
     "",
@@ -1023,6 +1034,7 @@ export const buildFeatureUserDocsPrompt = (input: {
     title: string;
     summary: string;
   }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1034,6 +1046,7 @@ export const buildFeatureUserDocsPrompt = (input: {
     "Keep documentation ownership aligned to this feature only. If related documentation belongs to a sibling feature, do not absorb it here.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
     "",
@@ -1060,6 +1073,7 @@ export const buildFeatureArchDocsPrompt = (input: {
     title: string;
     summary: string;
   }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1071,6 +1085,7 @@ export const buildFeatureArchDocsPrompt = (input: {
     "Keep the document scoped to this feature's owned architecture. Use the milestone design doc and sibling feature summaries to avoid duplicating another feature's architecture notes.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     ...(input.featureTechSpec
       ? ["Approved feature Technical Spec:", input.featureTechSpec, ""]
       : []),
@@ -1101,6 +1116,7 @@ export const buildFeatureWorkstreamReviewPrompt = (input: {
   }>;
   draftTitle: string;
   draftMarkdown: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1112,6 +1128,7 @@ export const buildFeatureWorkstreamReviewPrompt = (input: {
     "Do not widen the scope into sibling features and do not collapse it into a task-sized fragment.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
@@ -1322,6 +1339,7 @@ export const buildTaskClarificationsPrompt = (input: {
     title: string;
   };
   techSpec: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1336,6 +1354,7 @@ export const buildTaskClarificationsPrompt = (input: {
     "Ask about edge cases, error handling, integration points, and data model decisions.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
@@ -1353,6 +1372,7 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     title: string;
   };
   techSpec: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1364,6 +1384,7 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     "Derive answers from the tech spec, feature context, and standard software engineering practices.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
@@ -1388,8 +1409,11 @@ export const buildFeatureTaskListPrompt = (input: {
     title: string;
   };
   featureProductSpec: string;
+  featureUserDocs?: string | null;
+  featureArchDocs?: string | null;
   milestoneDesignDoc: string;
   techSpec: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1405,12 +1429,19 @@ export const buildFeatureTaskListPrompt = (input: {
     "Ensure the full task list covers the feature acceptance criteria and any required testing, integration, migration, or documentation work implied by the specs.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
     "Approved feature Product Spec:",
     input.featureProductSpec,
     "",
+    ...(input.featureUserDocs
+      ? ["Approved feature User Documentation:", input.featureUserDocs, ""]
+      : []),
+    ...(input.featureArchDocs
+      ? ["Approved feature Architecture Documentation:", input.featureArchDocs, ""]
+      : []),
     "Milestone design document:",
     input.milestoneDesignDoc,
     "",
@@ -1430,6 +1461,8 @@ export const buildFeatureTaskListReviewPrompt = (input: {
     title: string;
   };
   featureProductSpec: string;
+  featureUserDocs?: string | null;
+  featureArchDocs?: string | null;
   milestoneDesignDoc: string;
   techSpec: string;
   draftTasks: Array<{
@@ -1438,6 +1471,7 @@ export const buildFeatureTaskListReviewPrompt = (input: {
     instructions?: string | null;
     acceptanceCriteria: string[];
   }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1450,12 +1484,19 @@ export const buildFeatureTaskListReviewPrompt = (input: {
     "The final task list should cover the feature acceptance criteria without spilling work into neighboring features.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
     "Approved feature Product Spec:",
     input.featureProductSpec,
     "",
+    ...(input.featureUserDocs
+      ? ["Approved feature User Documentation:", input.featureUserDocs, ""]
+      : []),
+    ...(input.featureArchDocs
+      ? ["Approved feature Architecture Documentation:", input.featureArchDocs, ""]
+      : []),
     "Milestone design document:",
     input.milestoneDesignDoc,
     "",
@@ -1464,6 +1505,116 @@ export const buildFeatureTaskListReviewPrompt = (input: {
     "",
     "First-pass task list:",
     JSON.stringify(input.draftTasks, null, 2),
+  ].join("\n");
+
+export const buildMilestoneCoverageRepairPrompt = (input: {
+  issues: Array<{ action: "needs_human_review"; hint: string }>;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  features: Array<{
+    featureKey: string;
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    productSpec: string | null;
+    uxSpec: string | null;
+    techSpec: string | null;
+    userDocs: string | null;
+    archDocs: string | null;
+    tasks: Array<{
+      title: string;
+      description: string;
+      acceptanceCriteria: string[];
+    }>;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Resolve the ambiguous milestone coverage gaps for milestone "${input.milestone.title}" without editing the milestone design document itself.`,
+    'Return valid JSON with exactly four top-level keys: "resolved" (boolean), "defaultsChosen" (array), "operations" (array), and "unresolvedReasons" (array).',
+    'Each defaultsChosen item must contain exactly: "issueIndex", "decision", "rationale".',
+    'Each operations item must contain exactly: "featureKey", "featurePatch", "refresh", and "hint".',
+    'featurePatch must be either null or an object with exactly: "title", "summary", "acceptanceCriteria".',
+    'refresh must be an object with exactly these boolean keys: "product", "ux", "tech", "userDocs", "archDocs", "tasks".',
+    "Use only existing features from the selected milestone. Do not add, remove, move, or merge features.",
+    "Choose conservative defaults that satisfy the milestone design document and keep work inside the active milestone.",
+    "If the gaps cannot be resolved with updates to existing feature definitions, workstreams, and tasks, return resolved=false and explain why in unresolvedReasons.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Coverage gaps to resolve:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Current active-milestone features, workstreams, and tasks:",
+    JSON.stringify(input.features, null, 2),
+  ].join("\n");
+
+export const buildMilestoneCoverageRepairReviewPrompt = (input: {
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  issues: Array<{ action: "needs_human_review"; hint: string }>;
+  draftPlan: {
+    resolved: boolean;
+    defaultsChosen: Array<{
+      issueIndex: number;
+      decision: string;
+      rationale: string;
+    }>;
+    operations: Array<{
+      featureKey: string;
+      featurePatch: {
+        title: string;
+        summary: string;
+        acceptanceCriteria: string[];
+      } | null;
+      refresh: {
+        product: boolean;
+        ux: boolean;
+        tech: boolean;
+        userDocs: boolean;
+        archDocs: boolean;
+        tasks: boolean;
+      };
+      hint: string;
+    }>;
+    unresolvedReasons: string[];
+  };
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the ambiguous milestone coverage repair plan for milestone "${input.milestone.title}".`,
+    'Return valid JSON with exactly four top-level keys: "resolved", "defaultsChosen", "operations", and "unresolvedReasons".',
+    "Keep the plan conservative, executable, and limited to existing active-milestone features.",
+    "Do not invent milestone-document changes or cross-milestone work.",
+    "If the draft plan is overreaching, reduce it or set resolved=false.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Coverage gaps to resolve:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "First-pass repair plan:",
+    JSON.stringify(input.draftPlan, null, 2),
   ].join("\n");
 
 export const buildDeliveryReviewPrompt = (input: {

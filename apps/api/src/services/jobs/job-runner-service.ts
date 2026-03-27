@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 
 import {
+  createFeatureRevisionRequestSchema,
   createFeatureProductRevisionRequestSchema,
   createFeatureWorkstreamRevisionRequestSchema,
   featureKindSchema,
@@ -48,6 +49,8 @@ import {
   buildMilestoneDesignPrompt,
   buildMilestoneDesignReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
+  buildMilestoneCoverageRepairPrompt,
+  buildMilestoneCoverageRepairReviewPrompt,
   buildMilestoneFeatureSetPrompt,
   buildMilestoneFeatureSetReviewPrompt,
   buildMilestonePlanPrompt,
@@ -590,6 +593,164 @@ const parseMilestoneCoverageReviewResult = (value: string) => {
   };
 };
 
+type MilestoneCoverageRepairPlan = {
+  resolved: boolean;
+  defaultsChosen: Array<{
+    issueIndex: number;
+    decision: string;
+    rationale: string;
+  }>;
+  operations: Array<{
+    featureKey: string;
+    featurePatch: {
+      title: string;
+      summary: string;
+      acceptanceCriteria: string[];
+    } | null;
+    refresh: {
+      product: boolean;
+      ux: boolean;
+      tech: boolean;
+      userDocs: boolean;
+      archDocs: boolean;
+      tasks: boolean;
+    };
+    hint: string;
+  }>;
+  unresolvedReasons: string[];
+};
+
+const parseMilestoneCoverageRepairPlan = (
+  value: string,
+  templateId: string,
+): MilestoneCoverageRepairPlan => {
+  const parsed = parseJson<{
+    resolved?: boolean;
+    defaultsChosen?: Array<{
+      issueIndex?: number;
+      decision?: string;
+      rationale?: string;
+    }>;
+    operations?: Array<{
+      featureKey?: string;
+      featurePatch?: {
+        title?: string;
+        summary?: string;
+        acceptanceCriteria?: string[];
+      } | null;
+      refresh?: {
+        product?: boolean;
+        ux?: boolean;
+        tech?: boolean;
+        userDocs?: boolean;
+        archDocs?: boolean;
+        tasks?: boolean;
+      };
+      hint?: string;
+    }>;
+    unresolvedReasons?: string[];
+  }>(value);
+
+  if (!parsed || typeof parsed.resolved !== "boolean") {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with boolean "resolved".`,
+    );
+  }
+
+  const defaultsChosen = Array.isArray(parsed.defaultsChosen)
+    ? parsed.defaultsChosen.map((item, index) => {
+        if (
+          typeof item?.issueIndex !== "number" ||
+          !Number.isInteger(item.issueIndex) ||
+          !item?.decision?.trim() ||
+          !item?.rationale?.trim()
+        ) {
+          throw new Error(
+            `${templateId} returned an invalid defaultsChosen item at index ${index}.`,
+          );
+        }
+
+        return {
+          issueIndex: item.issueIndex,
+          decision: item.decision.trim(),
+          rationale: item.rationale.trim(),
+        };
+      })
+    : [];
+
+  const operations = Array.isArray(parsed.operations)
+    ? parsed.operations.map((item, index) => {
+        if (!item?.featureKey?.trim()) {
+          throw new Error(`${templateId} returned an operation without featureKey.`);
+        }
+
+        const refresh = item.refresh;
+        if (
+          !refresh ||
+          typeof refresh.product !== "boolean" ||
+          typeof refresh.ux !== "boolean" ||
+          typeof refresh.tech !== "boolean" ||
+          typeof refresh.userDocs !== "boolean" ||
+          typeof refresh.archDocs !== "boolean" ||
+          typeof refresh.tasks !== "boolean"
+        ) {
+          throw new Error(
+            `${templateId} returned an invalid refresh payload at operation ${index}.`,
+          );
+        }
+
+        const featurePatch =
+          item.featurePatch === null || item.featurePatch === undefined
+            ? null
+            : createFeatureRevisionRequestSchema
+                .omit({ source: true })
+                .parse(item.featurePatch);
+
+        if (
+          !featurePatch &&
+          !Object.values(refresh).some(Boolean)
+        ) {
+          throw new Error(
+            `${templateId} returned a no-op operation for feature ${item.featureKey.trim()}.`,
+          );
+        }
+
+        if (!item.hint?.trim()) {
+          throw new Error(
+            `${templateId} returned an operation without a non-empty hint for feature ${item.featureKey.trim()}.`,
+          );
+        }
+
+        return {
+          featureKey: item.featureKey.trim(),
+          featurePatch,
+          refresh: {
+            product: refresh.product,
+            ux: refresh.ux,
+            tech: refresh.tech,
+            userDocs: refresh.userDocs,
+            archDocs: refresh.archDocs,
+            tasks: refresh.tasks,
+          },
+          hint: item.hint.trim(),
+        };
+      })
+    : [];
+
+  const unresolvedReasons = Array.isArray(parsed.unresolvedReasons)
+    ? parsed.unresolvedReasons
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => item.trim())
+    : [];
+
+  return {
+    resolved: parsed.resolved,
+    defaultsChosen,
+    operations,
+    unresolvedReasons,
+  };
+};
+
 const validateGeneratedFeatures = (
   items: Array<{
     title?: string;
@@ -838,6 +999,385 @@ export const createJobRunnerService = (input: {
         milestoneDesignDoc: milestoneDesignDoc.markdown,
         siblingFeatures,
       };
+    };
+
+    const taskPlanning = input.milestoneService
+      ? createTaskPlanningService(input.db, input.milestoneService)
+      : null;
+
+    const buildFeatureContext = (inputArgs: {
+      featureKey: string;
+      title: string;
+      summary: string;
+      acceptanceCriteria: string[];
+      milestoneTitle: string;
+    }) => ({
+      acceptanceCriteria: inputArgs.acceptanceCriteria,
+      featureKey: inputArgs.featureKey,
+      milestoneTitle: inputArgs.milestoneTitle,
+      summary: inputArgs.summary,
+      title: inputArgs.title,
+    });
+
+    const getApprovedHeadRevisionMarkdown = (
+      headRevision:
+        | {
+            markdown: string;
+            approval?: unknown;
+          }
+        | null
+        | undefined,
+    ) => (headRevision?.approval ? headRevision.markdown : null);
+
+    const approveHeadRevision = async (
+      featureId: string,
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs",
+    ) => {
+      if (!input.featureWorkstreamService) {
+        throw new Error("Repair approval requires feature workstream support.");
+      }
+
+      const headRevision = await input.featureWorkstreamService.getHeadRevision(
+        ownerUserId,
+        featureId,
+        kind,
+      );
+
+      if (!headRevision) {
+        throw new Error(`Missing head ${kind} revision for feature ${featureId}.`);
+      }
+
+      if (!headRevision.approval) {
+        await input.featureWorkstreamService.approveRevision(
+          ownerUserId,
+          featureId,
+          kind,
+          headRevision.id,
+        );
+      }
+    };
+
+    const generateFeatureProductRevision = async (featureId: string, hint?: string | null) => {
+      if (!input.featureWorkstreamService || !input.milestoneService) {
+        throw new Error("GenerateFeatureProductSpec requires feature workstream support.");
+      }
+
+      const { productSpec, uxSpec, technicalSpec } = await loadApprovedProjectSpecs();
+      const context = await input.featureWorkstreamService.getFeatureContext(
+        ownerUserId,
+        featureId,
+      );
+      const milestoneContext = await loadMilestonePromptContext(
+        context.feature.milestoneId,
+        featureId,
+      );
+      const featureContext = buildFeatureContext({
+        acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
+          ? context.headFeatureRevision.acceptanceCriteria.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : [],
+        featureKey: context.feature.featureKey,
+        milestoneTitle: milestoneContext.milestone.title,
+        summary: context.headFeatureRevision.summary,
+        title: context.headFeatureRevision.title,
+      });
+
+      const generatedSpec = await runReviewedJsonGeneration({
+        templateId: "GenerateFeatureProductSpec",
+        parameters: { featureId, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        prompt: buildFeatureProductSpecPrompt({
+          feature: featureContext,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          siblingFeatures: milestoneContext.siblingFeatures,
+          productSpec: productSpec.markdown,
+          technicalSpec: technicalSpec.markdown,
+          uxSpec: uxSpec.markdown,
+          hint,
+        }),
+        parseDraft: parseFeatureWorkstreamResult,
+        buildReviewPrompt: (draft) =>
+          buildFeatureProductSpecReviewPrompt({
+            feature: featureContext,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+            siblingFeatures: milestoneContext.siblingFeatures,
+            draftTitle: draft.title,
+            draftMarkdown: draft.markdown,
+            requirements:
+              draft.requirements ?? {
+                uxRequired: true,
+                techRequired: true,
+                userDocsRequired: true,
+                archDocsRequired: true,
+              },
+            hint,
+          }),
+      });
+
+      await input.featureWorkstreamService.createRevision(
+        ownerUserId,
+        featureId,
+        "product",
+        {
+          markdown: generatedSpec.markdown,
+          requirements:
+            generatedSpec.requirements ?? {
+              uxRequired: true,
+              techRequired: true,
+              userDocsRequired: true,
+              archDocsRequired: true,
+            },
+          source: hint?.trim() ? "ResolveMilestoneCoverageIssues" : "GenerateFeatureProductSpec",
+          title: generatedSpec.title,
+        },
+        rawJob.id,
+      );
+    };
+
+    const generateFeatureWorkstreamRevision = async (
+      featureId: string,
+      kind: "ux" | "tech" | "user_docs" | "arch_docs",
+      hint?: string | null,
+    ) => {
+      if (!input.featureWorkstreamService || !input.milestoneService) {
+        throw new Error(`${kind} workstream generation requires feature workstream support.`);
+      }
+
+      const { productSpec, uxSpec, technicalSpec } = await loadApprovedProjectSpecs();
+      const context = await input.featureWorkstreamService.getFeatureContext(
+        ownerUserId,
+        featureId,
+      );
+      const tracks = await input.featureWorkstreamService.getTracks(ownerUserId, featureId);
+      const milestoneContext = await loadMilestonePromptContext(
+        context.feature.milestoneId,
+        featureId,
+      );
+      const featureContext = buildFeatureContext({
+        acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
+          ? context.headFeatureRevision.acceptanceCriteria.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : [],
+        featureKey: context.feature.featureKey,
+        milestoneTitle: milestoneContext.milestone.title,
+        summary: context.headFeatureRevision.summary,
+        title: context.headFeatureRevision.title,
+      });
+
+      let prompt = "";
+      let workstreamLabel = "";
+
+      if (kind === "ux") {
+        if (!tracks.tracks.product.headRevision?.approval) {
+          throw new Error("GenerateFeatureUxSpec requires an approved feature Product Spec.");
+        }
+
+        workstreamLabel = "feature UX Spec";
+        prompt = buildFeatureUxSpecPrompt({
+          featureProductSpec: tracks.tracks.product.headRevision.markdown,
+          featureTitle: context.headFeatureRevision.title,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          projectProductSpec: productSpec.markdown,
+          projectUxSpec: uxSpec.markdown,
+          siblingFeatures: milestoneContext.siblingFeatures,
+          hint,
+        });
+      } else if (kind === "tech") {
+        if (!tracks.tracks.product.headRevision?.approval) {
+          throw new Error("GenerateFeatureTechSpec requires an approved feature Product Spec.");
+        }
+
+        workstreamLabel = "feature Technical Spec";
+        prompt = buildFeatureTechSpecPrompt({
+          featureProductSpec: tracks.tracks.product.headRevision.markdown,
+          featureTitle: context.headFeatureRevision.title,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          projectProductSpec: productSpec.markdown,
+          projectTechnicalSpec: technicalSpec.markdown,
+          siblingFeatures: milestoneContext.siblingFeatures,
+          hint,
+        });
+      } else if (kind === "user_docs") {
+        if (!tracks.tracks.product.headRevision?.approval) {
+          throw new Error("GenerateFeatureUserDocs requires an approved feature Product Spec.");
+        }
+
+        workstreamLabel = "feature User Documentation";
+        prompt = buildFeatureUserDocsPrompt({
+          featureProductSpec: tracks.tracks.product.headRevision.markdown,
+          featureTitle: context.headFeatureRevision.title,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          projectProductSpec: productSpec.markdown,
+          projectUxSpec: uxSpec.markdown,
+          siblingFeatures: milestoneContext.siblingFeatures,
+          hint,
+        });
+      } else {
+        if (tracks.tracks.tech.required && !tracks.tracks.tech.headRevision?.approval) {
+          throw new Error(
+            `Cannot generate architecture docs for "${context.headFeatureRevision.title}": the feature tech spec must be approved first.`,
+          );
+        }
+
+        workstreamLabel = "feature Architecture Documentation";
+        prompt = buildFeatureArchDocsPrompt({
+          featureTechSpec: tracks.tracks.tech.headRevision?.markdown ?? null,
+          featureTitle: context.headFeatureRevision.title,
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          projectTechnicalSpec: technicalSpec.markdown,
+          siblingFeatures: milestoneContext.siblingFeatures,
+          hint,
+        });
+      }
+
+      const generatedSpec = await runReviewedJsonGeneration({
+        templateId:
+          kind === "ux"
+            ? "GenerateFeatureUxSpec"
+            : kind === "tech"
+              ? "GenerateFeatureTechSpec"
+              : kind === "user_docs"
+                ? "GenerateFeatureUserDocs"
+                : "GenerateFeatureArchDocs",
+        parameters: { featureId, kind, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        prompt,
+        parseDraft: parseFeatureWorkstreamResult,
+        buildReviewPrompt: (draft) =>
+          buildFeatureWorkstreamReviewPrompt({
+            workstreamLabel,
+            feature: featureContext,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+            siblingFeatures: milestoneContext.siblingFeatures,
+            draftTitle: draft.title,
+            draftMarkdown: draft.markdown,
+            hint,
+          }),
+      });
+
+      await input.featureWorkstreamService.createRevision(
+        ownerUserId,
+        featureId,
+        kind,
+        {
+          markdown: generatedSpec.markdown,
+          source: hint?.trim() ? "ResolveMilestoneCoverageIssues" : workstreamLabel,
+          title: generatedSpec.title,
+        },
+        rawJob.id,
+      );
+    };
+
+    const regenerateFeatureTasks = async (featureId: string, hint?: string | null) => {
+      if (!taskPlanning || !input.featureWorkstreamService || !input.milestoneService) {
+        throw new Error("Task repair requires task planning and feature workstream support.");
+      }
+
+      const session = await taskPlanning.getOrCreateSession(ownerUserId, featureId);
+      const context = await taskPlanning.getFeatureContext(ownerUserId, featureId);
+      const milestoneContext = await loadMilestonePromptContext(
+        context.feature.milestoneId,
+        featureId,
+      );
+      const tracks = await input.featureWorkstreamService.getTracks(ownerUserId, featureId);
+      const techRevision = tracks.tracks.tech.headRevision;
+      if (!techRevision?.approval) {
+        throw new Error("GenerateFeatureTaskList requires an approved tech specification.");
+      }
+
+      const featureContext = buildFeatureContext({
+        acceptanceCriteria: context.headFeatureRevision.acceptanceCriteria as string[],
+        featureKey: context.feature.featureKey,
+        milestoneTitle: milestoneContext.milestone.title,
+        summary: context.headFeatureRevision.summary,
+        title: context.headFeatureRevision.title,
+      });
+
+      const clarificationsPrompt = buildTaskClarificationsPrompt({
+        feature: featureContext,
+        techSpec: techRevision.markdown,
+        hint,
+      });
+      const clarificationsGenerated = await input.llmProviderService.generate(
+        provider,
+        clarificationsPrompt,
+        { responseFormat: "json" },
+      );
+      await storeLlmRun({
+        templateId: "GenerateTaskClarifications",
+        parameters: { featureId, sessionId: session.id, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        prompt: clarificationsPrompt,
+        generated: clarificationsGenerated,
+      });
+      await taskPlanning.createClarifications(
+        session.id,
+        parseTaskClarificationsResult(clarificationsGenerated.content),
+      );
+
+      const pendingClarifications = await taskPlanning.getClarifications(ownerUserId, session.id);
+      const autoAnswerPrompt = buildAutoAnswerClarificationsPrompt({
+        clarifications: pendingClarifications.map((item) => ({
+          question: item.question,
+          context: item.context,
+        })),
+        feature: featureContext,
+        techSpec: techRevision.markdown,
+        hint,
+      });
+      const autoAnswers = await input.llmProviderService.generate(provider, autoAnswerPrompt, {
+        responseFormat: "json",
+      });
+      await storeLlmRun({
+        templateId: "AutoAnswerTaskClarifications",
+        parameters: { featureId, sessionId: session.id, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        prompt: autoAnswerPrompt,
+        generated: autoAnswers,
+      });
+      const answers = parseAutoAnswerResult(autoAnswers.content);
+      for (let index = 0; index < Math.min(pendingClarifications.length, answers.length); index++) {
+        await taskPlanning.answerClarification(
+          ownerUserId,
+          featureId,
+          pendingClarifications[index]!.id,
+          answers[index]!.answer,
+          "auto",
+        );
+      }
+
+      const answeredClarifications = await taskPlanning.getClarifications(ownerUserId, session.id);
+      const tasks = await runReviewedJsonGeneration({
+        templateId: "GenerateFeatureTaskList",
+        parameters: { featureId, sessionId: session.id, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        prompt: buildFeatureTaskListPrompt({
+          clarifications: answeredClarifications
+            .filter((item) => item.status === "answered")
+            .map((item) => ({
+              question: item.question,
+              answer: item.answer ?? "",
+            })),
+          feature: featureContext,
+          featureProductSpec: tracks.tracks.product.headRevision?.markdown ?? "",
+          featureUserDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.userDocs.headRevision),
+          featureArchDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.archDocs.headRevision),
+          milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+          techSpec: techRevision.markdown,
+          hint,
+        }),
+        parseDraft: (content) => parseTaskListResult(content),
+        buildReviewPrompt: (draftTasks) =>
+          buildFeatureTaskListReviewPrompt({
+            feature: featureContext,
+            featureProductSpec: tracks.tracks.product.headRevision?.markdown ?? "",
+            featureUserDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.userDocs.headRevision),
+            featureArchDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.archDocs.headRevision),
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
+            techSpec: techRevision.markdown,
+            draftTasks,
+            hint,
+          }),
+      });
+
+      await taskPlanning.createTasks(session.id, tasks);
     };
 
     switch (rawJob.type) {
@@ -1963,12 +2503,249 @@ export const createJobRunnerService = (input: {
         });
       }
 
+      case "ResolveMilestoneCoverageIssues": {
+        if (
+          !input.featureService ||
+          !input.featureWorkstreamService ||
+          !input.milestoneService ||
+          !taskPlanning
+        ) {
+          throw new Error(
+            "ResolveMilestoneCoverageIssues requires milestone, feature, workstream, and task planning support.",
+          );
+        }
+
+        const jobInput = parseJson<{
+          milestoneId?: string;
+          issues?: Array<{ action?: string; hint?: string }>;
+        }>(JSON.stringify(rawJob.inputs));
+        const milestoneId = jobInput?.milestoneId;
+        if (!milestoneId) {
+          throw new Error("ResolveMilestoneCoverageIssues requires a milestoneId.");
+        }
+
+        await input.milestoneService.assertActiveMilestone(ownerUserId, rawJob.projectId, milestoneId);
+
+        const milestone = await input.db.query.milestonesTable.findFirst({
+          where: eq(milestonesTable.id, milestoneId),
+        });
+        const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
+          ownerUserId,
+          milestoneId,
+        );
+
+        if (!milestone || !milestoneDesignDoc) {
+          throw new Error(
+            "ResolveMilestoneCoverageIssues requires a canonical milestone design document.",
+          );
+        }
+
+        const issues =
+          (jobInput?.issues ?? [])
+            .filter(
+              (issue): issue is { action: "needs_human_review"; hint: string } =>
+                issue.action === "needs_human_review" &&
+                typeof issue.hint === "string" &&
+                issue.hint.trim().length > 0,
+            )
+            .map((issue) => ({
+              action: "needs_human_review" as const,
+              hint: issue.hint.trim(),
+            })) ?? [];
+
+        if (issues.length === 0) {
+          return input.jobService.markSucceeded(rawJob.id, {
+            resolved: false,
+            defaultsChosen: [],
+            operationsApplied: [],
+            unresolvedReasons: [
+              "No needs_human_review reconciliation issues were provided to the repair job.",
+            ],
+          });
+        }
+
+        const { features } = await input.featureService.list(ownerUserId, rawJob.projectId);
+        const milestoneFeatures = features.filter((feature) => feature.milestoneId === milestoneId);
+
+        const featurePayload = await Promise.all(
+          milestoneFeatures.map(async (feature) => {
+            const tracks = await input.featureWorkstreamService!.getTracks(ownerUserId, feature.id);
+            const session = await taskPlanning.getSession(ownerUserId, feature.id);
+            const tasks = session ? await taskPlanning.getTasks(ownerUserId, session.id) : [];
+
+            return {
+              featureKey: feature.featureKey,
+              title: feature.headRevision.title,
+              summary: feature.headRevision.summary,
+              acceptanceCriteria: feature.headRevision.acceptanceCriteria,
+              productSpec: getApprovedHeadRevisionMarkdown(tracks.tracks.product.headRevision),
+              uxSpec: getApprovedHeadRevisionMarkdown(tracks.tracks.ux.headRevision),
+              techSpec: getApprovedHeadRevisionMarkdown(tracks.tracks.tech.headRevision),
+              userDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.userDocs.headRevision),
+              archDocs: getApprovedHeadRevisionMarkdown(tracks.tracks.archDocs.headRevision),
+              tasks: tasks.map((task) => ({
+                title: task.title,
+                description: task.description,
+                acceptanceCriteria: task.acceptanceCriteria,
+              })),
+            };
+          }),
+        );
+
+        const repairPlan = await runReviewedJsonGeneration({
+          templateId: rawJob.type,
+          parameters: { milestoneId, issueCount: issues.length },
+          prompt: buildMilestoneCoverageRepairPrompt({
+            issues,
+            milestone: {
+              title: milestone.title,
+              summary: milestone.summary,
+            },
+            milestoneDesignDoc: milestoneDesignDoc.markdown,
+            features: featurePayload,
+          }),
+          parseDraft: parseMilestoneCoverageRepairPlan,
+          buildReviewPrompt: (draftPlan) =>
+            buildMilestoneCoverageRepairReviewPrompt({
+              milestone: {
+                title: milestone.title,
+                summary: milestone.summary,
+              },
+              milestoneDesignDoc: milestoneDesignDoc.markdown,
+              issues,
+              draftPlan,
+            }),
+        });
+
+        if (!repairPlan.resolved || repairPlan.operations.length === 0) {
+          return input.jobService.markSucceeded(rawJob.id, {
+            resolved: false,
+            defaultsChosen: repairPlan.defaultsChosen,
+            operationsApplied: [],
+            unresolvedReasons:
+              repairPlan.unresolvedReasons.length > 0
+                ? repairPlan.unresolvedReasons
+                : ["The repair planner could not produce an executable repair plan."],
+          });
+        }
+
+        const featureByKey = new Map(milestoneFeatures.map((feature) => [feature.featureKey, feature]));
+        const unknownFeatureKeys = repairPlan.operations
+          .map((operation) => operation.featureKey)
+          .filter((featureKey) => !featureByKey.has(featureKey));
+
+        if (unknownFeatureKeys.length > 0) {
+          return input.jobService.markSucceeded(rawJob.id, {
+            resolved: false,
+            defaultsChosen: repairPlan.defaultsChosen,
+            operationsApplied: [],
+            unresolvedReasons: unknownFeatureKeys.map(
+              (featureKey) =>
+                `Repair planner referenced unknown active-milestone feature "${featureKey}".`,
+            ),
+          });
+        }
+
+        const operationsApplied: Array<{
+          featureId: string;
+          featureKey: string;
+          hint: string;
+          featurePatched: boolean;
+          refresh: {
+            product: boolean;
+            ux: boolean;
+            tech: boolean;
+            userDocs: boolean;
+            archDocs: boolean;
+            tasks: boolean;
+          };
+        }> = [];
+
+        for (const operation of repairPlan.operations) {
+          const feature = featureByKey.get(operation.featureKey)!;
+          const refresh = { ...operation.refresh };
+
+          if (operation.featurePatch) {
+            await input.featureService.createRevision(
+              ownerUserId,
+              feature.id,
+              {
+                ...operation.featurePatch,
+                source: "ResolveMilestoneCoverageIssues",
+              },
+              rawJob.id,
+            );
+            refresh.product = true;
+          }
+
+          if (refresh.product) {
+            await generateFeatureProductRevision(feature.id, operation.hint);
+            await approveHeadRevision(feature.id, "product");
+          }
+
+          const postProductTracks = await input.featureWorkstreamService.getTracks(
+            ownerUserId,
+            feature.id,
+          );
+          const productRequirements = postProductTracks.tracks.product.headRevision?.requirements ?? {
+            uxRequired: false,
+            techRequired: false,
+            userDocsRequired: false,
+            archDocsRequired: false,
+          };
+
+          refresh.ux = refresh.ux || productRequirements.uxRequired;
+          refresh.tech = refresh.tech || productRequirements.techRequired || refresh.tasks;
+          refresh.userDocs = refresh.userDocs || productRequirements.userDocsRequired;
+          refresh.archDocs = refresh.archDocs || productRequirements.archDocsRequired;
+
+          if (refresh.ux) {
+            await generateFeatureWorkstreamRevision(feature.id, "ux", operation.hint);
+            await approveHeadRevision(feature.id, "ux");
+          }
+
+          if (refresh.tech) {
+            await generateFeatureWorkstreamRevision(feature.id, "tech", operation.hint);
+            await approveHeadRevision(feature.id, "tech");
+          }
+
+          if (refresh.userDocs) {
+            await generateFeatureWorkstreamRevision(feature.id, "user_docs", operation.hint);
+            await approveHeadRevision(feature.id, "user_docs");
+          }
+
+          if (refresh.archDocs) {
+            await generateFeatureWorkstreamRevision(feature.id, "arch_docs", operation.hint);
+            await approveHeadRevision(feature.id, "arch_docs");
+          }
+
+          if (refresh.tasks) {
+            await regenerateFeatureTasks(feature.id, operation.hint);
+          }
+
+          operationsApplied.push({
+            featureId: feature.id,
+            featureKey: feature.featureKey,
+            hint: operation.hint,
+            featurePatched: operation.featurePatch !== null,
+            refresh,
+          });
+        }
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          resolved: true,
+          defaultsChosen: repairPlan.defaultsChosen,
+          operationsApplied,
+          unresolvedReasons: [],
+        });
+      }
+
       case "GenerateFeatureProductSpec": {
         if (!input.featureWorkstreamService || !input.milestoneService) {
           throw new Error("GenerateFeatureProductSpec requires feature workstream support.");
         }
 
-        const jobInput = parseJson<{ featureId?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJson<{ featureId?: string; hint?: string }>(JSON.stringify(rawJob.inputs));
         const featureId = jobInput?.featureId;
 
         if (!featureId) {
@@ -2002,6 +2779,7 @@ export const createJobRunnerService = (input: {
           productSpec: productSpec.markdown,
           technicalSpec: technicalSpec.markdown,
           uxSpec: uxSpec.markdown,
+          hint: jobInput?.hint,
         });
         const featureContext = {
           acceptanceCriteria: Array.isArray(context.headFeatureRevision.acceptanceCriteria)
@@ -2033,6 +2811,7 @@ export const createJobRunnerService = (input: {
                   userDocsRequired: true,
                   archDocsRequired: true,
                 },
+              hint: jobInput?.hint,
             }),
         });
         await input.featureWorkstreamService.createRevision(
@@ -2065,7 +2844,7 @@ export const createJobRunnerService = (input: {
           throw new Error(`${rawJob.type} requires feature workstream support.`);
         }
 
-        const jobInput = parseJson<{ featureId?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJson<{ featureId?: string; hint?: string }>(JSON.stringify(rawJob.inputs));
         const featureId = jobInput?.featureId;
 
         if (!featureId) {
@@ -2101,6 +2880,7 @@ export const createJobRunnerService = (input: {
             projectProductSpec: productSpec.markdown,
             projectUxSpec: uxSpec.markdown,
             siblingFeatures: milestoneContext.siblingFeatures,
+            hint: jobInput?.hint,
           });
         } else if (rawJob.type === "GenerateFeatureTechSpec") {
           if (!tracks.tracks.product.headRevision?.approval) {
@@ -2116,6 +2896,7 @@ export const createJobRunnerService = (input: {
             projectProductSpec: productSpec.markdown,
             projectTechnicalSpec: technicalSpec.markdown,
             siblingFeatures: milestoneContext.siblingFeatures,
+            hint: jobInput?.hint,
           });
         } else if (rawJob.type === "GenerateFeatureUserDocs") {
           if (!tracks.tracks.product.headRevision?.approval) {
@@ -2131,6 +2912,7 @@ export const createJobRunnerService = (input: {
             projectProductSpec: productSpec.markdown,
             projectUxSpec: uxSpec.markdown,
             siblingFeatures: milestoneContext.siblingFeatures,
+            hint: jobInput?.hint,
           });
         } else {
           if (tracks.tracks.tech.required && !tracks.tracks.tech.headRevision?.approval) {
@@ -2148,6 +2930,7 @@ export const createJobRunnerService = (input: {
             milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             projectTechnicalSpec: technicalSpec.markdown,
             siblingFeatures: milestoneContext.siblingFeatures,
+            hint: jobInput?.hint,
           });
         }
         const featureContext = {
@@ -2174,6 +2957,7 @@ export const createJobRunnerService = (input: {
               siblingFeatures: milestoneContext.siblingFeatures,
               draftTitle: draft.title,
               draftMarkdown: draft.markdown,
+              hint: jobInput?.hint,
             }),
         });
         await input.featureWorkstreamService.createRevision(
@@ -2209,6 +2993,10 @@ export const createJobRunnerService = (input: {
         }
 
         const context = await taskPlanning.getFeatureContext(ownerUserId, featureId);
+        const taskHint =
+          typeof (rawJob.inputs as { hint?: unknown } | null | undefined)?.hint === "string"
+            ? (rawJob.inputs as { hint?: string }).hint
+            : undefined;
 
         const techSpec = await input.db.query.featureTechSpecsTable.findFirst({
           where: eq(featureTechSpecsTable.featureId, featureId),
@@ -2242,6 +3030,7 @@ export const createJobRunnerService = (input: {
           const prompt = buildTaskClarificationsPrompt({
             feature: featureContext,
             techSpec: techRevision.markdown,
+            hint: taskHint,
           });
 
           const generated = await input.llmProviderService.generate(provider, prompt, {
@@ -2290,6 +3079,7 @@ export const createJobRunnerService = (input: {
             })),
             feature: featureContext,
             techSpec: techRevision.markdown,
+            hint: taskHint,
           });
 
           const generated = await input.llmProviderService.generate(provider, prompt, {
@@ -2348,8 +3138,11 @@ export const createJobRunnerService = (input: {
           })),
           feature: featureContext,
           featureProductSpec,
+          featureUserDocs: getApprovedHeadRevisionMarkdown(tracks?.tracks.userDocs.headRevision),
+          featureArchDocs: getApprovedHeadRevisionMarkdown(tracks?.tracks.archDocs.headRevision),
           milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
           techSpec: techRevision.markdown,
+          hint: taskHint,
         });
         const tasks = await runReviewedJsonGeneration({
           templateId: rawJob.type,
@@ -2360,9 +3153,16 @@ export const createJobRunnerService = (input: {
             buildFeatureTaskListReviewPrompt({
               feature: featureContext,
               featureProductSpec,
+              featureUserDocs: getApprovedHeadRevisionMarkdown(
+                tracks?.tracks.userDocs.headRevision,
+              ),
+              featureArchDocs: getApprovedHeadRevisionMarkdown(
+                tracks?.tracks.archDocs.headRevision,
+              ),
               milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
               techSpec: techRevision.markdown,
               draftTasks,
+              hint: taskHint,
             }),
         });
         await taskPlanning.createTasks(sessionId, tasks);

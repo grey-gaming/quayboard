@@ -46,6 +46,7 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   pausedReason: row.pausedReason ?? null,
   autoApproveWhenClear: row.autoApproveWhenClear,
   skipReviewSteps: row.skipReviewSteps,
+  autoResolveAmbiguousReconciliation: row.autoResolveAmbiguousReconciliation,
   creativityMode: (row.creativityMode ?? "balanced") as AutoAdvanceSession["creativityMode"],
   retryCount: row.retryCount ?? 0,
   reviewCount: row.reviewCount ?? 0,
@@ -571,11 +572,15 @@ export const createAutoAdvanceService = (
             pausedReason: null,
             autoApproveWhenClear: opts.autoApproveWhenClear ?? existing.autoApproveWhenClear,
             skipReviewSteps: opts.skipReviewSteps ?? existing.skipReviewSteps,
+            autoResolveAmbiguousReconciliation:
+              opts.autoResolveAmbiguousReconciliation ??
+              existing.autoResolveAmbiguousReconciliation,
             creativityMode: opts.creativityMode ?? existing.creativityMode,
             maxConcurrentJobs: opts.maxConcurrentJobs ?? existing.maxConcurrentJobs,
             retryCount: 0,
             pendingJobCount: 0,
             activeBatchToken: null,
+            ambiguousReconciliationRepairCount: 0,
             startedAt: now,
             pausedAt: null,
             completedAt: null,
@@ -598,8 +603,11 @@ export const createAutoAdvanceService = (
           status: "running",
           autoApproveWhenClear: opts.autoApproveWhenClear ?? false,
           skipReviewSteps: opts.skipReviewSteps ?? false,
+          autoResolveAmbiguousReconciliation:
+            opts.autoResolveAmbiguousReconciliation ?? false,
           creativityMode: opts.creativityMode ?? "balanced",
           maxConcurrentJobs: opts.maxConcurrentJobs ?? 1,
+          ambiguousReconciliationRepairCount: 0,
           pendingJobCount: 0,
           activeBatchToken: null,
           startedAt: now,
@@ -893,6 +901,11 @@ export const createAutoAdvanceService = (
           return;
         }
 
+        const shouldAutoResolveAmbiguousReconciliation =
+          session.autoResolveAmbiguousReconciliation &&
+          (session.ambiguousReconciliationRepairCount ?? 0) < 1 &&
+          output.issues.every((issue) => issue.action === "needs_human_review");
+
         if (
           (firstIssue.action === "rewrite_feature_set" ||
             firstIssue.action === "create_catch_up_feature") &&
@@ -930,6 +943,33 @@ export const createAutoAdvanceService = (
           return;
         }
 
+        if (shouldAutoResolveAmbiguousReconciliation) {
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              ambiguousReconciliationRepairCount:
+                (session.ambiguousReconciliationRepairCount ?? 0) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: "ResolveMilestoneCoverageIssues",
+            inputs: buildAutoAdvanceInputs(
+              { milestoneId, issues: output.issues },
+              session.id,
+              batchToken,
+            ),
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
         await milestoneService.recordReconciliationResult({
           milestoneId,
           issues: output.issues,
@@ -947,6 +987,33 @@ export const createAutoAdvanceService = (
           })
           .where(eq(autoAdvanceSessionsTable.id, session.id));
 
+        await publishSessionUpdate(project.ownerUserId, job.projectId);
+        return;
+      }
+
+      if (job.type === "ResolveMilestoneCoverageIssues") {
+        const output = job.outputs as {
+          resolved?: boolean;
+          unresolvedReasons?: string[];
+        } | null;
+
+        if (!output?.resolved) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "paused",
+              pausedReason: "needs_human",
+              pausedAt: new Date(),
+              activeBatchToken: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        await advanceStep(project.ownerUserId, job.projectId, session.id);
         await publishSessionUpdate(project.ownerUserId, job.projectId);
         return;
       }

@@ -62,6 +62,11 @@ export const AutoAdvanceBanner = ({
           {pausedLabel && (
             <p className="text-xs text-warning">Paused: {pausedLabel}</p>
           )}
+          {session?.autoResolveAmbiguousReconciliation ? (
+            <p className="text-xs text-secondary">
+              Ambiguous milestone reconciliation repair is enabled for this session.
+            </p>
+          ) : null}
           {nextStep && (
             <p className="text-xs text-secondary">
               Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
@@ -69,7 +74,8 @@ export const AutoAdvanceBanner = ({
           )}
           {nextStep === "milestone_reconciliation_resolve" ? (
             <p className="text-xs text-warning">
-              Review the active milestone gaps in Milestones, update the plan, then rerun reconciliation.
+              Auto-advance cannot continue until the active milestone gaps are resolved in
+              Milestones and reconciliation is rerun.
             </p>
           ) : null}
         </div>
