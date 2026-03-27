@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRewriteMilestoneFeatureSetPrompt,
+  buildRewriteMilestoneFeatureSetReviewPrompt,
   buildMilestoneFeatureSetPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
@@ -173,6 +175,78 @@ describe("job prompts", () => {
     expect(prompt).toContain("Merge task-sized or overlapping features");
     expect(prompt).toContain("Prefer fewer, feature-sized items");
     expect(prompt).toContain("First-pass draft feature set:");
+  });
+
+  it("locks rewrite feature generation to the shared feature enums", () => {
+    const prompt = buildRewriteMilestoneFeatureSetPrompt({
+      hint: "Close the missing milestone coverage gap.",
+      linkedUserFlows: [
+        { id: "11111111-1111-4111-8111-111111111111", title: "Create project" },
+      ],
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      currentMilestoneFeatures: [
+        {
+          title: "Current feature",
+          summary: "Current summary.",
+        },
+      ],
+      existingFeatures: [],
+      overviewDocument: "# Overview",
+      projectName: "Quayboard",
+      projectProductSpec: "# Product Spec",
+      projectTechnicalSpec: "# Technical Spec",
+      projectUxSpec: "# UX Spec",
+    });
+
+    expect(prompt).toContain(
+      "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
+    expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
+  });
+
+  it("keeps rewrite feature review constrained to the shared feature enums", () => {
+    const prompt = buildRewriteMilestoneFeatureSetReviewPrompt({
+      hint: "Close the missing milestone coverage gap.",
+      linkedUserFlows: [
+        { id: "11111111-1111-4111-8111-111111111111", title: "Create project" },
+      ],
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      currentMilestoneFeatures: [
+        {
+          title: "Current feature",
+          summary: "Current summary.",
+        },
+      ],
+      existingFeatures: [],
+      draftFeatures: [
+        {
+          title: "Replacement feature",
+          summary: "Replacement summary.",
+          acceptanceCriteria: ["Feature works."],
+          kind: "system",
+          priority: "must_have",
+        },
+      ],
+    });
+
+    expect(prompt).toContain(
+      "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
+    expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
   });
 
   it("adds milestone and product context to task-list generation", () => {
