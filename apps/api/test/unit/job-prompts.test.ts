@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildAppendFeaturesFromOnePagerPrompt,
+  buildMilestoneFeatureSetPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
-  buildFeatureSetReviewPrompt,
+  buildMilestoneFeatureSetReviewPrompt,
   buildFeatureTaskListPrompt,
   buildFeatureTaskListReviewPrompt,
   buildUserFlowPrompt,
@@ -116,7 +116,7 @@ describe("job prompts", () => {
   });
 
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
-    const prompt = buildAppendFeaturesFromOnePagerPrompt({
+    const prompt = buildMilestoneFeatureSetPrompt({
       existingFeatures: [
         {
           dependencies: [],
@@ -149,7 +149,7 @@ describe("job prompts", () => {
   });
 
   it("asks the feature-set review pass to merge task-sized fragmentation", () => {
-    const prompt = buildFeatureSetReviewPrompt({
+    const prompt = buildMilestoneFeatureSetReviewPrompt({
       projectName: "Quayboard",
       milestone: {
         title: "Foundations",

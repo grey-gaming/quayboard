@@ -719,7 +719,7 @@ describe("auto-advance service", () => {
       expect(updates.some((update) => update.status === "completed")).toBe(false);
     });
 
-    it("queues a catch-up feature when milestone reconciliation finds a first-pass gap", async () => {
+    it("queues a milestone feature-set rewrite when reconciliation finds a first-pass gap", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 1,
@@ -737,7 +737,7 @@ describe("auto-advance service", () => {
         },
         outputs: {
           complete: false,
-          issues: [{ action: "create_catch_up_feature", hint: "Missing milestone docs." }],
+          issues: [{ action: "rewrite_feature_set", hint: "Missing milestone docs." }],
         } as never,
       };
       const db = makeDb({ session: runningSession, job: reviewJob });
@@ -779,7 +779,7 @@ describe("auto-advance service", () => {
       expect(milestoneService.incrementAutoCatchUpCount).toHaveBeenCalledWith("milestone-1");
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "GenerateMilestoneCatchUpFeature",
+          type: "RewriteMilestoneFeatureSet",
           inputs: expect.objectContaining({
             milestoneId: "milestone-1",
             hint: "Missing milestone docs.",
@@ -792,7 +792,7 @@ describe("auto-advance service", () => {
       expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
-    it("pauses when milestone reconciliation still has gaps after the catch-up limit", async () => {
+    it("pauses when milestone reconciliation still has gaps after the rewrite limit", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 1,
@@ -810,7 +810,7 @@ describe("auto-advance service", () => {
         },
         outputs: {
           complete: false,
-          issues: [{ action: "create_catch_up_feature", hint: "Still missing milestone docs." }],
+          issues: [{ action: "rewrite_feature_set", hint: "Still missing milestone docs." }],
         } as never,
       };
       const db = makeDb({ session: runningSession, job: reviewJob });
@@ -853,7 +853,7 @@ describe("auto-advance service", () => {
       expect(pauseUpdate?.pausedReason).toBe("needs_human");
     });
 
-    it("continues into normal feature planning after a catch-up feature job succeeds", async () => {
+    it("continues into normal feature planning after a milestone feature-set rewrite succeeds", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 1,
@@ -861,7 +861,7 @@ describe("auto-advance service", () => {
       });
       const catchUpJob = {
         ...makeJob(),
-        type: "GenerateMilestoneCatchUpFeature",
+        type: "RewriteMilestoneFeatureSet",
       };
       nextActionsService.build.mockResolvedValue({
         actions: [

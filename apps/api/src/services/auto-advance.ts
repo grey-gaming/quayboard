@@ -114,7 +114,7 @@ const AUTOMATABLE_STEPS: Record<
   milestone_complete: null,
   milestone_reconciliation_resolve: null,
   features_create: {
-    type: "AppendFeatureFromOnePager",
+    type: "GenerateMilestoneFeatureSet",
     buildInputs: (href) => {
       const match = href.match(/[?&]milestone=([^&]+)/);
       return { milestoneId: match?.[1] ?? "" };
@@ -840,7 +840,10 @@ export const createAutoAdvanceService = (
         const output = job.outputs as {
           complete: boolean;
           milestoneId: string;
-          issues: Array<{ action: "create_catch_up_feature" | "needs_human_review"; hint: string }>;
+          issues: Array<{
+            action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+            hint: string;
+          }>;
         } | null;
 
         const milestoneId =
@@ -891,7 +894,8 @@ export const createAutoAdvanceService = (
         }
 
         if (
-          firstIssue.action === "create_catch_up_feature" &&
+          (firstIssue.action === "rewrite_feature_set" ||
+            firstIssue.action === "create_catch_up_feature") &&
           (milestone.autoCatchUpCount ?? 0) < 1
         ) {
           await milestoneService.recordReconciliationResult({
@@ -915,7 +919,7 @@ export const createAutoAdvanceService = (
           await jobService.createJob({
             createdByUserId: project.ownerUserId,
             projectId: job.projectId,
-            type: "GenerateMilestoneCatchUpFeature",
+            type: "RewriteMilestoneFeatureSet",
             inputs: buildAutoAdvanceInputs(
               { milestoneId, hint: firstIssue.hint },
               session.id,

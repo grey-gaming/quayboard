@@ -113,6 +113,7 @@ export const createStubServices = (): AppServices => ({
     list: async () => ({ features: [] }),
     listDependencies: async () => ({ dependencies: [] }),
     listRevisions: async () => ({ revisions: [] }),
+    replaceGeneratedMilestoneFeatures: async () => ({ archivedCount: 0, createdIds: [] }),
     removeDependency: async () => ({ dependencies: [] }),
     update: async () => {
       throw new Error("Not implemented in test stub.");
@@ -268,6 +269,7 @@ export const createStubServices = (): AppServices => ({
     createDesignDocVersion: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    countMilestonesWithCanonicalDesignDocs: async () => 0,
     formatDesignDocList: async () => ({ designDocs: [] }),
     getActiveMilestone: async () => undefined,
     getCanonicalDesignDoc: async () => undefined,

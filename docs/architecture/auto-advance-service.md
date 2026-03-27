@@ -137,7 +137,7 @@ The mapping table connects next-action keys to the job types and input factories
 | `milestones_generate` | `GenerateMilestones` | `{}` |
 | `milestone_design_generate` | `GenerateMilestoneDesign` | `{ milestoneId }` |
 | `milestone_reconciliation_review` | `ReviewMilestoneCoverage` | `{ milestoneId }` |
-| `features_create` | `AppendFeatureFromOnePager` | `{ milestoneId }` |
+| `features_create` | `GenerateMilestoneFeatureSet` | `{ milestoneId }` |
 | `feature_product_create` | `GenerateFeatureProductSpec` | `{ featureId }` |
 | `feature_ux_create` | `GenerateFeatureUxSpec` | `{ featureId }` |
 | `feature_tech_create` | `GenerateFeatureTechSpec` | `{ featureId }` |
@@ -154,8 +154,8 @@ Any key not in this map causes the session to pause with `needs_human`, promptin
 When the active milestone has no remaining feature, workstream, or task-planning actions, auto-advance queues `ReviewMilestoneCoverage`. That review compares the canonical milestone design doc against the active milestone's approved feature workstreams and generated delivery tasks.
 
 - If reconciliation passes, the next step becomes milestone completion.
-- If reconciliation finds gaps on the first pass, auto-advance creates one catch-up feature inside the current milestone and sends it through the normal workstream and task-planning flow.
-- If reconciliation still finds gaps after that catch-up pass, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
+- If reconciliation finds gaps on the first pass, auto-advance rewrites the current milestone's feature set and then resumes the normal workstream and task-planning flow for the replacement features.
+- If reconciliation still finds gaps after that rewrite pass, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
 
 ---
 

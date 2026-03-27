@@ -34,9 +34,7 @@ import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
-  buildAppendFeaturesFromOnePagerPrompt,
   buildFeatureProductSpecReviewPrompt,
-  buildFeatureSetReviewPrompt,
   buildFeatureTaskListReviewPrompt,
   buildFeatureWorkstreamReviewPrompt,
   buildDecisionConsistencyPrompt,
@@ -50,11 +48,13 @@ import {
   buildMilestoneDesignPrompt,
   buildMilestoneDesignReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
-  buildMilestoneCatchUpFeaturePrompt,
-  buildMilestoneCatchUpFeatureReviewPrompt,
+  buildMilestoneFeatureSetPrompt,
+  buildMilestoneFeatureSetReviewPrompt,
   buildMilestonePlanPrompt,
   buildProjectBlueprintPrompt,
   buildQuestionnaireAutoAnswerPrompt,
+  buildRewriteMilestoneFeatureSetPrompt,
+  buildRewriteMilestoneFeatureSetReviewPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
@@ -260,38 +260,6 @@ const parseFeatureWorkstreamResult = (value: string, templateId: string) => {
     markdown: parsed.markdown.trim(),
     requirements,
   };
-};
-
-const normalizeFeatureKind = (value: string | undefined) => {
-  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
-
-  switch (normalized) {
-    case "documentation":
-    case "docs":
-    case "doc":
-      return "system";
-    default:
-      return value;
-  }
-};
-
-const normalizeFeaturePriority = (value: string | undefined) => {
-  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
-
-  switch (normalized) {
-    case "critical":
-    case "urgent":
-    case "high":
-      return "must_have";
-    case "medium":
-    case "normal":
-      return "should_have";
-    case "low":
-    case "nice_to_have":
-      return "could_have";
-    default:
-      return value;
-  }
 };
 
 const validateGeneratedUserFlows = (
@@ -600,86 +568,25 @@ const parseMilestoneCoverageReviewResult = (value: string) => {
 
   const issues = (parsed.issues ?? [])
     .filter(
-      (issue): issue is { action: "create_catch_up_feature" | "needs_human_review"; hint: string } =>
-        (issue.action === "create_catch_up_feature" || issue.action === "needs_human_review") &&
+      (issue): issue is {
+        action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+        hint: string;
+      } =>
+        (issue.action === "rewrite_feature_set" ||
+          issue.action === "create_catch_up_feature" ||
+          issue.action === "needs_human_review") &&
         typeof issue.hint === "string" &&
         issue.hint.trim().length > 0,
     )
-    .map((issue) => ({ action: issue.action, hint: issue.hint.trim() }));
+    .map((issue) => ({
+      action:
+        issue.action === "create_catch_up_feature" ? "rewrite_feature_set" : issue.action,
+      hint: issue.hint.trim(),
+    }));
 
   return {
     complete: parsed.complete,
     issues,
-  };
-};
-
-const parseMilestoneCatchUpFeatureResult = (value: string) => {
-  const parsed = parseJson<{
-    feature?: {
-      acceptanceCriteria?: string[];
-      kind?: string;
-      priority?: string;
-      summary?: string;
-      title?: string;
-    };
-    product?: {
-      markdown?: string;
-      requirements?: {
-        archDocsRequired?: boolean;
-        techRequired?: boolean;
-        userDocsRequired?: boolean;
-        uxRequired?: boolean;
-      };
-      title?: string;
-    };
-    ux?: { markdown?: string; title?: string };
-    tech?: { markdown?: string; title?: string };
-    userDocs?: { markdown?: string; title?: string };
-    archDocs?: { markdown?: string; title?: string };
-  }>(value);
-
-  if (!parsed?.feature) {
-    throw new Error("GenerateMilestoneCatchUpFeature returned invalid content.");
-  }
-
-  const [feature] = validateGeneratedFeatures(
-    [
-      {
-        ...parsed.feature,
-        kind: normalizeFeatureKind(parsed.feature.kind),
-        priority: normalizeFeaturePriority(parsed.feature.priority),
-      },
-    ],
-    "GenerateMilestoneCatchUpFeature",
-  );
-  const product = parseFeatureWorkstreamResult(
-    JSON.stringify(parsed.product ?? null),
-    "GenerateMilestoneCatchUpFeature.product",
-  );
-  const ux = parseFeatureWorkstreamResult(
-    JSON.stringify(parsed.ux ?? null),
-    "GenerateMilestoneCatchUpFeature.ux",
-  );
-  const tech = parseFeatureWorkstreamResult(
-    JSON.stringify(parsed.tech ?? null),
-    "GenerateMilestoneCatchUpFeature.tech",
-  );
-  const userDocs = parseFeatureWorkstreamResult(
-    JSON.stringify(parsed.userDocs ?? null),
-    "GenerateMilestoneCatchUpFeature.userDocs",
-  );
-  const archDocs = parseFeatureWorkstreamResult(
-    JSON.stringify(parsed.archDocs ?? null),
-    "GenerateMilestoneCatchUpFeature.archDocs",
-  );
-
-  return {
-    feature,
-    product,
-    ux,
-    tech,
-    userDocs,
-    archDocs,
   };
 };
 
@@ -691,7 +598,7 @@ const validateGeneratedFeatures = (
     kind?: string;
     priority?: string;
   }>,
-  templateId = "AppendFeatureFromOnePager",
+  templateId = "GenerateMilestoneFeatureSet",
 ) => {
   if (items.length === 0) {
     throw new Error(
@@ -1795,22 +1702,22 @@ export const createJobRunnerService = (input: {
         });
       }
 
-      case "AppendFeatureFromOnePager": {
+      case "GenerateMilestoneFeatureSet": {
         if (!input.featureService || !input.milestoneService) {
-          throw new Error("AppendFeatureFromOnePager requires feature and milestone support.");
+          throw new Error("GenerateMilestoneFeatureSet requires feature and milestone support.");
         }
 
         const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
         const milestoneId = jobInput?.milestoneId;
 
         if (!milestoneId) {
-          throw new Error("AppendFeatureFromOnePager requires a milestoneId.");
+          throw new Error("GenerateMilestoneFeatureSet requires a milestoneId.");
         }
 
         await input.featureService.assertApprovedMilestone(rawJob.projectId, milestoneId);
         const overview = await input.onePagerService.getCanonical(ownerUserId, rawJob.projectId);
         if (!overview?.approvedAt) {
-          throw new Error("AppendFeatureFromOnePager requires an approved overview document.");
+          throw new Error("GenerateMilestoneFeatureSet requires an approved overview document.");
         }
 
         const [features, milestoneRecord, milestoneList, milestoneDesignDoc, projectSpecs, userFlows] =
@@ -1826,17 +1733,17 @@ export const createJobRunnerService = (input: {
         ]);
 
         if (!milestoneRecord) {
-          throw new Error("AppendFeatureFromOnePager could not load the target milestone.");
+          throw new Error("GenerateMilestoneFeatureSet could not load the target milestone.");
         }
 
         if (!milestoneDesignDoc) {
           throw new Error(
-            "AppendFeatureFromOnePager requires a canonical milestone design document.",
+            "GenerateMilestoneFeatureSet requires a canonical milestone design document.",
           );
         }
 
         if (!userFlows.approvedAt) {
-          throw new Error("AppendFeatureFromOnePager requires approved user flows.");
+          throw new Error("GenerateMilestoneFeatureSet requires approved user flows.");
         }
 
         const featureTitleById = new Map(
@@ -1845,7 +1752,7 @@ export const createJobRunnerService = (input: {
         const selectedMilestone =
           milestoneList.milestones.find((item) => item.id === milestoneId) ?? null;
 
-        const prompt = buildAppendFeaturesFromOnePagerPrompt({
+        const prompt = buildMilestoneFeatureSetPrompt({
           existingFeatures: features.features.map((feature) => ({
             dependencies: feature.dependencyIds.map(
               (dependencyId) => featureTitleById.get(dependencyId) ?? dependencyId,
@@ -1889,7 +1796,7 @@ export const createJobRunnerService = (input: {
             return validateGeneratedFeatures(parsed, templateId);
           },
           buildReviewPrompt: (draftFeatures) =>
-            buildFeatureSetReviewPrompt({
+            buildMilestoneFeatureSetReviewPrompt({
               projectName: project.name,
               milestone: {
                 title: milestoneRecord.title,
@@ -1926,9 +1833,9 @@ export const createJobRunnerService = (input: {
         });
       }
 
-      case "GenerateMilestoneCatchUpFeature": {
-        if (!input.featureService || !input.featureWorkstreamService || !input.milestoneService) {
-          throw new Error("GenerateMilestoneCatchUpFeature requires milestone and feature support.");
+      case "RewriteMilestoneFeatureSet": {
+        if (!input.featureService || !input.milestoneService) {
+          throw new Error("RewriteMilestoneFeatureSet requires milestone and feature support.");
         }
 
         const jobInput = parseJson<{ hint?: string; milestoneId?: string }>(
@@ -1936,164 +1843,122 @@ export const createJobRunnerService = (input: {
         );
         const milestoneId = jobInput?.milestoneId;
         if (!milestoneId) {
-          throw new Error("GenerateMilestoneCatchUpFeature requires a milestoneId.");
+          throw new Error("RewriteMilestoneFeatureSet requires a milestoneId.");
         }
 
         await input.milestoneService.assertActiveMilestone(ownerUserId, rawJob.projectId, milestoneId);
         await input.featureService.assertApprovedMilestone(rawJob.projectId, milestoneId);
 
-        const [projectSpecs, milestoneRecord, milestoneDesignDoc, featureList] = await Promise.all([
+        const overview = await input.onePagerService.getCanonical(ownerUserId, rawJob.projectId);
+        if (!overview?.approvedAt) {
+          throw new Error("RewriteMilestoneFeatureSet requires an approved overview document.");
+        }
+
+        const [projectSpecs, milestoneRecord, milestoneDesignDoc, featureList, milestoneList] = await Promise.all([
           loadApprovedProjectSpecs(),
           input.db.query.milestonesTable.findFirst({
             where: eq(milestonesTable.id, milestoneId),
           }),
           input.milestoneService.getCanonicalDesignDoc(ownerUserId, milestoneId),
           input.featureService.list(ownerUserId, rawJob.projectId),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
         ]);
 
         if (!milestoneRecord || !milestoneDesignDoc) {
           throw new Error(
-            "GenerateMilestoneCatchUpFeature requires a canonical milestone design document.",
+            "RewriteMilestoneFeatureSet requires a canonical milestone design document.",
           );
         }
 
-        const prompt = buildMilestoneCatchUpFeaturePrompt({
-          hint: jobInput?.hint ?? "Close the missing milestone coverage.",
-          milestone: {
-            title: milestoneRecord.title,
-            summary: milestoneRecord.summary,
-          },
-          milestoneDesignDoc: milestoneDesignDoc.markdown,
-          existingFeatures: featureList.features
-            .filter((feature) => feature.milestoneId === milestoneId)
-            .map((feature) => ({
-              title: feature.headRevision.title,
-              summary: feature.headRevision.summary,
-            })),
-          projectProductSpec: projectSpecs.productSpec.markdown,
-          projectTechnicalSpec: projectSpecs.technicalSpec.markdown,
-          projectUxSpec: projectSpecs.uxSpec.markdown,
-        });
-        const existingMilestoneFeatures = featureList.features
+        const featureTitleById = new Map(
+          featureList.features.map((feature) => [feature.id, feature.headRevision.title]),
+        );
+        const selectedMilestone =
+          milestoneList.milestones.find((milestone) => milestone.id === milestoneId) ?? null;
+        const currentMilestoneFeatures = featureList.features
           .filter((feature) => feature.milestoneId === milestoneId)
           .map((feature) => ({
             title: feature.headRevision.title,
             summary: feature.headRevision.summary,
           }));
-        const catchUp = await runReviewedJsonGeneration({
+
+        const prompt = buildRewriteMilestoneFeatureSetPrompt({
+          hint: jobInput?.hint ?? "Rewrite the feature set to close the missing milestone coverage.",
+          linkedUserFlows: (selectedMilestone?.linkedUserFlows ?? []).map((flow) => ({
+            id: flow.id,
+            title: flow.title,
+          })),
+          milestone: {
+            title: milestoneRecord.title,
+            summary: milestoneRecord.summary,
+          },
+          milestoneDesignDoc: milestoneDesignDoc.markdown,
+          currentMilestoneFeatures,
+          existingFeatures: featureList.features.map((feature) => ({
+            dependencies: feature.dependencyIds.map(
+              (dependencyId) => featureTitleById.get(dependencyId) ?? dependencyId,
+            ),
+            milestoneTitle: feature.milestoneTitle,
+            summary: feature.headRevision.summary,
+            title: feature.headRevision.title,
+          })),
+          overviewDocument: overview.markdown,
+          projectName: project.name,
+          projectProductSpec: projectSpecs.productSpec.markdown,
+          projectTechnicalSpec: projectSpecs.technicalSpec.markdown,
+          projectUxSpec: projectSpecs.uxSpec.markdown,
+        });
+        const rewrittenFeatures = await runReviewedJsonGeneration({
           templateId: rawJob.type,
           parameters: { milestoneId },
           prompt,
-          parseDraft: (content) => parseMilestoneCatchUpFeatureResult(content),
-          buildReviewPrompt: (draftCatchUp) =>
-            buildMilestoneCatchUpFeatureReviewPrompt({
-              hint: jobInput?.hint ?? "Close the missing milestone coverage.",
+          parseDraft: (content, templateId) => {
+            const parsed = parseGeneratedFeaturesResult(content);
+
+            if (!parsed) {
+              throw new Error(
+                `${templateId} returned invalid content. Expected a JSON array of features.`,
+              );
+            }
+
+            return validateGeneratedFeatures(parsed, templateId);
+          },
+          buildReviewPrompt: (draftFeatures) =>
+            buildRewriteMilestoneFeatureSetReviewPrompt({
+              hint: jobInput?.hint ?? "Rewrite the feature set to close the missing milestone coverage.",
+              linkedUserFlows: (selectedMilestone?.linkedUserFlows ?? []).map((flow) => ({
+                id: flow.id,
+                title: flow.title,
+              })),
               milestone: {
                 title: milestoneRecord.title,
                 summary: milestoneRecord.summary,
               },
               milestoneDesignDoc: milestoneDesignDoc.markdown,
-              existingFeatures: existingMilestoneFeatures,
-              draftCatchUp: {
-                feature: draftCatchUp.feature,
-                product: {
-                  title: draftCatchUp.product.title,
-                  markdown: draftCatchUp.product.markdown,
-                  requirements:
-                    draftCatchUp.product.requirements ?? {
-                      uxRequired: true,
-                      techRequired: true,
-                      userDocsRequired: true,
-                      archDocsRequired: true,
-                    },
-                },
-                ux: draftCatchUp.ux,
-                tech: draftCatchUp.tech,
-                userDocs: draftCatchUp.userDocs,
-                archDocs: draftCatchUp.archDocs,
-              },
+              currentMilestoneFeatures,
+              existingFeatures: featureList.features.map((feature) => ({
+                dependencies: feature.dependencyIds.map(
+                  (dependencyId) => featureTitleById.get(dependencyId) ?? dependencyId,
+                ),
+                milestoneTitle: feature.milestoneTitle,
+                summary: feature.headRevision.summary,
+                title: feature.headRevision.title,
+              })),
+              draftFeatures,
             }),
         });
-        const createdFeature = await input.featureService.create(
+        const rewritten = await input.featureService.replaceGeneratedMilestoneFeatures({
           ownerUserId,
-          rawJob.projectId,
-          {
-            milestoneId,
-            kind: catchUp.feature.kind,
-            priority: catchUp.feature.priority,
-            title: catchUp.feature.title,
-            summary: catchUp.feature.summary,
-            acceptanceCriteria: catchUp.feature.acceptanceCriteria,
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
-
-        await input.featureWorkstreamService.createRevision(
-          ownerUserId,
-          createdFeature.id,
-          "product",
-          {
-            title: catchUp.product.title,
-            markdown: catchUp.product.markdown,
-            requirements:
-              catchUp.product.requirements ?? {
-                uxRequired: true,
-                techRequired: true,
-                userDocsRequired: true,
-                archDocsRequired: true,
-              },
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
-        await input.featureWorkstreamService.createRevision(
-          ownerUserId,
-          createdFeature.id,
-          "ux",
-          {
-            title: catchUp.ux.title,
-            markdown: catchUp.ux.markdown,
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
-        await input.featureWorkstreamService.createRevision(
-          ownerUserId,
-          createdFeature.id,
-          "tech",
-          {
-            title: catchUp.tech.title,
-            markdown: catchUp.tech.markdown,
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
-        await input.featureWorkstreamService.createRevision(
-          ownerUserId,
-          createdFeature.id,
-          "user_docs",
-          {
-            title: catchUp.userDocs.title,
-            markdown: catchUp.userDocs.markdown,
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
-        await input.featureWorkstreamService.createRevision(
-          ownerUserId,
-          createdFeature.id,
-          "arch_docs",
-          {
-            title: catchUp.archDocs.title,
-            markdown: catchUp.archDocs.markdown,
-            source: rawJob.type,
-          },
-          rawJob.id,
-        );
+          projectId: rawJob.projectId,
+          milestoneId,
+          createdByJobId: rawJob.id,
+          items: rewrittenFeatures,
+        });
 
         return input.jobService.markSucceeded(rawJob.id, {
-          featureId: createdFeature.id,
+          archivedCount: rewritten.archivedCount,
+          createdCount: rewritten.createdIds.length,
+          featureIds: rewritten.createdIds,
           milestoneId,
         });
       }

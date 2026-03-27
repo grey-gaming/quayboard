@@ -143,7 +143,10 @@ export const createMilestoneService = (db: AppDatabase) => ({
 
   async recordReconciliationResult(input: {
     milestoneId: string;
-    issues: Array<{ action: "create_catch_up_feature" | "needs_human_review"; hint: string }>;
+    issues: Array<{
+      action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+      hint: string;
+    }>;
     jobId: string;
     status: "passed" | "failed_first_pass" | "failed_needs_human";
   }) {
@@ -479,6 +482,23 @@ export const createMilestoneService = (db: AppDatabase) => ({
       where: eq(milestoneDesignDocsTable.milestoneId, milestoneId),
       orderBy: [desc(milestoneDesignDocsTable.version)],
     });
+  },
+
+  async countMilestonesWithCanonicalDesignDocs(ownerUserId: string, projectId: string) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+
+    const records = await db
+      .selectDistinct({ milestoneId: milestoneDesignDocsTable.milestoneId })
+      .from(milestoneDesignDocsTable)
+      .innerJoin(milestonesTable, eq(milestonesTable.id, milestoneDesignDocsTable.milestoneId))
+      .where(
+        and(
+          eq(milestonesTable.projectId, projectId),
+          eq(milestoneDesignDocsTable.isCanonical, true),
+        ),
+      );
+
+    return records.length;
   },
 
   async getCanonicalDesignDoc(ownerUserId: string, milestoneId: string) {

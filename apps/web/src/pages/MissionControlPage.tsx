@@ -89,7 +89,7 @@ export const MissionControlPage = () => {
             <PhaseGateChecklist phases={phases} projectId={id} />
           </div>
         </div>
-        <div className="grid gap-4">
+        <div className="grid gap-4 items-start">
           <AutoAdvanceControlsCard projectId={id} session={session} />
           <MissionActivityTimeline jobs={jobs} />
         </div>

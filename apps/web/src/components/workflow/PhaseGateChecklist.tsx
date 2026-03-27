@@ -24,10 +24,18 @@ const KEY_TO_PATH: Record<string, string> = {
   flows_exist: "/user-flows",
   flows_approved: "/user-flows",
   user_flows_approved: "/user-flows",
+  user_flow_count: "/user-flows",
+  user_flow_coverage_gaps: "/user-flows",
   milestones_exist: "/milestones",
   milestone_approved: "/milestones",
+  milestone_count: "/milestones",
+  milestone_document_count: "/milestones",
+  milestone_approved_count: "/milestones",
+  milestone_reconciled_count: "/milestones",
   features_exist: "/features",
   feature_product_approved: "/features",
+  feature_count: "/features",
+  feature_task_count: "/features",
 };
 
 export const PhaseGateChecklist = ({

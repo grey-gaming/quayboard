@@ -860,12 +860,12 @@ export const useCreateFeatureMutation = (projectId: string) => {
   });
 };
 
-export const useAppendFeaturesFromOnePagerMutation = (projectId: string) => {
+export const useGenerateMilestoneFeatureSetMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: Parameters<typeof api.appendFeaturesFromOnePager>[1]) =>
-      api.appendFeaturesFromOnePager(projectId, payload),
+    mutationFn: (payload: Parameters<typeof api.generateMilestoneFeatureSet>[1]) =>
+      api.generateMilestoneFeatureSet(projectId, payload),
     onSuccess: () => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId);
     },

@@ -681,7 +681,7 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     input.draftMarkdown,
   ].join("\n");
 
-export const buildAppendFeaturesFromOnePagerPrompt = (input: {
+export const buildMilestoneFeatureSetPrompt = (input: {
   existingFeatures: Array<{
     dependencies: string[];
     milestoneTitle: string;
@@ -711,7 +711,7 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Append implementation-ready feature candidates for milestone "${input.milestone.title}" in "${input.projectName}".`,
+    `Generate the implementation-ready feature set for milestone "${input.milestone.title}" in "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
     "acceptanceCriteria must be a non-empty array of concrete strings.",
@@ -756,7 +756,7 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     JSON.stringify(input.existingFeatures, null, 2),
   ].join("\n");
 
-export const buildFeatureSetReviewPrompt = (input: {
+export const buildMilestoneFeatureSetReviewPrompt = (input: {
   projectName: string;
   milestone: {
     summary: string;
@@ -1156,11 +1156,11 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
     `Review whether the planned work fully covers milestone "${input.milestone.title}".`,
     'Return valid JSON with exactly three keys: "complete" (boolean), "milestoneId" (string placeholder ignored by the prompt consumer), and "issues" (array).',
     'Each issue must be an object with exactly two keys: "action" and "hint".',
-    '"action" must be either "create_catch_up_feature" or "needs_human_review".',
+    '"action" must be either "rewrite_feature_set" or "needs_human_review".',
     "Only report material coverage gaps between the milestone design doc and the current feature/task plan.",
     "Be conservative. Do not report minor wording differences or implied detail that is already covered.",
-    'Use "create_catch_up_feature" when a single additional feature can reasonably close the gap.',
-    'Use "needs_human_review" when the gap is ambiguous, structural, or likely requires manual milestone/feature/task changes.',
+    'Use "rewrite_feature_set" when the current milestone feature boundaries need to be rewritten to resolve the gap cleanly.',
+    'Use "needs_human_review" when the gap is ambiguous, structural, or likely requires manual milestone or design changes.',
     "If coverage is complete, return complete=true and an empty issues array.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1174,17 +1174,29 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
     JSON.stringify(input.features, null, 2),
   ].join("\n");
 
-export const buildMilestoneCatchUpFeaturePrompt = (input: {
+export const buildRewriteMilestoneFeatureSetPrompt = (input: {
   hint: string;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
   milestone: {
     summary: string;
     title: string;
   };
   milestoneDesignDoc: string;
-  existingFeatures: Array<{
+  currentMilestoneFeatures: Array<{
     title: string;
     summary: string;
   }>;
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  overviewDocument: string;
+  projectName: string;
   projectProductSpec: string;
   projectTechnicalSpec: string;
   projectUxSpec: string;
@@ -1193,27 +1205,20 @@ export const buildMilestoneCatchUpFeaturePrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Create one catch-up feature for milestone "${input.milestone.title}" that closes the described coverage gap.`,
-    'Return valid JSON with exactly these top-level keys: "feature", "product", "ux", "tech", "userDocs", "archDocs".',
-    'The "feature" object must contain: title, summary, acceptanceCriteria, kind, priority.',
-    'The "product" object must contain: title, markdown, requirements.',
-    'The "ux", "tech", "userDocs", and "archDocs" objects must each contain: title, markdown.',
-    "The feature should be tightly scoped to the missing milestone coverage and should not duplicate an existing feature.",
-    "Keep the catch-up work in one coherent feature. Do not split the gap into task-sized fragments or separate document-only slivers.",
-    "Generate complete, draft-ready workstreams in one pass so the feature can go through the normal approval and task-planning flow next.",
+    `Rewrite the full feature set for milestone "${input.milestone.title}" in "${input.projectName}" so it cleanly resolves the surfaced milestone coverage gap.`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "The output is the full replacement feature set for this milestone, not just the incremental fix.",
+    "Rewrite sibling boundaries as needed so cross-feature interaction issues are handled inside the feature set itself.",
+    "Prefer fewer, coherent feature-sized items over task-sized fragments.",
+    "Keep the result scoped only to the selected milestone and avoid duplicating features from other milestones.",
     "Do not wrap the JSON in code fences.",
     "",
     "Coverage gap to close:",
     input.hint,
     "",
-    "Milestone summary:",
-    JSON.stringify(input.milestone, null, 2),
-    "",
-    "Canonical milestone design document:",
-    input.milestoneDesignDoc,
-    "",
-    "Existing milestone features:",
-    JSON.stringify(input.existingFeatures, null, 2),
+    "Approved overview document:",
+    input.overviewDocument,
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -1223,51 +1228,60 @@ export const buildMilestoneCatchUpFeaturePrompt = (input: {
     "",
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
+    "",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Current milestone feature set to replace:",
+    JSON.stringify(input.currentMilestoneFeatures, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
+    JSON.stringify(input.existingFeatures, null, 2),
   ].join("\n");
 
-export const buildMilestoneCatchUpFeatureReviewPrompt = (input: {
+export const buildRewriteMilestoneFeatureSetReviewPrompt = (input: {
   hint: string;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
   milestone: {
     summary: string;
     title: string;
   };
   milestoneDesignDoc: string;
-  existingFeatures: Array<{
+  currentMilestoneFeatures: Array<{
     title: string;
     summary: string;
   }>;
-  draftCatchUp: {
-    feature: {
-      title: string;
-      summary: string;
-      acceptanceCriteria: string[];
-      kind: string;
-      priority: string;
-    };
-    product: {
-      title: string;
-      markdown: string;
-      requirements: {
-        uxRequired: boolean;
-        techRequired: boolean;
-        userDocsRequired: boolean;
-        archDocsRequired: boolean;
-      };
-    };
-    ux: { title: string; markdown: string };
-    tech: { title: string; markdown: string };
-    userDocs: { title: string; markdown: string };
-    archDocs: { title: string; markdown: string };
-  };
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  draftFeatures: Array<{
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    kind: string;
+    priority: string;
+  }>;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Review and tighten the catch-up feature for milestone "${input.milestone.title}".`,
-    'Return valid JSON with exactly these top-level keys: "feature", "product", "ux", "tech", "userDocs", "archDocs".',
-    "Preserve the single-feature shape, close the named gap cleanly, and avoid duplicating existing features.",
-    "Merge any task-sized fragmentation back into one coherent catch-up feature.",
+    `Review and tighten the rewritten feature set for milestone "${input.milestone.title}".`,
+    "Return valid JSON as a non-empty array.",
+    "Preserve the intended full-set rewrite, close the named gap cleanly, and keep sibling feature ownership clear.",
+    "Merge overlapping or task-sized items back into coherent features.",
     "Do not wrap the JSON in code fences.",
     "",
     "Coverage gap to close:",
@@ -1279,11 +1293,17 @@ export const buildMilestoneCatchUpFeatureReviewPrompt = (input: {
     "Selected milestone design document:",
     input.milestoneDesignDoc,
     "",
-    "Existing milestone features:",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Current milestone feature set to replace:",
+    JSON.stringify(input.currentMilestoneFeatures, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
     JSON.stringify(input.existingFeatures, null, 2),
     "",
-    "First-pass catch-up feature bundle:",
-    JSON.stringify(input.draftCatchUp, null, 2),
+    "First-pass rewritten feature set:",
+    JSON.stringify(input.draftFeatures, null, 2),
   ].join("\n");
 
 export const buildTaskClarificationsPrompt = (input: {

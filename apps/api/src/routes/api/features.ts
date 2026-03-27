@@ -146,7 +146,7 @@ export const featureRoutes = (
   );
 
   app.post(
-    "/projects/:id/features/append-from-one-pager",
+    "/projects/:id/features/generate-feature-set",
     {
       schema: {
         params: projectParamsJsonSchema,
@@ -159,7 +159,7 @@ export const featureRoutes = (
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
-          type: "AppendFeatureFromOnePager",
+          type: "GenerateMilestoneFeatureSet",
           inputs: request.body ?? {},
         });
 

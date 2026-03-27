@@ -352,8 +352,8 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  appendFeaturesFromOnePager(projectId: string, payload: { milestoneId: string }) {
-    return apiRequest<Job>(`/api/projects/${projectId}/features/append-from-one-pager`, {
+  generateMilestoneFeatureSet(projectId: string, payload: { milestoneId: string }) {
+    return apiRequest<Job>(`/api/projects/${projectId}/features/generate-feature-set`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
