@@ -90,10 +90,12 @@ const makeDb = (overrides: Partial<{
   session: ReturnType<typeof makeSessionRow> | null;
   project: ReturnType<typeof makeProject> | null;
   job: ReturnType<typeof makeJob> | null;
+  activeJobs: Array<ReturnType<typeof makeJob>>;
 }> = {}) => {
   const session = overrides.session !== undefined ? overrides.session : null;
   const project = overrides.project !== undefined ? overrides.project : makeProject();
   const job = overrides.job !== undefined ? overrides.job : makeJob();
+  const activeJobs = overrides.activeJobs !== undefined ? overrides.activeJobs : [];
 
   const insertReturning = vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const, startedAt: NOW })]);
   const updateReturning = vi.fn().mockImplementation(async () => [makeSessionRow()]);
@@ -111,6 +113,7 @@ const makeDb = (overrides: Partial<{
       },
       jobsTable: {
         findFirst: vi.fn().mockResolvedValue(job),
+        findMany: vi.fn().mockResolvedValue(activeJobs),
       },
     },
     insert: vi.fn().mockReturnValue({
@@ -249,6 +252,44 @@ describe("auto-advance service", () => {
       expect(result.session?.status).toBe("running");
     });
 
+    it("reconciles a stale running session with no active jobs", async () => {
+      const staleSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: staleSession, activeJobs: [] });
+      const updates: Array<{ status?: string; pausedReason?: string; pendingJobCount?: number }> =
+        [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(
+          (data: { status?: string; pausedReason?: string; pendingJobCount?: number }) => {
+            updates.push(data);
+            return {
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([
+                  makeSessionRow({
+                    status: "paused" as const,
+                    pausedReason: "job_failed",
+                    pendingJobCount: 0,
+                    activeBatchToken: null,
+                  }),
+                ]),
+              }),
+            };
+          },
+        ),
+      });
+      const service = makeService(db);
+
+      const result = await service.getStatus(USER_ID, PROJECT_ID);
+
+      expect(result.session?.status).toBe("paused");
+      expect(result.session?.pausedReason).toBe("job_failed");
+      expect(updates[0]?.pendingJobCount).toBe(0);
+      expect(sseHub.publish).toHaveBeenCalled();
+    });
+
     it("returns null nextStep when no actions are queued", async () => {
       nextActionsService.build.mockResolvedValue({ actions: [] });
       const db = makeDb({ session: null });
@@ -283,6 +324,54 @@ describe("auto-advance service", () => {
       const service = makeService(db);
 
       await expect(service.start(USER_ID, PROJECT_ID, {})).rejects.toThrow();
+    });
+
+    it("restarts a stale running session after reconciling it", async () => {
+      const staleSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const updatedSession = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "job_failed",
+        pendingJobCount: 0,
+        activeBatchToken: null,
+      });
+      const db = makeDb({ session: staleSession, activeJobs: [] });
+      let sessionReadCount = 0;
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockImplementation(async () => {
+        sessionReadCount += 1;
+        if (sessionReadCount === 1) {
+          return staleSession;
+        }
+        if (sessionReadCount === 2) {
+          return updatedSession;
+        }
+        return makeSessionRow({ status: "running" as const });
+      });
+      const updateResults = [
+        [updatedSession],
+        [makeSessionRow({ status: "running" as const, startedAt: NOW })],
+        [makeSessionRow({ status: "running" as const, currentStep: "overview" })],
+      ];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockImplementation(async () => updateResults.shift() ?? [makeSessionRow()]),
+          }),
+        })),
+      });
+      const service = makeService(db);
+
+      await service.start(USER_ID, PROJECT_ID, {});
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateProjectOverview",
+          projectId: PROJECT_ID,
+        }),
+      );
     });
 
     it("pauses with needs_human when next action is not automatable", async () => {

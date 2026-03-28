@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type {
   AutoAdvanceSession,
@@ -232,8 +232,66 @@ export const createAutoAdvanceService = (
     });
   };
 
+  const findActiveAutoAdvanceJob = async (
+    projectId: string,
+    sessionId: string,
+    batchToken: string | null,
+  ) => {
+    if (!batchToken) {
+      return null;
+    }
+
+    const [job] = await db.query.jobsTable.findMany({
+      where: and(
+        eq(jobsTable.projectId, projectId),
+        inArray(jobsTable.status, ["queued", "running"]),
+        sql`${jobsTable.inputs} -> '_autoAdvance' ->> 'sessionId' = ${sessionId}`,
+        sql`${jobsTable.inputs} -> '_autoAdvance' ->> 'batchToken' = ${batchToken}`,
+      ),
+      limit: 1,
+    });
+
+    return job ?? null;
+  };
+
   const publishSessionUpdate = async (ownerUserId: string, projectId: string) => {
     sseHub.publish(ownerUserId, "auto-advance:updated", { projectId });
+  };
+
+  const reconcileStaleRunningSession = async (
+    ownerUserId: string,
+    projectId: string,
+    session: AutoAdvanceSessionRow | null,
+  ) => {
+    if (!session || session.status !== "running" || session.pendingJobCount <= 0) {
+      return session;
+    }
+
+    const activeJob = await findActiveAutoAdvanceJob(
+      projectId,
+      session.id,
+      session.activeBatchToken ?? null,
+    );
+
+    if (activeJob) {
+      return session;
+    }
+
+    const [updated] = await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        status: "paused",
+        pausedReason: "job_failed",
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        pausedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, session.id))
+      .returning();
+
+    await publishSessionUpdate(ownerUserId, projectId);
+    return updated ?? session;
   };
 
   const buildAutoAdvanceInputs = (
@@ -537,7 +595,11 @@ export const createAutoAdvanceService = (
     async getStatus(ownerUserId: string, projectId: string): Promise<AutoAdvanceStatusResponse> {
       await requireProject(ownerUserId, projectId);
 
-      const session = await getSession(projectId);
+      const session = await reconcileStaleRunningSession(
+        ownerUserId,
+        projectId,
+        await getSession(projectId),
+      );
       const { actions } = await nextActionsService.build(ownerUserId, projectId);
       const nextStep = actions[0]?.key ?? null;
 
@@ -554,7 +616,11 @@ export const createAutoAdvanceService = (
     ): Promise<AutoAdvanceSession> {
       await requireProject(ownerUserId, projectId);
 
-      const existing = await getSession(projectId);
+      const existing = await reconcileStaleRunningSession(
+        ownerUserId,
+        projectId,
+        await getSession(projectId),
+      );
 
       if (existing && existing.status === "running") {
         throw new HttpError(409, "session_already_running", "An auto-advance session is already running.");
@@ -625,7 +691,11 @@ export const createAutoAdvanceService = (
     async stop(ownerUserId: string, projectId: string): Promise<AutoAdvanceSession> {
       await requireProject(ownerUserId, projectId);
 
-      const session = await getSession(projectId);
+      const session = await reconcileStaleRunningSession(
+        ownerUserId,
+        projectId,
+        await getSession(projectId),
+      );
 
       if (!session || session.status !== "running") {
         throw new HttpError(409, "session_not_running", "No running auto-advance session found.");
@@ -649,7 +719,11 @@ export const createAutoAdvanceService = (
     async resume(ownerUserId: string, projectId: string): Promise<AutoAdvanceSession> {
       await requireProject(ownerUserId, projectId);
 
-      const session = await getSession(projectId);
+      const session = await reconcileStaleRunningSession(
+        ownerUserId,
+        projectId,
+        await getSession(projectId),
+      );
 
       if (!session || session.status !== "paused") {
         throw new HttpError(409, "session_not_paused", "No paused auto-advance session found.");
@@ -676,6 +750,8 @@ export const createAutoAdvanceService = (
     async reset(ownerUserId: string, projectId: string): Promise<void> {
       await requireProject(ownerUserId, projectId);
 
+      await reconcileStaleRunningSession(ownerUserId, projectId, await getSession(projectId));
+
       await jobService.cancelActiveAutoAdvanceJobsForProject({
         projectId,
         error: {
@@ -694,7 +770,11 @@ export const createAutoAdvanceService = (
     async step(ownerUserId: string, projectId: string): Promise<AutoAdvanceSession> {
       await requireProject(ownerUserId, projectId);
 
-      const session = await getSession(projectId);
+      const session = await reconcileStaleRunningSession(
+        ownerUserId,
+        projectId,
+        await getSession(projectId),
+      );
 
       if (!session) {
         throw new HttpError(404, "session_not_found", "No auto-advance session exists for this project.");
