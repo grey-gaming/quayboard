@@ -7,13 +7,57 @@ const userId = "d3057770-eca1-417a-a1c6-c00bb83a47d0";
 
 const createDbStub = () => {
   const values = vi.fn(async () => undefined);
+  const selectLimit = vi.fn(async () => [
+    {
+      feature: {
+        id: "feature-1",
+        projectId,
+        archivedAt: null,
+      },
+      project: {
+        id: projectId,
+        ownerUserId: userId,
+      },
+    },
+  ]);
+  const selectWhere = vi.fn(() => ({
+    limit: selectLimit,
+  }));
+  const selectInnerJoin = vi.fn(() => ({
+    where: selectWhere,
+  }));
+  const selectFrom = vi.fn(() => ({
+    innerJoin: selectInnerJoin,
+  }));
+  const select = vi.fn(() => ({
+    from: selectFrom,
+  }));
 
   return {
     insert: vi.fn(() => ({
       values,
     })),
+    select,
     values,
     query: {
+      featureRevisionsTable: {
+        findFirst: vi.fn(async () => ({
+          id: "feature-revision-id",
+          featureId: "feature-1",
+          version: 1,
+          title: "Feature title",
+          summary: "Feature summary",
+          acceptanceCriteria: [],
+          source: "manual",
+          createdAt: new Date("2026-03-18T00:00:00.000Z"),
+        })),
+      },
+      featureDeliveryTasksTable: {
+        findMany: vi.fn(async () => []),
+      },
+      featureTaskPlanningSessionsTable: {
+        findFirst: vi.fn(async () => null),
+      },
       milestonesTable: {
         findFirst: vi.fn(async () => null) as unknown,
       },
@@ -2713,6 +2757,136 @@ describe("job runner service", () => {
         },
       ],
     });
+  });
+
+  it("builds milestone coverage review prompts without embedding full workstream markdown", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({
+        complete: true,
+        milestoneId: "milestone-id",
+        issues: [],
+      }),
+      promptTokens: 10,
+      completionTokens: 8,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {} as never,
+      db: db as never,
+      featureService: {
+        list: vi.fn(async () => ({
+          features: [
+            {
+              id: "feature-1",
+              projectId,
+              milestoneId: "milestone-id",
+              milestoneTitle: "Foundations",
+              featureKey: "F-001",
+              kind: "system",
+              priority: "must_have",
+              status: "approved",
+              headRevision: {
+                id: "feature-rev-1",
+                featureId: "feature-1",
+                version: 1,
+                title: "Routing core",
+                summary: "Implements the routing backbone.",
+                acceptanceCriteria: ["Routes can be created and removed."],
+                source: "manual",
+                createdAt: "2026-03-18T00:00:00.000Z",
+              },
+              documents: {
+                product: { required: true, state: "accepted" },
+                ux: { required: true, state: "accepted" },
+                tech: { required: true, state: "accepted" },
+                userDocs: { required: false, state: "missing" },
+                archDocs: { required: false, state: "accepted" },
+              },
+              taskPlanning: { hasTasks: true, taskCount: 1 },
+              dependencyIds: [],
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+              archivedAt: null,
+            },
+          ],
+        })),
+      } as never,
+      featureWorkstreamService: {
+        getTracks: vi.fn(async () => ({
+          tracks: {
+            product: { status: "approved", headRevision: { id: "p1", markdown: "# Product\n\nLong product markdown" }, required: true },
+            ux: { status: "approved", headRevision: { id: "u1", markdown: "# UX\n\nLong ux markdown" }, required: true },
+            tech: { status: "approved", headRevision: { id: "t1", markdown: "# Tech\n\nLong tech markdown" }, required: true },
+            userDocs: { status: "missing", headRevision: null, required: false },
+            archDocs: { status: "approved", headRevision: { id: "a1", markdown: "# Arch\n\nLong arch markdown" }, required: false },
+          },
+        })),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-review-coverage-compact",
+          projectId,
+          createdByUserId: userId,
+          type: "ReviewMilestoneCoverage",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getCanonicalDesignDoc: vi.fn(async () => ({
+          id: "design-doc-id",
+          milestoneId: "milestone-id",
+          version: 1,
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nDeliver routing.",
+          source: "ManualSave",
+          isCanonical: true,
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-review-coverage-compact");
+
+    const firstGenerateCall = generate.mock.calls[0] as unknown as
+      | [unknown, string, unknown]
+      | undefined;
+    expect(firstGenerateCall).toBeDefined();
+    const prompt = firstGenerateCall?.[1] ?? "";
+    expect(prompt).toContain('"featureKey": "F-001"');
+    expect(prompt).toContain('"product": "approved"');
+    expect(prompt).not.toContain("Long product markdown");
+    expect(prompt).not.toContain("Long ux markdown");
+    expect(prompt).not.toContain("Long tech markdown");
+    expect(prompt).not.toContain("Long arch markdown");
   });
 
   it("downgrades milestone repair plans without feature keys into actionable unresolved output", async () => {

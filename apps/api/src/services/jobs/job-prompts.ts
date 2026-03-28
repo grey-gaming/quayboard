@@ -1264,13 +1264,17 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
   };
   milestoneDesignDoc: string;
   features: Array<{
+    acceptanceCriteria: string[];
+    featureKey: string;
+    workstreams: {
+      product: "approved" | "missing" | "draft";
+      ux: "approved" | "missing" | "draft";
+      tech: "approved" | "missing" | "draft";
+      userDocs: "approved" | "missing" | "draft";
+      archDocs: "approved" | "missing" | "draft";
+    };
     title: string;
     summary: string;
-    productSpec: string | null;
-    uxSpec: string | null;
-    techSpec: string | null;
-    userDocs: string | null;
-    archDocs: string | null;
     tasks: Array<{
       title: string;
       description: string;
@@ -1299,7 +1303,7 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
     "Canonical milestone design document:",
     input.milestoneDesignDoc,
     "",
-    "Approved feature workstreams and generated tasks for this milestone:",
+    "Current milestone features, workstream status, and generated tasks:",
     JSON.stringify(input.features, null, 2),
   ].join("\n");
 

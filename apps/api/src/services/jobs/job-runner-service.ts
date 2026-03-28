@@ -2651,27 +2651,22 @@ export const createJobRunnerService = (input: {
             const tracks = await input.featureWorkstreamService!.getTracks(ownerUserId, feature.id);
             const session = await taskPlanning.getSession(ownerUserId, feature.id);
             const tasks = session ? await taskPlanning.getTasks(ownerUserId, session.id) : [];
-            const revisions = await Promise.all([
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "product"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "ux"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "tech"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "user_docs"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "arch_docs"),
-            ]);
-
-            const getApprovedMarkdown = (
-              list: (typeof revisions)[number],
-              status: "approved" | "missing" | "draft",
-            ) => (status === "approved" ? list.revisions[0]?.markdown ?? null : null);
-
             return {
+              featureKey: feature.featureKey,
               title: feature.headRevision.title,
               summary: feature.headRevision.summary,
-              productSpec: getApprovedMarkdown(revisions[0], tracks.tracks.product.status),
-              uxSpec: getApprovedMarkdown(revisions[1], tracks.tracks.ux.status),
-              techSpec: getApprovedMarkdown(revisions[2], tracks.tracks.tech.status),
-              userDocs: getApprovedMarkdown(revisions[3], tracks.tracks.userDocs.status),
-              archDocs: getApprovedMarkdown(revisions[4], tracks.tracks.archDocs.status),
+              acceptanceCriteria: Array.isArray(feature.headRevision.acceptanceCriteria)
+                ? feature.headRevision.acceptanceCriteria.filter(
+                    (item): item is string => typeof item === "string",
+                  )
+                : [],
+              workstreams: {
+                product: tracks.tracks.product.status,
+                ux: tracks.tracks.ux.status,
+                tech: tracks.tracks.tech.status,
+                userDocs: tracks.tracks.userDocs.status,
+                archDocs: tracks.tracks.archDocs.status,
+              },
               tasks: tasks.map((task: Awaited<ReturnType<typeof taskPlanning.getTasks>>[number]) => ({
                 title: task.title,
                 description: task.description,
