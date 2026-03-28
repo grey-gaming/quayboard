@@ -57,4 +57,75 @@ describe("llm provider service", () => {
       models: [],
     });
   });
+
+  it("passes JSON mode through to Ollama generation requests", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          response: '{"ok":true}',
+          done_reason: "stop",
+        }),
+    });
+
+    const service = createLlmProviderService({ requestTimeoutMs: 1_000 });
+    await service.generate(
+      {
+        apiKey: null,
+        baseUrl: "http://127.0.0.1:11434",
+        model: "glm-5:cloud",
+        provider: "ollama",
+      },
+      "Return JSON.",
+      { responseFormat: "json" },
+    );
+
+    const [, request] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(request.body)).toEqual(
+      expect.objectContaining({
+        format: "json",
+      }),
+    );
+  });
+
+  it("passes JSON mode through to OpenAI-compatible generation requests", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: '{"ok":true}',
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 11,
+            completion_tokens: 7,
+          },
+        }),
+    });
+
+    const service = createLlmProviderService({ requestTimeoutMs: 1_000 });
+    await service.generate(
+      {
+        apiKey: "secret",
+        baseUrl: "http://127.0.0.1:4000",
+        model: "gpt-4.1",
+        provider: "openai",
+      },
+      "Return JSON.",
+      { responseFormat: "json" },
+    );
+
+    const [, request] = fetchMock.mock.calls[0] as [string, { body: string }];
+    expect(JSON.parse(request.body)).toEqual(
+      expect.objectContaining({
+        response_format: {
+          type: "json_object",
+        },
+      }),
+    );
+  });
 });

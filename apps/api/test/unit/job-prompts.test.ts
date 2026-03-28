@@ -174,6 +174,12 @@ describe("job prompts", () => {
     expect(prompt).toContain("Review the full set as a whole");
     expect(prompt).toContain("Merge task-sized or overlapping features");
     expect(prompt).toContain("Prefer fewer, feature-sized items");
+    expect(prompt).toContain(
+      "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
     expect(prompt).toContain("First-pass draft feature set:");
   });
 

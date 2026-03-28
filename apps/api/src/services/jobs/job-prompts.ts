@@ -788,6 +788,8 @@ export const buildMilestoneFeatureSetReviewPrompt = (input: {
     `Review and rewrite the draft feature set for milestone "${input.milestone.title}" in "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Review the full set as a whole. Merge task-sized or overlapping features, close obvious milestone coverage gaps, and keep sibling features non-overlapping.",
     "Prefer fewer, feature-sized items over many tiny items.",
     "Keep the result scoped only to the selected milestone.",

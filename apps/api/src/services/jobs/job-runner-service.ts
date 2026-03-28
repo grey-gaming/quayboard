@@ -84,6 +84,100 @@ const parseJson = <T>(value: string): T | null => {
   }
 };
 
+type StructuredOutputFailureCategory =
+  | "incomplete_structured_output"
+  | "semantic_schema_violation"
+  | "structured_output_shape_violation";
+
+type JobFailurePayload = {
+  message: string;
+  code?: string;
+  category?: StructuredOutputFailureCategory;
+  templateId?: string;
+  doneReason?: string | null;
+};
+
+const buildJsonRepairPrompt = (input: {
+  invalidResponse: string;
+  templateId: string;
+  validationMessage: string;
+}) =>
+  [
+    "You are repairing an LLM response that must satisfy a strict JSON contract.",
+    `The previous response for template "${input.templateId}" failed validation.`,
+    `Validation error: ${input.validationMessage}`,
+    "Return valid JSON only.",
+    "Preserve the original scope and intent. Fix formatting, missing keys, invalid enums, or invalid JSON escaping as needed.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Previous invalid response:",
+    input.invalidResponse,
+  ].join("\n");
+
+const getStructuredOutputFailureMetadata = (input: {
+  doneReason?: string | null;
+  message: string;
+  templateId: string;
+}): Omit<JobFailurePayload, "message"> => {
+  if (input.doneReason === "length") {
+    return {
+      code: "llm_output_truncated",
+      category: "structured_output_shape_violation",
+      templateId: input.templateId,
+      doneReason: input.doneReason,
+    };
+  }
+
+  if (
+    input.message.includes("unsupported feature kind") ||
+    input.message.includes("unsupported feature priority") ||
+    input.message.includes("without featureKey") ||
+    input.message.includes("invalid refresh payload") ||
+    input.message.includes("no-op operation")
+  ) {
+    return {
+      code: "llm_output_schema_mismatch",
+      category: "semantic_schema_violation",
+      templateId: input.templateId,
+      doneReason: input.doneReason ?? null,
+    };
+  }
+
+  if (
+    input.message.includes("incomplete user flow") ||
+    input.message.includes("incomplete feature") ||
+    input.message.includes("without title") ||
+    input.message.includes("without an answer") ||
+    input.message.includes("without a question")
+  ) {
+    return {
+      code: "llm_output_incomplete",
+      category: "incomplete_structured_output",
+      templateId: input.templateId,
+      doneReason: input.doneReason ?? null,
+    };
+  }
+
+  return {
+    code: "llm_output_invalid",
+    category: "structured_output_shape_violation",
+    templateId: input.templateId,
+    doneReason: input.doneReason ?? null,
+  };
+};
+
+const createStructuredOutputFailure = (input: {
+  doneReason?: string | null;
+  message: string;
+  templateId: string;
+}) =>
+  Object.assign(new Error(input.message), {
+    jobError: {
+      message: input.message,
+      ...getStructuredOutputFailureMetadata(input),
+    } satisfies JobFailurePayload,
+  });
+
 const normalizeGeneratedFlowSteps = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -678,10 +772,14 @@ const parseMilestoneCoverageRepairPlan = (
       })
     : [];
 
+  const nonExecutableReasons: string[] = [];
   const operations = Array.isArray(parsed.operations)
-    ? parsed.operations.map((item, index) => {
+    ? parsed.operations.flatMap((item, index) => {
         if (!item?.featureKey?.trim()) {
-          throw new Error(`${templateId} returned an operation without featureKey.`);
+          nonExecutableReasons.push(
+            `${templateId} returned a non-executable operation without featureKey.`,
+          );
+          return [];
         }
 
         const refresh = item.refresh;
@@ -694,34 +792,50 @@ const parseMilestoneCoverageRepairPlan = (
           typeof refresh.archDocs !== "boolean" ||
           typeof refresh.tasks !== "boolean"
         ) {
-          throw new Error(
+          nonExecutableReasons.push(
             `${templateId} returned an invalid refresh payload at operation ${index}.`,
           );
+          return [];
         }
 
-        const featurePatch =
-          item.featurePatch === null || item.featurePatch === undefined
-            ? null
-            : createFeatureRevisionRequestSchema
-                .omit({ source: true })
-                .parse(item.featurePatch);
+        let featurePatch: {
+          title: string;
+          summary: string;
+          acceptanceCriteria: string[];
+        } | null = null;
+        if (item.featurePatch !== null && item.featurePatch !== undefined) {
+          try {
+            featurePatch = createFeatureRevisionRequestSchema
+              .omit({ source: true })
+              .parse(item.featurePatch);
+          } catch (error) {
+            nonExecutableReasons.push(
+              error instanceof Error
+                ? `${templateId} returned an invalid featurePatch at operation ${index}: ${error.message}`
+                : `${templateId} returned an invalid featurePatch at operation ${index}.`,
+            );
+            return [];
+          }
+        }
 
         if (
           !featurePatch &&
           !Object.values(refresh).some(Boolean)
         ) {
-          throw new Error(
+          nonExecutableReasons.push(
             `${templateId} returned a no-op operation for feature ${item.featureKey.trim()}.`,
           );
+          return [];
         }
 
         if (!item.hint?.trim()) {
-          throw new Error(
+          nonExecutableReasons.push(
             `${templateId} returned an operation without a non-empty hint for feature ${item.featureKey.trim()}.`,
           );
+          return [];
         }
 
-        return {
+        return [{
           featureKey: item.featureKey.trim(),
           featurePatch,
           refresh: {
@@ -733,18 +847,21 @@ const parseMilestoneCoverageRepairPlan = (
             tasks: refresh.tasks,
           },
           hint: item.hint.trim(),
-        };
+        }];
       })
     : [];
 
-  const unresolvedReasons = Array.isArray(parsed.unresolvedReasons)
+  const unresolvedReasons = [
+    ...(Array.isArray(parsed.unresolvedReasons)
     ? parsed.unresolvedReasons
         .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
         .map((item) => item.trim())
-    : [];
+    : []),
+    ...nonExecutableReasons,
+  ];
 
   return {
-    resolved: parsed.resolved,
+    resolved: parsed.resolved && nonExecutableReasons.length === 0,
     defaultsChosen,
     operations,
     unresolvedReasons,
@@ -920,6 +1037,59 @@ export const createJobRunnerService = (input: {
       });
     };
 
+    const parseStructuredJsonWithRepair = async <T>(inputArgs: {
+      templateId: string;
+      parameters: Record<string, unknown>;
+      prompt: string;
+      generated: Awaited<ReturnType<LlmProviderService["generate"]>>;
+      parse: (content: string, templateId: string) => T;
+    }) => {
+      try {
+        return inputArgs.parse(inputArgs.generated.content, inputArgs.templateId);
+      } catch (error) {
+        const validationMessage =
+          error instanceof Error ? error.message : `${inputArgs.templateId} returned invalid content.`;
+
+        if (inputArgs.generated.doneReason === "length") {
+          throw createStructuredOutputFailure({
+            message: validationMessage,
+            templateId: inputArgs.templateId,
+            doneReason: inputArgs.generated.doneReason,
+          });
+        }
+
+        const repairTemplateId = `${inputArgs.templateId}Repair`;
+        const repairPrompt = buildJsonRepairPrompt({
+          templateId: inputArgs.templateId,
+          validationMessage,
+          invalidResponse: inputArgs.generated.content,
+        });
+        const repaired = await input.llmProviderService.generate(provider, repairPrompt, {
+          responseFormat: "json",
+        });
+        await storeLlmRun({
+          templateId: repairTemplateId,
+          parameters: {
+            ...inputArgs.parameters,
+            repairOf: inputArgs.templateId,
+          },
+          prompt: repairPrompt,
+          generated: repaired,
+        });
+
+        try {
+          return inputArgs.parse(repaired.content, inputArgs.templateId);
+        } catch (repairError) {
+          throw createStructuredOutputFailure({
+            message:
+              repairError instanceof Error ? repairError.message : validationMessage,
+            templateId: inputArgs.templateId,
+            doneReason: repaired.doneReason ?? inputArgs.generated.doneReason ?? null,
+          });
+        }
+      }
+    };
+
     const runReviewedJsonGeneration = async <TDraft, TFinal = TDraft>(inputArgs: {
       templateId: string;
       reviewTemplateId?: string;
@@ -939,7 +1109,13 @@ export const createJobRunnerService = (input: {
         generated,
       });
 
-      const draft = inputArgs.parseDraft(generated.content, inputArgs.templateId);
+      const draft = await parseStructuredJsonWithRepair({
+        templateId: inputArgs.templateId,
+        parameters: inputArgs.parameters,
+        prompt: inputArgs.prompt,
+        generated,
+        parse: inputArgs.parseDraft,
+      });
       const reviewTemplateId = inputArgs.reviewTemplateId ?? `${inputArgs.templateId}Review`;
       const reviewPrompt = inputArgs.buildReviewPrompt(draft);
       const reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
@@ -955,7 +1131,13 @@ export const createJobRunnerService = (input: {
       const parseReviewed = inputArgs.parseReviewed ?? ((content, templateId) =>
         inputArgs.parseDraft(content, templateId) as unknown as TFinal);
 
-      return parseReviewed(reviewed.content, reviewTemplateId);
+      return parseStructuredJsonWithRepair({
+        templateId: reviewTemplateId,
+        parameters: inputArgs.parameters,
+        prompt: reviewPrompt,
+        generated: reviewed,
+        parse: parseReviewed,
+      });
     };
 
     const loadMilestonePromptContext = async (
@@ -2218,23 +2400,20 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        await storeLlmRun({
           templateId: rawJob.type,
           parameters: { milestoneId },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          generated,
         });
 
-        const review = parseMilestoneCoverageReviewResult(generated.content);
+        const review = await parseStructuredJsonWithRepair({
+          templateId: rawJob.type,
+          parameters: { milestoneId },
+          prompt,
+          generated,
+          parse: parseMilestoneCoverageReviewResult,
+        });
         return input.jobService.markSucceeded(rawJob.id, {
           milestoneId,
           complete: review.complete,
