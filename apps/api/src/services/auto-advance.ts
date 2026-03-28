@@ -38,6 +38,12 @@ type AutoAdvanceJobInputs = Record<string, unknown> & {
   };
 };
 
+type JobFailurePayload = {
+  message?: string;
+  code?: string;
+  retryable?: boolean;
+};
+
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
   projectId: row.projectId,
@@ -57,6 +63,49 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
+
+const isRetryableJobFailure = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const payload = error as JobFailurePayload;
+
+  if (typeof payload.retryable === "boolean") {
+    return payload.retryable;
+  }
+
+  if (typeof payload.code === "string") {
+    if (
+      payload.code === "decision_conflict_unresolved" ||
+      payload.code.startsWith("llm_output_")
+    ) {
+      return false;
+    }
+  }
+
+  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+
+  if (
+    message.includes("validatedecisionconsistency found conflicts") ||
+    message.includes("prompt too long") ||
+    message.includes("context length") ||
+    message.includes("exceeded max context length")
+  ) {
+    return false;
+  }
+
+  return (
+    message.includes("timed out") ||
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("enotfound") ||
+    message.includes("econnrefused") ||
+    message.includes("503") ||
+    message.includes("502") ||
+    message.includes("429")
+  );
+};
 
 /**
  * Map of next-action keys that are automatable to their job types and input builders.
@@ -881,8 +930,9 @@ export const createAutoAdvanceService = (
         const MAX_RETRIES = 3;
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
+        const shouldRetry = isRetryableJobFailure(job.error);
 
-        if (nextRetryCount < MAX_RETRIES) {
+        if (shouldRetry && nextRetryCount < MAX_RETRIES) {
           // Retry the same failed job instead of inferring the next step from current state.
           // Some jobs can create draft artifacts before failing, which would otherwise
           // make advanceStep() land on a manual approval step and stall the session.
@@ -908,7 +958,7 @@ export const createAutoAdvanceService = (
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
         } else {
-          // Max retries exhausted — pause and reset count for next run.
+          // Non-retryable failure or retries exhausted — pause and reset count for next run.
           await db
             .update(autoAdvanceSessionsTable)
             .set({
