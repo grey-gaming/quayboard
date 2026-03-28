@@ -46,6 +46,9 @@ const toFailurePayload = (error: unknown) => {
         (typeof record.doneReason === "string" || record.doneReason === null)
           ? { doneReason: record.doneReason }
           : {}),
+        ...("retryable" in record && typeof record.retryable === "boolean"
+          ? { retryable: record.retryable }
+          : {}),
       };
     }
   }

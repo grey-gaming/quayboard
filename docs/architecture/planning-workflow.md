@@ -51,6 +51,8 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, milestone feature-set generation, milestone feature-set rewrite, and feature workstream generation
 - milestone design, milestone feature-set generation, milestone feature-set rewrite, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
 - feature and task generation prompts now use milestone design guidance and sibling-boundary context to reduce task-sized feature fragmentation and milestone-coverage gaps
+- blueprint generation now self-repairs accepted decision selections when `ValidateDecisionConsistency` reports conflicts, then reruns validation before creating the UX or Technical spec
+- auto-advance retries only failures marked retryable by job execution; deterministic structured-output and decision-conflict failures pause cleanly instead of looping
 
 ## External Adapters
 

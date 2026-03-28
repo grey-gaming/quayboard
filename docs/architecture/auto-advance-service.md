@@ -194,8 +194,10 @@ Called by the job scheduler after every job completes (success or failure).
 2. If the job has no `projectId`, returns early (noop).
 3. Queries for a `running` session for that project.
 4. If none exists, returns early.
-5. On `failure`: updates session to `paused` with `paused_reason: job_failed`. Publishes SSE.
-6. On `success`: calls `advanceStep` to enqueue the next job. Publishes SSE.
+5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
+6. On `success`: clears any session retry counter and calls `advanceStep` to enqueue the next job. Publishes SSE.
+
+Structured output validation failures, prompt/context-limit failures, and exhausted blueprint decision-repair failures are treated as non-retryable. Transient transport/provider failures remain retryable.
 
 For parallel feature batches, `onJobComplete` waits until the active batch fully settles before deciding whether to retry or pause. Any mixed-success batch with at least one failed job counts as a single retry attempt; already-succeeded feature work is left in place, and only unfinished work is re-enqueued on the next pass. The session pauses with `job_failed` only after three consecutive failed batch attempts.
 
