@@ -293,7 +293,19 @@ export const createNextActionsService = (
                 }
 
                 if (!actions.length && taskPlanningService) {
-                  for (const feature of milestoneFeatures) {
+                  for (let i = 0; i < milestoneFeatures.length; i++) {
+                    const feature = milestoneFeatures[i]!;
+                    const featureTracks = allTracks[i]!.tracks;
+
+                    // Task planning currently depends on an approved tech spec.
+                    if (
+                      !featureTracks.tech.required ||
+                      !featureTracks.tech.headRevision ||
+                      featureTracks.tech.status !== "approved"
+                    ) {
+                      continue;
+                    }
+
                     const session = await taskPlanningService.getSession(ownerUserId, feature.id);
 
                     if (!session) {
