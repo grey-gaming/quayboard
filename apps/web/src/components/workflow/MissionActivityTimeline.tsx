@@ -1,6 +1,7 @@
 import type { Job } from "@quayboard/shared";
 
 import { formatDateTime, formatJobType } from "../../lib/format.js";
+import { getJobErrorMessage } from "./LatestJobFailureAlert.js";
 import { Badge } from "../ui/Badge.js";
 import { Card } from "../ui/Card.js";
 
@@ -60,6 +61,12 @@ export const MissionActivityTimeline = ({
                   ? formatDateTime(job.startedAt)
                   : formatDateTime(job.queuedAt)}
             </p>
+            {(job.status === "failed" || job.status === "cancelled") && (() => {
+              const msg = getJobErrorMessage(job);
+              return msg ? (
+                <p className="mt-0.5 text-xs text-danger/80 leading-snug">{msg}</p>
+              ) : null;
+            })()}
           </div>
         ))}
         {jobs.length === 0 && (
