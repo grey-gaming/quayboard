@@ -32,6 +32,35 @@ Use these locations to build context quickly:
 - `docs/architecture/` for internal implementation docs
 - `docs/user/` for markdown that powers the public `/docs` experience
 
+## Database Access
+
+When diagnosing project state, auto-advance issues, or LLM job failures, inspect the Quayboard Postgres database directly before guessing from UI state.
+
+- The local Docker Compose database service is `quayboard-postgres`.
+- The default local database is `quayboard`.
+- The default credentials from `docker-compose.yml` are `postgres` / `postgres`.
+- The standard local connection string from `.env.example` is `postgres://postgres:postgres@127.0.0.1:5432/quayboard`.
+
+Useful access patterns:
+
+- `docker exec quayboard-postgres psql -U postgres -d quayboard`
+- `docker exec quayboard-postgres psql -U postgres -d quayboard -c "select id, name from projects order by created_at desc limit 20;"`
+
+For project-specific LLM and automation diagnosis, prefer querying these tables together:
+
+- `projects` for project identity and ownership
+- `auto_advance_sessions` for current auto-runner state
+- `jobs` for queued, running, failed, cancelled, and succeeded job history
+- `llm_runs` for provider/model/template history tied to jobs
+
+Typical diagnosis workflow for a project:
+
+1. Look up the project row by `id`.
+2. Check `auto_advance_sessions` for `status`, `current_step`, `paused_reason`, `pending_job_count`, and `active_batch_token`.
+3. Check `jobs` for the same `project_id`, ordered by `queued_at desc`, and compare active job rows against the session's batch metadata.
+4. Check `llm_runs` for recent prompts, models, and template IDs tied to the same project or job.
+5. If session state and job state disagree, treat the database as source of truth and inspect the auto-advance and job-scheduler code paths before changing data.
+
 ## Current Product Boundaries
 
 Treat these as current truth unless the user explicitly asks to change them:
