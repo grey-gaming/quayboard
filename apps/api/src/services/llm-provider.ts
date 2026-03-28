@@ -134,6 +134,7 @@ const createOllamaAdapter = (input: {
         body: JSON.stringify({
           model,
           prompt,
+          ...(responseFormat === "json" ? { format: "json" } : {}),
           options: {
             num_predict: input.maxOutputTokens,
           },
@@ -237,7 +238,7 @@ const createOpenAiAdapter = (input: {
     };
   },
 
-  async generate({ apiKey, baseUrl, model, prompt }) {
+  async generate({ apiKey, baseUrl, model, prompt, responseFormat }) {
     let response;
     const timeout = createRequestSignal(input.requestTimeoutMs);
 
@@ -255,6 +256,9 @@ const createOpenAiAdapter = (input: {
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: prompt }],
+            ...(responseFormat === "json"
+              ? { response_format: { type: "json_object" as const } }
+              : {}),
           }),
         },
       );

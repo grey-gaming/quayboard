@@ -16,6 +16,45 @@ export type JobSchedulerOptions = {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const toFailurePayload = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+
+    if (
+      "jobError" in record &&
+      record.jobError &&
+      typeof record.jobError === "object" &&
+      "message" in (record.jobError as Record<string, unknown>) &&
+      typeof (record.jobError as Record<string, unknown>).message === "string"
+    ) {
+      return record.jobError;
+    }
+
+    if ("message" in record && typeof record.message === "string") {
+      return {
+        message: record.message,
+        ...("code" in record && typeof record.code === "string"
+          ? { code: record.code }
+          : {}),
+        ...("category" in record && typeof record.category === "string"
+          ? { category: record.category }
+          : {}),
+        ...("templateId" in record && typeof record.templateId === "string"
+          ? { templateId: record.templateId }
+          : {}),
+        ...("doneReason" in record &&
+        (typeof record.doneReason === "string" || record.doneReason === null)
+          ? { doneReason: record.doneReason }
+          : {}),
+      };
+    }
+  }
+
+  return {
+    message: error instanceof Error ? error.message : "Job execution failed.",
+  };
+};
+
 export const createJobScheduler = ({
   execute,
   getNextJob,
@@ -46,9 +85,7 @@ export const createJobScheduler = ({
         await execute({ job });
       } catch (error) {
         try {
-          await onFailure(job.id, {
-            message: error instanceof Error ? error.message : "Job execution failed.",
-          });
+          await onFailure(job.id, toFailurePayload(error));
         } catch (failureError) {
           console.error("Failed to mark job as failed.", failureError);
         }

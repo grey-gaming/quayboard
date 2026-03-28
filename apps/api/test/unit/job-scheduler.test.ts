@@ -90,4 +90,43 @@ describe("job scheduler", () => {
       expect.any(Error),
     );
   });
+
+  it("preserves structured job failure metadata from the executor", async () => {
+    const job = createQueuedJob();
+    const getNextJob = vi
+      .fn<() => Promise<Job | null>>()
+      .mockResolvedValueOnce(job)
+      .mockResolvedValueOnce(null);
+    const execute = vi.fn(async () => {
+      throw Object.assign(new Error("Structured output was truncated."), {
+        jobError: {
+          message: "Structured output was truncated.",
+          code: "llm_output_truncated",
+          category: "structured_output_shape_violation",
+          templateId: "GenerateProductSpec",
+          doneReason: "length",
+        },
+      });
+    });
+    const onFailure = vi.fn();
+    const scheduler = createJobScheduler({
+      execute,
+      getNextJob,
+      onFailure,
+      onIdleDelayMs: 25,
+    });
+
+    scheduler.start();
+    await vi.runOnlyPendingTimersAsync();
+    await vi.runOnlyPendingTimersAsync();
+    scheduler.stop();
+
+    expect(onFailure).toHaveBeenCalledWith(job.id, {
+      message: "Structured output was truncated.",
+      code: "llm_output_truncated",
+      category: "structured_output_shape_violation",
+      templateId: "GenerateProductSpec",
+      doneReason: "length",
+    });
+  });
 });
