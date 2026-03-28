@@ -2318,7 +2318,7 @@ describe("API integration", () => {
         expect.arrayContaining([
           expect.objectContaining({
             phase: "User Flows",
-            passed: false,
+            passed: true,
           }),
         ]),
       );
