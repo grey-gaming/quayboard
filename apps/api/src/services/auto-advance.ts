@@ -227,9 +227,11 @@ export const createAutoAdvanceService = (
   };
 
   const getSession = async (projectId: string) => {
-    return db.query.autoAdvanceSessionsTable.findFirst({
+    const session = await db.query.autoAdvanceSessionsTable.findFirst({
       where: eq(autoAdvanceSessionsTable.projectId, projectId),
     });
+
+    return session ?? null;
   };
 
   const findActiveAutoAdvanceJob = async (
@@ -315,6 +317,17 @@ export const createAutoAdvanceService = (
 
     const { _autoAdvance: _ignored, ...rest } = inputs as AutoAdvanceJobInputs;
     return rest;
+  };
+
+  const requireSessionRow = (
+    row: AutoAdvanceSessionRow | undefined,
+    operation: string,
+  ): AutoAdvanceSessionRow => {
+    if (!row) {
+      throw new Error(`Auto-advance session row missing after ${operation}.`);
+    }
+
+    return row;
   };
 
   /**
@@ -630,7 +643,7 @@ export const createAutoAdvanceService = (
 
       if (existing) {
         // Restart existing session
-        const [updated] = await db
+        const updated = requireSessionRow((await db
           .update(autoAdvanceSessionsTable)
           .set({
             status: "running",
@@ -653,7 +666,7 @@ export const createAutoAdvanceService = (
             updatedAt: now,
           })
           .where(eq(autoAdvanceSessionsTable.id, existing.id))
-          .returning();
+          .returning())[0], "restart");
 
         await publishSessionUpdate(ownerUserId, projectId);
         await advanceStep(ownerUserId, projectId, updated.id);
@@ -661,7 +674,7 @@ export const createAutoAdvanceService = (
         return toSession(updated);
       }
 
-      const [created] = await db
+      const created = requireSessionRow((await db
         .insert(autoAdvanceSessionsTable)
         .values({
           id: generateId(),
@@ -680,7 +693,7 @@ export const createAutoAdvanceService = (
           createdAt: now,
           updatedAt: now,
         })
-        .returning();
+        .returning())[0], "create");
 
       await publishSessionUpdate(ownerUserId, projectId);
       await advanceStep(ownerUserId, projectId, created.id);
@@ -701,7 +714,7 @@ export const createAutoAdvanceService = (
         throw new HttpError(409, "session_not_running", "No running auto-advance session found.");
       }
 
-      const [updated] = await db
+      const updated = requireSessionRow((await db
         .update(autoAdvanceSessionsTable)
         .set({
           status: "paused",
@@ -710,7 +723,7 @@ export const createAutoAdvanceService = (
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
-        .returning();
+        .returning())[0], "stop");
 
       await publishSessionUpdate(ownerUserId, projectId);
       return toSession(updated);
@@ -729,7 +742,7 @@ export const createAutoAdvanceService = (
         throw new HttpError(409, "session_not_paused", "No paused auto-advance session found.");
       }
 
-      const [updated] = await db
+      const updated = requireSessionRow((await db
         .update(autoAdvanceSessionsTable)
         .set({
           status: "running",
@@ -739,7 +752,7 @@ export const createAutoAdvanceService = (
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
-        .returning();
+        .returning())[0], "resume");
 
       await publishSessionUpdate(ownerUserId, projectId);
       await advanceStep(ownerUserId, projectId, updated.id);
@@ -784,7 +797,7 @@ export const createAutoAdvanceService = (
         throw new HttpError(409, "session_already_running", "Session is already running.");
       }
 
-      const [updated] = await db
+      const updated = requireSessionRow((await db
         .update(autoAdvanceSessionsTable)
         .set({
           status: "running",
@@ -794,7 +807,7 @@ export const createAutoAdvanceService = (
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
-        .returning();
+        .returning())[0], "step");
 
       await publishSessionUpdate(ownerUserId, projectId);
       await advanceStep(ownerUserId, projectId, updated.id);
@@ -853,14 +866,14 @@ export const createAutoAdvanceService = (
       }
 
       // Atomically decrement pendingJobCount and get the updated value.
-      const [afterDecrement] = await db
+      const afterDecrement = requireSessionRow((await db
         .update(autoAdvanceSessionsTable)
         .set({
           pendingJobCount: sql`greatest(0, ${autoAdvanceSessionsTable.pendingJobCount} - 1)`,
           updatedAt: new Date(),
         })
         .where(eq(autoAdvanceSessionsTable.id, session.id))
-        .returning();
+        .returning())[0], "decrement pending jobs");
 
       const remaining = afterDecrement?.pendingJobCount ?? 0;
 
