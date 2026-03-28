@@ -77,7 +77,7 @@ const makeJob = (projectId = PROJECT_ID) => ({
     },
   },
   outputs: null,
-  error: null,
+  error: null as unknown,
   parentJobId: null,
   dependencyJobId: null,
   createdByUserId: USER_ID,
@@ -526,6 +526,10 @@ describe("auto-advance service", () => {
       const failedJob = {
         ...makeJob(),
         type: "GenerateFeatureTechSpec",
+        error: {
+          message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          retryable: true,
+        },
         inputs: {
           featureId: "feature-123",
           _autoAdvance: {
@@ -571,6 +575,10 @@ describe("auto-advance service", () => {
     it("pauses session with job_failed on the third consecutive failure", async () => {
       const failedJob = {
         ...makeJob(),
+        error: {
+          message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          retryable: true,
+        },
         inputs: {
           _autoAdvance: {
             sessionId: SESSION_ID,
@@ -609,6 +617,10 @@ describe("auto-advance service", () => {
       const failedJob = {
         ...makeJob(),
         type: "GenerateFeatureTechSpec",
+        error: {
+          message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          retryable: true,
+        },
         inputs: {
           featureId: "feature-123",
           _autoAdvance: {
@@ -674,6 +686,50 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
       const resetUpdate = updates.find((u) => "retryCount" in u && u.retryCount === 0);
       expect(resetUpdate).toBeDefined();
+    });
+
+    it("pauses immediately on a non-retryable failure", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateProjectBlueprint",
+        error: {
+          message: "ValidateDecisionConsistency found conflicts: Selected decision contradicts the approved Product Spec.",
+          code: "decision_conflict_unresolved",
+          retryable: false,
+        },
+        inputs: {
+          kind: "ux",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const updates: Array<{ status?: string; pausedReason?: string; retryCount?: number }> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(
+          (data: { status?: string; pausedReason?: string; retryCount?: number }) => {
+            updates.push(data);
+            return {
+              where: vi
+                .fn()
+                .mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }),
+            };
+          },
+        ),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      const pauseUpdate = updates.find((update) => update.status === "paused");
+      expect(pauseUpdate?.pausedReason).toBe("job_failed");
     });
 
     it("marks session completed when ReviewDelivery reports complete:true", async () => {
@@ -1294,6 +1350,10 @@ describe("auto-advance service", () => {
       const failedJob = {
         ...makeJob(),
         type: "GenerateFeatureTechSpec",
+        error: {
+          message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          retryable: true,
+        },
         inputs: {
           featureId: "feature-456",
           _autoAdvance: {

@@ -519,6 +519,116 @@ export const buildDecisionConsistencyPrompt = (input: {
       : []),
   ].join("\n");
 
+export const buildDecisionSelectionRepairPrompt = (input: {
+  cards: Array<{
+    id: string;
+    key: string;
+    title: string;
+    recommendation: { id: string; label: string; description: string };
+    alternatives: Array<{ id: string; label: string; description: string }>;
+    selectedOptionId: string | null;
+    customSelection: string | null;
+  }>;
+  currentSelections: string;
+  issues: string[];
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Repair the selected ${input.kind === "ux" ? "UX" : "technical"} decisions for "${input.projectName}" so they become internally consistent with the approved specs.`,
+    'Return valid JSON with exactly one top-level key: "patches".',
+    'Each patches item must contain exactly: "cardId", "selectedOptionId", "customSelection", and "reason".',
+    'Set exactly one of "selectedOptionId" or "customSelection" for each patch.',
+    "Prefer existing option ids whenever possible.",
+    "Use customSelection only when none of the listed options can satisfy the approved specs.",
+    "Return the smallest set of patches needed to resolve the reported issues.",
+    "Do not rewrite the decision cards themselves.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+    "",
+    "Reported consistency issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Current selections:",
+    input.currentSelections,
+    "",
+    "Available decision cards and options:",
+    JSON.stringify(input.cards, null, 2),
+  ].join("\n");
+
+export const buildDecisionSelectionRepairReviewPrompt = (input: {
+  cards: Array<{
+    id: string;
+    key: string;
+    title: string;
+    recommendation: { id: string; label: string; description: string };
+    alternatives: Array<{ id: string; label: string; description: string }>;
+    selectedOptionId: string | null;
+    customSelection: string | null;
+  }>;
+  currentSelections: string;
+  draftPlan: {
+    patches: Array<{
+      cardId: string;
+      selectedOptionId: string | null;
+      customSelection: string | null;
+      reason: string;
+    }>;
+  };
+  issues: string[];
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the ${input.kind === "ux" ? "UX" : "technical"} decision repair plan for "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "patches".',
+    'Each patches item must contain exactly: "cardId", "selectedOptionId", "customSelection", and "reason".',
+    "Keep only the minimum valid changes needed to resolve the reported consistency issues.",
+    "Prefer existing option ids whenever possible.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+    "",
+    "Reported consistency issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Current selections:",
+    input.currentSelections,
+    "",
+    "Available decision cards and options:",
+    JSON.stringify(input.cards, null, 2),
+    "",
+    "Draft repair plan:",
+    JSON.stringify(input.draftPlan, null, 2),
+  ].join("\n");
+
 export const buildProjectBlueprintPrompt = (input: {
   decisions: string;
   kind: "tech" | "ux";
@@ -1154,13 +1264,17 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
   };
   milestoneDesignDoc: string;
   features: Array<{
+    acceptanceCriteria: string[];
+    featureKey: string;
+    workstreams: {
+      product: "approved" | "missing" | "draft";
+      ux: "approved" | "missing" | "draft";
+      tech: "approved" | "missing" | "draft";
+      userDocs: "approved" | "missing" | "draft";
+      archDocs: "approved" | "missing" | "draft";
+    };
     title: string;
     summary: string;
-    productSpec: string | null;
-    uxSpec: string | null;
-    techSpec: string | null;
-    userDocs: string | null;
-    archDocs: string | null;
     tasks: Array<{
       title: string;
       description: string;
@@ -1189,7 +1303,7 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
     "Canonical milestone design document:",
     input.milestoneDesignDoc,
     "",
-    "Approved feature workstreams and generated tasks for this milestone:",
+    "Current milestone features, workstream status, and generated tasks:",
     JSON.stringify(input.features, null, 2),
   ].join("\n");
 

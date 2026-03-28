@@ -39,6 +39,8 @@ import {
   buildFeatureTaskListReviewPrompt,
   buildFeatureWorkstreamReviewPrompt,
   buildDecisionConsistencyPrompt,
+  buildDecisionSelectionRepairPrompt,
+  buildDecisionSelectionRepairReviewPrompt,
   buildDecisionDeckPrompt,
   buildDeliveryReviewPrompt,
   buildFeatureArchDocsPrompt,
@@ -76,12 +78,77 @@ const unwrapJsonFence = (value: string) => {
   return fencedMatch?.[1]?.trim() || trimmed;
 };
 
+const extractFirstJsonValue = (value: string) => {
+  const trimmed = unwrapJsonFence(value);
+
+  for (let start = 0; start < trimmed.length; start++) {
+    const opener = trimmed[start];
+    if (opener !== "{" && opener !== "[") {
+      continue;
+    }
+
+    const closer = opener === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let index = start; index < trimmed.length; index++) {
+      const char = trimmed[index];
+
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) {
+        continue;
+      }
+
+      if (char === opener) {
+        depth += 1;
+      } else if (char === closer) {
+        depth -= 1;
+
+        if (depth === 0) {
+          return trimmed.slice(start, index + 1);
+        }
+      }
+    }
+  }
+
+  return trimmed;
+};
+
 const parseJson = <T>(value: string): T | null => {
+  const normalized = unwrapJsonFence(value);
+
   try {
-    return JSON.parse(unwrapJsonFence(value)) as T;
+    return JSON.parse(normalized) as T;
   } catch {
+    try {
+      return JSON.parse(extractFirstJsonValue(value)) as T;
+    } catch {
+      return null;
+    }
+  }
+};
+
+const parseJobInputs = <T>(value: unknown): T | null => {
+  if (!value || typeof value !== "object") {
     return null;
   }
+
+  return value as T;
 };
 
 type StructuredOutputFailureCategory =
@@ -95,6 +162,16 @@ type JobFailurePayload = {
   category?: StructuredOutputFailureCategory;
   templateId?: string;
   doneReason?: string | null;
+  retryable?: boolean;
+};
+
+type DecisionSelectionRepairPlan = {
+  patches: Array<{
+    cardId: string;
+    customSelection: string | null;
+    reason: string;
+    selectedOptionId: string | null;
+  }>;
 };
 
 const buildJsonRepairPrompt = (input: {
@@ -125,6 +202,7 @@ const getStructuredOutputFailureMetadata = (input: {
       category: "structured_output_shape_violation",
       templateId: input.templateId,
       doneReason: input.doneReason,
+      retryable: false,
     };
   }
 
@@ -140,6 +218,7 @@ const getStructuredOutputFailureMetadata = (input: {
       category: "semantic_schema_violation",
       templateId: input.templateId,
       doneReason: input.doneReason ?? null,
+      retryable: false,
     };
   }
 
@@ -155,6 +234,7 @@ const getStructuredOutputFailureMetadata = (input: {
       category: "incomplete_structured_output",
       templateId: input.templateId,
       doneReason: input.doneReason ?? null,
+      retryable: false,
     };
   }
 
@@ -163,6 +243,7 @@ const getStructuredOutputFailureMetadata = (input: {
     category: "structured_output_shape_violation",
     templateId: input.templateId,
     doneReason: input.doneReason ?? null,
+    retryable: false,
   };
 };
 
@@ -176,6 +257,11 @@ const createStructuredOutputFailure = (input: {
       message: input.message,
       ...getStructuredOutputFailureMetadata(input),
     } satisfies JobFailurePayload,
+  });
+
+const createJobFailure = (input: JobFailurePayload) =>
+  Object.assign(new Error(input.message), {
+    jobError: input,
   });
 
 const normalizeGeneratedFlowSteps = (value: unknown): string[] => {
@@ -212,6 +298,27 @@ const normalizeGeneratedFlowSteps = (value: unknown): string[] => {
       return followUp.join(" ");
     })
     .filter((step) => step.length > 0);
+};
+
+const normalizeOptionalString = (value: unknown) =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const normalizeOptionalStringList = (value: unknown) => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const items = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items.join("\n") : null;
 };
 
 const parseGeneratedUserFlowsResult = (
@@ -508,6 +615,60 @@ const parseDecisionValidationResult = (value: string) => {
   return parsed;
 };
 
+const parseDecisionSelectionRepairPlan = (
+  value: string,
+  templateId: string,
+): DecisionSelectionRepairPlan => {
+  const parsed = parseJson<{
+    patches?: Array<{
+      cardId?: string;
+      customSelection?: string | null;
+      reason?: string;
+      selectedOptionId?: string | null;
+    }>;
+  }>(value);
+
+  if (!parsed || !Array.isArray(parsed.patches) || parsed.patches.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with a non-empty "patches" array.`,
+    );
+  }
+
+  return {
+    patches: parsed.patches.map((patch, index) => {
+      if (!patch?.cardId?.trim()) {
+        throw new Error(`${templateId} returned a patch without cardId at index ${index}.`);
+      }
+
+      if (!patch?.reason?.trim()) {
+        throw new Error(`${templateId} returned a patch without reason at index ${index}.`);
+      }
+
+      const selectedOptionId =
+        typeof patch.selectedOptionId === "string" && patch.selectedOptionId.trim().length > 0
+          ? patch.selectedOptionId.trim()
+          : null;
+      const customSelection =
+        typeof patch.customSelection === "string" && patch.customSelection.trim().length > 0
+          ? patch.customSelection.trim()
+          : null;
+
+      if ((selectedOptionId ? 1 : 0) + (customSelection ? 1 : 0) !== 1) {
+        throw new Error(
+          `${templateId} must set exactly one of selectedOptionId or customSelection for patch ${patch.cardId.trim()}.`,
+        );
+      }
+
+      return {
+        cardId: patch.cardId.trim(),
+        selectedOptionId,
+        customSelection,
+        reason: patch.reason.trim(),
+      };
+    }),
+  };
+};
+
 const parseMilestonesResult = (
   value: string,
 ):
@@ -566,7 +727,7 @@ const parseGeneratedFeaturesResult = (
 const parseTaskClarificationsResult = (
   value: string,
 ): Array<{ question: string; context?: string | null }> => {
-  const parsed = parseJson<Array<{ question?: string; context?: string }>>(value);
+  const parsed = parseJson<Array<{ question?: string; context?: unknown }>>(value);
 
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error(
@@ -583,7 +744,7 @@ const parseTaskClarificationsResult = (
 
     return {
       question: item.question.trim(),
-      context: item.context?.trim() ?? null,
+      context: normalizeOptionalString(item.context),
     };
   });
 };
@@ -591,7 +752,7 @@ const parseTaskClarificationsResult = (
 const parseAutoAnswerResult = (
   value: string,
 ): Array<{ answer: string }> => {
-  const parsed = parseJson<Array<{ answer?: string }>>(value);
+  const parsed = parseJson<Array<{ answer?: unknown }>>(value);
 
   if (!Array.isArray(parsed)) {
     throw new Error(
@@ -600,13 +761,15 @@ const parseAutoAnswerResult = (
   }
 
   return parsed.map((item) => {
-    if (!item.answer?.trim()) {
+    const answer = normalizeOptionalString(item.answer);
+
+    if (!answer) {
       throw new Error(
         "AutoAnswerTaskClarifications returned an item without an answer.",
       );
     }
 
-    return { answer: item.answer.trim() };
+    return { answer };
   });
 };
 
@@ -622,8 +785,8 @@ const parseTaskListResult = (
     Array<{
       title?: string;
       description?: string;
-      instructions?: string;
-      acceptanceCriteria?: string[];
+      instructions?: unknown;
+      acceptanceCriteria?: unknown;
     }>
   >(value);
 
@@ -643,9 +806,12 @@ const parseTaskListResult = (
     return {
       title: item.title.trim(),
       description: item.description.trim(),
-      instructions: item.instructions?.trim() ?? null,
+      instructions: normalizeOptionalStringList(item.instructions),
       acceptanceCriteria: Array.isArray(item.acceptanceCriteria)
-        ? item.acceptanceCriteria.map((c) => c.trim())
+        ? item.acceptanceCriteria
+            .filter((criterion): criterion is string => typeof criterion === "string")
+            .map((criterion) => criterion.trim())
+            .filter(Boolean)
         : [],
     };
   });
@@ -1090,6 +1256,31 @@ export const createJobRunnerService = (input: {
       }
     };
 
+    const runStructuredJsonGeneration = async <T>(inputArgs: {
+      templateId: string;
+      parameters: Record<string, unknown>;
+      prompt: string;
+      parse: (content: string, templateId: string) => T;
+    }) => {
+      const generated = await input.llmProviderService.generate(provider, inputArgs.prompt, {
+        responseFormat: "json",
+      });
+      await storeLlmRun({
+        templateId: inputArgs.templateId,
+        parameters: inputArgs.parameters,
+        prompt: inputArgs.prompt,
+        generated,
+      });
+
+      return parseStructuredJsonWithRepair({
+        templateId: inputArgs.templateId,
+        parameters: inputArgs.parameters,
+        prompt: inputArgs.prompt,
+        generated,
+        parse: inputArgs.parse,
+      });
+    };
+
     const runReviewedJsonGeneration = async <TDraft, TFinal = TDraft>(inputArgs: {
       templateId: string;
       reviewTemplateId?: string;
@@ -1237,6 +1428,115 @@ export const createJobRunnerService = (input: {
           headRevision.id,
         );
       }
+    };
+
+    const repairDecisionSelections = async (inputArgs: {
+      issues: string[];
+      kind: "tech" | "ux";
+      productSpec: string;
+      uxSpec?: string;
+    }) => {
+      const { cards } = await input.blueprintService.listDecisionCards(
+        ownerUserId,
+        projectId,
+        inputArgs.kind,
+      );
+      const currentSelections = JSON.stringify(
+        await input.blueprintService.getDecisionSelections(
+          ownerUserId,
+          projectId,
+          inputArgs.kind,
+        ),
+        null,
+        2,
+      );
+      const serializedCards = cards.map((card) => ({
+        id: card.id,
+        key: card.key,
+        title: card.title,
+        recommendation: card.recommendation,
+        alternatives: card.alternatives,
+        selectedOptionId: card.selectedOptionId,
+        customSelection: card.customSelection,
+      }));
+
+      const repairPlan = await runReviewedJsonGeneration({
+        templateId: "RepairDecisionSelections",
+        reviewTemplateId: "RepairDecisionSelectionsReview",
+        parameters: {
+          kind: inputArgs.kind,
+          issueCount: inputArgs.issues.length,
+        },
+        prompt: buildDecisionSelectionRepairPrompt({
+          cards: serializedCards,
+          currentSelections,
+          issues: inputArgs.issues,
+          kind: inputArgs.kind,
+          productSpec: inputArgs.productSpec,
+          projectName: project.name,
+          uxSpec: inputArgs.uxSpec,
+        }),
+        parseDraft: parseDecisionSelectionRepairPlan,
+        buildReviewPrompt: (draftPlan) =>
+          buildDecisionSelectionRepairReviewPrompt({
+            cards: serializedCards,
+            currentSelections,
+            draftPlan,
+            issues: inputArgs.issues,
+            kind: inputArgs.kind,
+            productSpec: inputArgs.productSpec,
+            projectName: project.name,
+            uxSpec: inputArgs.uxSpec,
+          }),
+      });
+
+      const validCards = new Map(cards.map((card) => [card.id, card]));
+      const patches = repairPlan.patches.map((patch) => {
+        const card = validCards.get(patch.cardId);
+
+        if (!card) {
+          throw createJobFailure({
+            message: `RepairDecisionSelections targeted an unknown decision card: ${patch.cardId}.`,
+            code: "decision_repair_invalid_card",
+            category: "semantic_schema_violation",
+            templateId: "RepairDecisionSelections",
+            retryable: false,
+          });
+        }
+
+        if (
+          patch.selectedOptionId &&
+          ![card.recommendation, ...card.alternatives].some(
+            (option) => option.id === patch.selectedOptionId,
+          )
+        ) {
+          throw createJobFailure({
+            message: `RepairDecisionSelections chose an invalid option for card ${card.key}.`,
+            code: "decision_repair_invalid_option",
+            category: "semantic_schema_violation",
+            templateId: "RepairDecisionSelections",
+            retryable: false,
+          });
+        }
+
+        return {
+          id: patch.cardId,
+          selectedOptionId: patch.selectedOptionId,
+          customSelection: patch.customSelection,
+        };
+      });
+
+      await input.blueprintService.updateDecisionCards(
+        ownerUserId,
+        projectId,
+        inputArgs.kind,
+        { cards: patches },
+      );
+      await input.blueprintService.acceptDecisionDeck(
+        ownerUserId,
+        projectId,
+        inputArgs.kind,
+      );
     };
 
     const generateFeatureProductRevision = async (featureId: string, hint?: string | null) => {
@@ -1480,20 +1780,18 @@ export const createJobRunnerService = (input: {
         techSpec: techRevision.markdown,
         hint,
       });
-      const clarificationsGenerated = await input.llmProviderService.generate(
-        provider,
-        clarificationsPrompt,
-        { responseFormat: "json" },
-      );
-      await storeLlmRun({
-        templateId: "GenerateTaskClarifications",
-        parameters: { featureId, sessionId: session.id, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
-        prompt: clarificationsPrompt,
-        generated: clarificationsGenerated,
-      });
       await taskPlanning.createClarifications(
         session.id,
-        parseTaskClarificationsResult(clarificationsGenerated.content),
+        await runStructuredJsonGeneration({
+          templateId: "GenerateTaskClarifications",
+          parameters: {
+            featureId,
+            sessionId: session.id,
+            ...(hint?.trim() ? { hint: hint.trim() } : {}),
+          },
+          prompt: clarificationsPrompt,
+          parse: (content) => parseTaskClarificationsResult(content),
+        }),
       );
 
       const pendingClarifications = await taskPlanning.getClarifications(ownerUserId, session.id);
@@ -1506,16 +1804,16 @@ export const createJobRunnerService = (input: {
         techSpec: techRevision.markdown,
         hint,
       });
-      const autoAnswers = await input.llmProviderService.generate(provider, autoAnswerPrompt, {
-        responseFormat: "json",
-      });
-      await storeLlmRun({
+      const answers = await runStructuredJsonGeneration({
         templateId: "AutoAnswerTaskClarifications",
-        parameters: { featureId, sessionId: session.id, ...(hint?.trim() ? { hint: hint.trim() } : {}) },
+        parameters: {
+          featureId,
+          sessionId: session.id,
+          ...(hint?.trim() ? { hint: hint.trim() } : {}),
+        },
         prompt: autoAnswerPrompt,
-        generated: autoAnswers,
+        parse: (content) => parseAutoAnswerResult(content),
       });
-      const answers = parseAutoAnswerResult(autoAnswers.content);
       for (let index = 0; index < Math.min(pendingClarifications.length, answers.length); index++) {
         await taskPlanning.answerClarification(
           ownerUserId,
@@ -1609,31 +1907,24 @@ export const createJobRunnerService = (input: {
           projectDescription: project.description,
           answers: questionnaire.answers,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt);
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: "AutoAnswerQuestionnaire",
-          parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const parsed = parseJson<Record<string, string>>(generated.content);
+        const parsedAnswers = questionnaireAnswerMapSchema.parse(
+          await runStructuredJsonGeneration({
+            templateId: "AutoAnswerQuestionnaire",
+            parameters: {},
+            prompt,
+            parse: (content, templateId) => {
+              const parsed = parseJson<Record<string, string>>(content);
 
-        if (!parsed) {
-          throw new Error(
-            "AutoAnswerQuestionnaire returned invalid content. Expected a JSON object keyed by questionnaire fields.",
-          );
-        }
+              if (!parsed) {
+                throw new Error(
+                  `${templateId} returned invalid content. Expected a JSON object keyed by questionnaire fields.`,
+                );
+              }
 
-        const parsedAnswers = questionnaireAnswerMapSchema.parse(parsed);
+              return parsed;
+            },
+          }),
+        );
         const filteredAnswers = Object.fromEntries(
           Object.entries(parsedAnswers).filter(
             ([key, value]) => blankKeys.has(key as (typeof questionnaireDefinition)[number]["key"]) && typeof value === "string" && value.trim(),
@@ -1659,41 +1950,45 @@ export const createJobRunnerService = (input: {
           projectDescription: project.description,
           answers: questionnaire.answers,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt);
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const parsed = await runStructuredJsonGeneration({
           templateId: rawJob.type,
           parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const parsed = parseJson<{ description?: string; markdown?: string; title?: string }>(
-          generated.content,
-        );
+          prompt,
+          parse: (content, templateId) => {
+            const parsedResult = parseJson<{
+              description?: string;
+              markdown?: string;
+              title?: string;
+            }>(content);
 
-        if (!parsed?.title?.trim() || !parsed?.description?.trim() || !parsed?.markdown?.trim()) {
-          throw new Error(
-            `${rawJob.type} returned invalid content. Expected JSON with non-empty "title", "description", and "markdown".`,
-          );
-        }
+            if (
+              !parsedResult?.title?.trim() ||
+              !parsedResult?.description?.trim() ||
+              !parsedResult?.markdown?.trim()
+            ) {
+              throw new Error(
+                `${templateId} returned invalid content. Expected JSON with non-empty "title", "description", and "markdown".`,
+              );
+            }
+
+            return {
+              title: parsedResult.title.trim(),
+              description: parsedResult.description.trim(),
+              markdown: parsedResult.markdown.trim(),
+            };
+          },
+        });
 
         await input.projectService.updateOwnedProject(ownerUserId, rawJob.projectId, {
-          description: parsed.description.trim(),
+          description: parsed.description,
         });
 
         const onePager = await input.onePagerService.createVersion({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
           source: rawJob.type,
-          title: parsed.title.trim(),
-          markdown: parsed.markdown.trim(),
+          title: parsed.title,
+          markdown: parsed.markdown,
         });
 
         return input.jobService.markSucceeded(rawJob.id, { onePagerId: onePager.id });
@@ -1775,7 +2070,13 @@ export const createJobRunnerService = (input: {
           completionTokens: generated.completionTokens,
           createdAt: new Date(),
         });
-        const firstPass = parseProductSpecResult(generated.content, rawJob.type);
+        const firstPass = await parseStructuredJsonWithRepair({
+          templateId: rawJob.type,
+          parameters: {},
+          prompt,
+          generated,
+          parse: parseProductSpecResult,
+        });
         const reviewPrompt = buildProductSpecReviewPrompt({
           projectName: project.name,
           draftTitle: firstPass.title,
@@ -1843,7 +2144,13 @@ export const createJobRunnerService = (input: {
           completionTokens: reviewed.completionTokens,
           createdAt: new Date(),
         });
-        const reviewedProductSpec = parseProductSpecResult(reviewed.content, reviewTemplateId);
+        const reviewedProductSpec = await parseStructuredJsonWithRepair({
+          templateId: reviewTemplateId,
+          parameters: {},
+          prompt: reviewPrompt,
+          generated: reviewed,
+          parse: parseProductSpecResult,
+        });
 
         const productSpec = await input.productSpecService.createVersion({
           projectId: rawJob.projectId,
@@ -1891,40 +2198,33 @@ export const createJobRunnerService = (input: {
           );
         }
 
-        const generateUseCasesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
+        const generateUseCasesInput = parseJobInputs<{ hint?: string }>(rawJob.inputs);
         const prompt = buildUserFlowPrompt({
           projectName: project.name,
           sourceMaterial: `${productSpec.markdown}\n\n# Technical Spec\n\n${technicalSpec.markdown}`,
           hint: generateUseCasesInput?.hint,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt);
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: rawJob.type,
-          parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const parsed = parseGeneratedUserFlowsResult(generated.content);
+        const flowsToCreate = validateGeneratedUserFlows(
+          await runStructuredJsonGeneration({
+            templateId: rawJob.type,
+            parameters: {},
+            prompt,
+            parse: (content) => {
+              const parsed = parseGeneratedUserFlowsResult(content);
 
-        if (!parsed || parsed.length === 0) {
-          throw new Error(
-            "GenerateUseCases returned invalid content. Expected a non-empty JSON array of user flows.",
-          );
-        }
+              if (!parsed || parsed.length === 0) {
+                throw new Error(
+                  "GenerateUseCases returned invalid content. Expected a non-empty JSON array of user flows.",
+                );
+              }
 
-        const flowsToCreate = validateGeneratedUserFlows(parsed);
+              return parsed;
+            },
+          }),
+        );
         await input.userFlowService.createMany(ownerUserId, rawJob.projectId, flowsToCreate);
 
-        return input.jobService.markSucceeded(rawJob.id, { createdCount: parsed.length });
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: flowsToCreate.length });
       }
 
       case "DeduplicateUseCases": {
@@ -1953,7 +2253,7 @@ export const createJobRunnerService = (input: {
 
       case "GenerateDecisionDeck": {
         const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
-        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ kind?: "tech" | "ux" }>(rawJob.inputs);
         const kind = jobInput?.kind;
 
         if (!kind) {
@@ -1995,42 +2295,33 @@ export const createJobRunnerService = (input: {
           productSpec: productSpec.markdown,
           uxSpec: uxSpec?.markdown,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: rawJob.type,
-          parameters: { kind },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const parsed = parseJson<
-          Array<{
-            alternatives?: Array<{ description?: string; id?: string; label?: string }>;
-            category?: string;
-            key?: string;
-            prompt?: string;
-            recommendation?: { description?: string; id?: string; label?: string };
-            title?: string;
-          }>
-        >(generated.content);
+        const cards = validateGeneratedDecisionDeck(
+          await runStructuredJsonGeneration({
+            templateId: rawJob.type,
+            parameters: { kind },
+            prompt,
+            parse: (content) => {
+              const parsed = parseJson<
+                Array<{
+                  alternatives?: Array<{ description?: string; id?: string; label?: string }>;
+                  category?: string;
+                  key?: string;
+                  prompt?: string;
+                  recommendation?: { description?: string; id?: string; label?: string };
+                  title?: string;
+                }>
+              >(content);
 
-        if (!parsed) {
-          throw new Error(
-            "GenerateDecisionDeck returned invalid content. Expected a JSON array of decision cards.",
-          );
-        }
+              if (!parsed) {
+                throw new Error(
+                  "GenerateDecisionDeck returned invalid content. Expected a JSON array of decision cards.",
+                );
+              }
 
-        const cards = validateGeneratedDecisionDeck(parsed);
+              return parsed;
+            },
+          }),
+        );
         const persistedCards = await input.blueprintService.replaceDecisionDeck({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
@@ -2043,7 +2334,7 @@ export const createJobRunnerService = (input: {
 
       case "GenerateProjectBlueprint": {
         const productSpec = await input.productSpecService.getCanonical(ownerUserId, rawJob.projectId);
-        const jobInput = parseJson<{ kind?: "tech" | "ux" }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ kind?: "tech" | "ux" }>(rawJob.inputs);
         const kind = jobInput?.kind;
 
         if (!kind) {
@@ -2076,41 +2367,55 @@ export const createJobRunnerService = (input: {
         }
 
         await input.blueprintService.assertAcceptedDecisionDeck(ownerUserId, rawJob.projectId, kind);
-        const serializedSelections = JSON.stringify(
+        let serializedSelections = JSON.stringify(
           await input.blueprintService.getDecisionSelections(ownerUserId, rawJob.projectId, kind),
           null,
           2,
         );
-        const consistencyPrompt = buildDecisionConsistencyPrompt({
-          kind,
-          projectName: project.name,
-          productSpec: productSpec.markdown,
-          decisions: serializedSelections,
-          uxSpec: uxSpec?.markdown,
-        });
-        const consistency = await input.llmProviderService.generate(provider, consistencyPrompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: "ValidateDecisionConsistency",
-          parameters: { kind },
-          input: { prompt: consistencyPrompt },
-          output: { content: consistency.content },
-          promptTokens: consistency.promptTokens,
-          completionTokens: consistency.completionTokens,
-          createdAt: new Date(),
-        });
-        const consistencyResult = parseDecisionValidationResult(consistency.content);
+        let consistencyResult: ReturnType<typeof parseDecisionValidationResult> = {
+          ok: false,
+          issues: [],
+        };
 
-        if (!consistencyResult.ok) {
-          throw new Error(
-            `ValidateDecisionConsistency found conflicts: ${(consistencyResult.issues ?? []).join("; ") || "unknown issue"}`,
+        for (let attempt = 0; attempt < 3; attempt++) {
+          consistencyResult = await runStructuredJsonGeneration({
+            templateId: "ValidateDecisionConsistency",
+            parameters: { kind, attempt },
+            prompt: buildDecisionConsistencyPrompt({
+              kind,
+              projectName: project.name,
+              productSpec: productSpec.markdown,
+              decisions: serializedSelections,
+              uxSpec: uxSpec?.markdown,
+            }),
+            parse: (content) => parseDecisionValidationResult(content),
+          });
+
+          if (consistencyResult.ok) {
+            break;
+          }
+
+          if (attempt === 2) {
+            throw createJobFailure({
+              message:
+                `ValidateDecisionConsistency found conflicts: ${(consistencyResult.issues ?? []).join("; ") || "unknown issue"}`,
+              code: "decision_conflict_unresolved",
+              category: "semantic_schema_violation",
+              templateId: "ValidateDecisionConsistency",
+              retryable: false,
+            });
+          }
+
+          await repairDecisionSelections({
+            issues: consistencyResult.issues ?? [],
+            kind,
+            productSpec: productSpec.markdown,
+            uxSpec: uxSpec?.markdown,
+          });
+          serializedSelections = JSON.stringify(
+            await input.blueprintService.getDecisionSelections(ownerUserId, projectId, kind),
+            null,
+            2,
           );
         }
 
@@ -2121,25 +2426,12 @@ export const createJobRunnerService = (input: {
           decisions: serializedSelections,
           uxSpec: uxSpec?.markdown,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const blueprintPayload = await runStructuredJsonGeneration({
           templateId: rawJob.type,
           parameters: { kind },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parse: parseBlueprintResult,
         });
-        const blueprintPayload = parseBlueprintResult(generated.content, rawJob.type);
         const blueprint = await input.blueprintService.createBlueprintVersion({
           projectId: rawJob.projectId,
           jobId: rawJob.id,
@@ -2188,7 +2480,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestones requires approved UX and Technical Specs.");
         }
 
-        const generateMilestonesInput = parseJson<{ hint?: string }>(JSON.stringify(rawJob.inputs));
+        const generateMilestonesInput = parseJobInputs<{ hint?: string }>(rawJob.inputs);
         const prompt = buildMilestonePlanPrompt({
           projectName: project.name,
           uxSpec: blueprints.uxBlueprint.markdown,
@@ -2246,7 +2538,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneDesign requires milestone service support.");
         }
 
-        const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ milestoneId?: string }>(rawJob.inputs);
         const milestoneId = jobInput?.milestoneId;
 
         if (!milestoneId) {
@@ -2331,7 +2623,7 @@ export const createJobRunnerService = (input: {
           throw new Error("ReviewMilestoneCoverage requires milestone and feature support.");
         }
 
-        const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ milestoneId?: string }>(rawJob.inputs);
         const milestoneId = jobInput?.milestoneId;
         if (!milestoneId) {
           throw new Error("ReviewMilestoneCoverage requires a milestoneId.");
@@ -2359,27 +2651,22 @@ export const createJobRunnerService = (input: {
             const tracks = await input.featureWorkstreamService!.getTracks(ownerUserId, feature.id);
             const session = await taskPlanning.getSession(ownerUserId, feature.id);
             const tasks = session ? await taskPlanning.getTasks(ownerUserId, session.id) : [];
-            const revisions = await Promise.all([
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "product"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "ux"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "tech"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "user_docs"),
-              input.featureWorkstreamService!.listRevisions(ownerUserId, feature.id, "arch_docs"),
-            ]);
-
-            const getApprovedMarkdown = (
-              list: (typeof revisions)[number],
-              status: "approved" | "missing" | "draft",
-            ) => (status === "approved" ? list.revisions[0]?.markdown ?? null : null);
-
             return {
+              featureKey: feature.featureKey,
               title: feature.headRevision.title,
               summary: feature.headRevision.summary,
-              productSpec: getApprovedMarkdown(revisions[0], tracks.tracks.product.status),
-              uxSpec: getApprovedMarkdown(revisions[1], tracks.tracks.ux.status),
-              techSpec: getApprovedMarkdown(revisions[2], tracks.tracks.tech.status),
-              userDocs: getApprovedMarkdown(revisions[3], tracks.tracks.userDocs.status),
-              archDocs: getApprovedMarkdown(revisions[4], tracks.tracks.archDocs.status),
+              acceptanceCriteria: Array.isArray(feature.headRevision.acceptanceCriteria)
+                ? feature.headRevision.acceptanceCriteria.filter(
+                    (item): item is string => typeof item === "string",
+                  )
+                : [],
+              workstreams: {
+                product: tracks.tracks.product.status,
+                ux: tracks.tracks.ux.status,
+                tech: tracks.tracks.tech.status,
+                userDocs: tracks.tracks.userDocs.status,
+                archDocs: tracks.tracks.archDocs.status,
+              },
               tasks: tasks.map((task: Awaited<ReturnType<typeof taskPlanning.getTasks>>[number]) => ({
                 title: task.title,
                 description: task.description,
@@ -2426,7 +2713,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneFeatureSet requires feature and milestone support.");
         }
 
-        const jobInput = parseJson<{ milestoneId?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ milestoneId?: string }>(rawJob.inputs);
         const milestoneId = jobInput?.milestoneId;
 
         if (!milestoneId) {
@@ -2924,7 +3211,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateFeatureProductSpec requires feature workstream support.");
         }
 
-        const jobInput = parseJson<{ featureId?: string; hint?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ featureId?: string; hint?: string }>(rawJob.inputs);
         const featureId = jobInput?.featureId;
 
         if (!featureId) {
@@ -3023,7 +3310,7 @@ export const createJobRunnerService = (input: {
           throw new Error(`${rawJob.type} requires feature workstream support.`);
         }
 
-        const jobInput = parseJson<{ featureId?: string; hint?: string }>(JSON.stringify(rawJob.inputs));
+        const jobInput = parseJobInputs<{ featureId?: string; hint?: string }>(rawJob.inputs);
         const featureId = jobInput?.featureId;
 
         if (!featureId) {
@@ -3211,27 +3498,12 @@ export const createJobRunnerService = (input: {
             techSpec: techRevision.markdown,
             hint: taskHint,
           });
-
-          const generated = await input.llmProviderService.generate(provider, prompt, {
-            responseFormat: "json",
-          });
-
-          await input.db.insert(llmRunsTable).values({
-            id: generateId(),
-            projectId: rawJob.projectId,
-            jobId: rawJob.id,
-            provider: provider.provider,
-            model: provider.model,
+          const clarifications = await runStructuredJsonGeneration({
             templateId: rawJob.type,
             parameters: { featureId, sessionId },
-            input: { prompt },
-            output: { content: generated.content },
-            promptTokens: generated.promptTokens,
-            completionTokens: generated.completionTokens,
-            createdAt: new Date(),
+            prompt,
+            parse: (content) => parseTaskClarificationsResult(content),
           });
-
-          const clarifications = parseTaskClarificationsResult(generated.content);
           await taskPlanning.createClarifications(sessionId, clarifications);
 
           return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
@@ -3260,27 +3532,12 @@ export const createJobRunnerService = (input: {
             techSpec: techRevision.markdown,
             hint: taskHint,
           });
-
-          const generated = await input.llmProviderService.generate(provider, prompt, {
-            responseFormat: "json",
-          });
-
-          await input.db.insert(llmRunsTable).values({
-            id: generateId(),
-            projectId: rawJob.projectId,
-            jobId: rawJob.id,
-            provider: provider.provider,
-            model: provider.model,
+          const answers = await runStructuredJsonGeneration({
             templateId: rawJob.type,
             parameters: { featureId, sessionId },
-            input: { prompt },
-            output: { content: generated.content },
-            promptTokens: generated.promptTokens,
-            completionTokens: generated.completionTokens,
-            createdAt: new Date(),
+            prompt,
+            parse: (content) => parseAutoAnswerResult(content),
           });
-
-          const answers = parseAutoAnswerResult(generated.content);
 
           for (let i = 0; i < Math.min(pendingClarifications.length, answers.length); i++) {
             await taskPlanning.answerClarification(
@@ -3377,32 +3634,33 @@ export const createJobRunnerService = (input: {
         const generated = await input.llmProviderService.generate(provider, prompt, {
           responseFormat: "json",
         });
-
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        await storeLlmRun({
           templateId: rawJob.type,
           parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          generated,
         });
 
-        const parsed = parseJson<{
-          complete?: boolean;
-          issues?: Array<{ jobType?: string; hint?: string }>;
-        }>(generated.content);
+        const parsed = await parseStructuredJsonWithRepair({
+          templateId: rawJob.type,
+          parameters: {},
+          prompt,
+          generated,
+          parse: (content, templateId) => {
+            const parsed = parseJson<{
+              complete?: boolean;
+              issues?: Array<{ jobType?: string; hint?: string }>;
+            }>(content);
 
-        if (!parsed || typeof parsed.complete !== "boolean") {
-          throw new Error(
-            'ReviewDelivery returned invalid content. Expected JSON with a "complete" boolean.',
-          );
-        }
+            if (!parsed || typeof parsed.complete !== "boolean") {
+              throw new Error(
+                `${templateId} returned invalid content. Expected JSON with a "complete" boolean.`,
+              );
+            }
+
+            return parsed;
+          },
+        });
 
         const issues = (parsed.issues ?? [])
           .filter(

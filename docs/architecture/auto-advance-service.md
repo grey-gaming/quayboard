@@ -194,8 +194,10 @@ Called by the job scheduler after every job completes (success or failure).
 2. If the job has no `projectId`, returns early (noop).
 3. Queries for a `running` session for that project.
 4. If none exists, returns early.
-5. On `failure`: updates session to `paused` with `paused_reason: job_failed`. Publishes SSE.
-6. On `success`: calls `advanceStep` to enqueue the next job. Publishes SSE.
+5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
+6. On `success`: clears any session retry counter and calls `advanceStep` to enqueue the next job. Publishes SSE.
+
+Structured output validation failures, prompt/context-limit failures, and exhausted blueprint decision-repair failures are treated as non-retryable. Transient transport/provider failures remain retryable.
 
 Errors inside `onJobComplete` are caught and logged; they do not propagate to the job runner so a failed auto-advance callback cannot break normal job processing.
 
