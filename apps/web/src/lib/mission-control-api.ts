@@ -49,4 +49,11 @@ export const missionControlApi = {
       { method: "POST" },
     );
   },
+
+  skipMilestoneReconciliation(projectId: string) {
+    return apiRequest<AutoAdvanceSession>(
+      `/api/projects/${projectId}/auto-advance/skip-milestone-reconciliation`,
+      { method: "POST" },
+    );
+  },
 };

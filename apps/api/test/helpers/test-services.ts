@@ -17,6 +17,9 @@ export const createStubServices = (): AppServices => ({
     step: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    skipMilestoneReconciliation: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     onJobComplete: async () => undefined,
   },
   artifactApprovalService: {

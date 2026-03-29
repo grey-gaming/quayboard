@@ -6,6 +6,7 @@ import type { AutoAdvanceSession, CreativityMode } from "@quayboard/shared";
 import {
   useAutoAdvanceReset,
   useAutoAdvanceResume,
+  useAutoAdvanceSkipMilestoneReconciliation,
   useAutoAdvanceStart,
   useAutoAdvanceStep,
   useAutoAdvanceStop,
@@ -34,6 +35,7 @@ export const AutoAdvanceControlsCard = ({
   const resumeMutation = useAutoAdvanceResume(projectId);
   const resetMutation = useAutoAdvanceReset(projectId);
   const stepMutation = useAutoAdvanceStep(projectId);
+  const skipMilestoneMutation = useAutoAdvanceSkipMilestoneReconciliation(projectId);
 
   const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
   const [skipReviewSteps, setSkipReviewSteps] = useState(false);
@@ -47,7 +49,8 @@ export const AutoAdvanceControlsCard = ({
     stopMutation.isPending ||
     resumeMutation.isPending ||
     resetMutation.isPending ||
-    stepMutation.isPending;
+    stepMutation.isPending ||
+    skipMilestoneMutation.isPending;
 
   const status = session?.status ?? "idle";
   const isRunning = status === "running";
@@ -187,12 +190,21 @@ export const AutoAdvanceControlsCard = ({
           {isPaused && (
             <>
               {isHumanBlockedMilestoneReconciliation ? (
-                <Link
-                  className="inline-flex min-h-10 items-center justify-center border border-accent bg-accent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-background transition-colors duration-150 hover:border-accent-hover hover:bg-accent-hover"
-                  to={`/projects/${projectId}/milestones`}
-                >
-                  Review milestone gaps
-                </Link>
+                <>
+                  <Link
+                    className="inline-flex min-h-10 items-center justify-center border border-accent bg-accent px-3.5 py-2 text-[13px] font-semibold tracking-[0.02em] text-background transition-colors duration-150 hover:border-accent-hover hover:bg-accent-hover"
+                    to={`/projects/${projectId}/milestones`}
+                  >
+                    Review milestone gaps
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    disabled={isPending}
+                    onClick={() => skipMilestoneMutation.mutate()}
+                  >
+                    Skip &amp; continue
+                  </Button>
+                </>
               ) : (
                 <>
                   <Button
@@ -224,7 +236,13 @@ export const AutoAdvanceControlsCard = ({
           )}
         </div>
 
-        {(startMutation.isError || stopMutation.isError || resumeMutation.isError || resetMutation.isError || stepMutation.isError) && (
+        {isHumanBlockedMilestoneReconciliation && (
+          <p className="text-xs text-secondary">
+            Skipping marks this reconciliation step as resolved. Validate milestone coverage manually before skipping.
+          </p>
+        )}
+
+        {(startMutation.isError || stopMutation.isError || resumeMutation.isError || resetMutation.isError || stepMutation.isError || skipMilestoneMutation.isError) && (
           <p className="text-xs text-danger">
             Action failed. Please try again.
           </p>

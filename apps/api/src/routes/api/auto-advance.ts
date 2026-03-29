@@ -188,6 +188,28 @@ export const autoAdvanceRoutes = (
   );
 
   app.post(
+    "/projects/:id/auto-advance/skip-milestone-reconciliation",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        response: { 200: autoAdvanceSessionJsonSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const session = await services.autoAdvanceService.skipMilestoneReconciliation(
+          request.user!.id,
+          id,
+        );
+        return autoAdvanceSessionSchema.parse(session);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
     "/projects/:id/auto-advance/step",
     {
       schema: {

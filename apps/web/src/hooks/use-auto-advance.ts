@@ -75,3 +75,14 @@ export const useAutoAdvanceStep = (projectId: string) => {
     },
   });
 };
+
+export const useAutoAdvanceSkipMilestoneReconciliation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => missionControlApi.skipMilestoneReconciliation(projectId),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: autoAdvanceKey(projectId) });
+    },
+  });
+};
