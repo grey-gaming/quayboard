@@ -158,7 +158,7 @@ When the active milestone has no remaining feature, workstream, or task-planning
 
 - If reconciliation passes, the next step becomes milestone completion.
 - If reconciliation finds gaps on the first pass, auto-advance rewrites the current milestone's feature set and then resumes the normal workstream and task-planning flow for the replacement features.
-- If reconciliation returns only `needs_human_review` issues and `auto_resolve_ambiguous_reconciliation` is enabled, auto-advance queues one bounded `ResolveMilestoneCoverageIssues` repair attempt before pausing.
+- If reconciliation returns only `needs_human_review` issues and `auto_resolve_ambiguous_reconciliation` is enabled, auto-advance queues one bounded `ResolveMilestoneCoverageIssues` repair attempt for that reconciliation result before pausing.
 - If that repair attempt cannot produce a valid generic plan, or if reconciliation still fails after the single repair attempt, the session pauses with `needs_human` and Mission Control surfaces the blocking milestone issues explicitly.
 
 ### `ResolveMilestoneCoverageIssues`
@@ -182,7 +182,7 @@ The repair planner produces structured JSON only. The executor validates the pla
 - unsupported refresh targets are rejected
 - malformed or non-executable plans fail closed and return `resolved: false`
 
-The repair loop is deliberately bounded to one attempt per auto-advance session to avoid self-reinforcing retry loops.
+The repair loop is deliberately bounded to one attempt per milestone reconciliation result. Auto-advance derives that limit from the milestone's latest reconciliation review timestamp and existing `ResolveMilestoneCoverageIssues` jobs, so a restart can resume an eligible repair without letting the same stale review loop forever.
 
 ---
 
@@ -197,7 +197,7 @@ Called by the job scheduler after every job completes (success or failure).
 5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
 6. On `success`: clears any session retry counter and calls `advanceStep` to enqueue the next job. Publishes SSE.
 
-Structured output validation failures, prompt/context-limit failures, and exhausted blueprint decision-repair failures are treated as non-retryable. Transient transport/provider failures remain retryable.
+Malformed structured-output failures remain retryable after the in-job JSON repair pass is exhausted, so auto-advance can rerun the full job up to the normal retry limit. Prompt/context-limit failures remain non-retryable. Exhausted blueprint decision-repair failures are also retryable so the full blueprint job can re-enter its decision-repair loop on the next bounded job retry.
 
 For parallel feature batches, `onJobComplete` waits until the active batch fully settles before deciding whether to retry or pause. Any mixed-success batch with at least one failed job counts as a single retry attempt; already-succeeded feature work is left in place, and only unfinished work is re-enqueued on the next pass. The session pauses with `job_failed` only after three consecutive failed batch attempts.
 
