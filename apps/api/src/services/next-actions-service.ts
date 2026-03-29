@@ -383,7 +383,10 @@ export const createNextActionsService = (
             }
 
             if (!actions.length) {
-              if (activeMilestone.reconciliationStatus === "failed_needs_human") {
+              if (
+                activeMilestone.reconciliationStatus !== "passed" &&
+                activeMilestone.reconciliationIssues.length > 0
+              ) {
                 actions.push({
                   key: "milestone_reconciliation_resolve",
                   label: "Resolve milestone coverage gaps",

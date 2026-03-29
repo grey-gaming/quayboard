@@ -38,7 +38,7 @@ export const AutoAdvanceControlsCard = ({
   const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
   const [skipReviewSteps, setSkipReviewSteps] = useState(false);
   const [autoApproveWhenClear, setAutoApproveWhenClear] = useState(false);
-  const [autoResolveAmbiguousReconciliation, setAutoResolveAmbiguousReconciliation] =
+  const [autoRepairMilestoneCoverage, setAutoRepairMilestoneCoverage] =
     useState(false);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(1);
 
@@ -56,15 +56,16 @@ export const AutoAdvanceControlsCard = ({
   const isActive = isRunning || isPaused;
   const isHumanBlockedMilestoneReconciliation =
     isPaused &&
-    session?.pausedReason === "needs_human" &&
+    (session?.pausedReason === "needs_human" ||
+      session?.pausedReason === "milestone_repair_limit_reached") &&
     nextStep === "milestone_reconciliation_resolve";
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
   const displayAutoApproveWhenClear = isActive ? session!.autoApproveWhenClear : autoApproveWhenClear;
-  const displayAutoResolveAmbiguousReconciliation = isActive
-    ? session!.autoResolveAmbiguousReconciliation
-    : autoResolveAmbiguousReconciliation;
+  const displayAutoRepairMilestoneCoverage = isActive
+    ? session!.autoRepairMilestoneCoverage
+    : autoRepairMilestoneCoverage;
   const displayMaxConcurrentJobs = isActive ? session!.maxConcurrentJobs : maxConcurrentJobs;
 
   return (
@@ -126,17 +127,17 @@ export const AutoAdvanceControlsCard = ({
           <div className="flex items-center justify-between gap-3">
             <label
               className="text-xs text-secondary"
-              htmlFor="auto-resolve-ambiguous-reconciliation"
+              htmlFor="auto-repair-milestone-coverage"
             >
-              Auto-resolve ambiguous milestone gaps
+              Auto-repair milestone coverage
             </label>
             <input
-              id="auto-resolve-ambiguous-reconciliation"
+              id="auto-repair-milestone-coverage"
               type="checkbox"
               className="h-4 w-4 accent-accent disabled:opacity-60"
-              checked={displayAutoResolveAmbiguousReconciliation}
+              checked={displayAutoRepairMilestoneCoverage}
               disabled={isActive || isPending}
-              onChange={(e) => setAutoResolveAmbiguousReconciliation(e.target.checked)}
+              onChange={(e) => setAutoRepairMilestoneCoverage(e.target.checked)}
             />
           </div>
           <div className="flex items-center justify-between gap-3">
@@ -166,7 +167,7 @@ export const AutoAdvanceControlsCard = ({
                   creativityMode,
                   skipReviewSteps,
                   autoApproveWhenClear,
-                  autoResolveAmbiguousReconciliation,
+                  autoRepairMilestoneCoverage,
                   maxConcurrentJobs,
                 })
               }

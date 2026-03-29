@@ -87,6 +87,7 @@ const autoAdvancePausedReasonValues = [
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "milestone_repair_limit_reached",
   "review_limit_reached",
 ] as const;
 
@@ -1126,13 +1127,13 @@ export const autoAdvanceSessionsTable = pgTable(
       .notNull()
       .default(false),
     skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
-    autoResolveAmbiguousReconciliation: boolean("auto_resolve_ambiguous_reconciliation")
+    autoRepairMilestoneCoverage: boolean("auto_repair_milestone_coverage")
       .notNull()
       .default(false),
     creativityMode: text("creativity_mode").notNull().default("balanced"),
     retryCount: integer("retry_count").notNull().default(0),
     reviewCount: integer("review_count").notNull().default(0),
-    ambiguousReconciliationRepairCount: integer("ambiguous_reconciliation_repair_count")
+    milestoneRepairCount: integer("milestone_repair_count")
       .notNull()
       .default(0),
     maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),

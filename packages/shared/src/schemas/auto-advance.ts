@@ -17,6 +17,7 @@ export const autoAdvancePausedReasonSchema = z.enum([
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "milestone_repair_limit_reached",
   "review_limit_reached",
 ]);
 
@@ -40,10 +41,11 @@ export const autoAdvanceSessionSchema = z.object({
   pausedReason: autoAdvancePausedReasonSchema.nullable(),
   autoApproveWhenClear: z.boolean(),
   skipReviewSteps: z.boolean(),
-  autoResolveAmbiguousReconciliation: z.boolean(),
+  autoRepairMilestoneCoverage: z.boolean(),
   creativityMode: creativityModeSchema,
   retryCount: z.number().int(),
   reviewCount: z.number().int(),
+  milestoneRepairCount: z.number().int(),
   maxConcurrentJobs: z.number().int(),
   startedAt: z.string().datetime().nullable(),
   pausedAt: z.string().datetime().nullable(),
@@ -66,7 +68,7 @@ export type AutoAdvanceStatusResponse = z.infer<
 export const startAutoAdvanceRequestSchema = z.object({
   autoApproveWhenClear: z.boolean().optional(),
   skipReviewSteps: z.boolean().optional(),
-  autoResolveAmbiguousReconciliation: z.boolean().optional(),
+  autoRepairMilestoneCoverage: z.boolean().optional(),
   creativityMode: creativityModeSchema.optional(),
   maxConcurrentJobs: z.number().int().min(1).max(10).optional(),
 });

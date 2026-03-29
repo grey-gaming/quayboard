@@ -304,13 +304,12 @@ describe("workflow pages", () => {
           pausedReason: "needs_human",
           autoApproveWhenClear: false,
           skipReviewSteps: false,
-          autoResolveAmbiguousReconciliation: true,
+          autoRepairMilestoneCoverage: true,
           creativityMode: "balanced",
           retryCount: 0,
           reviewCount: 0,
+          milestoneRepairCount: 1,
           maxConcurrentJobs: 1,
-          pendingJobCount: 0,
-          activeBatchToken: null,
           startedAt: "2026-03-16T10:00:00.000Z",
           pausedAt: "2026-03-16T10:02:00.000Z",
           completedAt: null,
@@ -325,7 +324,8 @@ describe("workflow pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
     expect(screen.getByText(/Auto-advance cannot continue until the active milestone gaps are resolved/i)).toBeTruthy();
-    expect(screen.getByText("Ambiguous milestone reconciliation repair is enabled for this session.")).toBeTruthy();
+    expect(screen.getByText("Milestone coverage auto-repair is enabled for this session.")).toBeTruthy();
+    expect(screen.getByText("Milestone repair attempts used: 1/3")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Review milestone gaps" }).getAttribute("href")).toBe(
       `/projects/${blockedProjectId}/milestones`,
     );

@@ -152,6 +152,7 @@ When Auto-Advance pauses automatically, the banner tells you why and what to do 
 | `needs_human` | The next step requires a decision only you can make — for example, a document approval that is not set to auto-approve | Complete the action shown in the Next Actions panel, then click **Resume** |
 | `job_failed` | A background job failed after three automatic retries | Check the Recent Jobs panel for details, then click **Resume** to retry |
 | `manual_pause` | You clicked **Stop** | Click **Resume** when you are ready to continue |
+| `milestone_repair_limit_reached` | Milestone coverage auto-repair ran three times and the active milestone still has unresolved coverage gaps | Review the milestone in **Milestones**, make any edits needed, then click **Resume** |
 | `review_limit_reached` | The delivery review found issues but has already cycled three times without fully resolving them | Review the generated output manually, make any edits needed, then click **Resume** |
 
 ---
