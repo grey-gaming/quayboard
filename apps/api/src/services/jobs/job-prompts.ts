@@ -1467,6 +1467,7 @@ export const buildTaskClarificationsPrompt = (input: {
     summary: string;
     title: string;
   };
+  milestoneDesignDoc: string;
   planningDocuments: string;
   hint?: string | null;
 }) =>
@@ -1480,6 +1481,7 @@ export const buildTaskClarificationsPrompt = (input: {
     "Each object may have an optional \"context\" key with additional context.",
     "Focus on ambiguous areas in the approved feature planning documents, acceptance criteria, or implementation approach.",
     "Ask only blocker-level questions that materially change implementation. Do not ask low-value polish questions or questions already answered clearly by the provided specs.",
+    "Do not ask about things already decided at the milestone level — use the milestone design document as background context only.",
     "Ask about edge cases, error handling, integration points, and data model decisions.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1489,6 +1491,9 @@ export const buildTaskClarificationsPrompt = (input: {
     "",
     "Approved feature planning documents:",
     input.planningDocuments,
+    "",
+    "Milestone design document (wider context only — this feature is one part of a larger milestone, do not re-plan the milestone):",
+    input.milestoneDesignDoc,
   ].join("\n");
 
 export const buildAutoAnswerClarificationsPrompt = (input: {
@@ -1500,6 +1505,7 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     summary: string;
     title: string;
   };
+  milestoneDesignDoc: string;
   planningDocuments: string;
   hint?: string | null;
 }) =>
@@ -1511,6 +1517,7 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     "Return valid JSON as an array of objects matching the input order.",
     "Each object must have an \"answer\" key with a helpful, implementation-focused answer.",
     "Derive answers from the approved feature planning documents, feature context, and standard software engineering practices.",
+    "Use the milestone design document as background context to inform answers about integration points or architectural decisions already made at the milestone level.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1519,6 +1526,9 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     "",
     "Approved feature planning documents:",
     input.planningDocuments,
+    "",
+    "Milestone design document (wider context only — this feature is one part of a larger milestone, do not re-plan the milestone):",
+    input.milestoneDesignDoc,
     "",
     "Clarification questions:",
     JSON.stringify(
