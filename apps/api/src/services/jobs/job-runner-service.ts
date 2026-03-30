@@ -3842,9 +3842,15 @@ export const createJobRunnerService = (input: {
           title: context.headFeatureRevision.title,
         };
 
+        const milestoneContext = await loadMilestonePromptContext(
+          context.feature.milestoneId,
+          featureId,
+        );
+
         if (rawJob.type === "GenerateTaskClarifications") {
           const prompt = buildTaskClarificationsPrompt({
             feature: featureContext,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             planningDocuments,
             hint: taskHint,
           });
@@ -3879,6 +3885,7 @@ export const createJobRunnerService = (input: {
               context: c.context,
             })),
             feature: featureContext,
+            milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
             planningDocuments,
             hint: taskHint,
           });
@@ -3909,10 +3916,6 @@ export const createJobRunnerService = (input: {
 
         const answeredClarifications = existingClarifications.filter(
           (c) => c.status === "answered",
-        );
-        const milestoneContext = await loadMilestonePromptContext(
-          context.feature.milestoneId,
-          featureId,
         );
 
         const prompt = buildFeatureTaskListPrompt({
