@@ -309,8 +309,6 @@ export const projectsRoutes = (
           createProjectRequestSchema.parse(request.body),
         );
 
-        await services.milestoneService.seedDefaultMilestone(project.id);
-
         return projectSchema.parse(project);
       } catch (error) {
         return handleRouteError(reply, error);

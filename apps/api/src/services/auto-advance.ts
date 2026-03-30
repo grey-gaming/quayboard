@@ -667,12 +667,12 @@ export const createAutoAdvanceService = (
     jobId: string;
     status: "passed" | "failed_first_pass" | "failed_needs_human";
   }) => {
-    if ("recordScopeReviewResult" in milestoneService) {
-      await (
-        milestoneService as MilestoneService & {
-          recordScopeReviewResult: typeof milestoneService.recordReconciliationResult;
-        }
-      ).recordScopeReviewResult(input);
+    const scopedReviewMilestoneService = milestoneService as MilestoneService & {
+      recordScopeReviewResult?: typeof milestoneService.recordReconciliationResult;
+    };
+
+    if (typeof scopedReviewMilestoneService.recordScopeReviewResult === "function") {
+      await scopedReviewMilestoneService.recordScopeReviewResult(input);
       return;
     }
 

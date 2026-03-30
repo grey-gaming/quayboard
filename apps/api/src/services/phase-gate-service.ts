@@ -101,18 +101,17 @@ export const createPhaseGateService = (
         ? featureService.list(ownerUserId, projectId)
         : Promise.resolve({ features: [] }),
     ]);
-    const visibleMilestones = milestones.milestones.filter((milestone) => !milestone.isBootstrapPlaceholder);
-    const milestoneCount = visibleMilestones.length;
+    const milestoneCount = milestones.milestones.length;
     const milestoneDocumentCount = userFlowsPassed
       ? await milestoneService.countMilestonesWithCanonicalDesignDocs(ownerUserId, projectId)
       : 0;
-    const approvedMilestoneCount = visibleMilestones.filter(
+    const approvedMilestoneCount = milestones.milestones.filter(
       (milestone) => milestone.status === "approved" || milestone.status === "completed",
     ).length;
-    const scopedMilestoneCount = visibleMilestones.filter(
+    const scopedMilestoneCount = milestones.milestones.filter(
       (milestone) => milestone.scopeReviewStatus === "passed",
     ).length;
-    const deliveredMilestoneCount = visibleMilestones.filter(
+    const deliveredMilestoneCount = milestones.milestones.filter(
       (milestone) => milestone.deliveryReviewStatus === "passed",
     ).length;
     const featureCount = features.features.length;

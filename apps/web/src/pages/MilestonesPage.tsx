@@ -244,8 +244,7 @@ export const MilestonesPage = () => {
 
   useSseEvents(id);
 
-  const activeMilestones =
-    milestonesQuery.data?.milestones.filter((milestone) => !milestone.isBootstrapPlaceholder) ?? [];
+  const activeMilestones = milestonesQuery.data?.milestones ?? [];
   const canSubmit = title.trim() && summary.trim() && selectedUseCaseIds.length > 0;
   const activeMilestonePlanJob = useMemo(
     () => jobsQuery.data?.jobs.find((job) => job.type === "GenerateMilestones" && isActiveJob(job)) ?? null,

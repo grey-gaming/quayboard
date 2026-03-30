@@ -65,7 +65,6 @@ export const milestoneSchema = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
   status: milestoneStatusSchema,
-  isBootstrapPlaceholder: z.boolean(),
   linkedUserFlows: z.array(milestoneLinkedUseCaseSchema),
   featureCount: z.number().int().nonnegative(),
   isActive: z.boolean(),

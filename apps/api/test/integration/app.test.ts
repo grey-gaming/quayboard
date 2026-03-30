@@ -272,6 +272,20 @@ describe("API integration", () => {
     };
   };
 
+  const markMilestoneMapReviewPassed = async (projectId: string) => {
+    await sql`
+      update "projects"
+      set
+        "milestone_map_generated_at" = now(),
+        "milestone_map_review_status" = 'passed',
+        "milestone_map_review_issues" = '[]'::jsonb,
+        "milestone_map_reviewed_at" = now(),
+        "milestone_map_review_last_job_id" = null,
+        "updated_at" = now()
+      where "id" = ${projectId}
+    `;
+  };
+
   it("runs migrations successfully more than once", async () => {
     await runMigrations(databaseUrl);
     await runMigrations(databaseUrl);
@@ -398,6 +412,7 @@ describe("API integration", () => {
     expect(createMilestoneResponse.json().status).toBe("draft");
 
     const milestoneId = createMilestoneResponse.json().id as string;
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     const approveWithoutDesignDocResponse = await server.inject({
       method: "POST",
@@ -460,8 +475,8 @@ describe("API integration", () => {
     expect(completeMilestoneResponse.statusCode).toBe(409);
     expect(completeMilestoneResponse.json()).toEqual({
       error: {
-        code: "milestone_reconciliation_required",
-        message: "Run milestone reconciliation and resolve all gaps before completing the milestone.",
+        code: "milestone_delivery_review_required",
+        message: "Run the milestone delivery review and resolve all gaps before completing the milestone.",
       },
     });
 
@@ -595,6 +610,7 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     const designDoc = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -662,6 +678,7 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     const original = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -725,6 +742,7 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     const original = await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -785,6 +803,7 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -832,6 +851,7 @@ describe("API integration", () => {
         useCaseIds: [seeded.flow.id],
       },
     );
+    await markMilestoneMapReviewPassed(seeded.projectId);
 
     await appServices.services.milestoneService.createDesignDocVersion({
       milestoneId: milestone.id,
@@ -1069,7 +1089,7 @@ describe("API integration", () => {
     }
   });
 
-  it("seeds a default Milestone 0 when creating a new project", async () => {
+  it("does not create milestones when creating a new project", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
     try {
@@ -1101,10 +1121,7 @@ describe("API integration", () => {
         where: (table, { eq }) => eq(table.projectId, projectId),
       });
 
-      expect(milestones.length).toBe(1);
-      expect(milestones[0].title).toBe("Repository and Toolchain Foundations");
-      expect(milestones[0].status).toBe("draft");
-      expect(milestones[0].position).toBe(1);
+      expect(milestones).toHaveLength(0);
     } finally {
       restoreReadiness();
     }

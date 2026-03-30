@@ -80,7 +80,6 @@ const buildMilestoneRecord = (input: {
     linkedUserFlows: input.linksByMilestone.get(input.milestone.id) ?? [],
     featureCount: input.featureCountByMilestone.get(input.milestone.id) ?? 0,
     isActive: input.milestone.id === input.activeMilestoneId,
-    isBootstrapPlaceholder: input.milestone.isBootstrapPlaceholder,
     approvedAt: input.milestone.approvedAt?.toISOString() ?? null,
     completedAt: input.milestone.completedAt?.toISOString() ?? null,
     scopeReviewStatus: input.milestone.scopeReviewStatus,
@@ -452,7 +451,6 @@ export const createMilestoneService = (db: AppDatabase) => ({
           title: payload.title,
           summary: payload.summary,
           status: "draft",
-          isBootstrapPlaceholder: false,
           approvedAt: null,
           completedAt: null,
           scopeReviewStatus: "not_started",
@@ -563,7 +561,6 @@ export const createMilestoneService = (db: AppDatabase) => ({
           title: milestone.title,
           summary: milestone.summary,
           status: "draft",
-          isBootstrapPlaceholder: false,
           approvedAt: null,
           completedAt: null,
           scopeReviewStatus: "not_started",
@@ -882,66 +879,6 @@ export const createMilestoneService = (db: AppDatabase) => ({
     });
   },
 
-  async seedDefaultMilestone(projectId: string) {
-    const now = new Date();
-    const [milestone] = await db
-      .insert(milestonesTable)
-      .values({
-        id: generateId(),
-        projectId,
-        position: 1,
-        title: DEFAULT_MILESTONE_ZERO_TITLE,
-        summary: DEFAULT_MILESTONE_ZERO_SUMMARY,
-        status: "draft",
-        isBootstrapPlaceholder: true,
-        approvedAt: null,
-        completedAt: null,
-        scopeReviewStatus: "not_started",
-        scopeReviewIssues: [],
-        scopeReviewedAt: null,
-        scopeReviewLastJobId: null,
-        deliveryReviewStatus: "not_started",
-        deliveryReviewIssues: [],
-        deliveryReviewedAt: null,
-        deliveryReviewLastJobId: null,
-        reconciliationStatus: "not_started",
-        reconciliationIssues: [],
-        reconciliationReviewedAt: null,
-        reconciliationLastJobId: null,
-        autoCatchUpCount: 0,
-        createdByJobId: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    return milestoneSchema.parse({
-      id: milestone.id,
-      projectId: milestone.projectId,
-      position: milestone.position,
-      title: milestone.title,
-      summary: milestone.summary,
-      status: milestone.status,
-      isBootstrapPlaceholder: milestone.isBootstrapPlaceholder,
-      linkedUserFlows: [],
-      featureCount: 0,
-      isActive: true,
-      approvedAt: milestone.approvedAt?.toISOString() ?? null,
-      completedAt: milestone.completedAt?.toISOString() ?? null,
-      scopeReviewStatus: milestone.scopeReviewStatus,
-      scopeReviewIssues: [],
-      scopeReviewedAt: milestone.scopeReviewedAt?.toISOString() ?? null,
-      deliveryReviewStatus: milestone.deliveryReviewStatus,
-      deliveryReviewIssues: [],
-      deliveryReviewedAt: milestone.deliveryReviewedAt?.toISOString() ?? null,
-      createdAt: milestone.createdAt.toISOString(),
-      updatedAt: milestone.updatedAt.toISOString(),
-    });
-  },
 });
-
-export const DEFAULT_MILESTONE_ZERO_TITLE = "Repository and Toolchain Foundations";
-export const DEFAULT_MILESTONE_ZERO_SUMMARY =
-  "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.";
 
 export type MilestoneService = ReturnType<typeof createMilestoneService>;

@@ -443,7 +443,6 @@ export const milestonesTable = pgTable(
     status: text("status").notNull().$type<(typeof milestoneStatusValues)[number]>(),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    isBootstrapPlaceholder: boolean("is_bootstrap_placeholder").notNull().default(false),
     reconciliationStatus: text("reconciliation_status")
       .notNull()
       .$type<(typeof milestoneReconciliationStatusValues)[number]>()
