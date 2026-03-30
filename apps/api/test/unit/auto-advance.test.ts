@@ -104,6 +104,7 @@ const makeDb = (overrides: Partial<{
     query: {
       autoAdvanceSessionsTable: {
         findFirst: vi.fn().mockResolvedValue(session),
+        findMany: vi.fn().mockResolvedValue(session ? [session] : []),
       },
       milestonesTable: {
         findFirst: vi.fn().mockResolvedValue(null),
@@ -290,6 +291,80 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("recovers a settled successful batch instead of pausing the session", async () => {
+      const staleSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const settledJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneCoverage",
+        status: "succeeded" as const,
+      };
+      const db = makeDb({ session: staleSession, activeJobs: [] });
+      let sessionReadCount = 0;
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockImplementation(async () => {
+        sessionReadCount += 1;
+        if (sessionReadCount === 1) {
+          return staleSession;
+        }
+        return makeSessionRow({
+          status: "running" as const,
+          currentStep: "overview",
+          pendingJobCount: 1,
+          activeBatchToken: "new-batch",
+        });
+      });
+      let jobsReadCount = 0;
+      db.query.jobsTable.findMany = vi.fn().mockImplementation(async () => {
+        jobsReadCount += 1;
+        return jobsReadCount === 1 ? [] : [settledJob];
+      });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  currentStep: "overview",
+                  pendingJobCount: 1,
+                  activeBatchToken: "new-batch",
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      const result = await service.getStatus(USER_ID, PROJECT_ID);
+
+      expect(result.session?.status).toBe("running");
+      expect(result.session?.currentStep).toBe("overview");
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateProjectOverview",
+          projectId: PROJECT_ID,
+        }),
+      );
+      expect(updates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            pendingJobCount: 0,
+            activeBatchToken: null,
+          }),
+          expect.objectContaining({
+            currentStep: "overview",
+            pendingJobCount: 1,
+          }),
+        ]),
+      );
+    });
+
     it("returns null nextStep when no actions are queued", async () => {
       nextActionsService.build.mockResolvedValue({ actions: [] });
       const db = makeDb({ session: null });
@@ -439,6 +514,25 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).not.toHaveBeenCalled();
       const completedUpdate = completedUpdates.find((u) => u.status === "completed");
       expect(completedUpdate).toBeDefined();
+    });
+  });
+
+  describe("recoverRunningSessions", () => {
+    it("reconciles running sessions during startup recovery", async () => {
+      const staleSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: staleSession });
+      db.query.autoAdvanceSessionsTable.findMany = vi.fn().mockResolvedValue([staleSession]);
+      db.query.jobsTable.findMany = vi.fn().mockResolvedValue([]);
+      const service = makeService(db);
+
+      await service.recoverRunningSessions();
+
+      expect(db.query.autoAdvanceSessionsTable.findMany).toHaveBeenCalled();
+      expect(sseHub.publish).toHaveBeenCalled();
     });
   });
 

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { createPostgresDatabase, type AppDatabase } from "./db/client.js";
 import { readAppConfig } from "./config.js";
-import { autoAdvanceSessionsTable, projectsTable } from "./db/schema.js";
+import { projectsTable } from "./db/schema.js";
 import {
   createArtifactApprovalService,
   type ArtifactApprovalService,
@@ -322,19 +322,10 @@ export const createAppServices = async (
   });
   await jobService.cancelRunningJobs(staleJobCancellation);
 
-  // Any auto-advance session left in "running" after stale job cancellation has no
-  // in-flight jobs to trigger onJobComplete, so it would be permanently stuck.
-  // Reconcile these to paused so users can resume cleanly.
-  await db
-    .update(autoAdvanceSessionsTable)
-    .set({
-      status: "paused",
-      pausedReason: "job_failed",
-      pendingJobCount: 0,
-      pausedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(autoAdvanceSessionsTable.status, "running"));
+  // Recover any running auto-advance sessions left behind by an API restart.
+  // Fully-settled successful batches should continue automatically; only
+  // genuinely interrupted sessions should be paused.
+  await autoAdvanceService.recoverRunningSessions();
 
   jobScheduler.start();
 

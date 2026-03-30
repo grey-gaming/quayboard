@@ -3,6 +3,7 @@ import { createSseHub } from "../../src/services/sse.js";
 
 export const createStubServices = (): AppServices => ({
   autoAdvanceService: {
+    recoverRunningSessions: async () => undefined,
     getStatus: async () => ({ session: null, nextStep: null }),
     start: async () => {
       throw new Error("Not implemented in test stub.");

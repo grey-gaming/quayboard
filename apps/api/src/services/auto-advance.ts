@@ -330,44 +330,26 @@ export const createAutoAdvanceService = (
     return job ?? null;
   };
 
-  const publishSessionUpdate = async (ownerUserId: string, projectId: string) => {
-    sseHub.publish(ownerUserId, "auto-advance:updated", { projectId });
+  const findBatchAutoAdvanceJobs = async (
+    projectId: string,
+    sessionId: string,
+    batchToken: string | null,
+  ) => {
+    if (!batchToken) {
+      return [];
+    }
+
+    return db.query.jobsTable.findMany({
+      where: and(
+        eq(jobsTable.projectId, projectId),
+        sql`${jobsTable.inputs} -> '_autoAdvance' ->> 'sessionId' = ${sessionId}`,
+        sql`${jobsTable.inputs} -> '_autoAdvance' ->> 'batchToken' = ${batchToken}`,
+      ),
+    });
   };
 
-  const reconcileStaleRunningSession = async (
-    ownerUserId: string,
-    projectId: string,
-    session: AutoAdvanceSessionRow | null,
-  ) => {
-    if (!session || session.status !== "running" || session.pendingJobCount <= 0) {
-      return session;
-    }
-
-    const activeJob = await findActiveAutoAdvanceJob(
-      projectId,
-      session.id,
-      session.activeBatchToken ?? null,
-    );
-
-    if (activeJob) {
-      return session;
-    }
-
-    const [updated] = await db
-      .update(autoAdvanceSessionsTable)
-      .set({
-        status: "paused",
-        pausedReason: "job_failed",
-        pendingJobCount: 0,
-        activeBatchToken: null,
-        pausedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(autoAdvanceSessionsTable.id, session.id))
-      .returning();
-
-    await publishSessionUpdate(ownerUserId, projectId);
-    return updated ?? session;
+  const publishSessionUpdate = async (ownerUserId: string, projectId: string) => {
+    sseHub.publish(ownerUserId, "auto-advance:updated", { projectId });
   };
 
   const buildAutoAdvanceInputs = (
@@ -534,6 +516,79 @@ export const createAutoAdvanceService = (
       await failSessionAfterAdvanceError(ownerUserId, projectId, sessionId, error);
       throw error;
     }
+  };
+
+  const reconcileStaleRunningSession = async (
+    ownerUserId: string,
+    projectId: string,
+    session: AutoAdvanceSessionRow | null,
+  ) => {
+    if (!session || session.status !== "running") {
+      return session;
+    }
+
+    const activeJob = await findActiveAutoAdvanceJob(
+      projectId,
+      session.id,
+      session.activeBatchToken ?? null,
+    );
+
+    if (activeJob) {
+      return session;
+    }
+
+    const batchJobs = await findBatchAutoAdvanceJobs(
+      projectId,
+      session.id,
+      session.activeBatchToken ?? null,
+    );
+
+    if (batchJobs.length > 0) {
+      const hasUnfinishedJob = batchJobs.some(
+        (job) => job.status === "queued" || job.status === "running",
+      );
+      if (hasUnfinishedJob) {
+        return session;
+      }
+
+      const hasFailedJob = batchJobs.some(
+        (job) => job.status === "failed" || job.status === "cancelled",
+      );
+      if (!hasFailedJob) {
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({
+            pendingJobCount: 0,
+            activeBatchToken: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(autoAdvanceSessionsTable.id, session.id));
+
+        await safelyAdvanceStep(ownerUserId, projectId, session.id);
+        await publishSessionUpdate(ownerUserId, projectId);
+        return (await getSession(projectId)) ?? session;
+      }
+    }
+
+    if (session.pendingJobCount <= 0 && !session.activeBatchToken) {
+      return session;
+    }
+
+    const [updated] = await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        status: "paused",
+        pausedReason: "job_failed",
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        pausedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, session.id))
+      .returning();
+
+    await publishSessionUpdate(ownerUserId, projectId);
+    return updated ?? session;
   };
 
   const requireSessionRow = (
@@ -853,6 +908,24 @@ export const createAutoAdvanceService = (
   };
 
   return {
+    async recoverRunningSessions() {
+      const runningSessions = await db.query.autoAdvanceSessionsTable.findMany({
+        where: eq(autoAdvanceSessionsTable.status, "running"),
+      });
+
+      for (const session of runningSessions) {
+        const project = await db.query.projectsTable.findFirst({
+          where: eq(projectsTable.id, session.projectId),
+        });
+
+        if (!project) {
+          continue;
+        }
+
+        await reconcileStaleRunningSession(project.ownerUserId, session.projectId, session);
+      }
+    },
+
     async getStatus(ownerUserId: string, projectId: string): Promise<AutoAdvanceStatusResponse> {
       await requireProject(ownerUserId, projectId);
 
