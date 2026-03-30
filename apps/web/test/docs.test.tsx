@@ -217,7 +217,7 @@ describe("docs pages", () => {
     );
 
     expect(await screen.findByText(/repository import is not available yet/i)).toBeTruthy();
-    expect(await screen.findByRole("link", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Project Settings" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
     assertNoRoadmapLabels(document.body.textContent ?? "");
   });

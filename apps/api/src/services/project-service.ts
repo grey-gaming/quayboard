@@ -97,6 +97,11 @@ export const createProjectService = (db: AppDatabase) => ({
     return toProject(project);
   },
 
+  async deleteOwnedProject(ownerUserId: string, projectId: string) {
+    await this.getOwnedProject(ownerUserId, projectId);
+    await db.delete(projectsTable).where(eq(projectsTable.id, projectId));
+  },
+
   async getOwnedProjectRecord(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(

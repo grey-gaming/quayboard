@@ -5,7 +5,7 @@ import { Badge } from "../ui/Badge.js";
 
 const KEY_TO_PATH: Record<string, string> = {
   questionnaire: "/questions",
-  setup_completed: "/setup",
+  setup_completed: "/settings",
   overview: "/one-pager",
   overview_approved: "/one-pager",
   product_spec: "/product-spec",

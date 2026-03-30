@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
+import { buildProductDesignTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Alert } from "../components/ui/Alert.js";
@@ -286,9 +286,9 @@ export const OnePagerQuestionsPage = () => {
 
   return (
     <ProjectPageFrame
-      activeSection="setup"
+      activeSection="product-design"
       project={projectQuery.data}
-      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+      tertiaryItems={buildProductDesignTertiaryItems(projectQuery.data)}
     >
       <PageIntro
         eyebrow="Overview"

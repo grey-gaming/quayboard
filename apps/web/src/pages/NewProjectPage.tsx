@@ -55,7 +55,7 @@ export const NewProjectPage = () => {
             className="grid gap-5"
             onSubmit={handleSubmit(async (values) => {
               const project = await createProjectMutation.mutateAsync(values);
-              navigate(`/projects/${project.id}/setup`);
+              navigate(`/projects/${project.id}/settings`);
             })}
           >
             <div className="qb-section-heading">

@@ -65,6 +65,18 @@ export const useCreateProjectMutation = () => {
   });
 };
 
+export const useDeleteProjectMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.deleteProject(projectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey });
+      queryClient.removeQueries({ queryKey: ["project", projectId] });
+    },
+  });
+};
+
 export const useCompleteSetupMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 

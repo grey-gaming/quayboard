@@ -199,6 +199,11 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  deleteProject(projectId: string) {
+    return apiRequest<void>(`/api/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  },
   deleteUserFlow(userFlowId: string) {
     return apiRequest<void>(`/api/user-flows/${userFlowId}`, {
       method: "DELETE",

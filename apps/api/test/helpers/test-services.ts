@@ -393,6 +393,9 @@ export const createStubServices = (): AppServices => ({
     listProjects: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    deleteOwnedProject: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     updateOwnedProject: async () => {
       throw new Error("Not implemented in test stub.");
     },

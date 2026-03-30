@@ -100,7 +100,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/docs", <div />],
     ["/settings", <div />],
     ["/projects/:id", <div />],
-    ["/projects/:id/setup", <div />],
+    ["/projects/:id/settings", <div />],
     ["/projects/:id/questions", <div />],
     ["/projects/:id/one-pager", <div />],
     ["/projects/:id/product-spec", <div />],
@@ -202,7 +202,11 @@ describe("workflow pages", () => {
     renderRoute("/projects/:id", <MissionControlPage />);
 
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link", { name: "Settings" })
+        .some((link) => link.getAttribute("href") === `/projects/${projectId}/settings`),
+    ).toBe(true);
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
     expect(screen.queryByText("Pipeline map")).toBeNull();
@@ -1933,7 +1937,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Questions" }).getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
   });
 
   it("queues auto-answer and starts the AI state immediately", async () => {
@@ -4279,7 +4283,7 @@ describe("workflow pages", () => {
           ],
         },
         {
-          path: "/projects/:id/setup",
+          path: "/projects/:id/settings",
           element: <ProjectSetupPage />,
         },
         { path: "/projects/:id/one-pager", element: <div /> },
@@ -4298,7 +4302,7 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     expect(
       screen.getByText(
         /Complete setup to unlock Questions, Overview, Product Spec, User Flows, and Import\. You were redirected from/,

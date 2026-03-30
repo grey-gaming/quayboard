@@ -73,9 +73,9 @@ const baseSetupState = (): ProjectSetupState => ({
 
 const renderPage = (activeProjectId = projectId) => {
   const router = createMemoryRouter(
-    [{ path: "/projects/:id/setup", element: <ProjectSetupPage /> }],
+    [{ path: "/projects/:id/settings", element: <ProjectSetupPage /> }],
     {
-      initialEntries: [`/projects/${activeProjectId}/setup`],
+      initialEntries: [`/projects/${activeProjectId}/settings`],
     },
   );
 
@@ -264,7 +264,7 @@ describe("project setup page", () => {
 
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     expect(screen.getAllByText("Repository Access").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Model Configuration").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sandbox Defaults").length).toBeGreaterThan(0);
@@ -373,7 +373,7 @@ describe("project setup page", () => {
 
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Verify Sandbox" }));
 
     expect(
@@ -475,7 +475,7 @@ describe("project setup page", () => {
 
     renderPage(isolatedProjectId);
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Verify LLM" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Verify LLM" }));
@@ -684,7 +684,7 @@ describe("project setup page", () => {
 
     const router = createMemoryRouter(
       [
-        { path: "/projects/:id/setup", element: <ProjectSetupPage /> },
+        { path: "/projects/:id/settings", element: <ProjectSetupPage /> },
         {
           element: <SetupCompletionGate />,
           children: [
@@ -693,7 +693,7 @@ describe("project setup page", () => {
         },
       ],
       {
-        initialEntries: [`/projects/${projectId}/setup`],
+        initialEntries: [`/projects/${projectId}/settings`],
       },
     );
 
@@ -703,7 +703,7 @@ describe("project setup page", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Complete Setup" }).hasAttribute("disabled")).toBe(
       true,
     );

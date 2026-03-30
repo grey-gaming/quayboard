@@ -435,6 +435,27 @@ export const projectsRoutes = (
     },
   );
 
+  app.delete(
+    "/projects/:id",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectService.deleteOwnedProject(
+          request.user!.id,
+          projectId,
+        );
+        return reply.status(204).send();
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
   app.get(
     "/projects/:id/setup",
     {
