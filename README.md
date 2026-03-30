@@ -1,135 +1,185 @@
 # Quayboard
 
-Quayboard is a web control plane for managing software projects and orchestrating agentic coding runs with governance, auditability, and PR-first delivery.
+Quayboard is a web control plane for shaping software projects into reviewable delivery plans. The current product combines an authenticated web app, a Fastify API, shared runtime schemas, and background LLM jobs to guide a project from setup through planning, feature design, and task planning.
 
-## Status
+## What Exists Today
 
-The repository now contains the completed M1-M5 planning workflow and an active UX/bug-fix sweep before M6:
+### Customer Workflow
 
-- Fastify API with auth/session cookies, authenticated SSE, project-scoped secrets, system readiness, project setup, questionnaire persistence, overview document versioning, Product Spec APIs, user-flow APIs, UX/Technical Spec APIs, direct artifact approval routes, and project/job status endpoints
-- Drizzle/Postgres schema and migrations covering the M1 foundation plus M2-M5 planning tables, including milestones, feature catalogue data, and feature workstream revision tables
-- Vite + React UI for project list/create, instance readiness, project setup, Mission Control, questionnaire/overview, Product Spec, UX Spec, Technical Spec, user flows, milestones, feature builder, the Feature Editor, and a public `/docs` guide sourced from `docs/user`
-- Shared schemas for planning-phase resources across API and web
+- Local email/password authentication with session cookies
+- Instance readiness checks for database connectivity, encryption key presence, Docker availability, artifact storage, and enabled provider adapters
+- Project creation and a project-scoped setup flow for:
+  - GitHub PAT validation and repository selection
+  - LLM provider selection for Ollama or an OpenAI-compatible endpoint
+  - sandbox defaults and readiness verification
+  - evidence-policy requirements for user and architecture docs
+- Mission Control as the main project landing page with:
+  - phase-gate checklist
+  - next actions
+  - recent job activity
+  - auto-advance session controls
+  - workflow status banners and stats
+- Planning editors for:
+  - Questions
+  - Overview
+  - Product Spec
+  - UX Spec
+  - Technical Spec
+  - User Flows
+  - Milestones and milestone design docs
+  - Feature Builder
+  - Feature Editor workstreams: Product, UX, Tech, User Docs, Arch Docs, Tasks
+- Task planning inside the Feature Editor:
+  - clarification generation
+  - manual and automatic clarification answers
+  - delivery-task generation
+  - manual task creation, editing, and deletion
+  - implementation record tracking
+- Public documentation pages at `/docs`, sourced from [`docs/user`](/home/mirdinj/quayboard/docs/user/README.md)
 
-Post-M5 UX sweep and bug fixes are the current repo target. M6 task-planning implementation has not started yet.
+### Product Structure
 
-## Prerequisites
+- [`apps/web`](/home/mirdinj/quayboard/apps/web): Vite + React customer UI
+- [`apps/api`](/home/mirdinj/quayboard/apps/api): Fastify API, Postgres-backed services, background jobs, SSE, and migrations
+- [`packages/shared`](/home/mirdinj/quayboard/packages/shared): shared Zod schemas and cross-app types
+- [`apps/mcp`](/home/mirdinj/quayboard/apps/mcp): placeholder package with no MCP protocol implementation yet
+
+### Current Boundaries
+
+- The import path at `/projects/:id/import` is a stub. The supported workflow starts from scratch.
+- The project navigation includes an `Implementation` section, but it is intentionally disabled in the UI.
+- Bug-management routes, sandbox-execution routes, and tool-policy routes are registered in the API but currently return `501 Not Implemented`.
+- Workflow settings are present as a read-only UI surface; persisted workflow defaults are not implemented.
+- The public docs under `docs/user` still need a wider consistency pass. Use the product and code as the source of truth where they disagree.
+
+## Route Overview
+
+### Public Routes
+
+- `/docs`
+- `/docs/:slug`
+- `/login`
+- `/register`
+
+### Authenticated Routes
+
+- `/`
+- `/setup/instance`
+- `/projects/new`
+- `/settings`
+- `/settings/workflow`
+- `/projects/:id`
+- `/projects/:id/setup`
+- `/projects/:id/questions`
+- `/projects/:id/one-pager`
+- `/projects/:id/import`
+- `/projects/:id/product-spec`
+- `/projects/:id/ux-spec`
+- `/projects/:id/technical-spec`
+- `/projects/:id/user-flows`
+- `/projects/:id/milestones`
+- `/projects/:id/features`
+- `/projects/:id/features/:featureId`
+- `/projects/:id/features/:featureId/:tab`
+
+The web route map lives in [`apps/web/src/app.tsx`](/home/mirdinj/quayboard/apps/web/src/app.tsx). The API route registration lives in [`apps/api/src/server.ts`](/home/mirdinj/quayboard/apps/api/src/server.ts).
+
+## API Surface
+
+The authenticated API currently exposes project, setup, questionnaire, one-pager, product spec, blueprint, user-flow, milestone, feature, feature-workstream, task-planning, auto-advance, jobs, artifacts, secrets, events, and system-readiness routes.
+
+Shared request and response contracts live in [`packages/shared/src`](/home/mirdinj/quayboard/packages/shared/src).
+
+## Local Operation
+
+### Prerequisites
 
 - Node.js 20.x
 - pnpm 9 or newer
 - Docker and Docker Compose
 
-## Quick Start
+### Environment
 
-1. Install dependencies:
+Copy `.env.example` to `.env` and adjust values as needed.
 
-   ```bash
-   pnpm install
-   ```
+Runtime variables currently used by the app:
 
-2. Copy the environment file and adjust values if needed:
+- `DATABASE_URL`
+- `TEST_DATABASE_URL`
+- `API_PORT`
+- `CORS_ORIGIN`
+- `SECRETS_ENCRYPTION_KEY`
+- `ARTIFACT_STORAGE_PATH`
+- `DOCKER_HOST`
+- `LLM_MAX_OUTPUT_TOKENS`
+- `LLM_REQUEST_TIMEOUT_MS`
+- `OLLAMA_HOST`
+- `OPENAI_BASE_URL`
 
-   ```bash
-   cp .env.example .env
-   ```
+Notes:
 
-   `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes. If it is missing, the API still boots so `/setup/instance` can report the failing readiness check, but secret-backed setup actions stay unavailable until the key is configured and the API is restarted.
-   `ARTIFACT_STORAGE_PATH` should point to a writable directory.
+- `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes for secret-backed setup actions to work.
+- `ARTIFACT_STORAGE_PATH` must point to a writable directory.
+- At least one provider path must be reachable for meaningful LLM-backed generation.
 
-3. Start Postgres:
+### Start The Product Locally
 
-   ```bash
-   docker compose up -d
-   ```
+```bash
+pnpm install
+cp .env.example .env
+docker compose up -d
+pnpm db:migrate
+mkdir -p /tmp/quayboard-artifacts
+pnpm dev
+```
 
-4. Run the migration harness:
+Default local endpoints:
 
-   ```bash
-   pnpm db:migrate
-   ```
-
-   To reset the local Postgres database from scratch and reapply migrations:
-
-   ```bash
-   pnpm db:reset
-   ```
-
-5. Ensure the artifact storage directory exists:
-
-   ```bash
-   mkdir -p /tmp/quayboard-artifacts
-   ```
-
-6. Start the API and web apps:
-
-   ```bash
-   pnpm dev
-   ```
-
-The web app runs on `http://localhost:3000` and the API runs on `http://localhost:3001`. The health check is available at `http://localhost:3001/healthz`.
-The web dev server proxies `/auth/*` and `/api/*` to the API so session-cookie auth works during local development.
+- Web: `http://localhost:3000`
+- API: `http://localhost:3001`
+- Health: `http://localhost:3001/healthz`
 
 ## Workspace Commands
 
-- `pnpm dev` starts the API and web dev servers in parallel
-- `pnpm build` builds all workspace packages
-- `pnpm typecheck` runs TypeScript checks across the workspace
-- `pnpm test` runs the unit and integration test baseline
-- `pnpm test:unit` runs the fast unit suite only
-- `pnpm test:integration` runs the Postgres-backed migration test
-- `pnpm test:e2e` runs the Playwright smoke test for the web app
-- `pnpm db:migrate` runs the API migration harness against `DATABASE_URL`
-- `pnpm db:reset` recreates the local Docker Postgres volume and reapplies migrations
+- `pnpm dev`
+- `pnpm build`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm test:unit`
+- `pnpm test:integration`
+- `pnpm test:e2e`
+- `pnpm db:migrate`
+- `pnpm db:reset`
 
-`pnpm test:e2e` assumes the host machine has the browser dependencies Playwright needs to launch Chromium.
-
-## Environment
-
-Documented runtime variables live in `.env.example`:
-
-- `DATABASE_URL` for Drizzle migrations, API runtime, and Postgres-backed integration tests
-- `TEST_DATABASE_URL` for API integration tests; if omitted, the test suite derives a sibling database name by appending `_test` to `DATABASE_URL`
-- `API_PORT` for the Fastify server port
-- `CORS_ORIGIN` for the allowed frontend origin
-- `SECRETS_ENCRYPTION_KEY` for application-level encryption of stored credentials
-- `ARTIFACT_STORAGE_PATH` for readiness checks and future artifact persistence
-- `DOCKER_HOST` to target a non-default Docker daemon for sandbox verification
-- `LLM_MAX_OUTPUT_TOKENS` for the API-side Ollama output-token cap used on generation requests
-- `LLM_REQUEST_TIMEOUT_MS` for the API-side timeout applied to Ollama and OpenAI-compatible generation requests
-- `OLLAMA_HOST` for the Ollama adapter base URL
-- `OPENAI_BASE_URL` for the OpenAI-compatible adapter base URL; the API key itself is stored per project through the UI
+The current CI workflow runs `pnpm db:migrate`, `pnpm typecheck`, `pnpm test`, and `pnpm build`.
 
 ## Repository Layout
 
 ```text
 apps/
-  api/      Fastify service, auth/session middleware, SSE, setup/planning APIs, migrations, API tests
-  web/      Vite + React planning UI, DS primitives, Playwright smoke test
-  mcp/      Buildable placeholder package for the future MCP server
+  api/      Fastify API, services, routes, migrations, tests
+  web/      Vite + React web app, UI components, hooks, tests
+  mcp/      Placeholder package
 packages/
-  shared/   Shared schemas and types used across the workspace
+  shared/   Shared schemas and runtime contracts
 docs/
-  adr/            Architecture decisions
-  architecture/   Monorepo, toolchain, API foundation, and local-dev documentation
-  planning/       Active milestone and long-range project outline
-  user/           User-facing guides rendered by the public `/docs` experience
+  adr/            Accepted architecture and workflow decisions
+  architecture/   Internal engineering documentation
+  user/           Markdown source for the public /docs experience
 ```
-
-## Source Of Truth
-
-Use these documents in this order:
-
-1. [docs/planning/current-milestone.md](docs/planning/current-milestone.md)
-2. [AGENTS.md](AGENTS.md)
-3. [docs/planning/quayboard-project-outline.md](docs/planning/quayboard-project-outline.md)
-4. [docs/adr/README.md](docs/adr/README.md)
-5. [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Documentation Map
 
-- [Current milestone](docs/planning/current-milestone.md)
-- [Project outline](docs/planning/quayboard-project-outline.md)
-- [ADR guide](docs/adr/README.md)
-- [Architecture docs](docs/architecture/README.md)
-- [User docs guide source](docs/user/README.md)
-- [Contributor guide](CONTRIBUTING.md)
+- [`AGENTS.md`](/home/mirdinj/quayboard/AGENTS.md) for repo-specific agent instructions
+- [`docs/architecture/README.md`](/home/mirdinj/quayboard/docs/architecture/README.md) for internal architecture docs
+- [`docs/adr/README.md`](/home/mirdinj/quayboard/docs/adr/README.md) for ADR conventions and index
+- [`docs/user/README.md`](/home/mirdinj/quayboard/docs/user/README.md) for the public docs source directory
+
+## Current Source Of Truth
+
+When repository docs disagree, prefer:
+
+1. This README for current product and workspace shape
+2. [`AGENTS.md`](/home/mirdinj/quayboard/AGENTS.md) for agent workflow rules
+3. Relevant ADRs in [`docs/adr`](/home/mirdinj/quayboard/docs/adr/README.md)
+4. Relevant implementation files and tests

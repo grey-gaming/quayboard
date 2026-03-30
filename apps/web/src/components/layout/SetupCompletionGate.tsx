@@ -26,7 +26,7 @@ export const SetupCompletionGate = () => {
       <Navigate
         replace
         state={{ lockedFromPath: location.pathname }}
-        to={`/projects/${id}/setup`}
+        to={`/projects/${id}/settings`}
       />
     );
   }

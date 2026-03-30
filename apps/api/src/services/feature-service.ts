@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import {
   type FeatureDocumentState,
@@ -26,10 +26,12 @@ import {
   featureArchDocSpecsTable,
   featureCasesTable,
   featureDependenciesTable,
+  featureDeliveryTasksTable,
   featureEdgesTable,
   featureProductRevisionsTable,
   featureProductSpecsTable,
   featureRevisionsTable,
+  featureTaskPlanningSessionsTable,
   featureTechSpecsTable,
   featureUserDocSpecsTable,
   featureUxSpecsTable,
@@ -39,6 +41,7 @@ import {
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import type { MilestoneService } from "./milestone-service.js";
 
 const formatFeatureKey = (counter: number) => `F-${counter.toString().padStart(3, "0")}`;
 const normalizeFeatureTitle = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -51,6 +54,7 @@ const buildFeature = (
   milestoneTitle: string,
   headRevision: typeof featureRevisionsTable.$inferSelect,
   documents: ReturnType<typeof featureDocumentsSchema.parse>,
+  taskPlanning: { hasTasks: boolean; taskCount: number },
   dependencyIds: string[],
 ) =>
   featureSchema.parse({
@@ -73,13 +77,14 @@ const buildFeature = (
       createdAt: headRevision.createdAt.toISOString(),
     }),
     documents,
+    taskPlanning,
     dependencyIds,
     createdAt: feature.createdAt.toISOString(),
     updatedAt: feature.updatedAt.toISOString(),
     archivedAt: feature.archivedAt?.toISOString() ?? null,
   });
 
-export const createFeatureService = (db: AppDatabase) => ({
+export const createFeatureService = (db: AppDatabase, milestoneService?: MilestoneService) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
@@ -133,6 +138,24 @@ export const createFeatureService = (db: AppDatabase) => ({
       );
     }
 
+    if (milestoneService) {
+      const activeMilestone = await db.query.milestonesTable.findFirst({
+        where: and(
+          eq(milestonesTable.projectId, projectId),
+          inArray(milestonesTable.status, ["draft", "approved"]),
+        ),
+        orderBy: [asc(milestonesTable.position)],
+      });
+
+      if (!activeMilestone || activeMilestone.id !== milestoneId) {
+        throw new HttpError(
+          409,
+          "active_milestone_required",
+          "Features can only be created for the active milestone.",
+        );
+      }
+    }
+
     return milestone;
   },
 
@@ -151,7 +174,18 @@ export const createFeatureService = (db: AppDatabase) => ({
       return featureListResponseSchema.parse({ features: [] });
     }
 
-    const [milestones, revisions, dependencies, productSpecs, productRevisions, uxSpecs, techSpecs, userDocSpecs, archDocSpecs] = await Promise.all([
+    const [
+      milestones,
+      revisions,
+      dependencies,
+      productSpecs,
+      productRevisions,
+      uxSpecs,
+      techSpecs,
+      userDocSpecs,
+      archDocSpecs,
+      taskPlanningSessions,
+    ] = await Promise.all([
       db.query.milestonesTable.findMany({
         where: inArray(
           milestonesTable.id,
@@ -193,6 +227,12 @@ export const createFeatureService = (db: AppDatabase) => ({
       db.query.featureArchDocSpecsTable.findMany({
         where: inArray(featureArchDocSpecsTable.featureId, features.map((feature) => feature.id)),
       }),
+      db.query.featureTaskPlanningSessionsTable.findMany({
+        where: inArray(
+          featureTaskPlanningSessionsTable.featureId,
+          features.map((feature) => feature.id),
+        ),
+      }),
     ]);
 
     const milestoneTitleById = new Map(milestones.map((milestone) => [milestone.id, milestone.title]));
@@ -213,7 +253,30 @@ export const createFeatureService = (db: AppDatabase) => ({
     const techSpecByFeatureId = new Map(techSpecs.map((spec) => [spec.featureId, spec]));
     const userDocSpecByFeatureId = new Map(userDocSpecs.map((spec) => [spec.featureId, spec]));
     const archDocSpecByFeatureId = new Map(archDocSpecs.map((spec) => [spec.featureId, spec]));
+    const taskPlanningSessionByFeatureId = new Map(
+      taskPlanningSessions.map((session) => [session.featureId, session]),
+    );
     const productRevisionById = new Map(productRevisions.map((revision) => [revision.id, revision]));
+    const taskCountsBySessionId =
+      taskPlanningSessions.length > 0
+        ? new Map(
+            (
+              await db
+                .select({
+                  sessionId: featureDeliveryTasksTable.sessionId,
+                  taskCount: sql<number>`count(*)::int`,
+                })
+                .from(featureDeliveryTasksTable)
+                .where(
+                  inArray(
+                    featureDeliveryTasksTable.sessionId,
+                    taskPlanningSessions.map((session) => session.id),
+                  ),
+                )
+                .groupBy(featureDeliveryTasksTable.sessionId)
+            ).map((record) => [record.sessionId, record.taskCount]),
+          )
+        : new Map<string, number>();
     const headRevisionIds = [
       ...productSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
       ...uxSpecs.map((spec) => spec.headRevisionId).filter((value): value is string => Boolean(value)),
@@ -283,12 +346,20 @@ export const createFeatureService = (db: AppDatabase) => ({
             state: resolveState(archDocSpecByFeatureId.get(feature.id)?.headRevisionId ?? null),
           },
         });
+        const taskPlanningSession = taskPlanningSessionByFeatureId.get(feature.id);
+        const taskCount = taskPlanningSession
+          ? taskCountsBySessionId.get(taskPlanningSession.id) ?? 0
+          : 0;
 
         return buildFeature(
           feature,
           milestoneTitleById.get(feature.milestoneId) ?? "Unknown milestone",
           headRevision,
           documents,
+          {
+            hasTasks: taskCount > 0,
+            taskCount,
+          },
           dependencyIdsByFeatureId.get(feature.id) ?? [],
         );
       }),
@@ -359,6 +430,8 @@ export const createFeatureService = (db: AppDatabase) => ({
       return featureId;
     });
 
+    await milestoneService?.invalidateReconciliation(payload.milestoneId);
+
     return this.get(ownerUserId, featureId);
   },
 
@@ -380,6 +453,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         updatedAt: new Date(),
       })
       .where(eq(featureCasesTable.id, featureId));
+
+    await milestoneService?.invalidateReconciliation(payload.milestoneId ?? context.milestoneId);
 
     return this.get(ownerUserId, featureId);
   },
@@ -410,6 +485,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         );
     });
 
+    await milestoneService?.invalidateReconciliation(context.milestoneId);
+
     return this.list(ownerUserId, context.projectId);
   },
 
@@ -436,8 +513,13 @@ export const createFeatureService = (db: AppDatabase) => ({
     });
   },
 
-  async createRevision(ownerUserId: string, featureId: string, input: unknown) {
-    await this.getContext(ownerUserId, featureId);
+  async createRevision(
+    ownerUserId: string,
+    featureId: string,
+    input: unknown,
+    createdByJobId?: string,
+  ) {
+    const context = await this.getContext(ownerUserId, featureId);
     const payload = createFeatureRevisionRequestSchema.parse(input);
 
     await db.transaction(async (tx) => {
@@ -454,6 +536,7 @@ export const createFeatureService = (db: AppDatabase) => ({
         summary: payload.summary,
         acceptanceCriteria: payload.acceptanceCriteria,
         source: payload.source,
+        createdByJobId: createdByJobId ?? null,
         createdAt: new Date(),
       });
 
@@ -462,6 +545,8 @@ export const createFeatureService = (db: AppDatabase) => ({
         .set({ updatedAt: new Date() })
         .where(eq(featureCasesTable.id, featureId));
     });
+
+    await milestoneService?.invalidateReconciliation(context.milestoneId);
 
     return this.listRevisions(ownerUserId, featureId);
   },
@@ -699,6 +784,120 @@ export const createFeatureService = (db: AppDatabase) => ({
       createdIds,
       skippedCount: input.items.length - createdIds.length,
     };
+  },
+
+  async replaceGeneratedMilestoneFeatures(input: {
+    ownerUserId: string;
+    projectId: string;
+    milestoneId: string;
+    createdByJobId?: string;
+    items: Array<{
+      title: string;
+      summary: string;
+      acceptanceCriteria: string[];
+      kind: FeatureKind;
+      priority: Priority;
+    }>;
+  }) {
+    await this.assertOwnedProject(input.ownerUserId, input.projectId);
+    await this.assertApprovedMilestone(input.projectId, input.milestoneId);
+
+    const now = new Date();
+    const result = await db.transaction(async (tx) => {
+      const activeMilestoneFeatures = await tx.query.featureCasesTable.findMany({
+        where: and(
+          eq(featureCasesTable.projectId, input.projectId),
+          eq(featureCasesTable.milestoneId, input.milestoneId),
+          isNull(featureCasesTable.archivedAt),
+        ),
+      });
+      const archivedFeatureIds = activeMilestoneFeatures.map((feature) => feature.id);
+
+      if (archivedFeatureIds.length > 0) {
+        await tx
+          .update(featureCasesTable)
+          .set({
+            status: "archived",
+            archivedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(featureCasesTable.id, archivedFeatureIds));
+
+        await tx
+          .delete(featureDependenciesTable)
+          .where(
+            or(
+              inArray(featureDependenciesTable.featureId, archivedFeatureIds),
+              inArray(featureDependenciesTable.dependsOnFeatureId, archivedFeatureIds),
+            ),
+          );
+        await tx
+          .delete(featureEdgesTable)
+          .where(
+            or(
+              inArray(featureEdgesTable.featureId, archivedFeatureIds),
+              inArray(featureEdgesTable.relatedFeatureId, archivedFeatureIds),
+            ),
+          );
+      }
+
+      const counter = await tx.query.projectCountersTable.findFirst({
+        where: eq(projectCountersTable.projectId, input.projectId),
+      });
+
+      if (!counter) {
+        throw new Error(`Missing project counter for project ${input.projectId}.`);
+      }
+
+      if (input.items.length > 0) {
+        await tx
+          .update(projectCountersTable)
+          .set({
+            featureCounter: counter.featureCounter + input.items.length,
+            updatedAt: now,
+          })
+          .where(eq(projectCountersTable.projectId, input.projectId));
+      }
+
+      const createdIds = input.items.map(() => generateId());
+      if (createdIds.length > 0) {
+        await tx.insert(featureCasesTable).values(
+          input.items.map((item, index) => ({
+            id: createdIds[index]!,
+            projectId: input.projectId,
+            milestoneId: input.milestoneId,
+            featureKey: formatFeatureKey(counter.featureCounter + index + 1),
+            kind: item.kind,
+            priority: item.priority,
+            status: "draft" as const,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+        await tx.insert(featureRevisionsTable).values(
+          input.items.map((item, index) => ({
+            id: generateId(),
+            featureId: createdIds[index]!,
+            version: 1,
+            title: item.title,
+            summary: item.summary,
+            acceptanceCriteria: item.acceptanceCriteria,
+            source: "generated",
+            createdByJobId: input.createdByJobId ?? null,
+            createdAt: now,
+          })),
+        );
+      }
+
+      return {
+        archivedCount: archivedFeatureIds.length,
+        createdIds,
+      };
+    });
+
+    await milestoneService?.invalidateReconciliation(input.milestoneId);
+
+    return result;
   },
 });
 

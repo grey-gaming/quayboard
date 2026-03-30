@@ -21,13 +21,18 @@ import {
   featureTaskClarificationsTable,
   featureTaskPlanningSessionsTable,
   featureTechRevisionsTable,
-  featureTechSpecsTable,
   implementationRecordsTable,
   jobsTable,
   projectsTable,
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import type { MilestoneService } from "./milestone-service.js";
+import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
+import {
+  buildTaskPlanningReadinessMessage,
+  isTaskPlanningReady,
+} from "./task-planning-support.js";
 
 const toTaskPlanningSession = (
   record: typeof featureTaskPlanningSessionsTable.$inferSelect,
@@ -86,7 +91,11 @@ const toImplementationRecord = (
 
 export type TaskPlanningService = ReturnType<typeof createTaskPlanningService>;
 
-export const createTaskPlanningService = (db: AppDatabase) => ({
+export const createTaskPlanningService = (
+  db: AppDatabase,
+  milestoneService?: MilestoneService,
+  featureWorkstreamService?: FeatureWorkstreamService,
+) => ({
   async getFeatureContext(ownerUserId: string, featureId: string) {
     const [record] = await db
       .select({
@@ -129,20 +138,16 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
       return toTaskPlanningSession(existing);
     }
 
-    const techSpec = await db.query.featureTechSpecsTable.findFirst({
-      where: eq(featureTechSpecsTable.featureId, featureId),
-    });
+    const tracks = featureWorkstreamService
+      ? await featureWorkstreamService.getTracks(ownerUserId, featureId)
+      : null;
 
-    if (!techSpec?.headRevisionId) {
-      throw new HttpError(400, "tech_spec_required", "Feature must have an approved tech specification.");
-    }
-
-    const techRevision = await db.query.featureTechRevisionsTable.findFirst({
-      where: eq(featureTechRevisionsTable.id, techSpec.headRevisionId),
-    });
-
-    if (!techRevision) {
-      throw new HttpError(400, "tech_spec_required", "Feature must have an approved tech specification.");
+    if (tracks && !isTaskPlanningReady(tracks.tracks)) {
+      throw new HttpError(
+        400,
+        "task_planning_documents_required",
+        buildTaskPlanningReadinessMessage(tracks.tracks),
+      );
     }
 
     const now = new Date();
@@ -530,6 +535,18 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
     }
 
     await this.setSessionStatus(sessionId, "tasks_generated");
+
+    const session = await db.query.featureTaskPlanningSessionsTable.findFirst({
+      where: eq(featureTaskPlanningSessionsTable.id, sessionId),
+    });
+    if (session) {
+      const feature = await db.query.featureCasesTable.findFirst({
+        where: eq(featureCasesTable.id, session.featureId),
+      });
+      if (feature) {
+        await milestoneService?.invalidateReconciliation(feature.milestoneId);
+      }
+    }
   },
 
   async createTask(
@@ -578,6 +595,13 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
     const record = await db.query.featureDeliveryTasksTable.findFirst({
       where: eq(featureDeliveryTasksTable.id, taskId),
     });
+
+    const feature = await db.query.featureCasesTable.findFirst({
+      where: eq(featureCasesTable.id, featureId),
+    });
+    if (feature) {
+      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+    }
 
     return toDeliveryTask(record!);
   },
@@ -632,6 +656,13 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
       where: eq(featureDeliveryTasksTable.id, taskId),
     });
 
+    const feature = await db.query.featureCasesTable.findFirst({
+      where: eq(featureCasesTable.id, featureId),
+    });
+    if (feature) {
+      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+    }
+
     return toDeliveryTask(record!);
   },
 
@@ -649,6 +680,13 @@ export const createTaskPlanningService = (db: AppDatabase) => ({
     await db
       .delete(featureDeliveryTasksTable)
       .where(eq(featureDeliveryTasksTable.id, taskId));
+
+    const feature = await db.query.featureCasesTable.findFirst({
+      where: eq(featureCasesTable.id, featureId),
+    });
+    if (feature) {
+      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+    }
 
     return { success: true };
   },

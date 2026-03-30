@@ -16,6 +16,7 @@ import { UserFlowsApprovalGate } from "./components/layout/UserFlowsApprovalGate
 import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
+import { DeleteProjectPage } from "./pages/DeleteProjectPage.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
 import { FeatureEditorPage } from "./pages/FeatureEditorPage.js";
 import { DocsHomePage } from "./pages/DocsHomePage.js";
@@ -131,8 +132,16 @@ export const appRouter = createBrowserRouter([
             element: <MissionControlPage />,
           },
           {
-            path: "/projects/:id/setup",
+            path: "/projects/:id/settings",
             element: <ProjectSetupPage />,
+          },
+          {
+            path: "/projects/:id/settings/delete",
+            element: <DeleteProjectPage />,
+          },
+          {
+            path: "/projects/:id/setup",
+            element: <Navigate replace to="../settings" />,
           },
           {
             element: <SetupCompletionGate />,

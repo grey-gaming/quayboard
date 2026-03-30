@@ -199,6 +199,11 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  deleteProject(projectId: string) {
+    return apiRequest<void>(`/api/projects/${projectId}`, {
+      method: "DELETE",
+    });
+  },
   deleteUserFlow(userFlowId: string) {
     return apiRequest<void>(`/api/user-flows/${userFlowId}`, {
       method: "DELETE",
@@ -288,10 +293,15 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  transitionMilestone(milestoneId: string, action: "approve") {
+  transitionMilestone(milestoneId: string, action: "approve" | "complete") {
     return apiRequest<Milestone>(`/api/milestones/${milestoneId}`, {
       method: "POST",
       body: JSON.stringify({ action }),
+    });
+  },
+  reviewMilestoneCoverage(milestoneId: string) {
+    return apiRequest<Job>(`/api/milestones/${milestoneId}/reconciliation/review`, {
+      method: "POST",
     });
   },
   generateMilestones(projectId: string) {
@@ -347,8 +357,8 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  appendFeaturesFromOnePager(projectId: string, payload: { milestoneId: string }) {
-    return apiRequest<Job>(`/api/projects/${projectId}/features/append-from-one-pager`, {
+  generateMilestoneFeatureSet(projectId: string, payload: { milestoneId: string }) {
+    return apiRequest<Job>(`/api/projects/${projectId}/features/generate-feature-set`, {
       method: "POST",
       body: JSON.stringify(payload),
     });

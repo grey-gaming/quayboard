@@ -42,7 +42,13 @@ const artifactTypeValues = [
   "feature_user_doc_revision",
   "feature_arch_doc_revision",
 ] as const;
-const milestoneStatusValues = ["draft", "approved"] as const;
+const milestoneStatusValues = ["draft", "approved", "completed"] as const;
+const milestoneReconciliationStatusValues = [
+  "not_started",
+  "passed",
+  "failed_first_pass",
+  "failed_needs_human",
+] as const;
 const featureStatusValues = [
   "draft",
   "approved",
@@ -81,6 +87,7 @@ const autoAdvancePausedReasonValues = [
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "milestone_repair_limit_reached",
   "review_limit_reached",
 ] as const;
 
@@ -412,6 +419,19 @@ export const milestonesTable = pgTable(
     summary: text("summary").notNull(),
     status: text("status").notNull().$type<(typeof milestoneStatusValues)[number]>(),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    reconciliationStatus: text("reconciliation_status")
+      .notNull()
+      .$type<(typeof milestoneReconciliationStatusValues)[number]>()
+      .default("not_started"),
+    reconciliationIssues: jsonb("reconciliation_issues")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    reconciliationReviewedAt: timestamp("reconciliation_reviewed_at", { withTimezone: true }),
+    reconciliationLastJobId: text("reconciliation_last_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    autoCatchUpCount: integer("auto_catch_up_count").notNull().default(0),
     createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
       onDelete: "set null",
     }),
@@ -431,6 +451,10 @@ export const milestonesTable = pgTable(
     statusCheck: check(
       "milestones_status_check",
       sql`${table.status} in (${sql.join(milestoneStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    reconciliationStatusCheck: check(
+      "milestones_reconciliation_status_check",
+      sql`${table.reconciliationStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
     ),
   }),
 );
@@ -1103,9 +1127,15 @@ export const autoAdvanceSessionsTable = pgTable(
       .notNull()
       .default(false),
     skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
+    autoRepairMilestoneCoverage: boolean("auto_repair_milestone_coverage")
+      .notNull()
+      .default(false),
     creativityMode: text("creativity_mode").notNull().default("balanced"),
     retryCount: integer("retry_count").notNull().default(0),
     reviewCount: integer("review_count").notNull().default(0),
+    milestoneRepairCount: integer("milestone_repair_count")
+      .notNull()
+      .default(0),
     maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
     pendingJobCount: integer("pending_job_count").notNull().default(0),
     batchFailureCount: integer("batch_failure_count").notNull().default(0),

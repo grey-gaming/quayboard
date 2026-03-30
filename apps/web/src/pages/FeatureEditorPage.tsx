@@ -861,17 +861,18 @@ const TasksTab = ({ featureId, projectId }: TasksTabProps) => {
   if (sessionQuery.error) {
     const error = sessionQuery.error as Error & { code?: string };
     const errorMessage = error.message ?? "Failed to load task planning session";
-    const isTechSpecRequired =
-      error.code === "tech_spec_required" || error.message?.includes("tech specification");
+    const isTaskPlanningDocumentsRequired =
+      error.code === "task_planning_documents_required" ||
+      error.message?.includes("approved required planning documents");
     return (
       <Card surface="panel">
         <div className="grid gap-4">
           <p className="qb-meta-label">Tasks</p>
           <p className="text-lg font-semibold tracking-[-0.02em]">No task planning session</p>
-          {isTechSpecRequired ? (
+          {isTaskPlanningDocumentsRequired ? (
             <p className="text-sm text-secondary">
-              Task planning requires an approved tech specification. Generate and approve the tech
-              spec before planning tasks.
+              Task planning requires the feature&apos;s required planning documents to be generated
+              and approved before planning tasks.
             </p>
           ) : (
             <Alert tone="error">{errorMessage}</Alert>
@@ -888,8 +889,8 @@ const TasksTab = ({ featureId, projectId }: TasksTabProps) => {
           <p className="qb-meta-label">Tasks</p>
           <p className="text-lg font-semibold tracking-[-0.02em]">No task planning session</p>
           <p className="text-sm text-secondary">
-            Task planning requires an approved tech specification. Generate and approve the tech
-            spec before planning tasks.
+            Task planning requires the feature&apos;s required planning documents to be generated
+            and approved before planning tasks.
           </p>
         </div>
       </Card>

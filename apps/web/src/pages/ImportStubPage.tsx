@@ -1,5 +1,5 @@
 import { CenteredState } from "../components/composites/CenteredState.js";
-import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
+import { buildSettingsTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { useProjectQuery } from "../hooks/use-projects.js";
@@ -22,9 +22,9 @@ export const ImportStubPage = () => {
 
   return (
     <ProjectPageFrame
-      activeSection="setup"
+      activeSection="settings"
       project={projectQuery.data}
-      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+      tertiaryItems={buildSettingsTertiaryItems(projectQuery.data)}
     >
       <CenteredState
         title="Import Path Not Yet Available"

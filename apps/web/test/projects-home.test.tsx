@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project, User } from "@quayboard/shared";
 
 import { ProjectNavigationStack } from "../src/components/layout/ProjectNavigationStack.js";
-import { buildSetupTertiaryItems } from "../src/components/layout/project-navigation.js";
+import { buildSettingsTertiaryItems } from "../src/components/layout/project-navigation.js";
 import { NewProjectPage } from "../src/pages/NewProjectPage.js";
 import { ProtectedHomePage } from "../src/pages/ProtectedHomePage.js";
 
@@ -149,9 +149,9 @@ describe("project entry surfaces", () => {
     render(
       <MemoryRouter initialEntries={[`/projects/${project.id}/questions`]}>
         <ProjectNavigationStack
-          activeSection="setup"
+          activeSection="settings"
           project={project}
-          tertiaryItems={buildSetupTertiaryItems(project)}
+          tertiaryItems={buildSettingsTertiaryItems(project)}
         />
       </MemoryRouter>,
     );
@@ -159,14 +159,13 @@ describe("project entry surfaces", () => {
     expect(screen.getByText("Harbor Console")).toBeTruthy();
     expect(screen.getByText("Harbor Console").tagName).toBe("SPAN");
     expect(screen.getByRole("link", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Product Design" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Feature Design" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Project Setup" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Questions" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Project Settings" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Import" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Setup" }).className).toContain("qb-project-nav-cell-secondary-active");
-    expect(screen.getByRole("link", { name: "Questions" }).className).toContain("qb-project-nav-cell-tertiary-active");
+    expect(screen.getByRole("link", { name: "Delete Project" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Settings" }).className).toContain("qb-project-nav-cell-secondary-active");
     expect(screen.getByText("Implementation")).toBeTruthy();
   });
 
@@ -184,19 +183,18 @@ describe("project entry surfaces", () => {
     render(
       <MemoryRouter>
         <ProjectNavigationStack
-          activeSection="setup"
+          activeSection="settings"
           project={project}
-          tertiaryItems={buildSetupTertiaryItems(project)}
+          tertiaryItems={buildSettingsTertiaryItems(project)}
         />
       </MemoryRouter>,
     );
 
-    expect(screen.queryByRole("link", { name: "Questions" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Import" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Product Design" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Feature Design" })).toBeNull();
-    expect(screen.getByText("Questions")).toBeTruthy();
     expect(screen.getByText("Import")).toBeTruthy();
     expect(screen.getByText("Product Design")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Delete Project" })).toBeTruthy();
   });
 });

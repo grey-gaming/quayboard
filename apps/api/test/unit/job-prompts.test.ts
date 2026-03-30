@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRewriteMilestoneFeatureSetPrompt,
+  buildRewriteMilestoneFeatureSetReviewPrompt,
+  buildMilestoneFeatureSetPrompt,
   buildQuestionnaireAutoAnswerPrompt,
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
-  buildMilestoneDesignConsistencyPrompt,
-  buildMilestoneDesignPrompt,
-  buildMilestoneDesignReviewPrompt,
-  buildMilestonePlanPrompt,
-  buildMilestonePlanReviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
+  buildMilestoneFeatureSetReviewPrompt,
+  buildFeatureTaskListPrompt,
+  buildFeatureTaskListReviewPrompt,
   buildUserFlowPrompt,
+  buildDecisionConsistencyPrompt,
   buildDeliveryReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
@@ -116,118 +118,205 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
   });
 
-  it("asks milestone generation for thematic titles without numeric prefixes", () => {
-    const prompt = buildMilestonePlanPrompt({
-      projectName: "Quayboard",
-      uxSpec: "# UX Spec\n\nApproved UX direction.",
-      technicalSpec: "# Technical Spec\n\nApproved implementation direction.",
-      userFlows: [
+  it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
+    const prompt = buildMilestoneFeatureSetPrompt({
+      existingFeatures: [
         {
-          id: "flow-1",
-          title: "Plan milestones",
-          userStory: "As a planner, I want coherent milestone sequencing.",
-          entryPoint: "Mission Control",
-          endState: "Approved milestones exist.",
+          dependencies: [],
+          milestoneTitle: "Platform",
+          summary: "Bootstrap shared setup.",
+          title: "Platform setup",
+        },
+      ],
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      milestones: [
+        { title: "Platform", summary: "Shared setup." },
+        { title: "Foundations", summary: "First releasable slice." },
+      ],
+      overviewDocument: "# Overview",
+      projectName: "Quayboard",
+      projectProductSpec: "# Product Spec",
+      projectTechnicalSpec: "# Technical Spec",
+      projectUxSpec: "# UX Spec",
+      linkedUserFlows: [{ id: "11111111-1111-4111-8111-111111111111", title: "Create project" }],
+    });
+
+    expect(prompt).toContain("one coherent capability or one deliberately grouped cross-cutting workstream");
+    expect(prompt).toContain("Prefer the smallest set of coherent features");
+    expect(prompt).toContain("User flows linked to the selected milestone:");
+    expect(prompt).toContain("keep it in one shared feature");
+  });
+
+  it("asks the feature-set review pass to merge task-sized fragmentation", () => {
+    const prompt = buildMilestoneFeatureSetReviewPrompt({
+      projectName: "Quayboard",
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      linkedUserFlows: [{ id: "11111111-1111-4111-8111-111111111111", title: "Create project" }],
+      existingFeatures: [],
+      draftFeatures: [
+        {
+          title: "Write docs part 1",
+          summary: "Docs slice.",
+          acceptanceCriteria: ["Docs exist."],
+          kind: "system",
+          priority: "must_have",
         },
       ],
     });
 
-    expect(prompt).toContain("title must be short, specific, and thematic.");
-    expect(prompt).toContain('Do not include milestone numbers, ordinal labels, or prefixes such as "Milestone 1", "Phase 2", or "M3" in title.');
+    expect(prompt).toContain("Review the full set as a whole");
+    expect(prompt).toContain("Merge task-sized or overlapping features");
+    expect(prompt).toContain("Prefer fewer, feature-sized items");
+    expect(prompt).toContain(
+      "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
+    expect(prompt).toContain("First-pass draft feature set:");
   });
 
-  it("asks milestone review to preserve order while removing numeric title labels", () => {
-    const prompt = buildMilestonePlanReviewPrompt({
-      projectName: "Quayboard",
-      draftMilestones: [
-        {
-          title: "Milestone 1: Foundations",
-          summary: "Stand up the planning core.",
-          useCaseIds: ["flow-1"],
-        },
-      ],
-    });
-
-    expect(prompt).toContain("Preserve the milestone count, execution order, and overall flow coverage");
-    expect(prompt).toContain('Remove milestone numbers, ordinal labels, and prefixes such as "Milestone 1", "Phase 2", or "M3" from title.');
-  });
-
-  it("grounds milestone design generation in canonical order and bans vague future deferrals", () => {
-    const prompt = buildMilestoneDesignPrompt({
-      projectName: "Quayboard",
-      milestonePosition: 2,
-      milestoneTitle: "Workflow Automation",
-      milestoneSummary: "Automate project planning progression.",
-      orderedMilestones: [
-        { position: 1, title: "Foundations", summary: "Core setup" },
-        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
-      ],
+  it("locks rewrite feature generation to the shared feature enums", () => {
+    const prompt = buildRewriteMilestoneFeatureSetPrompt({
+      issues: [{ action: "rewrite_feature_set", hint: "Close the missing milestone coverage gap." }],
+      attemptNumber: 1,
       linkedUserFlows: [
+        { id: "11111111-1111-4111-8111-111111111111", title: "Create project" },
+      ],
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Design",
+      currentMilestoneFeatures: [
         {
-          title: "Run auto-advance",
-          userStory: "As a planner, I want automated planning progression.",
-          entryPoint: "Mission Control",
-          endState: "The project advances automatically.",
+          title: "Current feature",
+          summary: "Current summary.",
         },
       ],
-      uxSpec: "# UX Spec\n\nApproved UX direction.",
-      technicalSpec: "# Technical Spec\n\nApproved implementation direction.",
+      existingFeatures: [],
+      overviewDocument: "# Overview",
+      projectName: "Quayboard",
+      projectProductSpec: "# Product Spec",
+      projectTechnicalSpec: "# Technical Spec",
+      projectUxSpec: "# UX Spec",
     });
 
-    expect(prompt).toContain("Treat the milestone order supplied below as canonical.");
-    expect(prompt).toContain('Do not defer required work to an unnamed future phase such as "a later milestone", "future milestone", or similar vague wording.');
-    expect(prompt).toContain("Ordered milestone list:");
+    expect(prompt).toContain(
+      "IMPORTANT: kind MUST be exactly one of these values with no variation: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
+    expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
+    expect(prompt).toContain("Coverage issues to close in this rewrite:");
   });
 
-  it("asks milestone design review to remove vague future deferrals", () => {
-    const prompt = buildMilestoneDesignReviewPrompt({
-      projectName: "Quayboard",
-      milestone: {
-        position: 2,
-        title: "Workflow Automation",
-        summary: "Automate project planning progression.",
-      },
-      orderedMilestones: [
-        { position: 1, title: "Foundations", summary: "Core setup" },
-        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
+  it("keeps rewrite feature review constrained to the shared feature enums", () => {
+    const prompt = buildRewriteMilestoneFeatureSetReviewPrompt({
+      issues: [{ action: "rewrite_feature_set", hint: "Close the missing milestone coverage gap." }],
+      attemptNumber: 1,
+      linkedUserFlows: [
+        { id: "11111111-1111-4111-8111-111111111111", title: "Create project" },
       ],
-      draftTitle: "Workflow Automation Design",
-      draftMarkdown: "# Workflow Automation\n\nShip the rest in a later milestone.",
-    });
-
-    expect(prompt).toContain('Remove vague deferrals such as "later milestone", "future milestone", or equivalent wording.');
-    expect(prompt).toContain("If sequencing must be mentioned, refer only to concrete milestones");
-  });
-
-  it("asks milestone consistency review to reconcile the current draft against existing milestone docs", () => {
-    const prompt = buildMilestoneDesignConsistencyPrompt({
-      projectName: "Quayboard",
       milestone: {
-        position: 2,
-        title: "Workflow Automation",
-        summary: "Automate project planning progression.",
+        title: "Foundations",
+        summary: "First releasable slice.",
       },
-      orderedMilestones: [
-        { position: 1, title: "Foundations", summary: "Core setup" },
-        { position: 2, title: "Workflow Automation", summary: "Auto-advance planning" },
-      ],
-      currentDraft: {
-        title: "Workflow Automation Design",
-        markdown: "# Workflow Automation\n\nDraft milestone scope.",
-      },
-      existingCanonicalDesignDocs: [
+      milestoneDesignDoc: "# Design",
+      currentMilestoneFeatures: [
         {
-          position: 1,
-          milestoneTitle: "Foundations",
-          designDocTitle: "Foundations Design",
-          markdown: "# Foundations\n\nCore setup.",
+          title: "Current feature",
+          summary: "Current summary.",
+        },
+      ],
+      existingFeatures: [],
+      draftFeatures: [
+        {
+          title: "Replacement feature",
+          summary: "Replacement summary.",
+          acceptanceCriteria: ["Feature works."],
+          kind: "system",
+          priority: "must_have",
         },
       ],
     });
 
-    expect(prompt).toContain("Only revise the current milestone design document.");
-    expect(prompt).toContain("Existing canonical milestone design docs from the project:");
-    expect(prompt).toContain("Ensure the current draft does not silently defer required work to unspecified later milestones.");
+    expect(prompt).toContain(
+      "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    );
+    expect(prompt).toContain(
+      "priority must be one of: must_have, should_have, could_have, wont_have.",
+    );
+    expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
+  });
+
+  it("adds milestone and product context to task-list generation", () => {
+    const prompt = buildFeatureTaskListPrompt({
+      clarifications: [{ question: "What about failures?", answer: "Show a retry path." }],
+      feature: {
+        acceptanceCriteria: ["User can recover from failure."],
+        featureKey: "F-001",
+        milestoneTitle: "Foundations",
+        summary: "Failure recovery flow.",
+        title: "Recovery flow",
+      },
+      milestoneDesignDoc: "# Milestone Design",
+      planningDocuments: "# Feature Product Spec\n\n# User Documentation",
+    });
+
+    expect(prompt).toContain("smallest set of coherent implementation phases");
+    expect(prompt).toContain("Approved feature planning documents:");
+    expect(prompt).toContain("Milestone design document:");
+    expect(prompt).toContain("full task list covers the feature acceptance criteria");
+  });
+
+  it("asks the task-list review pass to review the whole list and merge micro-tasks", () => {
+    const prompt = buildFeatureTaskListReviewPrompt({
+      feature: {
+        acceptanceCriteria: ["User can recover from failure."],
+        featureKey: "F-001",
+        milestoneTitle: "Foundations",
+        summary: "Failure recovery flow.",
+        title: "Recovery flow",
+      },
+      milestoneDesignDoc: "# Milestone Design",
+      planningDocuments: "# Feature Product Spec\n\n# User Documentation",
+      draftTasks: [
+        {
+          title: "Add API field",
+          description: "Add a field.",
+          instructions: null,
+          acceptanceCriteria: ["Field exists."],
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Review the full task list as a whole");
+    expect(prompt).toContain("Merge micro-tasks");
+    expect(prompt).toContain("First-pass task list:");
+  });
+
+  it("keeps blueprint decision consistency validation focused on hard blockers only", () => {
+    const prompt = buildDecisionConsistencyPrompt({
+      projectName: "Quayboard",
+      kind: "ux",
+      productSpec: "# Product Spec",
+      decisions: '[{"key":"navigation-model","selection":"Workspace shell"}]',
+    });
+
+    expect(prompt).toContain("Be conservative. Report only hard blockers");
+    expect(prompt).toContain("Do not report non-critical, defaultable, or secondary gaps.");
+    expect(prompt).toContain("Do not block on secondary-device nuance");
+    expect(prompt).toContain("Keep the issues array to the smallest set of high-confidence blockers.");
   });
 
   describe("buildDeliveryReviewPrompt", () => {

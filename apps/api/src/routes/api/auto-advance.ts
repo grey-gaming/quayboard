@@ -28,9 +28,11 @@ const autoAdvanceSessionJsonSchema = {
     pausedReason: { type: ["string", "null"] },
     autoApproveWhenClear: { type: "boolean" },
     skipReviewSteps: { type: "boolean" },
+    autoRepairMilestoneCoverage: { type: "boolean" },
     creativityMode: { type: "string" },
     retryCount: { type: "integer" },
     reviewCount: { type: "integer" },
+    milestoneRepairCount: { type: "integer" },
     maxConcurrentJobs: { type: "integer" },
     startedAt: { type: ["string", "null"] },
     pausedAt: { type: ["string", "null"] },
@@ -46,9 +48,11 @@ const autoAdvanceSessionJsonSchema = {
     "pausedReason",
     "autoApproveWhenClear",
     "skipReviewSteps",
+    "autoRepairMilestoneCoverage",
     "creativityMode",
     "retryCount",
     "reviewCount",
+    "milestoneRepairCount",
     "maxConcurrentJobs",
     "startedAt",
     "pausedAt",
@@ -76,6 +80,7 @@ const startBodyJsonSchema = {
   properties: {
     autoApproveWhenClear: { type: "boolean" },
     skipReviewSteps: { type: "boolean" },
+    autoRepairMilestoneCoverage: { type: "boolean" },
     creativityMode: { type: "string", enum: ["conservative", "balanced", "creative"] },
     maxConcurrentJobs: { type: "integer", minimum: 1, maximum: 10 },
   },
@@ -176,6 +181,28 @@ export const autoAdvanceRoutes = (
         const { id } = request.params as { id: string };
         await services.autoAdvanceService.reset(request.user!.id, id);
         return reply.status(204).send();
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/projects/:id/auto-advance/skip-milestone-reconciliation",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+        response: { 200: autoAdvanceSessionJsonSchema },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const { id } = request.params as { id: string };
+        const session = await services.autoAdvanceService.skipMilestoneReconciliation(
+          request.user!.id,
+          id,
+        );
+        return autoAdvanceSessionSchema.parse(session);
       } catch (error) {
         return handleRouteError(reply, error);
       }

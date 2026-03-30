@@ -171,9 +171,13 @@ export const createAppServices = async (
   const userFlowService = createUserFlowService(db);
   const blueprintService = createBlueprintService(db);
   const milestoneService = createMilestoneService(db);
-  const featureService = createFeatureService(db);
-  const featureWorkstreamService = createFeatureWorkstreamService(db);
-  const taskPlanningService = createTaskPlanningService(db);
+  const featureService = createFeatureService(db, milestoneService);
+  const featureWorkstreamService = createFeatureWorkstreamService(db, milestoneService);
+  const taskPlanningService = createTaskPlanningService(
+    db,
+    milestoneService,
+    featureWorkstreamService,
+  );
   const artifactApprovalService = createArtifactApprovalService(
     db,
     blueprintService,
@@ -211,7 +215,6 @@ export const createAppServices = async (
     artifactApprovalService,
     blueprintService,
     featureService,
-    featureWorkstreamService,
     milestoneService,
     onePagerService,
     productSpecService,
@@ -244,6 +247,7 @@ export const createAppServices = async (
     productSpecService,
     featureWorkstreamService,
     userFlowService,
+    taskPlanningService,
   );
   const jobRunnerService = createJobRunnerService({
     artifactApprovalService,

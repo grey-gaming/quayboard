@@ -74,6 +74,13 @@ export const featureDocumentsSchema = z.object({
 
 export type FeatureDocuments = z.infer<typeof featureDocumentsSchema>;
 
+export const featureTaskPlanningSummarySchema = z.object({
+  hasTasks: z.boolean(),
+  taskCount: z.number().int().nonnegative(),
+});
+
+export type FeatureTaskPlanningSummary = z.infer<typeof featureTaskPlanningSummarySchema>;
+
 export const featureSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
@@ -85,6 +92,7 @@ export const featureSchema = z.object({
   status: featureStatusSchema,
   headRevision: featureRevisionSchema,
   documents: featureDocumentsSchema,
+  taskPlanning: featureTaskPlanningSummarySchema,
   dependencyIds: z.array(z.string().uuid()),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -129,12 +137,12 @@ export const createFeatureDependencyRequestSchema = z.object({
 
 export type CreateFeatureDependencyRequest = z.infer<typeof createFeatureDependencyRequestSchema>;
 
-export const appendFeatureFromOnePagerRequestSchema = z.object({
+export const generateMilestoneFeatureSetRequestSchema = z.object({
   milestoneId: z.string().uuid(),
 });
 
-export type AppendFeatureFromOnePagerRequest = z.infer<
-  typeof appendFeatureFromOnePagerRequestSchema
+export type GenerateMilestoneFeatureSetRequest = z.infer<
+  typeof generateMilestoneFeatureSetRequestSchema
 >;
 
 export const featureListResponseSchema = z.object({

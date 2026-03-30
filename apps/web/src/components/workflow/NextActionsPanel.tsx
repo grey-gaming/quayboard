@@ -34,7 +34,9 @@ export const NextActionsPanel = ({
               {index === 0 ? "active" : "queued"}
             </Badge>
           </div>
-          <p className="qb-meta-label">navigation target</p>
+          <p className="qb-meta-label">
+            {action.description?.trim() ? action.description : "navigation target"}
+          </p>
         </Link>
       ))}
       {actions.length === 0 ? (

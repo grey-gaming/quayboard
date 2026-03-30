@@ -1,6 +1,6 @@
 # Auto-Advance Service
 
-The auto-advance service (`apps/api/src/services/auto-advance.ts`) orchestrates the Quayboard planning workflow by automatically enqueuing background jobs in response to the current project state. It owns the `auto_advance_sessions` table and publishes SSE events so the frontend stays up to date within 2 seconds of every state change.
+The auto-advance service (`apps/api/src/services/auto-advance.ts`) orchestrates the Quayboard planning workflow by automatically enqueuing background jobs in response to the current project state. It owns the `auto_advance_sessions` table and publishes SSE events so the frontend stays up to date within 2 seconds of every state change. The workflow is active-milestone driven: Quayboard generates the milestone map once, then fully plans only the active milestone before advancing to the next one.
 
 ---
 
@@ -19,6 +19,8 @@ One row per project (enforced by a unique index on `project_id`).
 | `paused_reason` | TEXT CHECK nullable | Why the session is paused (see below) |
 | `auto_approve_when_clear` | BOOLEAN | Reserved for future auto-approval logic |
 | `skip_review_steps` | BOOLEAN | When true, approval gates are bypassed |
+| `auto_repair_milestone_coverage` | BOOLEAN | Opt-in repair loop for milestone coverage failures |
+| `milestone_repair_count` | INTEGER | Counts bounded milestone auto-repair attempts in the current session |
 | `creativity_mode` | TEXT | `conservative \| balanced \| creative` |
 | `started_at` | TIMESTAMPTZ nullable | Set when status transitions to `running` |
 | `paused_at` | TIMESTAMPTZ nullable | Set when status transitions to `paused` |
@@ -26,7 +28,7 @@ One row per project (enforced by a unique index on `project_id`).
 | `created_at` | TIMESTAMPTZ | Row creation timestamp |
 | `updated_at` | TIMESTAMPTZ | Last update timestamp |
 
-`paused_reason` values: `quality_gate_blocker`, `job_failed`, `policy_mismatch`, `manual_pause`, `budget_exceeded`, `needs_human`.
+`paused_reason` values: `quality_gate_blocker`, `job_failed`, `policy_mismatch`, `manual_pause`, `budget_exceeded`, `needs_human`, `milestone_repair_limit_reached`, `review_limit_reached`.
 
 ---
 
@@ -69,9 +71,10 @@ createAutoAdvanceService(db, nextActionsService, jobService, sseHub) => {
 ### `start(ownerUserId, projectId, opts)`
 
 1. Checks for an existing session. Throws if status is `running`.
-2. Inserts a new session row with `status: running` and `started_at: now`.
-3. Calls `advanceStep` (see below).
-4. Publishes `auto-advance:updated` SSE event.
+2. Inserts a new session row with `status: running`, `started_at: now`, and any requested session options.
+3. Resets the bounded milestone repair counter to `0`.
+4. Calls `advanceStep` (see below).
+5. Publishes `auto-advance:updated` SSE event.
 
 ### `stop(ownerUserId, projectId)`
 
@@ -107,7 +110,7 @@ This is the core of the automation logic. It is called from `start`, `resume`, `
 advanceStep(ownerUserId, projectId, session):
   1. Call nextActionsService.build(ownerUserId, projectId)
   2. Take the first action from the returned list
-  3. If no actions remain → update session to completed
+  3. If no actions remain → run final delivery review or update session to completed
   4. Look up action.key in AUTOMATABLE_STEPS map
   5. If no mapping exists → pause with needs_human
   6. Otherwise:
@@ -134,11 +137,52 @@ The mapping table connects next-action keys to the job types and input factories
 | `feature_product_regenerate` | `GenerateFeatureProductSpec` | `{ featureId }` (from href) |
 | `feature_tech_create` | `GenerateFeatureTechSpec` | `{ featureId }` (from href) |
 | `feature_tech_regenerate` | `GenerateFeatureTechSpec` | `{ featureId }` (from href) |
-| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` (from href) |
-| `milestones` | `GenerateMilestones` | `{}` |
-| `blueprint` | `GenerateBlueprint` | `{}` |
+| `milestones_generate` | `GenerateMilestones` | `{}` |
+| `milestone_design_generate` | `GenerateMilestoneDesign` | `{ milestoneId }` |
+| `milestone_reconciliation_review` | `ReviewMilestoneCoverage` | `{ milestoneId }` |
+| `features_create` | `GenerateMilestoneFeatureSet` | `{ milestoneId }` |
+| `feature_product_create` | `GenerateFeatureProductSpec` | `{ featureId }` |
+| `feature_ux_create` | `GenerateFeatureUxSpec` | `{ featureId }` |
+| `feature_tech_create` | `GenerateFeatureTechSpec` | `{ featureId }` |
+| `feature_user_docs_create` | `GenerateFeatureUserDocs` | `{ featureId }` |
+| `feature_arch_docs_create` | `GenerateFeatureArchDocs` | `{ featureId }` |
+| `feature_task_clarifications_generate` | `GenerateTaskClarifications` | `{ featureId, sessionId }` |
+| `feature_task_list_generate` | `GenerateFeatureTaskList` | `{ featureId, sessionId }` |
+| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` |
 
 Any key not in this map causes the session to pause with `needs_human`, prompting the user to take the manual action and then Resume.
+
+## Milestone Reconciliation
+
+When the active milestone has no remaining feature, workstream, or task-planning actions, auto-advance queues `ReviewMilestoneCoverage`. That review compares the canonical milestone design doc against the active milestone's approved feature workstreams and generated delivery tasks.
+
+- If reconciliation passes, the next step becomes milestone completion.
+- If reconciliation finds structural gaps, auto-advance queues `RewriteMilestoneFeatureSet` with the full issue set, then resumes the normal workstream and task-planning flow for the replacement features.
+- If reconciliation returns ambiguous-only issues, auto-advance queues `ResolveMilestoneCoverageIssues` against the existing active-milestone features, workstreams, and tasks.
+- The session can spend up to 3 milestone repair attempts across these repair jobs before it pauses with `milestone_repair_limit_reached`.
+
+### `ResolveMilestoneCoverageIssues`
+
+This internal job is a generic LLM-driven repair loop for milestone coverage blockers that can be resolved without replacing the feature set.
+
+- Inputs: `milestoneId`, the unresolved `needs_human_review` issues from `ReviewMilestoneCoverage`, the current attempt number, and optional unresolved reasons from a prior repair attempt
+- Allowed edits:
+  - create a new revision for an existing active-milestone feature
+  - regenerate and self-approve downstream feature workstreams
+  - regenerate task clarifications and delivery tasks
+- Disallowed edits:
+  - milestone design docs
+  - milestone titles/summaries
+  - creating or archiving features
+  - touching non-active milestones
+
+The repair planner produces structured JSON only. The executor validates the plan before applying it:
+
+- every referenced `featureKey` must belong to the active milestone
+- unsupported refresh targets are rejected
+- malformed or non-executable plans fail closed and return `resolved: false`
+
+The repair loop is deliberately bounded to three attempts per auto-advance session. Retryable job failures still use the normal per-job retry loop and do not consume a milestone repair attempt.
 
 ---
 
@@ -150,8 +194,10 @@ Called by the job scheduler after every job completes (success or failure).
 2. If the job has no `projectId`, returns early (noop).
 3. Queries for a `running` session for that project.
 4. If none exists, returns early.
-5. On `failure`: updates session to `paused` with `paused_reason: job_failed`. Publishes SSE.
-6. On `success`: calls `advanceStep` to enqueue the next job. Publishes SSE.
+5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
+6. On `success`: clears any session retry counter and calls `advanceStep` to enqueue the next job. Publishes SSE.
+
+Malformed structured-output failures remain retryable after the in-job JSON repair pass is exhausted, so auto-advance can rerun the full job up to the normal retry limit. Prompt/context-limit failures remain non-retryable. Exhausted blueprint decision-repair failures are also retryable so the full blueprint job can re-enter its decision-repair loop on the next bounded job retry.
 
 For parallel feature batches, `onJobComplete` waits until the active batch fully settles before deciding whether to retry or pause. Any mixed-success batch with at least one failed job counts as a single retry attempt; already-succeeded feature work is left in place, and only unfinished work is re-enqueued on the next pass. The session pauses with `job_failed` only after three consecutive failed batch attempts.
 
@@ -209,6 +255,6 @@ Defined in `packages/shared/src/schemas/auto-advance.ts`:
 
 - `AutoAdvanceSession` — full session row type
 - `AutoAdvanceStatusResponse` — `{ session: AutoAdvanceSession | null, nextStep: string | null }`
-- `StartAutoAdvanceRequest` — `{ autoApproveWhenClear?, skipReviewSteps?, creativityMode? }`
+- `StartAutoAdvanceRequest` — `{ autoApproveWhenClear?, skipReviewSteps?, autoRepairMilestoneCoverage?, creativityMode? }`
 
 All types are re-exported from `@quayboard/shared`.

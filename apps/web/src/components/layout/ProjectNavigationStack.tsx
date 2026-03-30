@@ -144,8 +144,8 @@ export const ProjectNavigationStack = ({
         >
           Mission Control
         </Link>
-        <Link className={secondaryLinkClassName(activeSection === "setup")} to={`/projects/${project.id}/setup`}>
-          Setup
+        <Link className={secondaryLinkClassName(activeSection === "settings")} to={`/projects/${project.id}/settings`}>
+          Settings
         </Link>
         {setupCompleted ? (
           <Link

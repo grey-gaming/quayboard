@@ -18,9 +18,9 @@ import { Select } from "../components/ui/Select.js";
 import { Textarea } from "../components/ui/Textarea.js";
 import {
   useAddFeatureDependencyMutation,
-  useAppendFeaturesFromOnePagerMutation,
   useCreateFeatureMutation,
   useFeaturesQuery,
+  useGenerateMilestoneFeatureSetMutation,
   useMilestonesQuery,
   useProjectQuery,
 } from "../hooks/use-projects.js";
@@ -52,6 +52,10 @@ const documentToneByState = {
   draft: "info",
   missing: "warning",
 } as const;
+const taskPlanningToneByState = {
+  written: "success",
+  missing: "warning",
+} as const;
 
 export const FeatureBuilderPage = () => {
   const { id = "" } = useParams();
@@ -59,7 +63,7 @@ export const FeatureBuilderPage = () => {
   const milestonesQuery = useMilestonesQuery(id);
   const featuresQuery = useFeaturesQuery(id);
   const createFeatureMutation = useCreateFeatureMutation(id);
-  const appendFeaturesMutation = useAppendFeaturesFromOnePagerMutation(id);
+  const appendFeaturesMutation = useGenerateMilestoneFeatureSetMutation(id);
   const addDependencyMutation = useAddFeatureDependencyMutation(id);
   const milestones = milestonesQuery.data?.milestones ?? [];
   const approvedMilestones = milestones.filter((milestone) => milestone.status === "approved");
@@ -300,6 +304,15 @@ export const FeatureBuilderPage = () => {
                               <div className="flex flex-wrap gap-2">
                                 <Badge tone="neutral">{feature.featureKey}</Badge>
                                 <Badge tone="neutral">{feature.kind.replaceAll("_", " ")}</Badge>
+                                <Badge
+                                  tone={
+                                    taskPlanningToneByState[
+                                      feature.taskPlanning.hasTasks ? "written" : "missing"
+                                    ]
+                                  }
+                                >
+                                  {feature.taskPlanning.hasTasks ? "Tasks written" : "Tasks not written"}
+                                </Badge>
                               </div>
                               <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
                                 {feature.headRevision.title}

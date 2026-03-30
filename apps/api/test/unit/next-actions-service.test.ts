@@ -9,20 +9,31 @@ const USER_ID = "22222222-2222-4222-8222-222222222222";
 
 const makeMilestone = (overrides: {
   id?: string;
-  status?: "draft" | "approved";
+  isActive?: boolean;
+  status?: "draft" | "approved" | "completed";
   featureCount?: number;
+  position?: number;
   title?: string;
+  reconciliationStatus?: "not_started" | "passed" | "failed_first_pass" | "failed_needs_human";
+  reconciliationIssues?: Array<{ action: string; hint: string }>;
+  reconciliationReviewedAt?: string | null;
 }) => ({
   id: overrides.id ?? "milestone-1",
   projectId: PROJECT_ID,
-  position: 1,
+  position: overrides.position ?? 1,
   title: overrides.title ?? "Milestone 1",
   summary: "A milestone",
   status: overrides.status ?? "approved",
   linkedUserFlows: [],
-  featureCount: overrides.featureCount ?? 1,
+  featureCount: overrides.featureCount ?? 0,
+  isActive: overrides.isActive ?? true,
   approvedAt: overrides.status === "draft" ? null : "2026-01-01T00:00:00.000Z",
+  completedAt: overrides.status === "completed" ? "2026-01-02T00:00:00.000Z" : null,
+  reconciliationStatus: (overrides.reconciliationStatus ?? "not_started") as "not_started" | "passed" | "failed_first_pass" | "failed_needs_human",
+  reconciliationIssues: overrides.reconciliationIssues ?? [],
+  reconciliationReviewedAt: overrides.reconciliationReviewedAt ?? null,
   createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
 const makeFeature = (id: string, milestoneId: string) => ({
@@ -41,6 +52,10 @@ const makeFeature = (id: string, milestoneId: string) => ({
     tech: { required: false, state: "missing" as const },
     userDocs: { required: false, state: "missing" as const },
     archDocs: { required: false, state: "missing" as const },
+  },
+  taskPlanning: {
+    hasTasks: false,
+    taskCount: 0,
   },
   dependencyIds: [],
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -110,6 +125,9 @@ const makeServices = (overrides: {
         coverage: { warnings: [] },
       }),
     },
+    taskPlanningService: {
+      getSession: vi.fn().mockResolvedValue(null),
+    },
   };
 };
 
@@ -126,6 +144,7 @@ const makeService = (overrides: Parameters<typeof makeServices>[0]) => {
     s.onePagerService as never,
     s.productSpecService as never,
     s.userFlowService as never,
+    s.taskPlanningService as never,
   );
 };
 
@@ -141,19 +160,21 @@ describe("nextActionsService — milestone/feature routing", () => {
       expect(actions[0]?.key).toBe("milestones_generate");
     });
 
-    it("returns milestones_generate when only one milestone exists", async () => {
-      const service = makeService({ milestones: [makeMilestone({ id: "m1", status: "approved" })] });
+    it("returns features_create when the active milestone exists but has no features yet", async () => {
+      const service = makeService({
+        milestones: [makeMilestone({ id: "m1", status: "approved", featureCount: 0, isActive: true })],
+      });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
-      expect(actions[0]?.key).toBe("milestones_generate");
+      expect(actions[0]?.key).toBe("features_create");
     });
   });
 
   describe("draft milestones alongside approved ones (fix-job milestone scenario)", () => {
     it("returns milestone_design_generate for a draft milestone with no design doc, even when other milestones are approved", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 3 }),
-        makeMilestone({ id: "m2", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m3", status: "draft", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 3, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "completed", featureCount: 2, isActive: false, position: 2 }),
+        makeMilestone({ id: "m3", status: "draft", featureCount: 0, isActive: true, position: 3 }),
       ];
       const service = makeService({ milestones, designDoc: null });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
@@ -164,9 +185,9 @@ describe("nextActionsService — milestone/feature routing", () => {
 
     it("returns milestones_approve for a draft milestone that already has a design doc", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 3 }),
-        makeMilestone({ id: "m2", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m3", status: "draft", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 3, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "completed", featureCount: 2, isActive: false, position: 2 }),
+        makeMilestone({ id: "m3", status: "draft", featureCount: 0, isActive: true, position: 3 }),
       ];
       const service = makeService({ milestones, designDoc: { id: "doc-1" } });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
@@ -176,9 +197,9 @@ describe("nextActionsService — milestone/feature routing", () => {
 
     it("processes the first draft milestone when multiple draft milestones exist", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m2", status: "draft", featureCount: 0 }),
-        makeMilestone({ id: "m3", status: "draft", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 2, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "draft", featureCount: 0, isActive: true, position: 2 }),
+        makeMilestone({ id: "m3", status: "draft", featureCount: 0, isActive: false, position: 3 }),
       ];
       const service = makeService({ milestones, designDoc: null });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
@@ -191,9 +212,9 @@ describe("nextActionsService — milestone/feature routing", () => {
   describe("approved milestones without features", () => {
     it("returns features_create for the first approved milestone that has no features", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 3 }),
-        makeMilestone({ id: "m2", status: "approved", featureCount: 0 }),
-        makeMilestone({ id: "m3", status: "approved", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 3, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "approved", featureCount: 0, isActive: true, position: 2 }),
+        makeMilestone({ id: "m3", status: "draft", featureCount: 0, isActive: false, position: 3 }),
       ];
       const service = makeService({ milestones, features: [makeFeature("f1", "m1")] });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
@@ -204,9 +225,9 @@ describe("nextActionsService — milestone/feature routing", () => {
 
     it("returns features_create when first milestone has features but a later one does not", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m2", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m3", status: "approved", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 2, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "completed", featureCount: 2, isActive: false, position: 2 }),
+        makeMilestone({ id: "m3", status: "approved", featureCount: 0, isActive: true, position: 3 }),
       ];
       const features = [makeFeature("f1", "m1"), makeFeature("f2", "m2")];
       const service = makeService({ milestones, features });
@@ -218,8 +239,8 @@ describe("nextActionsService — milestone/feature routing", () => {
 
     it("does not return features_create when all approved milestones have features", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 2 }),
-        makeMilestone({ id: "m2", status: "approved", featureCount: 1 }),
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
+        makeMilestone({ id: "m2", status: "draft", featureCount: 1, isActive: false, position: 2 }),
       ];
       const features = [makeFeature("f1", "m1"), makeFeature("f2", "m2")];
       const s = makeServices({ milestones, features });
@@ -256,14 +277,125 @@ describe("nextActionsService — milestone/feature routing", () => {
   describe("draft milestone takes priority over missing features", () => {
     it("returns milestone_design_generate when there are both draft milestones and approved milestones without features", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 0 }),
-        makeMilestone({ id: "m2", status: "draft", featureCount: 0 }),
+        makeMilestone({ id: "m1", status: "completed", featureCount: 0, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "draft", featureCount: 0, isActive: true, position: 2 }),
       ];
       const service = makeService({ milestones, features: [], designDoc: null });
       const { actions } = await service.build(USER_ID, PROJECT_ID);
 
       // Draft milestone processing takes priority
       expect(actions[0]?.key).toBe("milestone_design_generate");
+    });
+  });
+
+  describe("milestone reconciliation gates feature work", () => {
+    it("returns milestone_reconciliation_review when features exist but reconciliation has not started", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "not_started" }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const service = makeService({ milestones, features });
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_reconciliation_review");
+    });
+
+    it("returns milestone_reconciliation_resolve when reconciliation found issues", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "failed_first_pass",
+          reconciliationIssues: [{ action: "rewrite_feature_set", hint: "Missing docs feature." }],
+        }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const service = makeService({ milestones, features });
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_reconciliation_resolve");
+    });
+
+    it("proceeds to feature spec work once reconciliation has passed", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const s = makeServices({ milestones, features });
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: null, status: "missing" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: { required: false, headRevision: null, status: "missing" },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+      );
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_product_create");
+    });
+  });
+
+  describe("task planning gating", () => {
+    it("allows task planning for documentation-only features once required documents are approved", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockImplementation(async (_userId, featureId) => ({
+        tracks: {
+          product: { required: true, headRevision: { id: `product-${featureId}` }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech:
+            featureId === "f1"
+              ? { required: false, headRevision: null, status: "missing" }
+              : { required: true, headRevision: { id: `tech-${featureId}` }, status: "approved" },
+          userDocs:
+            featureId === "f1"
+              ? { required: true, headRevision: { id: `user-docs-${featureId}`, approval: { id: `approval-${featureId}` } }, status: "approved" }
+              : { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      }));
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_task_clarifications_generate");
+      expect(actions[0]?.href).toContain("/features/f1?taskSession=missing");
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledTimes(1);
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f1");
     });
   });
 });

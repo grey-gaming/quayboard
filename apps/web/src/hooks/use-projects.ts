@@ -65,6 +65,18 @@ export const useCreateProjectMutation = () => {
   });
 };
 
+export const useDeleteProjectMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.deleteProject(projectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey });
+      queryClient.removeQueries({ queryKey: ["project", projectId] });
+    },
+  });
+};
+
 export const useCompleteSetupMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
@@ -776,10 +788,21 @@ export const useTransitionMilestoneMutation = (projectId: string) => {
       action,
     }: {
       milestoneId: string;
-      action: "approve";
+      action: "approve" | "complete";
     }) => api.transitionMilestone(milestoneId, action),
     onSuccess: (_data, variables) => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId, variables.milestoneId);
+    },
+  });
+};
+
+export const useReviewMilestoneCoverageMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (milestoneId: string) => api.reviewMilestoneCoverage(milestoneId),
+    onSuccess: (_data, milestoneId) => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
     },
   });
 };
@@ -849,12 +872,12 @@ export const useCreateFeatureMutation = (projectId: string) => {
   });
 };
 
-export const useAppendFeaturesFromOnePagerMutation = (projectId: string) => {
+export const useGenerateMilestoneFeatureSetMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: Parameters<typeof api.appendFeaturesFromOnePager>[1]) =>
-      api.appendFeaturesFromOnePager(projectId, payload),
+    mutationFn: (payload: Parameters<typeof api.generateMilestoneFeatureSet>[1]) =>
+      api.generateMilestoneFeatureSet(projectId, payload),
     onSuccess: () => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId);
     },

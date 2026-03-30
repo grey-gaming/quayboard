@@ -1,7 +1,6 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureService } from "./feature-service.js";
-import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
@@ -13,7 +12,6 @@ export const createPhaseGateService = (
   artifactApprovalService: ArtifactApprovalService,
   blueprintService: BlueprintService,
   featureService: FeatureService,
-  featureWorkstreamService: FeatureWorkstreamService,
   milestoneService: MilestoneService,
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
@@ -90,18 +88,20 @@ export const createPhaseGateService = (
         ? featureService.list(ownerUserId, projectId)
         : Promise.resolve({ features: [] }),
     ]);
-    const hasApprovedMilestone = milestones.milestones.some((milestone) => milestone.status === "approved");
-    const hasFeatures = features.features.length > 0;
-    const approvedFeatureProductCount = userFlowsPassed
-      ? (
-          await Promise.all(
-            features.features.map(async (feature) => {
-              const tracks = await featureWorkstreamService.getTracks(ownerUserId, feature.id);
-              return tracks.tracks.product.status === "approved";
-            }),
-          )
-        ).filter(Boolean).length
+    const milestoneCount = milestones.milestones.length;
+    const milestoneDocumentCount = userFlowsPassed
+      ? await milestoneService.countMilestonesWithCanonicalDesignDocs(ownerUserId, projectId)
       : 0;
+    const approvedMilestoneCount = milestones.milestones.filter(
+      (milestone) => milestone.status === "approved" || milestone.status === "completed",
+    ).length;
+    const reconciledMilestoneCount = milestones.milestones.filter(
+      (milestone) => milestone.reconciliationStatus === "passed",
+    ).length;
+    const featureCount = features.features.length;
+    const featuresWithTasksCount = features.features.filter((feature) => feature.taskPlanning.hasTasks).length;
+    const userFlowCount = userFlows.userFlows.length;
+    const userFlowCoverageGapCount = userFlows.coverage.warnings.length;
 
     return {
       phases: [
@@ -244,64 +244,63 @@ export const createPhaseGateService = (
         },
         {
           phase: "User Flows",
-          passed: techApproved && userFlowsPassed,
+          passed: userFlowCount > 0 && userFlowCoverageGapCount === 0,
           items: [
             {
-              key: "technical_spec_approved",
-              label: "Technical Spec approved",
-              passed: techApproved,
+              key: "user_flow_count",
+              label: `${userFlowCount} written user flow${userFlowCount === 1 ? "" : "s"}`,
+              passed: userFlowCount > 0,
             },
             {
-              key: "flows_exist",
-              label: "At least one active user flow",
-              passed: userFlows.userFlows.length > 0,
-            },
-            {
-              key: "flows_approved",
-              label: "User flows approved",
-              passed: Boolean(userFlows.approvedAt),
+              key: "user_flow_coverage_gaps",
+              label: `${userFlowCoverageGapCount} coverage gap${userFlowCoverageGapCount === 1 ? "" : "s"}`,
+              passed: userFlowCoverageGapCount === 0,
             },
           ],
         },
         {
           phase: "Milestones",
-          passed: userFlowsPassed && hasApprovedMilestone,
+          passed:
+            milestoneCount > 0 &&
+            milestoneDocumentCount === milestoneCount &&
+            approvedMilestoneCount === milestoneCount &&
+            reconciledMilestoneCount === milestoneCount,
           items: [
             {
-              key: "user_flows_approved",
-              label: "User flows approved",
-              passed: userFlowsPassed,
+              key: "milestone_count",
+              label: `${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0,
             },
             {
-              key: "milestones_exist",
-              label: "At least one milestone exists",
-              passed: milestones.milestones.length > 0,
+              key: "milestone_document_count",
+              label: `${milestoneDocumentCount} milestone document${milestoneDocumentCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0 && milestoneDocumentCount === milestoneCount,
             },
             {
-              key: "milestone_approved",
-              label: "At least one milestone approved",
-              passed: hasApprovedMilestone,
+              key: "milestone_approved_count",
+              label: `${approvedMilestoneCount} approved milestone${approvedMilestoneCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0 && approvedMilestoneCount === milestoneCount,
+            },
+            {
+              key: "milestone_reconciled_count",
+              label: `${reconciledMilestoneCount} reconciled milestone${reconciledMilestoneCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0 && reconciledMilestoneCount === milestoneCount,
             },
           ],
         },
         {
           phase: "Features",
-          passed: hasApprovedMilestone && approvedFeatureProductCount > 0,
+          passed: featureCount > 0 && featuresWithTasksCount === featureCount,
           items: [
             {
-              key: "milestone_approved",
-              label: "At least one milestone approved",
-              passed: hasApprovedMilestone,
+              key: "feature_count",
+              label: `${featureCount} feature${featureCount === 1 ? "" : "s"}`,
+              passed: featureCount > 0,
             },
             {
-              key: "features_exist",
-              label: "At least one active feature exists",
-              passed: hasFeatures,
-            },
-            {
-              key: "feature_product_approved",
-              label: "At least one feature has an approved Product Spec",
-              passed: approvedFeatureProductCount > 0,
+              key: "feature_task_count",
+              label: `${featuresWithTasksCount} feature${featuresWithTasksCount === 1 ? "" : "s"} with tasks`,
+              passed: featureCount > 0 && featuresWithTasksCount === featureCount,
             },
           ],
         },

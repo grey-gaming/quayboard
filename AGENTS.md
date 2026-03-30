@@ -1,113 +1,155 @@
 # AGENTS.md
 
-This file defines mandatory operating rules for any LLM agent working in this repository.
+This file defines repository-specific operating rules for any agent working in Quayboard.
 
 ## Mission
 
-Build Quayboard incrementally from the approved planning documents without drifting from the current milestone, inventing undocumented architecture, or leaving repo state harder to reason about.
+Keep the repository easy to reason about while extending or correcting the product that already exists. Work from current repo truth, preserve established boundaries, and do not invent undocumented behavior.
 
 ## Source Of Truth Order
 
 Read these before making non-trivial changes:
 
-1. `docs/planning/current-milestone.md`
-2. `README.md`
-3. `docs/planning/quayboard-project-outline.md`
-4. relevant ADRs in `docs/adr/`
+1. `README.md`
+2. `AGENTS.md`
+3. relevant ADRs in `docs/adr/`
+4. relevant architecture docs in `docs/architecture/`
 5. local code and tests in the affected area
 
-If these sources conflict, the more specific and newer document wins. If the conflict is architectural and unresolved, stop and ask or add an ADR instead of guessing.
+If these sources conflict, prefer the more specific and newer source. If the conflict is architectural and unresolved, stop and ask or add an ADR instead of guessing.
 
-## Operating Mode
+## Fast Start
 
-- The repo is in active milestone-based development.
-- Work one milestone at a time.
-- Do not scaffold future milestones unless the user explicitly requests it.
-- Keep changes small, reviewable, and directly tied to milestone deliverables or acceptance criteria.
-- Use one dedicated git branch per milestone; do not work directly on `main`.
-- Keep bug fixes for a milestone on that same milestone branch unless explicitly directed otherwise.
+Use these locations to build context quickly:
+
+- `apps/web/src/app.tsx` for the route map and top-level UI structure
+- `apps/api/src/server.ts` for the API route registration
+- `apps/api/src/app-services.ts` for service wiring and product boundaries
+- `packages/shared/src/` for shared runtime contracts and schemas
+- `apps/web/src/pages/` for customer-visible screens
+- `apps/api/src/routes/api/` for authenticated API surfaces
+- `apps/api/src/services/` for business logic
+- `docs/architecture/` for internal implementation docs
+- `docs/user/` for markdown that powers the public `/docs` experience
+
+## Database Access
+
+When diagnosing project state, auto-advance issues, or LLM job failures, inspect the Quayboard Postgres database directly before guessing from UI state.
+
+- The local Docker Compose database service is `quayboard-postgres`.
+- The default local database is `quayboard`.
+- The default credentials from `docker-compose.yml` are `postgres` / `postgres`.
+- The standard local connection string from `.env.example` is `postgres://postgres:postgres@127.0.0.1:5432/quayboard`.
+
+Useful access patterns:
+
+- `docker exec quayboard-postgres psql -U postgres -d quayboard`
+- `docker exec quayboard-postgres psql -U postgres -d quayboard -c "select id, name from projects order by created_at desc limit 20;"`
+
+For project-specific LLM and automation diagnosis, prefer querying these tables together:
+
+- `projects` for project identity and ownership
+- `auto_advance_sessions` for current auto-runner state
+- `jobs` for queued, running, failed, cancelled, and succeeded job history
+- `llm_runs` for provider/model/template history tied to jobs
+
+Typical diagnosis workflow for a project:
+
+1. Look up the project row by `id`.
+2. Check `auto_advance_sessions` for `status`, `current_step`, `paused_reason`, `pending_job_count`, and `active_batch_token`.
+3. Check `jobs` for the same `project_id`, ordered by `queued_at desc`, and compare active job rows against the session's batch metadata.
+4. Check `llm_runs` for recent prompts, models, and template IDs tied to the same project or job.
+5. If session state and job state disagree, treat the database as source of truth and inspect the auto-advance and job-scheduler code paths before changing data.
+
+## Current Product Boundaries
+
+Treat these as current truth unless the user explicitly asks to change them:
+
+- The supported project flow starts from scratch. The import path is stubbed.
+- Mission Control, planning artefacts, milestones, feature workstreams, auto-advance, and task planning are implemented surfaces.
+- The `Implementation` section in project navigation is intentionally disabled.
+- Bug routes, sandbox routes, and tool-policy routes are registered but currently return `501 Not Implemented`.
+- `apps/mcp` is placeholder scaffolding only.
+- Workflow settings are present as a read-only surface; persisted workflow defaults are not implemented.
+
+Do not build beyond these boundaries as a convenience shortcut.
 
 ## Required Workflow
 
 Before editing:
 
-1. Read the active milestone doc and the relevant section of the project outline.
+1. Read the relevant sections of `README.md`, this file, and any ADRs or architecture docs for the area.
 2. Inspect the repo for existing patterns before proposing new structure.
-3. Confirm whether the requested change belongs to the current milestone.
-4. State assumptions if repo truth is missing.
-5. Create or switch to the dedicated branch for the active milestone before making changes.
+3. State assumptions if repo truth is missing.
+4. Create or switch to a dedicated working branch before making changes. Do not work directly on `main`.
 
 While editing:
 
 1. Prefer the smallest vertical slice that satisfies the request.
-2. Keep planned monorepo boundaries intact.
-3. Update nearby docs when adding new structure, workflow, or conventions.
-4. Avoid placeholder implementations that obscure what is real versus planned.
+2. Keep monorepo boundaries intact.
+3. Update nearby documentation when repo truth, workflow, or structure changes.
+4. Avoid placeholder implementations that blur what is real versus stubbed.
 
 After editing:
 
-1. Run all required verification for the change that exists in the repo before pushing.
-2. Check whether the cycle changed repo-wide agent rules, contributor-facing repo reality, or active milestone scope.
-3. Update only the relevant governing docs when needed:
-4. `AGENTS.md` if repo-level agent behavior or mandatory workflow changed.
-5. `README.md` if current repo state, setup, structure, or contributor workflow changed.
-6. `docs/planning/current-milestone.md` if the active milestone, scope boundaries, or acceptance criteria changed.
-7. Leave these files untouched if the cycle did not change their truth.
-8. Commit the cycle's changes with a clear message to the milestone branch.
-9. Push the milestone branch to `origin` so it stays current.
-10. If branch creation, commit, or push is blocked, say so explicitly in the handoff.
-11. Report what changed, what was verified, and what remains unverified.
-12. Call out any assumptions, risks, or follow-up work explicitly.
+1. Run the narrowest relevant verification for the change.
+2. Check whether contributor-facing or agent-facing docs changed and update only what is now outdated.
+3. Commit the change with a clear message.
+4. Push the branch to `origin` if the environment and permissions allow it.
+5. If branch creation, commit, or push is blocked, say so explicitly in the handoff.
+6. Report what changed, what was verified, and what remains unverified.
+7. Call out assumptions, risks, or follow-up work explicitly.
 
 ## Architecture Guardrails
 
-- Preserve the target monorepo shape from the outline unless an ADR changes it.
 - Put shared runtime schemas and cross-app types in `packages/shared`, not duplicated per app.
-- Frontend pages must use design-system primitives and approved layout patterns once the UI exists.
-- Do not use inline `fetch()` in page components; use API client modules.
+- Frontend pages must use API client modules and shared hooks rather than inline `fetch()` calls.
 - Backend routes must use schema-validated request and response contracts.
-- LLM integrations must be mockable; tests must not depend on live model access.
-- LLM failures or malformed LLM outputs must fail explicitly; do not add deterministic fallback builders that silently synthesize substitute production content.
+- LLM integrations must remain mockable; tests must not depend on live model access.
+- LLM failures or malformed LLM outputs must fail explicitly. Do not silently synthesize substitute production content.
 - Do not create hidden tool-owned state inside managed repositories.
 
 ## Naming Rules
 
-- Do not put milestone labels such as `m0`, `m1`, or `m14` in filenames or directory names.
-- Milestone labels are allowed in branch names, planning text, PR text, and commit messages, but not in persistent repo filenames.
-- Name files for their function or content, not for the milestone that introduced them.
-- Use lowercase kebab-case for new directories and for new non-component filenames unless a tool or framework requires a different convention.
-- Keep special root docs and platform-required names exactly as required, such as `README.md`, `AGENTS.md`, and files under `.github/`.
-- When frontend component files are introduced, use PascalCase for files that export a primary React component and kebab-case for non-component modules.
-- Test files should mirror the target file name and use the repo's chosen test suffix once the toolchain exists.
+- Name files and directories for their function or content, not for delivery phases or temporary efforts.
+- Use lowercase kebab-case for new directories and new non-component filenames unless a tool requires otherwise.
+- Keep platform-required names unchanged, such as `README.md`, `AGENTS.md`, and files under `.github/`.
+- Use PascalCase for React component files that export a primary component.
+- Keep test filenames aligned with the target file and the repo's existing test suffixes.
 
 ## File Quality Rules
 
 - Prefer small files with a single clear responsibility.
 - Treat roughly 300-500 lines as a soft warning range for most code files, not a hard limit.
-- If a file is becoming difficult to understand, split or extract before adding more complexity when that cleanup is low-risk and in scope.
-- Larger files are acceptable only when the content is still cohesive and splitting would make the code harder to follow.
+- If a file is becoming hard to understand, split or extract when that cleanup is low-risk and in scope.
+- Larger files are acceptable when the content is still cohesive and splitting would make it harder to follow.
 
 ## Refactoring And Deletion Rules
 
-- Apply the boy scout rule: when touching an area, leave it cleaner if the improvement is low-risk and stays within milestone scope.
+- Apply the boy scout rule when the cleanup is low-risk and stays within scope.
 - Refactoring that reduces complexity, removes duplication, shrinks files, or improves clarity is a positive change when behavior is preserved.
 - Delete dead code, unused files, obsolete flags, and stale documentation when they are clearly no longer needed.
 - Do not keep code, files, or configuration "just in case"; version control is the backup.
-- Prefer deletion over leaving internal dead paths behind when a feature or implementation path has been removed.
 
-## Delivery Guardrails
+## Documentation Rules
 
-- README must describe current reality, not aspirational commands or setup that do not exist yet.
-- Do a documentation trigger check at the end of every cycle, but do not rewrite governing docs unless their content is actually outdated.
-- Do not work directly on `main`; use one branch per milestone and keep that branch updated with commits and pushes.
-- Before pushing, run the required verification for the change and do not push known-red work unless explicitly instructed.
-- Treat full CI green status as the merge requirement, not necessarily the push requirement.
-- Apply the repo naming rules to all new files and directories; do not encode milestone numbers into persistent paths.
-- Favor low-risk refactoring and deletion of dead code over preserving unnecessary complexity.
-- Do not introduce future-milestone tables, routes, hooks, or components "for convenience."
-- Prefer explicit TODOs in planning docs over speculative production code.
-- Record meaningful architecture, workflow, or design-system deviations as ADRs.
-- When a change adds a new developer workflow, document it in `README.md` or `CONTRIBUTING.md`.
+- `README.md` must describe the product and workspace as they currently exist.
+- `AGENTS.md` must remain a practical fast-start handbook for agents working in this repo.
+- `docs/architecture/` is for internal engineering documentation.
+- `docs/user/` is for the public docs content rendered at `/docs`.
+- `docs/planning/` contains planning material and should not override current implementation truth unless the user explicitly asks to work from it.
+
+## Verification Guidance
+
+- Before pushing, run the required verification for the change and do not push known-broken work unless explicitly instructed.
+- Full CI green status is the merge bar, not necessarily the local push bar.
+- Prefer the narrowest relevant checks first, then wider repo checks when the change crosses boundaries.
+- Current top-level verification commands are:
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm build`
+  - `pnpm db:migrate`
+- Never claim tests or checks passed unless you actually ran them.
 
 ## Safety Rules
 
@@ -115,7 +157,6 @@ After editing:
 - Never weaken governance or evidence requirements without explicit instruction.
 - Never use destructive git or filesystem commands unless explicitly requested.
 - Never claim a command, test, route, or file exists unless you verified it locally.
-- Never claim tests or checks passed unless you actually ran them.
 
 ## Expected Handoff Format
 

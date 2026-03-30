@@ -15,8 +15,8 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - UX decision-tile generation, selection persistence, acceptance, and UX Spec approval
 - Technical decision-tile generation, selection persistence, acceptance, and Technical Spec approval
 - user-flow generation, manual editing, deduplication, and approval
-- milestone planning, lifecycle control, milestone design doc generation, and design doc approval
-- feature catalogue management, feature revisions, dependency graph reads, overview-seeded feature intake, and feature rollups
+- milestone planning, active-milestone lifecycle control, milestone design doc generation, milestone reconciliation, and milestone completion
+- feature catalogue management, feature revisions, dependency graph reads, milestone feature-set generation, and feature rollups
 - feature workstream editing for Product, UX, Tech, User Docs, and Architecture Docs, including revision history and approvals
 
 ## Data Model
@@ -28,7 +28,7 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `decision_cards` stores kind-specific UX and technical decision tiles, selections, and acceptance state
 - `project_blueprints` stores versioned UX and technical spec revisions with canonical pointers
 - `artifact_approvals` backs UX/Technical Spec and milestone design doc approval records
-- `milestones` stores milestone ordering plus approval timestamps
+- `milestones` stores milestone ordering, completion state, and milestone-level reconciliation status
 - `milestone_use_cases` stores milestone-to-user-flow coverage links
 - `milestone_design_docs` stores immutable milestone design doc revisions with a canonical flag
 - `feature_cases` stores feature identity, milestone assignment, lifecycle metadata, and archive state
@@ -47,8 +47,12 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `projectSetupService` owns repo verification, LLM config/verification, sandbox config/verification, and checklist status
 - `questionnaireService`, `onePagerService`, `productSpecService`, `userFlowService`, `blueprintService`, `milestoneService`, `featureService`, `featureWorkstreamService`, and `artifactApprovalService` manage planning artifacts
 - `phaseGateService` now treats the Features phase as requiring at least one feature with an approved Product workstream revision
-- `nextActionsService` now recommends the first Feature Editor action once the catalogue exists
-- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, overview-seeded feature creation, and feature workstream generation
+- `nextActionsService` now scopes detailed planning to the active milestone only, then continues through task planning and milestone reconciliation before milestone completion
+- `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, milestone feature-set generation, milestone feature-set rewrite, and feature workstream generation
+- milestone design, milestone feature-set generation, milestone feature-set rewrite, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
+- feature and task generation prompts now use milestone design guidance and sibling-boundary context to reduce task-sized feature fragmentation and milestone-coverage gaps
+- blueprint generation now self-repairs accepted decision selections when `ValidateDecisionConsistency` reports conflicts, then reruns validation before creating the UX or Technical spec
+- auto-advance retries only failures marked retryable by job execution; malformed structured-output failures and exhausted blueprint decision-conflict repairs now re-enter the bounded job retry loop, while prompt/context-limit failures still pause cleanly
 
 ## External Adapters
 

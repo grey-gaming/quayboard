@@ -32,6 +32,7 @@ import {
   useMilestonesQuery,
   useProjectJobsQuery,
   useProjectQuery,
+  useReviewMilestoneCoverageMutation,
   useTransitionMilestoneMutation,
   useUpdateMilestoneDesignMutation,
   useUpdateMilestoneMutation,
@@ -126,7 +127,9 @@ const MilestoneDesignCard = ({
             </div>
             <AiWorkflowButton
               active={milestoneDesignButtonActive}
-              disabled={milestoneDesignButtonActive || milestone.status === "approved"}
+              disabled={
+                milestoneDesignButtonActive || milestone.status !== "draft" || !milestone.isActive
+              }
               label="Generate Design Document"
               onClick={() => {
                 void generateDesignMutation.mutateAsync().catch(() => undefined);
@@ -196,7 +199,7 @@ const MilestoneDesignCard = ({
                     </Badge>
                   </div>
                   <EditableMarkdownDocument
-                    disabled={milestone.status === "approved"}
+                    disabled={milestone.status !== "draft" || !milestone.isActive}
                     editLabel="Edit Markdown"
                     isSaving={updateDesignMutation.isPending}
                     markdown={currentDesignDoc.markdown}
@@ -228,6 +231,7 @@ export const MilestonesPage = () => {
   const createMilestoneMutation = useCreateMilestoneMutation(id);
   const updateMilestoneMutation = useUpdateMilestoneMutation(id);
   const transitionMilestoneMutation = useTransitionMilestoneMutation(id);
+  const reviewMilestoneCoverageMutation = useReviewMilestoneCoverageMutation(id);
   const generateMilestonesMutation = useGenerateMilestonesMutation(id);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
@@ -260,6 +264,7 @@ export const MilestonesPage = () => {
     createMilestoneMutation.error ||
     updateMilestoneMutation.error ||
     transitionMilestoneMutation.error ||
+    reviewMilestoneCoverageMutation.error ||
     generateMilestonesMutation.error;
   const milestonePlanButtonActive =
     generateMilestonesMutation.isPending || Boolean(activeMilestonePlanJob);
@@ -470,14 +475,38 @@ export const MilestonesPage = () => {
           ) : null}
         </Card>
         <div className="grid gap-4">
-          {activeMilestones.map((milestone) => (
+          {activeMilestones.map((milestone) => {
+            const reconciliationStatus = milestone.reconciliationStatus ?? "not_started";
+            const reconciliationIssues = milestone.reconciliationIssues ?? [];
+
+            return (
             <Card key={milestone.id} surface="panel">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="neutral">Milestone {milestone.position}</Badge>
-                    <Badge tone={milestone.status === "approved" ? "success" : "info"}>
+                    <Badge
+                      tone={
+                        milestone.status === "completed"
+                          ? "success"
+                          : milestone.status === "approved"
+                            ? "success"
+                            : "info"
+                      }
+                    >
                       {milestone.status}
+                    </Badge>
+                    {milestone.isActive ? <Badge tone="info">active</Badge> : null}
+                    <Badge
+                      tone={
+                        reconciliationStatus === "passed"
+                          ? "success"
+                          : reconciliationStatus === "failed_needs_human"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      reconciliation: {reconciliationStatus.replaceAll("_", " ")}
                     </Badge>
                   </div>
                   <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
@@ -490,6 +519,7 @@ export const MilestonesPage = () => {
                     onClick={() => {
                       openEditPanel(milestone);
                     }}
+                    disabled={!milestone.isActive || milestone.status !== "draft"}
                     variant="secondary"
                   >
                     Edit Milestone
@@ -507,6 +537,16 @@ export const MilestonesPage = () => {
                       ? "Hide Milestone Document"
                       : "View Milestone Document"}
                   </Button>
+                  {milestone.status === "approved" ? (
+                    <Button
+                      onClick={() => {
+                        void reviewMilestoneCoverageMutation.mutateAsync(milestone.id).catch(() => undefined);
+                      }}
+                      variant="secondary"
+                    >
+                      Run Reconciliation
+                    </Button>
+                  ) : null}
                   {milestone.status === "draft" ? (
                     <Button
                       onClick={() => {
@@ -520,6 +560,19 @@ export const MilestonesPage = () => {
                       Approve
                     </Button>
                   ) : null}
+                  {milestone.status === "approved" && reconciliationStatus === "passed" ? (
+                    <Button
+                      onClick={() => {
+                        void transitionMilestoneMutation.mutateAsync({
+                          milestoneId: milestone.id,
+                          action: "complete",
+                        }).catch(() => undefined);
+                      }}
+                      variant="primary"
+                    >
+                      Complete
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -530,6 +583,20 @@ export const MilestonesPage = () => {
                 ))}
                 <Badge tone="neutral">{milestone.featureCount} features</Badge>
               </div>
+              {reconciliationIssues.length > 0 ? (
+                <Alert tone={reconciliationStatus === "failed_needs_human" ? "error" : "info"}>
+                  <p className="font-medium">
+                    {reconciliationStatus === "failed_needs_human"
+                      ? "Milestone completion is blocked until these coverage gaps are resolved."
+                      : "Milestone reconciliation identified a coverage gap and rewrote the milestone feature set."}
+                  </p>
+                  <ul className="mt-2 list-disc pl-5 text-sm">
+                    {reconciliationIssues.map((issue, index) => (
+                      <li key={`${milestone.id}-issue-${index}`}>{issue.hint}</li>
+                    ))}
+                  </ul>
+                </Alert>
+              ) : null}
               <MilestoneDesignCard
                 isExpanded={expandedDesignMilestoneId === milestone.id}
                 jobs={jobsQuery.data?.jobs}
@@ -537,7 +604,8 @@ export const MilestonesPage = () => {
                 projectId={id}
               />
             </Card>
-          ))}
+            );
+          })}
         </div>
         <Card surface="rail">
           <p className="qb-meta-label">Coverage check</p>

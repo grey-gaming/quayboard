@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
+import { MAX_PROJECT_DESCRIPTION_WORDS } from "@quayboard/shared";
+
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { Alert } from "../components/ui/Alert.js";
@@ -16,10 +18,24 @@ type FormValues = {
   name: string;
 };
 
+const countWords = (value: string) => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return 0;
+  }
+
+  return trimmed.split(/\s+/).length;
+};
+
 export const NewProjectPage = () => {
   const createProjectMutation = useCreateProjectMutation();
   const navigate = useNavigate();
-  const { handleSubmit, register } = useForm<FormValues>({
+  const {
+    formState: { errors },
+    handleSubmit,
+    register,
+  } = useForm<FormValues>({
     defaultValues: {
       description: "",
       name: "",
@@ -39,7 +55,7 @@ export const NewProjectPage = () => {
             className="grid gap-5"
             onSubmit={handleSubmit(async (values) => {
               const project = await createProjectMutation.mutateAsync(values);
-              navigate(`/projects/${project.id}/setup`);
+              navigate(`/projects/${project.id}/settings`);
             })}
           >
             <div className="qb-section-heading">
@@ -54,7 +70,20 @@ export const NewProjectPage = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="project-description">Description</Label>
-              <Textarea id="project-description" {...register("description")} />
+              <Textarea
+                id="project-description"
+                {...register("description", {
+                  validate: (value) =>
+                    countWords(value) <= MAX_PROJECT_DESCRIPTION_WORDS ||
+                    `Description must not have more than ${MAX_PROJECT_DESCRIPTION_WORDS} words.`,
+                })}
+              />
+              <p className="text-sm text-secondary">
+                Up to {MAX_PROJECT_DESCRIPTION_WORDS} words.
+              </p>
+              {errors.description ? (
+                <p className="text-sm text-danger">{errors.description.message}</p>
+              ) : null}
             </div>
             {createProjectMutation.error ? (
               <Alert tone="error">{createProjectMutation.error.message}</Alert>

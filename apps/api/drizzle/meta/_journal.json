@@ -118,7 +118,28 @@
       "idx": 16,
       "version": "7",
       "when": 1760000016000,
-      "tag": "0016_m7_auto_advance_batch_failure_count",
+      "tag": "0016_m7_active_milestone_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1760000017000,
+      "tag": "0017_m7_active_milestone_reconciliation_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1760000018000,
+      "tag": "0018_m7_ambiguous_reconciliation_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1760000019000,
+      "tag": "0019_m7_milestone_repair_loop",
       "breakpoints": true
     }
   ]

@@ -5,7 +5,7 @@ Quayboard's current UI supports the current planning workflow:
 1. Sign in or register.
 2. Review **Instance Readiness** and resolve any failing checks.
 3. Create a project.
-4. Complete **Project Setup**:
+4. Complete **Project Settings**:
    - validate and store a GitHub PAT
    - select a GitHub repository from the accessible repo list
    - choose a project-scoped LLM provider and model

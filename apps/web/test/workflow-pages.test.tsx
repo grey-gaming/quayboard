@@ -100,7 +100,7 @@ const renderRoute = (path: string, element: ReactNode, routeProjectId = projectI
     ["/docs", <div />],
     ["/settings", <div />],
     ["/projects/:id", <div />],
-    ["/projects/:id/setup", <div />],
+    ["/projects/:id/settings", <div />],
     ["/projects/:id/questions", <div />],
     ["/projects/:id/one-pager", <div />],
     ["/projects/:id/product-spec", <div />],
@@ -193,12 +193,20 @@ describe("workflow pages", () => {
           },
         ],
       },
+      [`/api/projects/${projectId}/auto-advance/status`]: {
+        session: null,
+        nextStep: null,
+      },
     });
 
     renderRoute("/projects/:id", <MissionControlPage />);
 
     expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Setup" })).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole("link", { name: "Settings" })
+        .some((link) => link.getAttribute("href") === `/projects/${projectId}/settings`),
+    ).toBe(true);
     expect(screen.getByText("Review overview draft")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
     expect(screen.queryByText("Pipeline map")).toBeNull();
@@ -235,6 +243,10 @@ describe("workflow pages", () => {
       [`/api/projects/${orderedProjectId}/jobs`]: {
         jobs: [],
       },
+      [`/api/projects/${orderedProjectId}/auto-advance/status`]: {
+        session: null,
+        nextStep: null,
+      },
     });
 
     renderRoute("/projects/:id", <MissionControlPage />, orderedProjectId);
@@ -255,6 +267,74 @@ describe("workflow pages", () => {
       "Technical Spec",
       "User Flows",
     ]);
+  });
+
+  it("shows a milestone-gap CTA instead of resume controls for a human-blocked reconciliation pause", async () => {
+    const blockedProjectId = "70707070-7070-4070-8070-707070707070";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${blockedProjectId}`]: {
+        id: blockedProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: blockedProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${blockedProjectId}/phase-gates`]: {
+        phases: [],
+      },
+      [`/api/projects/${blockedProjectId}/next-actions`]: {
+        actions: [
+          {
+            key: "milestone_reconciliation_resolve",
+            label: "Resolve milestone reconciliation gaps",
+            href: `/projects/${blockedProjectId}/milestones`,
+          },
+        ],
+      },
+      [`/api/projects/${blockedProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${blockedProjectId}/auto-advance/status`]: {
+        session: {
+          id: "auto-session-1",
+          projectId: blockedProjectId,
+          status: "paused",
+          currentStep: "milestone_reconciliation_resolve",
+          pausedReason: "needs_human",
+          autoApproveWhenClear: false,
+          skipReviewSteps: false,
+          autoRepairMilestoneCoverage: true,
+          creativityMode: "balanced",
+          retryCount: 0,
+          reviewCount: 0,
+          milestoneRepairCount: 1,
+          maxConcurrentJobs: 1,
+          startedAt: "2026-03-16T10:00:00.000Z",
+          pausedAt: "2026-03-16T10:02:00.000Z",
+          completedAt: null,
+          createdAt: "2026-03-16T10:00:00.000Z",
+          updatedAt: "2026-03-16T10:02:00.000Z",
+        },
+        nextStep: "milestone_reconciliation_resolve",
+      },
+    });
+
+    renderRoute("/projects/:id", <MissionControlPage />, blockedProjectId);
+
+    expect(await screen.findByRole("heading", { name: "Mission Control" })).toBeTruthy();
+    expect(screen.getByText(/Auto-advance cannot continue until the active milestone gaps are resolved/i)).toBeTruthy();
+    expect(screen.getByText("Milestone coverage auto-repair is enabled for this session.")).toBeTruthy();
+    expect(screen.getByText("Milestone repair attempts used: 1/3")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Review milestone gaps" }).getAttribute("href")).toBe(
+      `/projects/${blockedProjectId}/milestones`,
+    );
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Step once" })).toBeNull();
   });
 
   it("renders milestone planning with design-doc approval controls", async () => {
@@ -1245,9 +1325,14 @@ describe("workflow pages", () => {
                 title: "Foundations",
                 summary: "Prepare the first releasable increment.",
                 status: "draft",
+                isActive: true,
                 linkedUserFlows: [{ id: "flow-3", title: "Ship foundations" }],
                 featureCount: 0,
                 approvedAt: null,
+                completedAt: null,
+                reconciliationStatus: "not_started",
+                reconciliationIssues: [],
+                reconciliationReviewedAt: null,
                 createdAt: "2026-03-20T09:45:00.000Z",
                 updatedAt: "2026-03-20T09:45:00.000Z",
               },
@@ -1456,6 +1541,10 @@ describe("workflow pages", () => {
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: false, state: "missing" },
                 },
+                taskPlanning: {
+                  hasTasks: false,
+                  taskCount: 0,
+                },
                 dependencyIds: ["88888888-8888-4888-8888-888888888888"],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -1487,6 +1576,10 @@ describe("workflow pages", () => {
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: true, state: "draft" },
                 },
+                taskPlanning: {
+                  hasTasks: true,
+                  taskCount: 3,
+                },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:03:00.000Z",
                 updatedAt: "2026-03-16T10:03:00.000Z",
@@ -1517,6 +1610,10 @@ describe("workflow pages", () => {
                   tech: { required: false, state: "missing" },
                   userDocs: { required: false, state: "missing" },
                   archDocs: { required: false, state: "missing" },
+                },
+                taskPlanning: {
+                  hasTasks: false,
+                  taskCount: 0,
                 },
                 dependencyIds: [],
                 createdAt: "2026-03-16T10:04:00.000Z",
@@ -1643,6 +1740,8 @@ describe("workflow pages", () => {
     expect(screen.getByText("Legacy feature shell")).toBeTruthy();
     expect(screen.getAllByText("Product accepted").length).toBeGreaterThan(0);
     expect(screen.getByText("UX draft")).toBeTruthy();
+    expect(screen.getAllByText("Tasks not written").length).toBeGreaterThan(0);
+    expect(screen.getByText("Tasks written")).toBeTruthy();
     expect(screen.queryByText("Dependency graph")).toBeNull();
     expect(screen.queryByText("Wire dependency")).toBeNull();
   });
@@ -1838,7 +1937,7 @@ describe("workflow pages", () => {
     expect(screen.getByRole("link", { name: "Questions" }).getAttribute("aria-current")).toBe(
       "page",
     );
-    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Overview" })).toBeTruthy();
   });
 
   it("queues auto-answer and starts the AI state immediately", async () => {
@@ -4184,7 +4283,7 @@ describe("workflow pages", () => {
           ],
         },
         {
-          path: "/projects/:id/setup",
+          path: "/projects/:id/settings",
           element: <ProjectSetupPage />,
         },
         { path: "/projects/:id/one-pager", element: <div /> },
@@ -4203,7 +4302,7 @@ describe("workflow pages", () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole("heading", { name: "Project Setup" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Project Settings" })).toBeTruthy();
     expect(
       screen.getByText(
         /Complete setup to unlock Questions, Overview, Product Spec, User Flows, and Import\. You were redirected from/,
@@ -5121,6 +5220,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5153,6 +5256,10 @@ describe("workflow pages", () => {
               tech: { required: false, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5285,6 +5392,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5317,6 +5428,10 @@ describe("workflow pages", () => {
               tech: { required: true, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",
@@ -5528,6 +5643,10 @@ describe("workflow pages", () => {
           userDocs: { required: false, state: "missing" },
           archDocs: { required: false, state: "missing" },
         },
+        taskPlanning: {
+          hasTasks: false,
+          taskCount: 0,
+        },
         dependencyIds: [],
         createdAt: "2026-03-20T00:00:00.000Z",
         updatedAt: "2026-03-20T00:00:00.000Z",
@@ -5560,6 +5679,10 @@ describe("workflow pages", () => {
               tech: { required: false, state: "missing" },
               userDocs: { required: false, state: "missing" },
               archDocs: { required: false, state: "missing" },
+            },
+            taskPlanning: {
+              hasTasks: false,
+              taskCount: 0,
             },
             dependencyIds: [],
             createdAt: "2026-03-20T00:00:00.000Z",

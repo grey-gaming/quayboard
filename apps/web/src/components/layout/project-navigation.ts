@@ -4,7 +4,7 @@ import { isSetupCompletedProjectState } from "../../lib/project-state.js";
 
 export type ProjectNavSection =
   | "mission-control"
-  | "setup"
+  | "settings"
   | "product-design"
   | "feature-design"
   | "implementation";
@@ -45,7 +45,7 @@ const lockedTitle = "Complete setup to unlock this section.";
 
 export const getSetupCompletion = (project: Project) => isSetupCompletedProjectState(project.state);
 
-export const buildSetupTertiaryItems = (
+export const buildSettingsTertiaryItems = (
   project: Project,
 ): ProjectTertiaryNavItem[] => {
   const setupCompleted = getSetupCompletion(project);
@@ -53,25 +53,11 @@ export const buildSetupTertiaryItems = (
   return [
     {
       kind: "link",
-      key: "project-setup",
-      label: "Project Setup",
-      to: `/projects/${project.id}/setup`,
+      key: "project-settings",
+      label: "Project Settings",
+      to: `/projects/${project.id}/settings`,
       end: true,
     },
-    setupCompleted
-      ? {
-          kind: "link",
-          key: "questions",
-          label: "Questions",
-          to: `/projects/${project.id}/questions`,
-          end: true,
-        }
-      : {
-          kind: "disabled",
-          key: "questions",
-          label: "Questions",
-          title: lockedTitle,
-        },
     setupCompleted
       ? {
           kind: "link",
@@ -86,6 +72,13 @@ export const buildSetupTertiaryItems = (
           label: "Import",
           title: lockedTitle,
         },
+    {
+      kind: "link",
+      key: "delete-project",
+      label: "Delete Project",
+      to: `/projects/${project.id}/settings/delete`,
+      end: true,
+    },
   ];
 };
 
@@ -96,6 +89,7 @@ export const buildProductDesignTertiaryItems = (
 
   if (!setupCompleted) {
     return [
+      "Questions",
       "Overview",
       "Product Spec",
       "UX Spec",
@@ -111,6 +105,13 @@ export const buildProductDesignTertiaryItems = (
   }
 
   return [
+    {
+      kind: "link",
+      key: "questions",
+      label: "Questions",
+      to: `/projects/${project.id}/questions`,
+      end: true,
+    },
     {
       kind: "link",
       key: "overview",

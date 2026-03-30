@@ -437,6 +437,7 @@ export const buildUserFlowPrompt = (input: {
     "Task:",
     `Generate a broad first-pass set of user flows for "${input.projectName}".`,
     'Return valid JSON as an array of objects with these keys: "title", "userStory", "entryPoint", "endState", "flowSteps", "coverageTags", "acceptanceCriteria", and "doneCriteriaRefs".',
+    'Each "flowSteps" value must be an array of plain strings only. Do not return step objects, numbered objects, or nested structures.',
     "Produce a diverse and extensive set of flows, not slight variations of the same journey.",
     "Include the most important onboarding, happy-path, supporting, operational, and edge/failure journeys that are genuinely relevant to the product.",
     "Each flow must be specific, realistic, and distinct.",
@@ -500,7 +501,11 @@ export const buildDecisionConsistencyPrompt = (input: {
     `Validate the selected ${input.kind === "ux" ? "UX" : "technical"} decisions for "${input.projectName}".`,
     'Return valid JSON with exactly two keys: "ok" (boolean) and "issues" (array of strings).',
     'Set "ok" to true only when the selected decisions form a coherent basis for specification generation.',
-    "Report contradictions, missing selections, or major coverage gaps in the issues array.",
+    "Be conservative. Report only hard blockers that would make the generated specification internally inconsistent or unable to cover required core scope.",
+    "Hard blockers are limited to direct contradictions, missing required decisions for explicitly in-scope core flows/mechanics/surfaces, or gaps that cannot be resolved by documenting a reasonable default in the specification.",
+    "Do not report non-critical, defaultable, or secondary gaps. If the specification can safely choose and document a sensible default without contradicting the approved specs, treat that as non-blocking.",
+    "Do not block on secondary-device nuance, performance tuning detail, monetization detail, accessibility refinement, or future-facing implementation choices unless the approved specs make them mandatory for the current scope.",
+    "Keep the issues array to the smallest set of high-confidence blockers.",
     "If the decisions are coherent, return an empty issues array.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -516,6 +521,116 @@ export const buildDecisionConsistencyPrompt = (input: {
           input.uxSpec,
         ]
       : []),
+  ].join("\n");
+
+export const buildDecisionSelectionRepairPrompt = (input: {
+  cards: Array<{
+    id: string;
+    key: string;
+    title: string;
+    recommendation: { id: string; label: string; description: string };
+    alternatives: Array<{ id: string; label: string; description: string }>;
+    selectedOptionId: string | null;
+    customSelection: string | null;
+  }>;
+  currentSelections: string;
+  issues: string[];
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Repair the selected ${input.kind === "ux" ? "UX" : "technical"} decisions for "${input.projectName}" so they become internally consistent with the approved specs.`,
+    'Return valid JSON with exactly one top-level key: "patches".',
+    'Each patches item must contain exactly: "cardId", "selectedOptionId", "customSelection", and "reason".',
+    'Set exactly one of "selectedOptionId" or "customSelection" for each patch.',
+    "Prefer existing option ids whenever possible.",
+    "Use customSelection only when none of the listed options can satisfy the approved specs.",
+    "Return the smallest set of patches needed to resolve the reported issues.",
+    "Do not rewrite the decision cards themselves.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+    "",
+    "Reported consistency issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Current selections:",
+    input.currentSelections,
+    "",
+    "Available decision cards and options:",
+    JSON.stringify(input.cards, null, 2),
+  ].join("\n");
+
+export const buildDecisionSelectionRepairReviewPrompt = (input: {
+  cards: Array<{
+    id: string;
+    key: string;
+    title: string;
+    recommendation: { id: string; label: string; description: string };
+    alternatives: Array<{ id: string; label: string; description: string }>;
+    selectedOptionId: string | null;
+    customSelection: string | null;
+  }>;
+  currentSelections: string;
+  draftPlan: {
+    patches: Array<{
+      cardId: string;
+      selectedOptionId: string | null;
+      customSelection: string | null;
+      reason: string;
+    }>;
+  };
+  issues: string[];
+  kind: "tech" | "ux";
+  productSpec: string;
+  projectName: string;
+  uxSpec?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the ${input.kind === "ux" ? "UX" : "technical"} decision repair plan for "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "patches".',
+    'Each patches item must contain exactly: "cardId", "selectedOptionId", "customSelection", and "reason".',
+    "Keep only the minimum valid changes needed to resolve the reported consistency issues.",
+    "Prefer existing option ids whenever possible.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Approved Product Spec:",
+    input.productSpec,
+    ...(input.uxSpec
+      ? [
+          "",
+          "Approved UX Spec:",
+          input.uxSpec,
+        ]
+      : []),
+    "",
+    "Reported consistency issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Current selections:",
+    input.currentSelections,
+    "",
+    "Available decision cards and options:",
+    JSON.stringify(input.cards, null, 2),
+    "",
+    "Draft repair plan:",
+    JSON.stringify(input.draftPlan, null, 2),
   ].join("\n");
 
 export const buildProjectBlueprintPrompt = (input: {
@@ -574,8 +689,7 @@ export const buildMilestonePlanPrompt = (input: {
     `Propose an initial milestone plan for "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
-    "title must be short, specific, and thematic.",
-    'Do not include milestone numbers, ordinal labels, or prefixes such as "Milestone 1", "Phase 2", or "M3" in title.',
+    "title must be short and specific.",
     "summary must explain the release intent and scope for the milestone.",
     "useCaseIds must be a non-empty array of approved user-flow IDs covered by the milestone.",
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
@@ -599,42 +713,10 @@ export const buildMilestonePlanPrompt = (input: {
     JSON.stringify(input.userFlows, null, 2),
   ].join("\n");
 
-export const buildMilestonePlanReviewPrompt = (input: {
-  projectName: string;
-  draftMilestones: Array<{
-    title: string;
-    summary: string;
-    useCaseIds: string[];
-  }>;
-}) =>
-  [
-    qualityCharter,
-    "",
-    "Task:",
-    `Review and repair the draft milestone plan for "${input.projectName}".`,
-    "Return valid JSON as a non-empty array.",
-    "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
-    "Preserve the milestone count, execution order, and overall flow coverage unless a minimal wording fix is required.",
-    "Keep milestone titles thematic, short, and specific.",
-    'Remove milestone numbers, ordinal labels, and prefixes such as "Milestone 1", "Phase 2", or "M3" from title.',
-    "Do not merge, split, reorder, or drop milestones.",
-    "Do not remove any useCaseIds unless they are duplicates within the same milestone.",
-    "Do not wrap the JSON in code fences.",
-    "",
-    "Draft milestone plan:",
-    JSON.stringify(input.draftMilestones, null, 2),
-  ].join("\n");
-
 export const buildMilestoneDesignPrompt = (input: {
   projectName: string;
-  milestonePosition: number;
   milestoneTitle: string;
   milestoneSummary: string;
-  orderedMilestones: Array<{
-    position: number;
-    title: string;
-    summary: string;
-  }>;
   linkedUserFlows: Array<{
     title: string;
     userStory: string;
@@ -652,25 +734,8 @@ export const buildMilestoneDesignPrompt = (input: {
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
     "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
     "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
-    "Treat the milestone order supplied below as canonical. The stored milestone title is thematic and does not need a number prefix.",
-    "If the document needs to mention milestone order, use the provided milestone position and ordered milestone list.",
-    'Do not defer required work to an unnamed future phase such as "a later milestone", "future milestone", or similar vague wording.',
-    "Any sequencing references must point to concrete milestones from the ordered milestone list.",
+    "In Delivery Shape, explicitly call out the cohesive feature-sized capability groupings for this milestone, any cross-cutting work that should stay grouped into one feature, and any work that must not be split into task-sized features.",
     "Do not wrap the JSON in code fences.",
-    "",
-    "Current milestone:",
-    JSON.stringify(
-      {
-        position: input.milestonePosition,
-        title: input.milestoneTitle,
-        summary: input.milestoneSummary,
-      },
-      null,
-      2,
-    ),
-    "",
-    "Ordered milestone list:",
-    JSON.stringify(input.orderedMilestones, null, 2),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -687,16 +752,16 @@ export const buildMilestoneDesignPrompt = (input: {
 
 export const buildMilestoneDesignReviewPrompt = (input: {
   projectName: string;
-  milestone: {
-    position: number;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
     title: string;
-    summary: string;
-  };
-  orderedMilestones: Array<{
-    position: number;
-    title: string;
-    summary: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
   }>;
+  uxSpec: string;
+  technicalSpec: string;
   draftTitle: string;
   draftMarkdown: string;
 }) =>
@@ -704,78 +769,33 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Review and repair the milestone design document for "${input.milestone.title}" in "${input.projectName}".`,
+    `Review and tighten the milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "Preserve the scope and structure of the draft unless a wording repair is needed.",
-    "Treat the supplied milestone order as canonical. The milestone title is thematic and does not need a number prefix.",
-    'Remove vague deferrals such as "later milestone", "future milestone", or equivalent wording.',
-    "If sequencing must be mentioned, refer only to concrete milestones from the ordered milestone list.",
-    "Do not add new milestones or change the ordered milestone list.",
+    "Preserve the same milestone scope and structure, but improve feature-shaping clarity, coverage, and internal consistency.",
+    "Ensure Delivery Shape clearly defines feature-sized capability groupings, grouped cross-cutting work, and boundaries that prevent task-sized feature fragmentation.",
+    "Do not invent future-milestone scope.",
     "Do not wrap the JSON in code fences.",
     "",
-    "Current milestone:",
-    JSON.stringify(input.milestone, null, 2),
+    "Milestone summary:",
+    input.milestoneSummary,
     "",
-    "Ordered milestone list:",
-    JSON.stringify(input.orderedMilestones, null, 2),
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
     "",
-    "Draft design document title:",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+    "",
+    "First-pass milestone design title:",
     input.draftTitle,
     "",
-    "Draft design document markdown:",
+    "First-pass milestone design markdown:",
     input.draftMarkdown,
   ].join("\n");
 
-export const buildMilestoneDesignConsistencyPrompt = (input: {
-  projectName: string;
-  milestone: {
-    position: number;
-    title: string;
-    summary: string;
-  };
-  orderedMilestones: Array<{
-    position: number;
-    title: string;
-    summary: string;
-  }>;
-  currentDraft: {
-    title: string;
-    markdown: string;
-  };
-  existingCanonicalDesignDocs: Array<{
-    position: number;
-    milestoneTitle: string;
-    designDocTitle: string;
-    markdown: string;
-  }>;
-}) =>
-  [
-    qualityCharter,
-    "",
-    "Task:",
-    `Run a consistency review on the milestone design document for "${input.milestone.title}" in "${input.projectName}".`,
-    'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "Only revise the current milestone design document.",
-    "Use the ordered milestone list as the canonical release order.",
-    "Ensure the current draft does not silently defer required work to unspecified later milestones.",
-    "Ensure sequencing references in the current draft point only to concrete milestones from the ordered milestone list.",
-    "Do not change milestone count or invent new milestone names.",
-    "Do not wrap the JSON in code fences.",
-    "",
-    "Current milestone:",
-    JSON.stringify(input.milestone, null, 2),
-    "",
-    "Ordered milestone list:",
-    JSON.stringify(input.orderedMilestones, null, 2),
-    "",
-    "Current milestone draft:",
-    JSON.stringify(input.currentDraft, null, 2),
-    "",
-    "Existing canonical milestone design docs from the project:",
-    JSON.stringify(input.existingCanonicalDesignDocs, null, 2),
-  ].join("\n");
-
-export const buildAppendFeaturesFromOnePagerPrompt = (input: {
+export const buildMilestoneFeatureSetPrompt = (input: {
   existingFeatures: Array<{
     dependencies: string[];
     milestoneTitle: string;
@@ -796,18 +816,16 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
   projectProductSpec: string;
   projectTechnicalSpec: string;
   projectUxSpec: string;
-  userFlows: Array<{
-    flowSteps: string[];
+  linkedUserFlows: Array<{
+    id: string;
     title: string;
-    acceptanceCriteria: string[];
-    userStory: string;
   }>;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Append implementation-ready feature candidates for milestone "${input.milestone.title}" in "${input.projectName}".`,
+    `Generate the implementation-ready feature set for milestone "${input.milestone.title}" in "${input.projectName}".`,
     "Return valid JSON as a non-empty array.",
     "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
     "acceptanceCriteria must be a non-empty array of concrete strings.",
@@ -815,8 +833,11 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Create features only for the selected milestone.",
     "Use the approved planning documents and milestone design document to understand the current context.",
+    "A feature must represent one coherent capability or one deliberately grouped cross-cutting workstream, not an implementation task, review step, or single document fragment.",
     "Build on work already planned in earlier or parallel milestones instead of recreating it.",
     "Do not repeat or lightly rename an existing feature from any milestone.",
+    "Prefer the smallest set of coherent features that fully covers the milestone without overlap.",
+    "If documentation, architecture follow-up, or another cross-cutting concern belongs together for this milestone, keep it in one shared feature instead of splitting it across multiple small features.",
     "Order the proposed features so they can be implemented in a sensible sequence within the milestone.",
     "Prefer concrete vertical slices over vague epics.",
     "Do not wrap the JSON in code fences.",
@@ -833,8 +854,8 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
     "",
-    "Approved user flows:",
-    JSON.stringify(input.userFlows, null, 2),
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
     "",
     "Ordered milestone list:",
     JSON.stringify(input.milestones, null, 2),
@@ -847,6 +868,61 @@ export const buildAppendFeaturesFromOnePagerPrompt = (input: {
     "",
     "Existing feature catalogue across all milestones:",
     JSON.stringify(input.existingFeatures, null, 2),
+  ].join("\n");
+
+export const buildMilestoneFeatureSetReviewPrompt = (input: {
+  projectName: string;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  draftFeatures: Array<{
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    kind: string;
+    priority: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and rewrite the draft feature set for milestone "${input.milestone.title}" in "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    "priority must be one of: must_have, should_have, could_have, wont_have.",
+    "Review the full set as a whole. Merge task-sized or overlapping features, close obvious milestone coverage gaps, and keep sibling features non-overlapping.",
+    "Prefer fewer, feature-sized items over many tiny items.",
+    "Keep the result scoped only to the selected milestone.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
+    JSON.stringify(input.existingFeatures, null, 2),
+    "",
+    "First-pass draft feature set:",
+    JSON.stringify(input.draftFeatures, null, 2),
   ].join("\n");
 
 const renderFeatureContext = (input: {
@@ -868,6 +944,17 @@ const renderFeatureContext = (input: {
     2,
   );
 
+const renderSiblingFeatures = (
+  siblings: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>,
+) => JSON.stringify(siblings, null, 2);
+
+const renderRepairHint = (hint?: string | null) =>
+  hint?.trim() ? ["Repair objective:", hint.trim(), ""] : [];
+
 export const buildFeatureProductSpecPrompt = (input: {
   feature: {
     acceptanceCriteria: string[];
@@ -876,9 +963,16 @@ export const buildFeatureProductSpecPrompt = (input: {
     summary: string;
     title: string;
   };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
   productSpec: string;
   technicalSpec: string;
   uxSpec: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -888,10 +982,18 @@ export const buildFeatureProductSpecPrompt = (input: {
     "Return valid JSON with top-level keys: \"title\", \"markdown\", and \"requirements\".",
     "The markdown must be detailed, implementation-oriented, and scoped only to the feature described below.",
     "The requirements object must contain boolean keys: uxRequired, techRequired, userDocsRequired, archDocsRequired.",
+    "Use the milestone design doc and sibling feature list to keep ownership boundaries clear. Do not narrow the feature into a task-sized slice or expand it into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.productSpec,
@@ -903,11 +1005,72 @@ export const buildFeatureProductSpecPrompt = (input: {
     input.technicalSpec,
   ].join("\n");
 
+export const buildFeatureProductSpecReviewPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  draftTitle: string;
+  draftMarkdown: string;
+  requirements: {
+    uxRequired: boolean;
+    techRequired: boolean;
+    userDocsRequired: boolean;
+    archDocsRequired: boolean;
+  };
+  hint?: string | null;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the feature Product Spec for "${input.feature.title}".`,
+    'Return valid JSON with top-level keys: "title", "markdown", and "requirements".',
+    "Preserve the intended feature scope while improving coverage, ownership boundaries, and consistency with the milestone design.",
+    "Do not let the reviewed draft collapse into task-sized work or bleed into sibling features.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    ...renderRepairHint(input.hint),
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
+    "First-pass feature Product Spec title:",
+    input.draftTitle,
+    "",
+    "First-pass feature Product Spec markdown:",
+    input.draftMarkdown,
+    "",
+    "First-pass feature Product Spec requirements:",
+    JSON.stringify(input.requirements, null, 2),
+  ].join("\n");
+
 export const buildFeatureUxSpecPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectUxSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -916,10 +1079,18 @@ export const buildFeatureUxSpecPrompt = (input: {
     `Generate the feature-scoped UX Spec for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project UX Spec as the UX-system reference.",
+    "Use the milestone design doc and sibling feature summaries to avoid drifting into neighboring feature scope.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -931,8 +1102,15 @@ export const buildFeatureUxSpecPrompt = (input: {
 export const buildFeatureTechSpecPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectTechnicalSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -941,10 +1119,18 @@ export const buildFeatureTechSpecPrompt = (input: {
     `Generate the feature-scoped Technical Spec for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project Technical Spec as the technical-system reference.",
+    "Use the milestone design doc and sibling feature summaries to keep the implementation boundary clear.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -956,8 +1142,15 @@ export const buildFeatureTechSpecPrompt = (input: {
 export const buildFeatureUserDocsPrompt = (input: {
   featureProductSpec: string;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectProductSpec: string;
   projectUxSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -966,10 +1159,18 @@ export const buildFeatureUserDocsPrompt = (input: {
     `Generate user-facing documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on user-facing behavior, setup expectations, and walkthrough guidance rather than implementation details.",
+    "Keep documentation ownership aligned to this feature only. If related documentation belongs to a sibling feature, do not absorb it here.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Approved feature Product Spec:",
     input.featureProductSpec,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
     "",
     "Approved project Product Spec:",
     input.projectProductSpec,
@@ -981,7 +1182,14 @@ export const buildFeatureUserDocsPrompt = (input: {
 export const buildFeatureArchDocsPrompt = (input: {
   featureTechSpec: string | null;
   featureTitle: string;
+  milestoneDesignDoc: string;
   projectTechnicalSpec: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -990,13 +1198,263 @@ export const buildFeatureArchDocsPrompt = (input: {
     `Generate internal architecture documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
+    "Keep the document scoped to this feature's owned architecture. Use the milestone design doc and sibling feature summaries to avoid duplicating another feature's architecture notes.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     ...(input.featureTechSpec
       ? ["Approved feature Technical Spec:", input.featureTechSpec, ""]
       : []),
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
     "Approved project Technical Spec:",
     input.projectTechnicalSpec,
+  ].join("\n");
+
+export const buildFeatureWorkstreamReviewPrompt = (input: {
+  workstreamLabel: string;
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  siblingFeatures: Array<{
+    featureKey?: string;
+    title: string;
+    summary: string;
+  }>;
+  draftTitle: string;
+  draftMarkdown: string;
+  hint?: string | null;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the ${input.workstreamLabel} for "${input.feature.title}".`,
+    'Return valid JSON with non-empty "title" and "markdown" keys.',
+    "Preserve the same feature scope while improving completeness, consistency, and ownership boundaries.",
+    "Do not widen the scope into sibling features and do not collapse it into a task-sized fragment.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    ...renderRepairHint(input.hint),
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Sibling features in this milestone:",
+    renderSiblingFeatures(input.siblingFeatures),
+    "",
+    `First-pass ${input.workstreamLabel} title:`,
+    input.draftTitle,
+    "",
+    `First-pass ${input.workstreamLabel} markdown:`,
+    input.draftMarkdown,
+  ].join("\n");
+
+export const buildMilestoneCoverageReviewPrompt = (input: {
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  features: Array<{
+    acceptanceCriteria: string[];
+    featureKey: string;
+    workstreams: {
+      product: "approved" | "missing" | "draft";
+      ux: "approved" | "missing" | "draft";
+      tech: "approved" | "missing" | "draft";
+      userDocs: "approved" | "missing" | "draft";
+      archDocs: "approved" | "missing" | "draft";
+    };
+    title: string;
+    summary: string;
+    taskCount: number;
+    taskTitles: string[];
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review whether the planned work fully covers milestone "${input.milestone.title}".`,
+    'Return valid JSON with exactly three keys: "complete" (boolean), "milestoneId" (string placeholder ignored by the prompt consumer), and "issues" (array).',
+    'Each issue must be an object with exactly two keys: "action" and "hint".',
+    '"action" must be either "rewrite_feature_set" or "needs_human_review".',
+    "Only report material coverage gaps between the milestone design doc and the current feature/task plan.",
+    "Be conservative. Do not report minor wording differences or implied detail that is already covered.",
+    'Use "rewrite_feature_set" when the current milestone feature boundaries need to be rewritten to resolve the gap cleanly.',
+    'Use "needs_human_review" when the gap is ambiguous, structural, or likely requires manual milestone or design changes.',
+    "If coverage is complete, return complete=true and an empty issues array.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Current milestone features, workstream status, and task titles:",
+    JSON.stringify(input.features, null, 2),
+  ].join("\n");
+
+export const buildRewriteMilestoneFeatureSetPrompt = (input: {
+  issues: Array<{
+    action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+    hint: string;
+  }>;
+  attemptNumber: number;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  currentMilestoneFeatures: Array<{
+    title: string;
+    summary: string;
+  }>;
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  overviewDocument: string;
+  projectName: string;
+  projectProductSpec: string;
+  projectTechnicalSpec: string;
+  projectUxSpec: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Rewrite the full feature set for milestone "${input.milestone.title}" in "${input.projectName}" so it cleanly resolves the surfaced milestone coverage gap.`,
+    `This is milestone coverage auto-repair attempt ${input.attemptNumber}.`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "acceptanceCriteria must be a non-empty array of concrete strings.",
+    "IMPORTANT: kind MUST be exactly one of these values with no variation: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    "priority must be one of: must_have, should_have, could_have, wont_have.",
+    "The output is the full replacement feature set for this milestone, not just the incremental fix.",
+    "Rewrite sibling boundaries as needed so cross-feature interaction issues are handled inside the feature set itself.",
+    "Prefer fewer, coherent feature-sized items over task-sized fragments.",
+    "Keep the result scoped only to the selected milestone and avoid duplicating features from other milestones.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Coverage issues to close in this rewrite:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Approved overview document:",
+    input.overviewDocument,
+    "",
+    "Approved project Product Spec:",
+    input.projectProductSpec,
+    "",
+    "Approved project UX Spec:",
+    input.projectUxSpec,
+    "",
+    "Approved project Technical Spec:",
+    input.projectTechnicalSpec,
+    "",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Current milestone feature set to replace:",
+    JSON.stringify(input.currentMilestoneFeatures, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
+    JSON.stringify(input.existingFeatures, null, 2),
+  ].join("\n");
+
+export const buildRewriteMilestoneFeatureSetReviewPrompt = (input: {
+  issues: Array<{
+    action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+    hint: string;
+  }>;
+  attemptNumber: number;
+  linkedUserFlows: Array<{
+    id: string;
+    title: string;
+  }>;
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  currentMilestoneFeatures: Array<{
+    title: string;
+    summary: string;
+  }>;
+  existingFeatures: Array<{
+    dependencies: string[];
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  }>;
+  draftFeatures: Array<{
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    kind: string;
+    priority: string;
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the rewritten feature set for milestone "${input.milestone.title}".`,
+    `This is milestone coverage auto-repair attempt ${input.attemptNumber}.`,
+    "Return valid JSON as a non-empty array.",
+    "Each item must be an object with exactly these keys: title, summary, acceptanceCriteria, kind, priority.",
+    "acceptanceCriteria must be a non-empty array of concrete strings.",
+    "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
+    "priority must be one of: must_have, should_have, could_have, wont_have.",
+    "Preserve the intended full-set rewrite, close the named gap cleanly, and keep sibling feature ownership clear.",
+    "Merge overlapping or task-sized items back into coherent features.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Coverage issues to close in this rewrite:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Selected milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "User flows linked to the selected milestone:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Current milestone feature set to replace:",
+    JSON.stringify(input.currentMilestoneFeatures, null, 2),
+    "",
+    "Existing feature catalogue across all milestones:",
+    JSON.stringify(input.existingFeatures, null, 2),
+    "",
+    "First-pass rewritten feature set:",
+    JSON.stringify(input.draftFeatures, null, 2),
   ].join("\n");
 
 export const buildTaskClarificationsPrompt = (input: {
@@ -1007,7 +1465,8 @@ export const buildTaskClarificationsPrompt = (input: {
     summary: string;
     title: string;
   };
-  techSpec: string;
+  planningDocuments: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1017,15 +1476,17 @@ export const buildTaskClarificationsPrompt = (input: {
     "Return valid JSON as a non-empty array of objects.",
     "Each object must have a \"question\" key with a clear, specific question for the implementation.",
     "Each object may have an optional \"context\" key with additional context.",
-    "Focus on ambiguous areas in the tech spec, acceptance criteria, or implementation approach.",
+    "Focus on ambiguous areas in the approved feature planning documents, acceptance criteria, or implementation approach.",
+    "Ask only blocker-level questions that materially change implementation. Do not ask low-value polish questions or questions already answered clearly by the provided specs.",
     "Ask about edge cases, error handling, integration points, and data model decisions.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
-    "Approved feature Technical Spec:",
-    input.techSpec,
+    "Approved feature planning documents:",
+    input.planningDocuments,
   ].join("\n");
 
 export const buildAutoAnswerClarificationsPrompt = (input: {
@@ -1037,7 +1498,8 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     summary: string;
     title: string;
   };
-  techSpec: string;
+  planningDocuments: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1046,14 +1508,15 @@ export const buildAutoAnswerClarificationsPrompt = (input: {
     `Answer clarification questions for implementing "${input.feature.title}".`,
     "Return valid JSON as an array of objects matching the input order.",
     "Each object must have an \"answer\" key with a helpful, implementation-focused answer.",
-    "Derive answers from the tech spec, feature context, and standard software engineering practices.",
+    "Derive answers from the approved feature planning documents, feature context, and standard software engineering practices.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
-    "Approved feature Technical Spec:",
-    input.techSpec,
+    "Approved feature planning documents:",
+    input.planningDocuments,
     "",
     "Clarification questions:",
     JSON.stringify(
@@ -1072,7 +1535,9 @@ export const buildFeatureTaskListPrompt = (input: {
     summary: string;
     title: string;
   };
-  techSpec: string;
+  milestoneDesignDoc: string;
+  planningDocuments: string;
+  hint?: string | null;
 }) =>
   [
     qualityCharter,
@@ -1082,18 +1547,198 @@ export const buildFeatureTaskListPrompt = (input: {
     "Return valid JSON as a non-empty array of objects.",
     "Each object must have: \"title\", \"description\", \"instructions\" (optional), \"acceptanceCriteria\" (array).",
     "Order tasks in implementation sequence: setup, core logic, integration, testing.",
-    "Each task should be completable in a single implementation session.",
+    "Prefer the smallest set of coherent implementation phases that can deliver this feature safely. Do not split the work into micro-tasks just because the steps are individually small.",
+    "Merge tightly related coding, testing, and documentation work when they belong to the same implementation phase.",
     "Instructions should provide concrete guidance for how to implement.",
+    "Ensure the full task list covers the feature acceptance criteria and any required testing, integration, migration, or documentation work implied by the specs.",
     "Do not wrap the JSON in code fences.",
     "",
+    ...renderRepairHint(input.hint),
     "Feature context:",
     renderFeatureContext(input.feature),
     "",
-    "Approved feature Technical Spec:",
-    input.techSpec,
+    "Approved feature planning documents:",
+    input.planningDocuments,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
     "",
     "Clarification answers:",
     JSON.stringify(input.clarifications, null, 2),
+  ].join("\n");
+
+export const buildFeatureTaskListReviewPrompt = (input: {
+  feature: {
+    acceptanceCriteria: string[];
+    featureKey: string;
+    milestoneTitle: string;
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  planningDocuments: string;
+  draftTasks: Array<{
+    title: string;
+    description: string;
+    instructions?: string | null;
+    acceptanceCriteria: string[];
+  }>;
+  hint?: string | null;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the implementation task list for "${input.feature.title}".`,
+    "Return valid JSON as a non-empty array of objects.",
+    'Each object must have: "title", "description", "instructions" (optional), "acceptanceCriteria" (array).',
+    "Review the full task list as a whole. Merge micro-tasks, restore missing coverage, and keep each task aligned to this feature's owned scope.",
+    "The final task list should cover the feature acceptance criteria without spilling work into neighboring features.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    ...renderRepairHint(input.hint),
+    "Feature context:",
+    renderFeatureContext(input.feature),
+    "",
+    "Approved feature planning documents:",
+    input.planningDocuments,
+    "",
+    "Milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "First-pass task list:",
+    JSON.stringify(input.draftTasks, null, 2),
+  ].join("\n");
+
+export const buildMilestoneCoverageRepairPrompt = (input: {
+  issues: Array<{ action: "needs_human_review"; hint: string }>;
+  attemptNumber: number;
+  previousUnresolvedReasons?: string[];
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  milestoneDesignDoc: string;
+  features: Array<{
+    featureKey: string;
+    title: string;
+    summary: string;
+    acceptanceCriteria: string[];
+    taskTitles: string[];
+  }>;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Resolve the milestone coverage gaps for milestone "${input.milestone.title}" without editing the milestone design document itself.`,
+    `This is milestone coverage auto-repair attempt ${input.attemptNumber}.`,
+    'Return valid JSON with exactly four top-level keys: "resolved" (boolean), "defaultsChosen" (array), "operations" (array), and "unresolvedReasons" (array).',
+    'Each defaultsChosen item must contain exactly: "issueIndex", "decision", "rationale".',
+    'Each operations item must contain exactly: "featureKey", "featurePatch", "refresh", and "hint".',
+    'featurePatch must be either null or an object with exactly: "title", "summary", "acceptanceCriteria".',
+    'refresh must be an object with exactly these boolean keys: "product", "ux", "tech", "userDocs", "archDocs", "tasks".',
+    "Use only existing features from the selected milestone. Do not add, remove, move, or merge features.",
+    "Choose conservative defaults that satisfy the milestone design document and keep work inside the active milestone.",
+    "If the gaps cannot be resolved with updates to existing feature definitions, workstreams, and tasks, return resolved=false and explain why in unresolvedReasons.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    `Valid featureKey values for operations (use ONLY these exact strings): ${JSON.stringify(input.features.map((f) => f.featureKey))}`,
+    "",
+    "Example of a valid operation:",
+    JSON.stringify({
+      featureKey: "F-001",
+      featurePatch: { title: "Updated title", summary: "Updated summary", acceptanceCriteria: ["Criterion 1"] },
+      refresh: { product: true, ux: false, tech: false, userDocs: false, archDocs: false, tasks: false },
+      hint: "Expanded feature scope to cover missing authentication flow",
+    }, null, 2),
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Coverage gaps to resolve:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    ...(input.previousUnresolvedReasons?.length
+      ? [
+          "Previous unresolved reasons from the prior repair attempt:",
+          JSON.stringify(input.previousUnresolvedReasons, null, 2),
+          "",
+        ]
+      : []),
+    "Current active-milestone features and task titles:",
+    JSON.stringify(input.features, null, 2),
+  ].join("\n");
+
+export const buildMilestoneCoverageRepairReviewPrompt = (input: {
+  milestone: {
+    summary: string;
+    title: string;
+  };
+  attemptNumber: number;
+  milestoneDesignDoc: string;
+  issues: Array<{ action: "needs_human_review"; hint: string }>;
+  previousUnresolvedReasons?: string[];
+  draftPlan: {
+    resolved: boolean;
+    defaultsChosen: Array<{
+      issueIndex: number;
+      decision: string;
+      rationale: string;
+    }>;
+    operations: Array<{
+      featureKey: string;
+      featurePatch: {
+        title: string;
+        summary: string;
+        acceptanceCriteria: string[];
+      } | null;
+      refresh: {
+        product: boolean;
+        ux: boolean;
+        tech: boolean;
+        userDocs: boolean;
+        archDocs: boolean;
+        tasks: boolean;
+      };
+      hint: string;
+    }>;
+    unresolvedReasons: string[];
+  };
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review and tighten the milestone coverage repair plan for milestone "${input.milestone.title}".`,
+    `This is milestone coverage auto-repair attempt ${input.attemptNumber}.`,
+    'Return valid JSON with exactly four top-level keys: "resolved", "defaultsChosen", "operations", and "unresolvedReasons".',
+    "Keep the plan conservative, executable, and limited to existing active-milestone features.",
+    "Do not invent milestone-document changes or cross-milestone work.",
+    "If the draft plan is overreaching, reduce it or set resolved=false.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Selected milestone:",
+    JSON.stringify(input.milestone, null, 2),
+    "",
+    "Canonical milestone design document:",
+    input.milestoneDesignDoc,
+    "",
+    "Coverage gaps to resolve:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    ...(input.previousUnresolvedReasons?.length
+      ? [
+          "Previous unresolved reasons from the prior repair attempt:",
+          JSON.stringify(input.previousUnresolvedReasons, null, 2),
+          "",
+        ]
+      : []),
+    "First-pass repair plan:",
+    JSON.stringify(input.draftPlan, null, 2),
   ].join("\n");
 
 export const buildDeliveryReviewPrompt = (input: {

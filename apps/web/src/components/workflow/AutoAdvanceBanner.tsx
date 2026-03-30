@@ -10,6 +10,8 @@ const pausedReasonLabel: Record<string, string> = {
   manual_pause: "paused manually",
   budget_exceeded: "budget exceeded",
   needs_human: "waiting for human input",
+  milestone_repair_limit_reached: "milestone repair limit reached",
+  review_limit_reached: "delivery review limit reached",
 };
 
 const statusTone = (
@@ -62,11 +64,33 @@ export const AutoAdvanceBanner = ({
           {pausedLabel && (
             <p className="text-xs text-warning">Paused: {pausedLabel}</p>
           )}
+          {session?.autoRepairMilestoneCoverage ? (
+            <p className="text-xs text-secondary">
+              Milestone coverage auto-repair is enabled for this session.
+            </p>
+          ) : null}
+          {session && session.milestoneRepairCount > 0 ? (
+            <p className="text-xs text-secondary">
+              Milestone repair attempts used: {session.milestoneRepairCount}/3
+            </p>
+          ) : null}
           {nextStep && (
             <p className="text-xs text-secondary">
               Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
             </p>
           )}
+          {nextStep === "milestone_reconciliation_resolve" ? (
+            <p className="text-xs text-warning">
+              Auto-advance cannot continue until the active milestone gaps are resolved in
+              Milestones and reconciliation is rerun.
+            </p>
+          ) : null}
+          {session?.pausedReason === "milestone_repair_limit_reached" ? (
+            <p className="text-xs text-warning">
+              Auto-advance tried milestone coverage repair three times and paused for manual
+              follow-up.
+            </p>
+          ) : null}
         </div>
       )}
     </div>

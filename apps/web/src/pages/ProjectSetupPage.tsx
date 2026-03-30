@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
-import { buildSetupTertiaryItems } from "../components/layout/project-navigation.js";
+import { buildSettingsTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { Alert } from "../components/ui/Alert.js";
@@ -276,13 +276,13 @@ export const ProjectSetupPage = () => {
 
   return (
     <ProjectPageFrame
-      activeSection="setup"
+      activeSection="settings"
       project={projectQuery.data}
-      tertiaryItems={buildSetupTertiaryItems(projectQuery.data)}
+      tertiaryItems={buildSettingsTertiaryItems(projectQuery.data)}
     >
       <PageIntro
         eyebrow="Project"
-        title="Project Setup"
+        title="Project Settings"
         summary="Use this page to connect the repository, verify the project LLM, confirm sandbox defaults, and complete the checks that unlock the planning workflow."
         meta={
           <>
