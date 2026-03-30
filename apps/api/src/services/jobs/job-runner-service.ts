@@ -857,6 +857,85 @@ const parseMilestoneCoverageReviewResult = (value: string) => {
   };
 };
 
+const parseMilestoneMapReviewResult = (value: string) => {
+  const parsed = parseJson<{
+    complete?: boolean;
+    issues?: Array<{ action?: string; hint?: string; jobType?: string }>;
+  }>(value);
+
+  if (!parsed || typeof parsed.complete !== "boolean") {
+    throw new Error(
+      'ReviewMilestoneMap returned invalid content. Expected JSON with a "complete" boolean.',
+    );
+  }
+
+  const issues = (parsed.issues ?? [])
+    .flatMap((issue) => {
+      if (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") {
+        return [{ action: issue.action, hint: issue.hint }];
+      }
+
+      if (issue.jobType === "GenerateMilestones" && typeof issue.hint === "string") {
+        return [{ action: "rewrite_milestone_map" as const, hint: issue.hint }];
+      }
+
+      return [];
+    })
+    .filter(
+      (issue): issue is { action: "rewrite_milestone_map" | "needs_human_review"; hint: string } =>
+        (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") &&
+        typeof issue.hint === "string" &&
+        issue.hint.trim().length > 0,
+    )
+    .map((issue) => ({
+      action: issue.action,
+      hint: issue.hint.trim(),
+    }));
+
+  return {
+    complete: parsed.complete,
+    issues,
+  };
+};
+
+const parseMilestoneDeliveryReviewResult = (value: string) => {
+  const parsed = parseJson<{
+    complete?: boolean;
+    issues?: Array<{ action?: string; hint?: string }>;
+  }>(value);
+
+  if (!parsed || typeof parsed.complete !== "boolean") {
+    throw new Error(
+      'ReviewMilestoneDelivery returned invalid content. Expected JSON with a "complete" boolean.',
+    );
+  }
+
+  const issues: Array<{ action: "refresh_artifacts" | "needs_human_review"; hint: string }> = [];
+  for (const issue of parsed.issues ?? []) {
+    if (typeof issue.hint !== "string" || issue.hint.trim().length === 0) {
+      continue;
+    }
+
+    if (
+      issue.action === "refresh_artifacts" ||
+      issue.action === "rewrite_feature_set" ||
+      issue.action === "create_catch_up_feature"
+    ) {
+      issues.push({ action: "refresh_artifacts", hint: issue.hint.trim() });
+      continue;
+    }
+
+    if (issue.action === "needs_human_review") {
+      issues.push({ action: "needs_human_review", hint: issue.hint.trim() });
+    }
+  }
+
+  return {
+    complete: parsed.complete,
+    issues,
+  };
+};
+
 const parseMilestoneCoverageIssuesInput = (
   issues: Array<{ action?: string; hint?: string }> | undefined,
 ) =>
@@ -2573,14 +2652,145 @@ export const createJobRunnerService = (input: {
         }
 
         const milestones = validateGeneratedMilestones(parsed);
-        for (const milestone of milestones) {
-          await input.milestoneService.create(
-            ownerUserId,
-            rawJob.projectId,
-            milestone,
-            rawJob.id,
+        await input.milestoneService.replaceDraftMilestoneMap({
+          ownerUserId,
+          projectId: rawJob.projectId,
+          items: milestones,
+          createdByJobId: rawJob.id,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, { createdCount: milestones.length });
+      }
+
+      case "ReviewMilestoneMap": {
+        if (!input.milestoneService) {
+          throw new Error("ReviewMilestoneMap requires milestone service support.");
+        }
+
+        const [productSpec, userFlows, milestones] = await Promise.all([
+          input.productSpecService.getCanonical(ownerUserId, rawJob.projectId),
+          input.userFlowService.list(ownerUserId, rawJob.projectId),
+          input.milestoneService.list(ownerUserId, rawJob.projectId),
+        ]);
+
+        const prompt = buildDeliveryReviewPrompt({
+          projectName: project.name,
+          productSpec: productSpec?.markdown ?? "",
+          userFlows: userFlows.userFlows.map((flow) => ({
+            title: flow.title,
+            userStory: flow.userStory,
+          })),
+          milestones: milestones.milestones.map((milestone) => ({
+            title: milestone.title,
+            summary: milestone.summary,
+            featureCount: milestone.featureCount,
+          })),
+        });
+
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await storeLlmRun({
+          templateId: rawJob.type,
+          parameters: {},
+          prompt,
+          generated,
+        });
+
+        const review = await parseStructuredJsonWithRepair({
+          templateId: rawJob.type,
+          parameters: {},
+          prompt,
+          generated,
+          parse: parseMilestoneMapReviewResult,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          complete: review.complete,
+          issues: review.issues,
+        });
+      }
+
+      case "RewriteMilestoneMap": {
+        if (!input.milestoneService) {
+          throw new Error("RewriteMilestoneMap requires milestone service support.");
+        }
+
+        const repairInput = parseJson<{
+          issues?: Array<{ action?: string; hint?: string }>;
+          attemptNumber?: number;
+        }>(JSON.stringify(rawJob.inputs));
+        const repairHints = (repairInput?.issues ?? [])
+          .filter(
+            (issue): issue is { action: "rewrite_milestone_map" | "needs_human_review"; hint: string } =>
+              (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") &&
+              typeof issue.hint === "string" &&
+              issue.hint.trim().length > 0,
+          )
+          .map((issue) => issue.hint.trim());
+        const hint = [
+          repairInput?.attemptNumber ? `Repair attempt ${repairInput.attemptNumber}.` : null,
+          ...repairHints,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join("\n");
+        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+        const blueprints = await input.blueprintService.getCanonical(ownerUserId, rawJob.projectId);
+
+        if (!userFlows.approvedAt) {
+          throw new Error("RewriteMilestoneMap requires approved user flows.");
+        }
+
+        if (!blueprints.uxBlueprint || !blueprints.techBlueprint) {
+          throw new Error("RewriteMilestoneMap requires approved UX and Technical Specs.");
+        }
+
+        const prompt = buildMilestonePlanPrompt({
+          projectName: project.name,
+          uxSpec: blueprints.uxBlueprint.markdown,
+          technicalSpec: blueprints.techBlueprint.markdown,
+          userFlows: userFlows.userFlows.map((flow) => ({
+            id: flow.id,
+            title: flow.title,
+            userStory: flow.userStory,
+            entryPoint: flow.entryPoint,
+            endState: flow.endState,
+          })),
+          hint: hint.length > 0 ? hint : undefined,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await assertAutoAdvanceBatchIsCurrent();
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: rawJob.type,
+          parameters: { hint },
+          input: { prompt },
+          output: { content: generated.content },
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          createdAt: new Date(),
+        });
+        const parsed = parseMilestonesResult(generated.content);
+
+        if (!parsed) {
+          throw new Error(
+            "RewriteMilestoneMap returned invalid content. Expected a JSON array of milestones.",
           );
         }
+
+        const milestones = validateGeneratedMilestones(parsed);
+        await input.milestoneService.replaceDraftMilestoneMap({
+          ownerUserId,
+          projectId: rawJob.projectId,
+          items: milestones,
+          createdByJobId: rawJob.id,
+        });
 
         return input.jobService.markSucceeded(rawJob.id, { createdCount: milestones.length });
       }
@@ -2668,6 +2878,7 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, { designDocId: created.id });
       }
 
+      case "ReviewMilestoneScope":
       case "ReviewMilestoneCoverage": {
         if (!input.milestoneService || !input.featureService || !input.featureWorkstreamService) {
           throw new Error("ReviewMilestoneCoverage requires milestone and feature support.");
@@ -3028,6 +3239,99 @@ export const createJobRunnerService = (input: {
         });
       }
 
+      case "ReviewMilestoneDelivery": {
+        if (
+          !input.featureService ||
+          !input.featureWorkstreamService ||
+          !input.milestoneService ||
+          !taskPlanning
+        ) {
+          throw new Error(
+            "ReviewMilestoneDelivery requires milestone, feature, workstream, and task planning support.",
+          );
+        }
+
+        const jobInput = parseJobInputs<{ milestoneId?: string }>(rawJob.inputs);
+        const milestoneId = jobInput?.milestoneId;
+        if (!milestoneId) {
+          throw new Error("ReviewMilestoneDelivery requires a milestoneId.");
+        }
+
+        await input.milestoneService.assertActiveMilestone(ownerUserId, rawJob.projectId, milestoneId);
+        const milestone = await getScopedMilestone(milestoneId);
+        const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
+          ownerUserId,
+          milestoneId,
+        );
+
+        if (!milestone || !milestoneDesignDoc) {
+          throw new Error(
+            "ReviewMilestoneDelivery requires a canonical milestone design document.",
+          );
+        }
+
+        const { features } = await input.featureService.list(ownerUserId, rawJob.projectId);
+        const milestoneFeatures = features.filter((feature) => feature.milestoneId === milestoneId);
+        const featurePayload = await Promise.all(
+          milestoneFeatures.map(async (feature) => {
+            const tracks = await input.featureWorkstreamService!.getTracks(ownerUserId, feature.id);
+            const session = await taskPlanning.getSession(ownerUserId, feature.id);
+            const tasks = session ? await taskPlanning.getTasks(ownerUserId, session.id) : [];
+            return {
+              featureKey: feature.featureKey,
+              title: feature.headRevision.title,
+              summary: feature.headRevision.summary,
+              acceptanceCriteria: Array.isArray(feature.headRevision.acceptanceCriteria)
+                ? feature.headRevision.acceptanceCriteria.filter(
+                    (item): item is string => typeof item === "string",
+                  )
+                : [],
+              workstreams: {
+                product: tracks.tracks.product.status,
+                ux: tracks.tracks.ux.status,
+                tech: tracks.tracks.tech.status,
+                userDocs: tracks.tracks.userDocs.status,
+                archDocs: tracks.tracks.archDocs.status,
+              },
+              taskCount: tasks.length,
+              taskTitles: tasks.map((task) => task.title),
+            };
+          }),
+        );
+
+        const prompt = buildMilestoneCoverageReviewPrompt({
+          milestone: {
+            title: milestone.title,
+            summary: milestone.summary,
+          },
+          milestoneDesignDoc: milestoneDesignDoc.markdown,
+          features: featurePayload,
+        });
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          responseFormat: "json",
+        });
+        await storeLlmRun({
+          templateId: rawJob.type,
+          parameters: { milestoneId },
+          prompt,
+          generated,
+        });
+
+        const review = await parseStructuredJsonWithRepair({
+          templateId: rawJob.type,
+          parameters: { milestoneId },
+          prompt,
+          generated,
+          parse: parseMilestoneDeliveryReviewResult,
+        });
+        return input.jobService.markSucceeded(rawJob.id, {
+          milestoneId,
+          complete: review.complete,
+          issues: review.issues,
+        });
+      }
+
+      case "ResolveMilestoneDeliveryIssues":
       case "ResolveMilestoneCoverageIssues": {
         if (
           !input.featureService ||

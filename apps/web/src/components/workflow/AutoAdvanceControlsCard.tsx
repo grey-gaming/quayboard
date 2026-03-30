@@ -102,7 +102,9 @@ export const AutoAdvanceControlsCard = ({
     isPaused &&
     (session?.pausedReason === "needs_human" ||
       session?.pausedReason === "milestone_repair_limit_reached") &&
-    nextStep === "milestone_reconciliation_resolve";
+    (nextStep === "milestone_reconciliation_resolve" ||
+      nextStep === "milestone_scope_resolve" ||
+      nextStep === "milestone_delivery_resolve");
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;

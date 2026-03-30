@@ -544,7 +544,7 @@ export const createTaskPlanningService = (
         where: eq(featureCasesTable.id, session.featureId),
       });
       if (feature) {
-        await milestoneService?.invalidateReconciliation(feature.milestoneId);
+        await milestoneService?.invalidateDeliveryReview(feature.milestoneId);
       }
     }
   },
@@ -600,7 +600,7 @@ export const createTaskPlanningService = (
       where: eq(featureCasesTable.id, featureId),
     });
     if (feature) {
-      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+      await milestoneService?.invalidateDeliveryReview(feature.milestoneId);
     }
 
     return toDeliveryTask(record!);
@@ -660,7 +660,7 @@ export const createTaskPlanningService = (
       where: eq(featureCasesTable.id, featureId),
     });
     if (feature) {
-      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+      await milestoneService?.invalidateDeliveryReview(feature.milestoneId);
     }
 
     return toDeliveryTask(record!);
@@ -685,7 +685,7 @@ export const createTaskPlanningService = (
       where: eq(featureCasesTable.id, featureId),
     });
     if (feature) {
-      await milestoneService?.invalidateReconciliation(feature.milestoneId);
+      await milestoneService?.invalidateDeliveryReview(feature.milestoneId);
     }
 
     return { success: true };

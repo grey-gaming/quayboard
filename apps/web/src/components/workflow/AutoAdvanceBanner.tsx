@@ -10,6 +10,7 @@ const pausedReasonLabel: Record<string, string> = {
   manual_pause: "paused manually",
   budget_exceeded: "budget exceeded",
   needs_human: "waiting for human input",
+  milestone_map_repair_limit_reached: "milestone map repair limit reached",
   milestone_repair_limit_reached: "milestone repair limit reached",
   review_limit_reached: "delivery review limit reached",
 };
@@ -79,10 +80,23 @@ export const AutoAdvanceBanner = ({
               Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
             </p>
           )}
-          {nextStep === "milestone_reconciliation_resolve" ? (
+          {nextStep === "milestone_map_resolve" ? (
+            <p className="text-xs text-warning">
+              Auto-advance cannot continue until the milestone map issues are resolved in
+              Milestones and the map review is rerun.
+            </p>
+          ) : null}
+          {nextStep === "milestone_reconciliation_resolve" ||
+          nextStep === "milestone_scope_resolve" ||
+          nextStep === "milestone_delivery_resolve" ? (
             <p className="text-xs text-warning">
               Auto-advance cannot continue until the active milestone gaps are resolved in
-              Milestones and reconciliation is rerun.
+              Milestones and the relevant review is rerun.
+            </p>
+          ) : null}
+          {session?.pausedReason === "milestone_map_repair_limit_reached" ? (
+            <p className="text-xs text-warning">
+              Auto-advance tried milestone map repair three times and paused for manual follow-up.
             </p>
           ) : null}
           {session?.pausedReason === "milestone_repair_limit_reached" ? (

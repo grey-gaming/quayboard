@@ -430,7 +430,7 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       return featureId;
     });
 
-    await milestoneService?.invalidateReconciliation(payload.milestoneId);
+    await milestoneService?.invalidateScopeReview(payload.milestoneId);
 
     return this.get(ownerUserId, featureId);
   },
@@ -454,7 +454,10 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       })
       .where(eq(featureCasesTable.id, featureId));
 
-    await milestoneService?.invalidateReconciliation(payload.milestoneId ?? context.milestoneId);
+    if (payload.milestoneId && payload.milestoneId !== context.milestoneId) {
+      await milestoneService?.invalidateScopeReview(context.milestoneId);
+    }
+    await milestoneService?.invalidateScopeReview(payload.milestoneId ?? context.milestoneId);
 
     return this.get(ownerUserId, featureId);
   },
@@ -485,7 +488,7 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
         );
     });
 
-    await milestoneService?.invalidateReconciliation(context.milestoneId);
+    await milestoneService?.invalidateScopeReview(context.milestoneId);
 
     return this.list(ownerUserId, context.projectId);
   },
@@ -546,7 +549,7 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
         .where(eq(featureCasesTable.id, featureId));
     });
 
-    await milestoneService?.invalidateReconciliation(context.milestoneId);
+    await milestoneService?.invalidateScopeReview(context.milestoneId);
 
     return this.listRevisions(ownerUserId, featureId);
   },
@@ -895,7 +898,7 @@ export const createFeatureService = (db: AppDatabase, milestoneService?: Milesto
       };
     });
 
-    await milestoneService?.invalidateReconciliation(input.milestoneId);
+    await milestoneService?.invalidateScopeReview(input.milestoneId);
 
     return result;
   },

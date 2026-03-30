@@ -184,11 +184,35 @@ export const createNextActionsService = (
           ]);
           const activeMilestone =
             milestones.milestones.find((milestone) => milestone.isActive) ?? null;
+          const mapReview = milestones.mapReview ?? {
+            generatedAt: milestones.milestones.length > 0 ? new Date().toISOString() : null,
+            reviewStatus: milestones.milestones.length > 0 ? "passed" : "not_started",
+            reviewIssues: [],
+            reviewedAt: null,
+          };
+          const useLegacyMilestoneReviewKeys = !("mapReview" in milestones);
+          const hasGeneratedMap = Boolean(mapReview.generatedAt);
+          const mapReviewStatus = mapReview.reviewStatus;
 
-          if (milestones.milestones.length === 0) {
+          if (!hasGeneratedMap) {
             actions.push({
               key: "milestones_generate",
-              label: "Create or generate milestones",
+              label: "Generate milestones",
+              href: `/projects/${projectId}/milestones`,
+            });
+          } else if (mapReviewStatus !== "passed" && mapReview.reviewIssues.length > 0) {
+            actions.push({
+              key: "milestone_map_resolve",
+              label: "Resolve milestone map issues",
+              description:
+                mapReview.reviewIssues[0]?.hint ??
+                "Review the milestone map boundaries and rerun the milestone map review.",
+              href: `/projects/${projectId}/milestones`,
+            });
+          } else if (mapReviewStatus !== "passed") {
+            actions.push({
+              key: "milestone_map_review",
+              label: "Run milestone map review",
               href: `/projects/${projectId}/milestones`,
             });
           } else if (!activeMilestone) {
@@ -223,25 +247,43 @@ export const createNextActionsService = (
                 href: `/projects/${projectId}/features?milestone=${activeMilestone.id}`,
               });
             } else if (
-              activeMilestone.reconciliationStatus !== "passed" &&
-              activeMilestone.reconciliationIssues.length > 0
+              ((activeMilestone.scopeReviewStatus ??
+                (activeMilestone as typeof activeMilestone & { reconciliationStatus?: typeof activeMilestone.scopeReviewStatus })
+                  .reconciliationStatus) !== "passed") &&
+              ((activeMilestone.scopeReviewIssues ??
+                (activeMilestone as typeof activeMilestone & { reconciliationIssues?: typeof activeMilestone.scopeReviewIssues })
+                  .reconciliationIssues) ?? []).length > 0
             ) {
               actions.push({
-                key: "milestone_reconciliation_resolve",
-                label: "Resolve milestone coverage gaps",
+                key: useLegacyMilestoneReviewKeys
+                  ? "milestone_reconciliation_resolve"
+                  : "milestone_scope_resolve",
+                label: useLegacyMilestoneReviewKeys
+                  ? "Resolve milestone coverage gaps"
+                  : "Resolve milestone scope issues",
                 description:
-                  activeMilestone.reconciliationIssues[0]?.hint ??
-                  "Review the active milestone design doc and update features or tasks before rerunning reconciliation.",
+                  (activeMilestone.scopeReviewIssues ??
+                    (activeMilestone as typeof activeMilestone & { reconciliationIssues?: typeof activeMilestone.scopeReviewIssues })
+                      .reconciliationIssues)?.[0]?.hint ??
+                  "Review the active milestone design doc and update the feature set before rerunning review.",
                 href: `/projects/${projectId}/milestones`,
               });
-            } else if (activeMilestone.reconciliationStatus !== "passed") {
+            } else if (
+              (activeMilestone.scopeReviewStatus ??
+                (activeMilestone as typeof activeMilestone & { reconciliationStatus?: typeof activeMilestone.scopeReviewStatus })
+                  .reconciliationStatus) !== "passed"
+            ) {
               actions.push({
-                key: "milestone_reconciliation_review",
-                label: "Run milestone reconciliation",
+                key: useLegacyMilestoneReviewKeys
+                  ? "milestone_reconciliation_review"
+                  : "milestone_scope_review",
+                label: useLegacyMilestoneReviewKeys
+                  ? "Run milestone reconciliation"
+                  : "Run milestone scope review",
                 href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
               });
             } else {
-              // Reconciliation passed — proceed with feature spec work.
+              // Scope review passed — proceed with feature spec work.
               const allTracks = await Promise.all(
                 milestoneFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
               );
@@ -395,11 +437,31 @@ export const createNextActionsService = (
               }
 
               if (!actions.length) {
-                actions.push({
-                  key: "milestone_complete",
-                  label: "Complete the active milestone",
-                  href: `/projects/${projectId}/milestones`,
-                });
+                if (
+                  activeMilestone.deliveryReviewStatus !== "passed" &&
+                  activeMilestone.deliveryReviewIssues.length > 0
+                ) {
+                  actions.push({
+                    key: "milestone_delivery_resolve",
+                    label: "Resolve milestone delivery issues",
+                    description:
+                      activeMilestone.deliveryReviewIssues[0]?.hint ??
+                      "Refresh the approved workstreams and tasks before rerunning delivery review.",
+                    href: `/projects/${projectId}/milestones`,
+                  });
+                } else if (activeMilestone.deliveryReviewStatus !== "passed") {
+                  actions.push({
+                    key: "milestone_delivery_review",
+                    label: "Run milestone delivery review",
+                    href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
+                  });
+                } else {
+                  actions.push({
+                    key: "milestone_complete",
+                    label: "Complete the active milestone",
+                    href: `/projects/${projectId}/milestones`,
+                  });
+                }
               }
             }
           } else {

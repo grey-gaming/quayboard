@@ -83,20 +83,37 @@ export const createPhaseGateService = (
     const [milestones, features] = await Promise.all([
       userFlowsPassed
         ? milestoneService.list(ownerUserId, projectId)
-        : Promise.resolve({ milestones: [], coverage: { approvedUserFlowCount: 0, coveredUserFlowCount: 0, uncoveredUserFlowIds: [] } }),
+        : Promise.resolve({
+            milestones: [],
+            coverage: {
+              approvedUserFlowCount: 0,
+              coveredUserFlowCount: 0,
+              uncoveredUserFlowIds: [],
+            },
+            mapReview: {
+              generatedAt: null,
+              reviewStatus: "not_started" as const,
+              reviewIssues: [],
+              reviewedAt: null,
+            },
+          }),
       userFlowsPassed
         ? featureService.list(ownerUserId, projectId)
         : Promise.resolve({ features: [] }),
     ]);
-    const milestoneCount = milestones.milestones.length;
+    const visibleMilestones = milestones.milestones.filter((milestone) => !milestone.isBootstrapPlaceholder);
+    const milestoneCount = visibleMilestones.length;
     const milestoneDocumentCount = userFlowsPassed
       ? await milestoneService.countMilestonesWithCanonicalDesignDocs(ownerUserId, projectId)
       : 0;
-    const approvedMilestoneCount = milestones.milestones.filter(
+    const approvedMilestoneCount = visibleMilestones.filter(
       (milestone) => milestone.status === "approved" || milestone.status === "completed",
     ).length;
-    const reconciledMilestoneCount = milestones.milestones.filter(
-      (milestone) => milestone.reconciliationStatus === "passed",
+    const scopedMilestoneCount = visibleMilestones.filter(
+      (milestone) => milestone.scopeReviewStatus === "passed",
+    ).length;
+    const deliveredMilestoneCount = visibleMilestones.filter(
+      (milestone) => milestone.deliveryReviewStatus === "passed",
     ).length;
     const featureCount = features.features.length;
     const featuresWithTasksCount = features.features.filter((feature) => feature.taskPlanning.hasTasks).length;
@@ -261,11 +278,18 @@ export const createPhaseGateService = (
         {
           phase: "Milestones",
           passed:
+            milestones.mapReview.reviewStatus === "passed" &&
             milestoneCount > 0 &&
             milestoneDocumentCount === milestoneCount &&
             approvedMilestoneCount === milestoneCount &&
-            reconciledMilestoneCount === milestoneCount,
+            scopedMilestoneCount === milestoneCount &&
+            deliveredMilestoneCount === milestoneCount,
           items: [
+            {
+              key: "milestone_map_review",
+              label: "Milestone map review passed",
+              passed: milestones.mapReview.reviewStatus === "passed",
+            },
             {
               key: "milestone_count",
               label: `${milestoneCount} milestone${milestoneCount === 1 ? "" : "s"}`,
@@ -282,9 +306,14 @@ export const createPhaseGateService = (
               passed: milestoneCount > 0 && approvedMilestoneCount === milestoneCount,
             },
             {
-              key: "milestone_reconciled_count",
-              label: `${reconciledMilestoneCount} reconciled milestone${reconciledMilestoneCount === 1 ? "" : "s"}`,
-              passed: milestoneCount > 0 && reconciledMilestoneCount === milestoneCount,
+              key: "milestone_scope_review_count",
+              label: `${scopedMilestoneCount} milestone scope review${scopedMilestoneCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0 && scopedMilestoneCount === milestoneCount,
+            },
+            {
+              key: "milestone_delivery_review_count",
+              label: `${deliveredMilestoneCount} milestone delivery review${deliveredMilestoneCount === 1 ? "" : "s"}`,
+              passed: milestoneCount > 0 && deliveredMilestoneCount === milestoneCount,
             },
           ],
         },

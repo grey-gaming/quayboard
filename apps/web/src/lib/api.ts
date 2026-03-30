@@ -299,8 +299,13 @@ export const api = {
       body: JSON.stringify({ action }),
     });
   },
-  reviewMilestoneCoverage(milestoneId: string) {
-    return apiRequest<Job>(`/api/milestones/${milestoneId}/reconciliation/review`, {
+  reviewMilestoneMap(projectId: string) {
+    return apiRequest<Job>(`/api/projects/${projectId}/milestones/review`, {
+      method: "POST",
+    });
+  },
+  reviewMilestoneScope(milestoneId: string) {
+    return apiRequest<Job>(`/api/milestones/${milestoneId}/scope-review`, {
       method: "POST",
     });
   },
