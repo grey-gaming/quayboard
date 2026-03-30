@@ -1193,6 +1193,14 @@ export const createJobRunnerService = (input: {
       }
     };
 
+    const getScopedMilestone = async (milestoneId: string) =>
+      input.db.query.milestonesTable.findFirst({
+        where: and(
+          eq(milestonesTable.id, milestoneId),
+          eq(milestonesTable.projectId, projectId),
+        ),
+      });
+
     const loadApprovedProjectSpecs = async () => {
       const [productSpec, uxSpec, technicalSpec] = await Promise.all([
         input.productSpecService.getCanonical(ownerUserId, projectId),
@@ -1401,9 +1409,7 @@ export const createJobRunnerService = (input: {
         throw new Error("Feature planning prompts require milestone support.");
       }
 
-      const milestone = await input.db.query.milestonesTable.findFirst({
-        where: eq(milestonesTable.id, milestoneId),
-      });
+      const milestone = await getScopedMilestone(milestoneId);
       const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
         ownerUserId,
         milestoneId,
@@ -2603,9 +2609,7 @@ export const createJobRunnerService = (input: {
 
         const [blueprints, milestoneRecord, linkedFlows] = await Promise.all([
           input.blueprintService.getCanonical(ownerUserId, rawJob.projectId),
-          input.db.query.milestonesTable.findFirst({
-            where: eq(milestonesTable.id, milestoneId),
-          }),
+          getScopedMilestone(milestoneId),
           input.db
             .select({
               title: useCasesTable.title,
@@ -2676,9 +2680,7 @@ export const createJobRunnerService = (input: {
         }
 
         await input.milestoneService.assertActiveMilestone(ownerUserId, rawJob.projectId, milestoneId);
-        const milestone = await input.db.query.milestonesTable.findFirst({
-          where: eq(milestonesTable.id, milestoneId),
-        });
+        const milestone = await getScopedMilestone(milestoneId);
         const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
           ownerUserId,
           milestoneId,
@@ -2774,9 +2776,7 @@ export const createJobRunnerService = (input: {
         const [features, milestoneRecord, milestoneList, milestoneDesignDoc, projectSpecs, userFlows] =
           await Promise.all([
           input.featureService.list(ownerUserId, rawJob.projectId),
-          input.db.query.milestonesTable.findFirst({
-            where: eq(milestonesTable.id, milestoneId),
-          }),
+          getScopedMilestone(milestoneId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.getCanonicalDesignDoc(ownerUserId, milestoneId),
           loadApprovedProjectSpecs(),
@@ -2911,9 +2911,7 @@ export const createJobRunnerService = (input: {
 
         const [projectSpecs, milestoneRecord, milestoneDesignDoc, featureList, milestoneList] = await Promise.all([
           loadApprovedProjectSpecs(),
-          input.db.query.milestonesTable.findFirst({
-            where: eq(milestonesTable.id, milestoneId),
-          }),
+          getScopedMilestone(milestoneId),
           input.milestoneService.getCanonicalDesignDoc(ownerUserId, milestoneId),
           input.featureService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
@@ -3055,9 +3053,7 @@ export const createJobRunnerService = (input: {
 
         await input.milestoneService.assertActiveMilestone(ownerUserId, rawJob.projectId, milestoneId);
 
-        const milestone = await input.db.query.milestonesTable.findFirst({
-          where: eq(milestonesTable.id, milestoneId),
-        });
+        const milestone = await getScopedMilestone(milestoneId);
         const milestoneDesignDoc = await input.milestoneService.getCanonicalDesignDoc(
           ownerUserId,
           milestoneId,
@@ -3536,9 +3532,7 @@ export const createJobRunnerService = (input: {
           acceptanceCriteria: context.headFeatureRevision.acceptanceCriteria as string[],
           featureKey: context.feature.featureKey,
           milestoneTitle: (
-            await input.db.query.milestonesTable.findFirst({
-              where: eq(milestonesTable.id, context.feature.milestoneId),
-            })
+            await getScopedMilestone(context.feature.milestoneId)
           )?.title ?? context.feature.milestoneId,
           summary: context.headFeatureRevision.summary,
           title: context.headFeatureRevision.title,

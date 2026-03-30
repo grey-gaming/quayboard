@@ -1092,6 +1092,69 @@ describe("auto-advance service", () => {
       expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
+    it("uses the job input milestone id instead of the job output milestone id", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        autoRepairMilestoneCoverage: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneCoverage",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          milestoneId: "milestone-from-other-project",
+          issues: [{ action: "rewrite_feature_set", hint: "Missing milestone docs." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+          projectId: PROJECT_ID,
+        }),
+      } as never;
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(() => {
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: "batch-1",
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordReconciliationResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+        }),
+      );
+      expect(milestoneService.recordReconciliationResult).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-from-other-project",
+        }),
+      );
+    });
+
     it("pauses when milestone reconciliation still has gaps after the rewrite limit", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,

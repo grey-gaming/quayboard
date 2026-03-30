@@ -308,6 +308,14 @@ export const createAutoAdvanceService = (
     return session ?? null;
   };
 
+  const getProjectMilestone = async (projectId: string, milestoneId: string) =>
+    db.query.milestonesTable.findFirst({
+      where: and(
+        eq(milestonesTable.id, milestoneId),
+        eq(milestonesTable.projectId, projectId),
+      ),
+    });
+
   const findActiveAutoAdvanceJob = async (
     projectId: string,
     sessionId: string,
@@ -1322,11 +1330,26 @@ export const createAutoAdvanceService = (
         } | null;
 
         const milestoneId =
-          output?.milestoneId ||
           ((job.inputs as { milestoneId?: string } | null | undefined)?.milestoneId ?? null);
 
         if (!milestoneId) {
           throw new Error("ReviewMilestoneCoverage did not include a milestoneId.");
+        }
+
+        const milestone = await getProjectMilestone(job.projectId, milestoneId);
+        if (!milestone) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "paused",
+              pausedReason: "job_failed",
+              pausedAt: new Date(),
+              activeBatchToken: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
         }
 
         if (!output || output.complete || !output.issues?.length) {
@@ -1349,13 +1372,9 @@ export const createAutoAdvanceService = (
           await publishSessionUpdate(project.ownerUserId, job.projectId);
           return;
         }
-
-        const milestone = await db.query.milestonesTable.findFirst({
-          where: eq(milestonesTable.id, milestoneId),
-        });
         const firstIssue = output.issues[0];
 
-        if (!milestone || !firstIssue) {
+        if (!firstIssue) {
           await milestoneService.recordReconciliationResult({
             milestoneId,
             issues: output.issues,
