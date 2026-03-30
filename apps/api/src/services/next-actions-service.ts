@@ -215,7 +215,32 @@ export const createNextActionsService = (
               .filter((feature) => feature.milestoneId === activeMilestone.id)
               .sort((left, right) => left.featureKey.localeCompare(right.featureKey));
 
-            if (milestoneFeatures.length > 0) {
+            if (milestoneFeatures.length === 0) {
+              actions.push({
+                key: "features_create",
+                label: "Generate milestone feature set",
+                href: `/projects/${projectId}/features?milestone=${activeMilestone.id}`,
+              });
+            } else if (
+              activeMilestone.reconciliationStatus !== "passed" &&
+              activeMilestone.reconciliationIssues.length > 0
+            ) {
+              actions.push({
+                key: "milestone_reconciliation_resolve",
+                label: "Resolve milestone coverage gaps",
+                description:
+                  activeMilestone.reconciliationIssues[0]?.hint ??
+                  "Review the active milestone design doc and update features or tasks before rerunning reconciliation.",
+                href: `/projects/${projectId}/milestones`,
+              });
+            } else if (activeMilestone.reconciliationStatus !== "passed") {
+              actions.push({
+                key: "milestone_reconciliation_review",
+                label: "Run milestone reconciliation",
+                href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
+              });
+            } else {
+              // Reconciliation passed — proceed with feature spec work.
               const allTracks = await Promise.all(
                 milestoneFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),
               );
@@ -372,40 +397,12 @@ export const createNextActionsService = (
                   }
                 }
               }
-            }
 
-            if (!actions.length && activeMilestone.featureCount === 0) {
-              actions.push({
-                key: "features_create",
-                label: "Generate milestone feature set",
-                href: `/projects/${projectId}/features?milestone=${activeMilestone.id}`,
-              });
-            }
-
-            if (!actions.length) {
-              if (
-                activeMilestone.reconciliationStatus !== "passed" &&
-                activeMilestone.reconciliationIssues.length > 0
-              ) {
-                actions.push({
-                  key: "milestone_reconciliation_resolve",
-                  label: "Resolve milestone coverage gaps",
-                  description:
-                    activeMilestone.reconciliationIssues[0]?.hint ??
-                    "Review the active milestone design doc and update features or tasks before rerunning reconciliation.",
-                  href: `/projects/${projectId}/milestones`,
-                });
-              } else if (activeMilestone.reconciliationStatus === "passed") {
+              if (!actions.length) {
                 actions.push({
                   key: "milestone_complete",
                   label: "Complete the active milestone",
                   href: `/projects/${projectId}/milestones`,
-                });
-              } else {
-                actions.push({
-                  key: "milestone_reconciliation_review",
-                  label: "Run milestone reconciliation",
-                  href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
                 });
               }
             }

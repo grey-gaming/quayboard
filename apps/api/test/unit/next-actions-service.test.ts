@@ -14,6 +14,9 @@ const makeMilestone = (overrides: {
   featureCount?: number;
   position?: number;
   title?: string;
+  reconciliationStatus?: "not_started" | "passed" | "failed_first_pass" | "failed_needs_human";
+  reconciliationIssues?: Array<{ action: string; hint: string }>;
+  reconciliationReviewedAt?: string | null;
 }) => ({
   id: overrides.id ?? "milestone-1",
   projectId: PROJECT_ID,
@@ -26,9 +29,9 @@ const makeMilestone = (overrides: {
   isActive: overrides.isActive ?? true,
   approvedAt: overrides.status === "draft" ? null : "2026-01-01T00:00:00.000Z",
   completedAt: overrides.status === "completed" ? "2026-01-02T00:00:00.000Z" : null,
-  reconciliationStatus: "not_started" as const,
-  reconciliationIssues: [],
-  reconciliationReviewedAt: null,
+  reconciliationStatus: (overrides.reconciliationStatus ?? "not_started") as "not_started" | "passed" | "failed_first_pass" | "failed_needs_human",
+  reconciliationIssues: overrides.reconciliationIssues ?? [],
+  reconciliationReviewedAt: overrides.reconciliationReviewedAt ?? null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
@@ -236,7 +239,7 @@ describe("nextActionsService — milestone/feature routing", () => {
 
     it("does not return features_create when all approved milestones have features", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1 }),
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
         makeMilestone({ id: "m2", status: "draft", featureCount: 1, isActive: false, position: 2 }),
       ];
       const features = [makeFeature("f1", "m1"), makeFeature("f2", "m2")];
@@ -285,10 +288,74 @@ describe("nextActionsService — milestone/feature routing", () => {
     });
   });
 
+  describe("milestone reconciliation gates feature work", () => {
+    it("returns milestone_reconciliation_review when features exist but reconciliation has not started", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "not_started" }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const service = makeService({ milestones, features });
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_reconciliation_review");
+    });
+
+    it("returns milestone_reconciliation_resolve when reconciliation found issues", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "failed_first_pass",
+          reconciliationIssues: [{ action: "rewrite_feature_set", hint: "Missing docs feature." }],
+        }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const service = makeService({ milestones, features });
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_reconciliation_resolve");
+    });
+
+    it("proceeds to feature spec work once reconciliation has passed", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
+      ];
+      const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
+      const s = makeServices({ milestones, features });
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: null, status: "missing" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: { required: false, headRevision: null, status: "missing" },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+      );
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_product_create");
+    });
+  });
+
   describe("task planning gating", () => {
     it("skips features that do not require a tech spec when choosing task-planning actions", async () => {
       const milestones = [
-        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1 }),
+        makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
       ];
       const features = [makeFeature("f1", "m1"), makeFeature("f2", "m1")];
       const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
