@@ -694,6 +694,8 @@ export const buildMilestonePlanPrompt = (input: {
     "useCaseIds must be a non-empty array of approved user-flow IDs covered by the milestone.",
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
     "Create milestones in execution order, from foundational work to higher-level capability.",
+    'This product flow is always greenfield. The first milestone must be a foundations/setup milestone.',
+    "The first milestone must cover repository and delivery scaffolding such as AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, CI/test harness, and a minimal smoke-path or hello-world slice.",
     "Do not wrap the JSON in code fences.",
     ...(input.hint
       ? [
@@ -1763,6 +1765,8 @@ export const buildDeliveryReviewPrompt = (input: {
     "",
     "Checks to perform (evaluate in this order — stop at the first failing check):",
     "1. Milestones — do the milestones provide a coherent, complete delivery plan that covers all approved user flows?",
+    "   Because every project in this workflow is greenfield, milestone 1 must be a real foundations/setup milestone.",
+    "   Fail milestone review if milestone 1 does not establish project scaffolding such as AGENTS.md, repo structure, baseline docs/ADR scaffolding, environment/bootstrap, CI/test harness, and a minimal smoke-path.",
     "   Each user flow should map to at least one milestone. Look for user flows that no milestone addresses.",
     "   Milestones with featureCount > 0 are actively being implemented — treat them as in-progress delivery.",
     "   If any user flows are uncovered by milestones, raise a GenerateMilestones issue (not GenerateUseCases).",

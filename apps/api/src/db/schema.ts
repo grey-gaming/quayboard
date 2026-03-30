@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -87,6 +88,7 @@ const autoAdvancePausedReasonValues = [
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "milestone_map_repair_limit_reached",
   "milestone_repair_limit_reached",
   "review_limit_reached",
 ] as const;
@@ -149,6 +151,23 @@ export const projectsTable = pgTable(
       withTimezone: true,
     }),
     userFlowsApprovalSnapshot: jsonb("user_flows_approval_snapshot"),
+    milestoneMapGeneratedAt: timestamp("milestone_map_generated_at", {
+      withTimezone: true,
+    }),
+    milestoneMapReviewStatus: text("milestone_map_review_status")
+      .notNull()
+      .$type<(typeof milestoneReconciliationStatusValues)[number]>()
+      .default("not_started"),
+    milestoneMapReviewIssues: jsonb("milestone_map_review_issues")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    milestoneMapReviewedAt: timestamp("milestone_map_reviewed_at", {
+      withTimezone: true,
+    }),
+    milestoneMapReviewLastJobId: text("milestone_map_review_last_job_id").references(
+      (): AnyPgColumn => jobsTable.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(now()),
@@ -161,6 +180,10 @@ export const projectsTable = pgTable(
     stateCheck: check(
       "projects_state_check",
       sql`${table.state} in (${sql.join(projectStateValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    milestoneMapReviewStatusCheck: check(
+      "projects_milestone_map_review_status_check",
+      sql`${table.milestoneMapReviewStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
     ),
   }),
 );
@@ -431,6 +454,28 @@ export const milestonesTable = pgTable(
     reconciliationLastJobId: text("reconciliation_last_job_id").references(() => jobsTable.id, {
       onDelete: "set null",
     }),
+    scopeReviewStatus: text("scope_review_status")
+      .notNull()
+      .$type<(typeof milestoneReconciliationStatusValues)[number]>()
+      .default("not_started"),
+    scopeReviewIssues: jsonb("scope_review_issues")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    scopeReviewedAt: timestamp("scope_reviewed_at", { withTimezone: true }),
+    scopeReviewLastJobId: text("scope_review_last_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    deliveryReviewStatus: text("delivery_review_status")
+      .notNull()
+      .$type<(typeof milestoneReconciliationStatusValues)[number]>()
+      .default("not_started"),
+    deliveryReviewIssues: jsonb("delivery_review_issues")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    deliveryReviewedAt: timestamp("delivery_reviewed_at", { withTimezone: true }),
+    deliveryReviewLastJobId: text("delivery_review_last_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
     autoCatchUpCount: integer("auto_catch_up_count").notNull().default(0),
     createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
       onDelete: "set null",
@@ -455,6 +500,14 @@ export const milestonesTable = pgTable(
     reconciliationStatusCheck: check(
       "milestones_reconciliation_status_check",
       sql`${table.reconciliationStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    scopeReviewStatusCheck: check(
+      "milestones_scope_review_status_check",
+      sql`${table.scopeReviewStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    deliveryReviewStatusCheck: check(
+      "milestones_delivery_review_status_check",
+      sql`${table.deliveryReviewStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
     ),
   }),
 );
@@ -1172,7 +1225,7 @@ export const jobsTable = pgTable(
   "jobs",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").references(() => projectsTable.id, {
+    projectId: text("project_id").references((): AnyPgColumn => projectsTable.id, {
       onDelete: "cascade",
     }),
     createdByUserId: text("created_by_user_id").references(() => usersTable.id, {

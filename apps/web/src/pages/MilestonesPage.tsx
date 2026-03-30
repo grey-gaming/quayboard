@@ -32,7 +32,8 @@ import {
   useMilestonesQuery,
   useProjectJobsQuery,
   useProjectQuery,
-  useReviewMilestoneCoverageMutation,
+  useReviewMilestoneMapMutation,
+  useReviewMilestoneScopeMutation,
   useTransitionMilestoneMutation,
   useUpdateMilestoneDesignMutation,
   useUpdateMilestoneMutation,
@@ -231,7 +232,8 @@ export const MilestonesPage = () => {
   const createMilestoneMutation = useCreateMilestoneMutation(id);
   const updateMilestoneMutation = useUpdateMilestoneMutation(id);
   const transitionMilestoneMutation = useTransitionMilestoneMutation(id);
-  const reviewMilestoneCoverageMutation = useReviewMilestoneCoverageMutation(id);
+  const reviewMilestoneMapMutation = useReviewMilestoneMapMutation(id);
+  const reviewMilestoneScopeMutation = useReviewMilestoneScopeMutation(id);
   const generateMilestonesMutation = useGenerateMilestonesMutation(id);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
@@ -264,10 +266,17 @@ export const MilestonesPage = () => {
     createMilestoneMutation.error ||
     updateMilestoneMutation.error ||
     transitionMilestoneMutation.error ||
-    reviewMilestoneCoverageMutation.error ||
+    reviewMilestoneMapMutation.error ||
+    reviewMilestoneScopeMutation.error ||
     generateMilestonesMutation.error;
   const milestonePlanButtonActive =
     generateMilestonesMutation.isPending || Boolean(activeMilestonePlanJob);
+  const milestoneMapReview = milestonesQuery.data?.mapReview ?? {
+    generatedAt: activeMilestones.length > 0 ? new Date().toISOString() : null,
+    reviewStatus: activeMilestones.length > 0 ? ("passed" as const) : ("not_started" as const),
+    reviewIssues: [],
+    reviewedAt: null,
+  };
 
   const resetForm = () => {
     setEditingMilestoneId(null);
@@ -355,6 +364,10 @@ export const MilestonesPage = () => {
             <div>
               <p className="qb-meta-label">Milestone controls</p>
               <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Roadmap intake</p>
+              <p className="mt-2 text-sm text-secondary">
+                Generate the milestone map first, review it at the project level, then approve and
+                plan the active milestone.
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -371,7 +384,7 @@ export const MilestonesPage = () => {
               </Button>
               <AiWorkflowButton
                 active={milestonePlanButtonActive}
-                disabled={milestonePlanButtonActive || activeMilestones.length > 0}
+                disabled={milestonePlanButtonActive}
                 label="Generate Milestones"
                 onClick={() => {
                   void generateMilestonesMutation.mutateAsync().catch(() => undefined);
@@ -474,10 +487,57 @@ export const MilestonesPage = () => {
             </div>
           ) : null}
         </Card>
+        <Card surface="panel">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="qb-meta-label">Project-level review</p>
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Milestone map review</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge
+                tone={
+                  milestoneMapReview.reviewStatus === "passed"
+                    ? "success"
+                    : milestoneMapReview.reviewStatus === "failed_needs_human"
+                      ? "warning"
+                      : "neutral"
+                }
+              >
+                {milestoneMapReview.reviewStatus.replaceAll("_", " ")}
+              </Badge>
+              <Button
+                disabled={!milestoneMapReview.generatedAt || reviewMilestoneMapMutation.isPending}
+                onClick={() => {
+                  void reviewMilestoneMapMutation.mutateAsync().catch(() => undefined);
+                }}
+                variant="secondary"
+              >
+                Run Map Review
+              </Button>
+            </div>
+          </div>
+          {milestoneMapReview.reviewIssues.length ? (
+            <Alert
+              tone={
+                milestoneMapReview.reviewStatus === "failed_needs_human"
+                  ? "error"
+                  : "info"
+              }
+            >
+              <ul className="list-disc pl-5 text-sm">
+                {milestoneMapReview.reviewIssues.map((issue, index) => (
+                  <li key={`map-review-${index}`}>{issue.hint}</li>
+                ))}
+              </ul>
+            </Alert>
+          ) : null}
+        </Card>
         <div className="grid gap-4">
           {activeMilestones.map((milestone) => {
-            const reconciliationStatus = milestone.reconciliationStatus ?? "not_started";
-            const reconciliationIssues = milestone.reconciliationIssues ?? [];
+            const scopeReviewStatus = milestone.scopeReviewStatus ?? "not_started";
+            const scopeReviewIssues = milestone.scopeReviewIssues ?? [];
+            const deliveryReviewStatus = milestone.deliveryReviewStatus ?? "not_started";
+            const deliveryReviewIssues = milestone.deliveryReviewIssues ?? [];
 
             return (
             <Card key={milestone.id} surface="panel">
@@ -499,14 +559,25 @@ export const MilestonesPage = () => {
                     {milestone.isActive ? <Badge tone="info">active</Badge> : null}
                     <Badge
                       tone={
-                        reconciliationStatus === "passed"
+                        scopeReviewStatus === "passed"
                           ? "success"
-                          : reconciliationStatus === "failed_needs_human"
+                          : scopeReviewStatus === "failed_needs_human"
                             ? "warning"
                             : "neutral"
                       }
                     >
-                      reconciliation: {reconciliationStatus.replaceAll("_", " ")}
+                      scope review: {scopeReviewStatus.replaceAll("_", " ")}
+                    </Badge>
+                    <Badge
+                      tone={
+                        deliveryReviewStatus === "passed"
+                          ? "success"
+                          : deliveryReviewStatus === "failed_needs_human"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      delivery review: {deliveryReviewStatus.replaceAll("_", " ")}
                     </Badge>
                   </div>
                   <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
@@ -540,11 +611,11 @@ export const MilestonesPage = () => {
                   {milestone.status === "approved" ? (
                     <Button
                       onClick={() => {
-                        void reviewMilestoneCoverageMutation.mutateAsync(milestone.id).catch(() => undefined);
+                        void reviewMilestoneScopeMutation.mutateAsync(milestone.id).catch(() => undefined);
                       }}
                       variant="secondary"
                     >
-                      Run Reconciliation
+                      Run Scope Review
                     </Button>
                   ) : null}
                   {milestone.status === "draft" ? (
@@ -560,7 +631,7 @@ export const MilestonesPage = () => {
                       Approve
                     </Button>
                   ) : null}
-                  {milestone.status === "approved" && reconciliationStatus === "passed" ? (
+                  {milestone.status === "approved" && deliveryReviewStatus === "passed" ? (
                     <Button
                       onClick={() => {
                         void transitionMilestoneMutation.mutateAsync({
@@ -583,16 +654,26 @@ export const MilestonesPage = () => {
                 ))}
                 <Badge tone="neutral">{milestone.featureCount} features</Badge>
               </div>
-              {reconciliationIssues.length > 0 ? (
-                <Alert tone={reconciliationStatus === "failed_needs_human" ? "error" : "info"}>
+              {scopeReviewIssues.length > 0 ? (
+                <Alert tone={scopeReviewStatus === "failed_needs_human" ? "error" : "info"}>
                   <p className="font-medium">
-                    {reconciliationStatus === "failed_needs_human"
-                      ? "Milestone completion is blocked until these coverage gaps are resolved."
-                      : "Milestone reconciliation identified a coverage gap and rewrote the milestone feature set."}
+                    Scope review flagged issues in the milestone feature set.
                   </p>
                   <ul className="mt-2 list-disc pl-5 text-sm">
-                    {reconciliationIssues.map((issue, index) => (
+                    {scopeReviewIssues.map((issue, index) => (
                       <li key={`${milestone.id}-issue-${index}`}>{issue.hint}</li>
+                    ))}
+                  </ul>
+                </Alert>
+              ) : null}
+              {deliveryReviewIssues.length > 0 ? (
+                <Alert tone={deliveryReviewStatus === "failed_needs_human" ? "error" : "info"}>
+                  <p className="font-medium">
+                    Delivery review flagged downstream workstream or task gaps.
+                  </p>
+                  <ul className="mt-2 list-disc pl-5 text-sm">
+                    {deliveryReviewIssues.map((issue, index) => (
+                      <li key={`${milestone.id}-delivery-${index}`}>{issue.hint}</li>
                     ))}
                   </ul>
                 </Alert>

@@ -115,15 +115,6 @@ export const milestoneRoutes = (
       try {
         const projectId = (request.params as { id: string }).id;
         await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        const existing = await services.milestoneService.list(request.user!.id, projectId);
-        if (existing.milestones.length > 0) {
-          return reply.status(409).send({
-            error: {
-              code: "milestones_already_seeded",
-              message: "Milestones already exist for this project.",
-            },
-          });
-        }
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId,
@@ -203,6 +194,63 @@ export const milestoneRoutes = (
   );
 
   app.post(
+    "/projects/:id/milestones/review",
+    {
+      schema: {
+        params: projectParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const projectId = (request.params as { id: string }).id;
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId,
+          type: "ReviewMilestoneMap",
+        });
+        publishProjectUpdate(services, request.user!.id, projectId, "milestone");
+
+        return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
+    "/milestones/:id/scope-review",
+    {
+      schema: {
+        params: milestoneParamsJsonSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        const milestoneId = (request.params as { id: string }).id;
+        const context = await services.milestoneService.getContext(request.user!.id, milestoneId);
+        await services.projectSetupService.assertSetupCompleted(request.user!.id, context.projectId);
+        await services.milestoneService.assertActiveMilestone(
+          request.user!.id,
+          context.projectId,
+          milestoneId,
+        );
+        const job = await services.jobService.createJob({
+          createdByUserId: request.user!.id,
+          projectId: context.projectId,
+          type: "ReviewMilestoneScope",
+          inputs: { milestoneId },
+        });
+        publishProjectUpdate(services, request.user!.id, context.projectId, "milestone");
+
+        return reply.status(202).send(jobSchema.parse(job));
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.post(
     "/milestones/:id/reconciliation/review",
     {
       schema: {
@@ -222,7 +270,7 @@ export const milestoneRoutes = (
         const job = await services.jobService.createJob({
           createdByUserId: request.user!.id,
           projectId: context.projectId,
-          type: "ReviewMilestoneCoverage",
+          type: "ReviewMilestoneScope",
           inputs: { milestoneId },
         });
         publishProjectUpdate(services, request.user!.id, context.projectId, "milestone");

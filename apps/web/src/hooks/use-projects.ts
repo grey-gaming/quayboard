@@ -796,11 +796,22 @@ export const useTransitionMilestoneMutation = (projectId: string) => {
   });
 };
 
-export const useReviewMilestoneCoverageMutation = (projectId: string) => {
+export const useReviewMilestoneMapMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (milestoneId: string) => api.reviewMilestoneCoverage(milestoneId),
+    mutationFn: () => api.reviewMilestoneMap(projectId),
+    onSuccess: () => {
+      void invalidateMilestoneFeatureQueries(queryClient, projectId);
+    },
+  });
+};
+
+export const useReviewMilestoneScopeMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (milestoneId: string) => api.reviewMilestoneScope(milestoneId),
     onSuccess: (_data, milestoneId) => {
       void invalidateMilestoneFeatureQueries(queryClient, projectId, milestoneId);
     },

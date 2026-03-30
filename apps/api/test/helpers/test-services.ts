@@ -3,6 +3,7 @@ import { createSseHub } from "../../src/services/sse.js";
 
 export const createStubServices = (): AppServices => ({
   autoAdvanceService: {
+    recoverRunningSessions: async () => undefined,
     getStatus: async () => ({ session: null, nextStep: null }),
     start: async () => {
       throw new Error("Not implemented in test stub.");
@@ -290,6 +291,14 @@ export const createStubServices = (): AppServices => ({
       status: "approved" as const,
       approvedAt: null,
       completedAt: null,
+      scopeReviewStatus: "failed_first_pass" as const,
+      scopeReviewIssues: [],
+      scopeReviewedAt: null,
+      scopeReviewLastJobId: null,
+      deliveryReviewStatus: "not_started" as const,
+      deliveryReviewIssues: [],
+      deliveryReviewedAt: null,
+      deliveryReviewLastJobId: null,
       reconciliationStatus: "failed_first_pass" as const,
       reconciliationIssues: [],
       reconciliationReviewedAt: null,
@@ -300,12 +309,39 @@ export const createStubServices = (): AppServices => ({
       updatedAt: new Date(),
     }),
     invalidateReconciliation: async () => undefined,
+    invalidateMapReview: async () => undefined,
+    recordMapReviewResult: async () => undefined,
+    markMapGenerated: async () => undefined,
+    invalidateScopeReview: async () => undefined,
+    recordScopeReviewResult: async () => undefined,
+    invalidateDeliveryReview: async () => undefined,
+    recordDeliveryReviewResult: async () => undefined,
+    replaceDraftMilestoneMap: async () => ({
+      milestones: [],
+      coverage: {
+        approvedUserFlowCount: 0,
+        coveredUserFlowCount: 0,
+        uncoveredUserFlowIds: [],
+      },
+      mapReview: {
+        generatedAt: new Date().toISOString(),
+        reviewStatus: "not_started" as const,
+        reviewIssues: [],
+        reviewedAt: null,
+      },
+    }),
     list: async () => ({
       milestones: [],
       coverage: {
         approvedUserFlowCount: 0,
         coveredUserFlowCount: 0,
         uncoveredUserFlowIds: [],
+      },
+      mapReview: {
+        generatedAt: null,
+        reviewStatus: "not_started" as const,
+        reviewIssues: [],
+        reviewedAt: null,
       },
     }),
     listDesignDocs: async () => [],
@@ -317,24 +353,6 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     validateLinkedUseCases: async () => [],
-    seedDefaultMilestone: async () => ({
-      id: "test-milestone-id",
-      projectId: "test-project-id",
-      position: 1,
-      title: "Repository and Toolchain Foundations",
-      summary: "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.",
-      status: "draft",
-      linkedUserFlows: [],
-      featureCount: 0,
-      isActive: true,
-      approvedAt: null,
-      completedAt: null,
-      reconciliationStatus: "not_started",
-      reconciliationIssues: [],
-      reconciliationReviewedAt: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }),
   },
   nextActionsService: {
     build: async () => ({ actions: [] }),

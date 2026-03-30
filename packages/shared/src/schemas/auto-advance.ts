@@ -17,6 +17,7 @@ export const autoAdvancePausedReasonSchema = z.enum([
   "manual_pause",
   "budget_exceeded",
   "needs_human",
+  "milestone_map_repair_limit_reached",
   "milestone_repair_limit_reached",
   "review_limit_reached",
 ]);

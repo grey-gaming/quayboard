@@ -6,18 +6,23 @@ export const milestoneStatusSchema = z.enum(["draft", "approved", "completed"]);
 
 export type MilestoneStatus = z.infer<typeof milestoneStatusSchema>;
 
-export const milestoneReconciliationStatusSchema = z.enum([
+export const planningReviewStatusSchema = z.enum([
   "not_started",
   "passed",
   "failed_first_pass",
   "failed_needs_human",
 ]);
 
-export type MilestoneReconciliationStatus = z.infer<
-  typeof milestoneReconciliationStatusSchema
->;
+export type PlanningReviewStatus = z.infer<typeof planningReviewStatusSchema>;
 
-export const milestoneReconciliationIssueSchema = z.object({
+export const milestoneMapReviewIssueSchema = z.object({
+  action: z.enum(["rewrite_milestone_map", "needs_human_review"]),
+  hint: z.string().min(1),
+});
+
+export type MilestoneMapReviewIssue = z.infer<typeof milestoneMapReviewIssueSchema>;
+
+export const milestoneScopeReviewIssueSchema = z.object({
   action: z.enum([
     "rewrite_feature_set",
     "create_catch_up_feature",
@@ -26,9 +31,25 @@ export const milestoneReconciliationIssueSchema = z.object({
   hint: z.string().min(1),
 });
 
-export type MilestoneReconciliationIssue = z.infer<
-  typeof milestoneReconciliationIssueSchema
+export type MilestoneScopeReviewIssue = z.infer<typeof milestoneScopeReviewIssueSchema>;
+
+export const milestoneDeliveryReviewIssueSchema = z.object({
+  action: z.enum(["refresh_artifacts", "needs_human_review"]),
+  hint: z.string().min(1),
+});
+
+export type MilestoneDeliveryReviewIssue = z.infer<
+  typeof milestoneDeliveryReviewIssueSchema
 >;
+
+export const milestoneMapReviewSchema = z.object({
+  generatedAt: z.string().datetime().nullable(),
+  reviewStatus: planningReviewStatusSchema,
+  reviewIssues: z.array(milestoneMapReviewIssueSchema),
+  reviewedAt: z.string().datetime().nullable(),
+});
+
+export type MilestoneMapReview = z.infer<typeof milestoneMapReviewSchema>;
 
 export const milestoneLinkedUseCaseSchema = z.object({
   id: z.string().uuid(),
@@ -49,9 +70,12 @@ export const milestoneSchema = z.object({
   isActive: z.boolean(),
   approvedAt: z.string().datetime().nullable(),
   completedAt: z.string().datetime().nullable(),
-  reconciliationStatus: milestoneReconciliationStatusSchema,
-  reconciliationIssues: z.array(milestoneReconciliationIssueSchema),
-  reconciliationReviewedAt: z.string().datetime().nullable(),
+  scopeReviewStatus: planningReviewStatusSchema,
+  scopeReviewIssues: z.array(milestoneScopeReviewIssueSchema),
+  scopeReviewedAt: z.string().datetime().nullable(),
+  deliveryReviewStatus: planningReviewStatusSchema,
+  deliveryReviewIssues: z.array(milestoneDeliveryReviewIssueSchema),
+  deliveryReviewedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -91,6 +115,7 @@ export type MilestoneCoverageSummary = z.infer<typeof milestoneCoverageSummarySc
 export const milestoneListResponseSchema = z.object({
   milestones: z.array(milestoneSchema),
   coverage: milestoneCoverageSummarySchema,
+  mapReview: milestoneMapReviewSchema,
 });
 
 export type MilestoneListResponse = z.infer<typeof milestoneListResponseSchema>;
@@ -120,3 +145,8 @@ export const updateMilestoneDesignDocRequestSchema = z.object({
 });
 
 export type UpdateMilestoneDesignDocRequest = z.infer<typeof updateMilestoneDesignDocRequestSchema>;
+
+export const milestoneReconciliationStatusSchema = planningReviewStatusSchema;
+export type MilestoneReconciliationStatus = PlanningReviewStatus;
+export const milestoneReconciliationIssueSchema = milestoneScopeReviewIssueSchema;
+export type MilestoneReconciliationIssue = MilestoneScopeReviewIssue;

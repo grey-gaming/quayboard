@@ -2,13 +2,17 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   type ArtifactApproval,
+  type PlanningReviewStatus,
   createMilestoneRequestSchema,
   milestoneActionRequestSchema,
   milestoneDesignDocListResponseSchema,
   milestoneDesignDocSchema,
+  milestoneDeliveryReviewIssueSchema,
+  milestoneMapReviewIssueSchema,
   milestoneReconciliationIssueSchema,
   milestoneListResponseSchema,
   milestoneSchema,
+  milestoneScopeReviewIssueSchema,
   updateMilestoneRequestSchema,
 } from "@quayboard/shared";
 
@@ -44,6 +48,49 @@ const parseReconciliationIssues = (value: unknown) => {
   const parsed = Array.isArray(value) ? value : [];
   return parsed.map((issue) => milestoneReconciliationIssueSchema.parse(issue));
 };
+
+const parseMapReviewIssues = (value: unknown) => {
+  const parsed = Array.isArray(value) ? value : [];
+  return parsed.map((issue) => milestoneMapReviewIssueSchema.parse(issue));
+};
+
+const parseScopeReviewIssues = (value: unknown) => {
+  const parsed = Array.isArray(value) ? value : [];
+  return parsed.map((issue) => milestoneScopeReviewIssueSchema.parse(issue));
+};
+
+const parseDeliveryReviewIssues = (value: unknown) => {
+  const parsed = Array.isArray(value) ? value : [];
+  return parsed.map((issue) => milestoneDeliveryReviewIssueSchema.parse(issue));
+};
+
+const buildMilestoneRecord = (input: {
+  activeMilestoneId: string | null;
+  featureCountByMilestone: Map<string, number>;
+  linksByMilestone: Map<string, Array<{ id: string; title: string }>>;
+  milestone: typeof milestonesTable.$inferSelect;
+}) =>
+  milestoneSchema.parse({
+    id: input.milestone.id,
+    projectId: input.milestone.projectId,
+    position: input.milestone.position,
+    title: input.milestone.title,
+    summary: input.milestone.summary,
+    status: input.milestone.status,
+    linkedUserFlows: input.linksByMilestone.get(input.milestone.id) ?? [],
+    featureCount: input.featureCountByMilestone.get(input.milestone.id) ?? 0,
+    isActive: input.milestone.id === input.activeMilestoneId,
+    approvedAt: input.milestone.approvedAt?.toISOString() ?? null,
+    completedAt: input.milestone.completedAt?.toISOString() ?? null,
+    scopeReviewStatus: input.milestone.scopeReviewStatus,
+    scopeReviewIssues: parseScopeReviewIssues(input.milestone.scopeReviewIssues),
+    scopeReviewedAt: input.milestone.scopeReviewedAt?.toISOString() ?? null,
+    deliveryReviewStatus: input.milestone.deliveryReviewStatus,
+    deliveryReviewIssues: parseDeliveryReviewIssues(input.milestone.deliveryReviewIssues),
+    deliveryReviewedAt: input.milestone.deliveryReviewedAt?.toISOString() ?? null,
+    createdAt: input.milestone.createdAt.toISOString(),
+    updatedAt: input.milestone.updatedAt.toISOString(),
+  });
 
 export const createMilestoneService = (db: AppDatabase) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
@@ -129,9 +176,65 @@ export const createMilestoneService = (db: AppDatabase) => ({
   },
 
   async invalidateReconciliation(milestoneId: string) {
+    return this.invalidateScopeReview(milestoneId);
+  },
+
+  async invalidateMapReview(projectId: string) {
+    await db
+      .update(projectsTable)
+      .set({
+        milestoneMapReviewStatus: "not_started",
+        milestoneMapReviewIssues: [],
+        milestoneMapReviewedAt: null,
+        milestoneMapReviewLastJobId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, projectId));
+  },
+
+  async recordMapReviewResult(input: {
+    projectId: string;
+    issues: Array<{
+      action: "rewrite_milestone_map" | "needs_human_review";
+      hint: string;
+    }>;
+    jobId: string;
+    status: PlanningReviewStatus;
+  }) {
+    await db
+      .update(projectsTable)
+      .set({
+        milestoneMapReviewStatus: input.status,
+        milestoneMapReviewIssues: input.issues,
+        milestoneMapReviewedAt: new Date(),
+        milestoneMapReviewLastJobId: input.jobId,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, input.projectId));
+  },
+
+  async markMapGenerated(projectId: string) {
+    await db
+      .update(projectsTable)
+      .set({
+        milestoneMapGeneratedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(projectsTable.id, projectId));
+  },
+
+  async invalidateScopeReview(milestoneId: string) {
     await db
       .update(milestonesTable)
       .set({
+        scopeReviewStatus: "not_started",
+        scopeReviewIssues: [],
+        scopeReviewedAt: null,
+        scopeReviewLastJobId: null,
+        deliveryReviewStatus: "not_started",
+        deliveryReviewIssues: [],
+        deliveryReviewedAt: null,
+        deliveryReviewLastJobId: null,
         reconciliationStatus: "not_started",
         reconciliationIssues: [],
         reconciliationReviewedAt: null,
@@ -150,13 +253,63 @@ export const createMilestoneService = (db: AppDatabase) => ({
     jobId: string;
     status: "passed" | "failed_first_pass" | "failed_needs_human";
   }) {
+    return this.recordScopeReviewResult(input);
+  },
+
+  async recordScopeReviewResult(input: {
+    milestoneId: string;
+    issues: Array<{
+      action: "rewrite_feature_set" | "create_catch_up_feature" | "needs_human_review";
+      hint: string;
+    }>;
+    jobId: string;
+    status: "passed" | "failed_first_pass" | "failed_needs_human";
+  }) {
     await db
       .update(milestonesTable)
       .set({
+        scopeReviewStatus: input.status,
+        scopeReviewIssues: input.issues,
+        scopeReviewedAt: new Date(),
+        scopeReviewLastJobId: input.jobId,
         reconciliationStatus: input.status,
         reconciliationIssues: input.issues,
         reconciliationReviewedAt: new Date(),
         reconciliationLastJobId: input.jobId,
+        updatedAt: new Date(),
+      })
+      .where(eq(milestonesTable.id, input.milestoneId));
+  },
+
+  async invalidateDeliveryReview(milestoneId: string) {
+    await db
+      .update(milestonesTable)
+      .set({
+        deliveryReviewStatus: "not_started",
+        deliveryReviewIssues: [],
+        deliveryReviewedAt: null,
+        deliveryReviewLastJobId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(milestonesTable.id, milestoneId));
+  },
+
+  async recordDeliveryReviewResult(input: {
+    milestoneId: string;
+    issues: Array<{
+      action: "refresh_artifacts" | "needs_human_review";
+      hint: string;
+    }>;
+    jobId: string;
+    status: PlanningReviewStatus;
+  }) {
+    await db
+      .update(milestonesTable)
+      .set({
+        deliveryReviewStatus: input.status,
+        deliveryReviewIssues: input.issues,
+        deliveryReviewedAt: new Date(),
+        deliveryReviewLastJobId: input.jobId,
         updatedAt: new Date(),
       })
       .where(eq(milestonesTable.id, input.milestoneId));
@@ -176,7 +329,7 @@ export const createMilestoneService = (db: AppDatabase) => ({
   },
 
   async list(ownerUserId: string, projectId: string) {
-    await this.assertApprovedUserFlows(ownerUserId, projectId);
+    const project = await this.assertApprovedUserFlows(ownerUserId, projectId);
 
     const milestones = await this.getProjectMilestones(projectId);
 
@@ -230,23 +383,11 @@ export const createMilestoneService = (db: AppDatabase) => ({
 
     return milestoneListResponseSchema.parse({
       milestones: milestones.map((milestone) =>
-        milestoneSchema.parse({
-          id: milestone.id,
-          projectId: milestone.projectId,
-          position: milestone.position,
-          title: milestone.title,
-          summary: milestone.summary,
-          status: milestone.status,
-          linkedUserFlows: linksByMilestone.get(milestone.id) ?? [],
-          featureCount: featureCountByMilestone.get(milestone.id) ?? 0,
-          isActive: milestone.id === activeMilestoneId,
-          approvedAt: milestone.approvedAt?.toISOString() ?? null,
-          completedAt: milestone.completedAt?.toISOString() ?? null,
-          reconciliationStatus: milestone.reconciliationStatus,
-          reconciliationIssues: parseReconciliationIssues(milestone.reconciliationIssues),
-          reconciliationReviewedAt: milestone.reconciliationReviewedAt?.toISOString() ?? null,
-          createdAt: milestone.createdAt.toISOString(),
-          updatedAt: milestone.updatedAt.toISOString(),
+        buildMilestoneRecord({
+          activeMilestoneId,
+          featureCountByMilestone,
+          linksByMilestone,
+          milestone,
         }),
       ),
       coverage: {
@@ -255,6 +396,12 @@ export const createMilestoneService = (db: AppDatabase) => ({
         uncoveredUserFlowIds: activeFlows
           .map((flow) => flow.id)
           .filter((flowId) => !coveredUserFlowIds.has(flowId)),
+      },
+      mapReview: {
+        generatedAt: project.milestoneMapGeneratedAt?.toISOString() ?? null,
+        reviewStatus: project.milestoneMapReviewStatus,
+        reviewIssues: parseMapReviewIssues(project.milestoneMapReviewIssues),
+        reviewedAt: project.milestoneMapReviewedAt?.toISOString() ?? null,
       },
     });
   },
@@ -286,18 +433,10 @@ export const createMilestoneService = (db: AppDatabase) => ({
     createdByJobId?: string,
   ) {
     await this.assertApprovedUserFlows(ownerUserId, projectId);
-    const activeMilestone = await this.getActiveMilestone(ownerUserId, projectId);
-    if (activeMilestone && !createdByJobId) {
-      throw new HttpError(
-        409,
-        "milestone_generation_locked",
-        "Finish the active milestone before adding more milestones.",
-      );
-    }
     const payload = createMilestoneRequestSchema.parse(input);
     await this.validateLinkedUseCases(projectId, payload.useCaseIds);
 
-    return db.transaction(async (tx) => {
+    const milestoneId = await db.transaction(async (tx) => {
       const latestMilestone = await tx.query.milestonesTable.findFirst({
         where: eq(milestonesTable.projectId, projectId),
         orderBy: [desc(milestonesTable.position)],
@@ -314,6 +453,14 @@ export const createMilestoneService = (db: AppDatabase) => ({
           status: "draft",
           approvedAt: null,
           completedAt: null,
+          scopeReviewStatus: "not_started",
+          scopeReviewIssues: [],
+          scopeReviewedAt: null,
+          scopeReviewLastJobId: null,
+          deliveryReviewStatus: "not_started",
+          deliveryReviewIssues: [],
+          deliveryReviewedAt: null,
+          deliveryReviewLastJobId: null,
           reconciliationStatus: "not_started",
           reconciliationIssues: [],
           reconciliationReviewedAt: null,
@@ -334,18 +481,132 @@ export const createMilestoneService = (db: AppDatabase) => ({
       );
 
       return milestone.id;
-    }).then((milestoneId) => this.list(ownerUserId, projectId).then((response) => {
+    });
+
+    await this.invalidateMapReview(projectId);
+
+    return this.list(ownerUserId, projectId).then((response) => {
       const milestone = response.milestones.find((item) => item.id === milestoneId);
       if (!milestone) {
         throw new Error("Failed to load created milestone.");
       }
       return milestone;
-    }));
+    });
+  },
+
+  async replaceDraftMilestoneMap(input: {
+    ownerUserId: string;
+    projectId: string;
+    items: Array<{
+      summary: string;
+      title: string;
+      useCaseIds: string[];
+    }>;
+    createdByJobId?: string;
+  }) {
+    await this.assertApprovedUserFlows(input.ownerUserId, input.projectId);
+
+    for (const milestone of input.items) {
+      await this.validateLinkedUseCases(input.projectId, milestone.useCaseIds);
+    }
+
+    await db.transaction(async (tx) => {
+      const [existingMilestones, existingFeatures] = await Promise.all([
+        tx.query.milestonesTable.findMany({
+          where: eq(milestonesTable.projectId, input.projectId),
+          orderBy: [asc(milestonesTable.position)],
+        }),
+        tx.query.featureCasesTable.findMany({
+          where: and(
+            eq(featureCasesTable.projectId, input.projectId),
+            isNull(featureCasesTable.archivedAt),
+          ),
+        }),
+      ]);
+
+      if (existingFeatures.length > 0) {
+        throw new HttpError(
+          409,
+          "milestone_map_locked",
+          "The milestone map cannot be replaced after feature planning has started.",
+        );
+      }
+
+      if (existingMilestones.some((milestone) => milestone.status !== "draft")) {
+        throw new HttpError(
+          409,
+          "milestone_map_locked",
+          "The milestone map cannot be replaced after milestone approval has started.",
+        );
+      }
+
+      const milestoneIds = existingMilestones.map((milestone) => milestone.id);
+      if (milestoneIds.length > 0) {
+        await tx
+          .delete(milestoneUseCasesTable)
+          .where(inArray(milestoneUseCasesTable.milestoneId, milestoneIds));
+        await tx
+          .delete(milestoneDesignDocsTable)
+          .where(inArray(milestoneDesignDocsTable.milestoneId, milestoneIds));
+        await tx.delete(milestonesTable).where(eq(milestonesTable.projectId, input.projectId));
+      }
+
+      const now = new Date();
+      for (const [index, milestone] of input.items.entries()) {
+        const milestoneId = generateId();
+        await tx.insert(milestonesTable).values({
+          id: milestoneId,
+          projectId: input.projectId,
+          position: index + 1,
+          title: milestone.title,
+          summary: milestone.summary,
+          status: "draft",
+          approvedAt: null,
+          completedAt: null,
+          scopeReviewStatus: "not_started",
+          scopeReviewIssues: [],
+          scopeReviewedAt: null,
+          scopeReviewLastJobId: null,
+          deliveryReviewStatus: "not_started",
+          deliveryReviewIssues: [],
+          deliveryReviewedAt: null,
+          deliveryReviewLastJobId: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          reconciliationLastJobId: null,
+          autoCatchUpCount: 0,
+          createdByJobId: input.createdByJobId ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await tx.insert(milestoneUseCasesTable).values(
+          milestone.useCaseIds.map((useCaseId) => ({
+            milestoneId,
+            useCaseId,
+            createdAt: now,
+          })),
+        );
+      }
+
+      await tx
+        .update(projectsTable)
+        .set({
+          milestoneMapGeneratedAt: now,
+          milestoneMapReviewStatus: "not_started",
+          milestoneMapReviewIssues: [],
+          milestoneMapReviewedAt: null,
+          milestoneMapReviewLastJobId: null,
+          updatedAt: now,
+        })
+        .where(eq(projectsTable.id, input.projectId));
+    });
+
+    return this.list(input.ownerUserId, input.projectId);
   },
 
   async update(ownerUserId: string, milestoneId: string, input: unknown) {
     const context = await this.getContext(ownerUserId, milestoneId);
-    await this.assertActiveMilestone(ownerUserId, context.projectId, milestoneId);
     if (context.status !== "draft") {
       throw new HttpError(
         409,
@@ -388,6 +649,8 @@ export const createMilestoneService = (db: AppDatabase) => ({
       }
     });
 
+    await this.invalidateMapReview(context.projectId);
+
     return this.list(ownerUserId, context.projectId).then((response) => {
       const milestone = response.milestones.find((item) => item.id === milestoneId);
       if (!milestone) {
@@ -412,6 +675,15 @@ export const createMilestoneService = (db: AppDatabase) => ({
         );
       }
 
+      const project = await this.assertOwnedProject(ownerUserId, context.projectId);
+      if (project.milestoneMapReviewStatus !== "passed") {
+        throw new HttpError(
+          409,
+          "milestone_map_review_required",
+          "Run the project milestone map review before approving the active milestone.",
+        );
+      }
+
       const designDoc = await this.getCanonicalDesignDoc(ownerUserId, milestoneId);
       if (!designDoc) {
         throw new HttpError(
@@ -427,6 +699,14 @@ export const createMilestoneService = (db: AppDatabase) => ({
           status: "approved",
           approvedAt: now,
           completedAt: null,
+          scopeReviewStatus: "not_started",
+          scopeReviewIssues: [],
+          scopeReviewedAt: null,
+          scopeReviewLastJobId: null,
+          deliveryReviewStatus: "not_started",
+          deliveryReviewIssues: [],
+          deliveryReviewedAt: null,
+          deliveryReviewLastJobId: null,
           reconciliationStatus: "not_started",
           reconciliationIssues: [],
           reconciliationReviewedAt: null,
@@ -448,11 +728,11 @@ export const createMilestoneService = (db: AppDatabase) => ({
         where: eq(milestonesTable.id, milestoneId),
       });
 
-      if (milestone?.reconciliationStatus !== "passed") {
+      if (milestone?.deliveryReviewStatus !== "passed") {
         throw new HttpError(
           409,
-          "milestone_reconciliation_required",
-          "Run milestone reconciliation and resolve all gaps before completing the milestone.",
+          "milestone_delivery_review_required",
+          "Run the milestone delivery review and resolve all gaps before completing the milestone.",
         );
       }
 
@@ -565,6 +845,14 @@ export const createMilestoneService = (db: AppDatabase) => ({
       await tx
         .update(milestonesTable)
         .set({
+          scopeReviewStatus: "not_started",
+          scopeReviewIssues: [],
+          scopeReviewedAt: null,
+          scopeReviewLastJobId: null,
+          deliveryReviewStatus: "not_started",
+          deliveryReviewIssues: [],
+          deliveryReviewedAt: null,
+          deliveryReviewLastJobId: null,
           reconciliationStatus: "not_started",
           reconciliationIssues: [],
           reconciliationReviewedAt: null,
@@ -591,53 +879,6 @@ export const createMilestoneService = (db: AppDatabase) => ({
     });
   },
 
-  async seedDefaultMilestone(projectId: string) {
-    const now = new Date();
-    const [milestone] = await db
-      .insert(milestonesTable)
-      .values({
-        id: generateId(),
-        projectId,
-        position: 1,
-        title: DEFAULT_MILESTONE_ZERO_TITLE,
-        summary: DEFAULT_MILESTONE_ZERO_SUMMARY,
-        status: "draft",
-        approvedAt: null,
-        completedAt: null,
-        reconciliationStatus: "not_started",
-        reconciliationIssues: [],
-        reconciliationReviewedAt: null,
-        reconciliationLastJobId: null,
-        autoCatchUpCount: 0,
-        createdByJobId: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    return milestoneSchema.parse({
-      id: milestone.id,
-      projectId: milestone.projectId,
-      position: milestone.position,
-      title: milestone.title,
-      summary: milestone.summary,
-      status: milestone.status,
-      linkedUserFlows: [],
-      featureCount: 0,
-      isActive: true,
-      approvedAt: milestone.approvedAt?.toISOString() ?? null,
-      completedAt: milestone.completedAt?.toISOString() ?? null,
-      reconciliationStatus: milestone.reconciliationStatus,
-      reconciliationIssues: [],
-      reconciliationReviewedAt: milestone.reconciliationReviewedAt?.toISOString() ?? null,
-      createdAt: milestone.createdAt.toISOString(),
-      updatedAt: milestone.updatedAt.toISOString(),
-    });
-  },
 });
-
-export const DEFAULT_MILESTONE_ZERO_TITLE = "Repository and Toolchain Foundations";
-export const DEFAULT_MILESTONE_ZERO_SUMMARY =
-  "Establish project README.md, AGENTS.md, ADR documentation, basic scaffolding, hello world page, and tests. Ensures all basics are in place prior to feature development.";
 
 export type MilestoneService = ReturnType<typeof createMilestoneService>;

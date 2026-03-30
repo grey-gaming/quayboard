@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import type { AutoAdvanceSession, CreativityMode } from "@quayboard/shared";
+import type {
+  AutoAdvanceSession,
+  CreativityMode,
+  StartAutoAdvanceRequest,
+} from "@quayboard/shared";
 
 import {
   useAutoAdvanceReset,
@@ -20,6 +24,43 @@ const creativityModeOptions: { value: CreativityMode; label: string }[] = [
   { value: "balanced", label: "Balanced" },
   { value: "creative", label: "Creative" },
 ];
+
+const buildStartRequest = (input: {
+  creativityMode: CreativityMode;
+  skipReviewSteps: boolean;
+  autoApproveWhenClear: boolean;
+  autoRepairMilestoneCoverage: boolean;
+  maxConcurrentJobs: number;
+}): StartAutoAdvanceRequest | undefined => {
+  const request: StartAutoAdvanceRequest = {};
+
+  if (input.creativityMode !== "balanced") {
+    request.creativityMode = input.creativityMode;
+  }
+
+  if (input.skipReviewSteps) {
+    request.skipReviewSteps = true;
+  }
+
+  if (input.autoApproveWhenClear) {
+    request.autoApproveWhenClear = true;
+  }
+
+  if (input.autoRepairMilestoneCoverage) {
+    request.autoRepairMilestoneCoverage = true;
+  }
+
+  if (input.maxConcurrentJobs !== 1) {
+    request.maxConcurrentJobs = input.maxConcurrentJobs;
+  }
+
+  return Object.keys(request).length > 0 ? request : undefined;
+};
+
+const getMutationErrorMessage = (error: unknown) =>
+  error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Action failed. Please try again.";
 
 export const AutoAdvanceControlsCard = ({
   projectId,
@@ -61,7 +102,9 @@ export const AutoAdvanceControlsCard = ({
     isPaused &&
     (session?.pausedReason === "needs_human" ||
       session?.pausedReason === "milestone_repair_limit_reached") &&
-    nextStep === "milestone_reconciliation_resolve";
+    (nextStep === "milestone_reconciliation_resolve" ||
+      nextStep === "milestone_scope_resolve" ||
+      nextStep === "milestone_delivery_resolve");
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
@@ -70,6 +113,14 @@ export const AutoAdvanceControlsCard = ({
     ? session!.autoRepairMilestoneCoverage
     : autoRepairMilestoneCoverage;
   const displayMaxConcurrentJobs = isActive ? session!.maxConcurrentJobs : maxConcurrentJobs;
+  const actionError =
+    startMutation.error ||
+    stopMutation.error ||
+    resumeMutation.error ||
+    resetMutation.error ||
+    stepMutation.error ||
+    skipMilestoneMutation.error;
+  const actionErrorMessage = actionError ? getMutationErrorMessage(actionError) : null;
 
   return (
     <Card surface="rail" className="h-fit">
@@ -166,13 +217,15 @@ export const AutoAdvanceControlsCard = ({
               variant="primary"
               disabled={isPending}
               onClick={() =>
-                startMutation.mutate({
-                  creativityMode,
-                  skipReviewSteps,
-                  autoApproveWhenClear,
-                  autoRepairMilestoneCoverage,
-                  maxConcurrentJobs,
-                })
+                startMutation.mutate(
+                  buildStartRequest({
+                    creativityMode,
+                    skipReviewSteps,
+                    autoApproveWhenClear,
+                    autoRepairMilestoneCoverage,
+                    maxConcurrentJobs,
+                  }),
+                )
               }
             >
               Start
@@ -242,9 +295,9 @@ export const AutoAdvanceControlsCard = ({
           </p>
         )}
 
-        {(startMutation.isError || stopMutation.isError || resumeMutation.isError || resetMutation.isError || stepMutation.isError || skipMilestoneMutation.isError) && (
+        {actionErrorMessage && (
           <p className="text-xs text-danger">
-            Action failed. Please try again.
+            {actionErrorMessage}
           </p>
         )}
       </div>

@@ -429,7 +429,7 @@ export const createFeatureWorkstreamService = (db: AppDatabase, milestoneService
         throw new Error(`Unsupported workstream kind ${kind satisfies never}.`);
     }
 
-    await milestoneService?.invalidateReconciliation(feature.milestoneId);
+    await milestoneService?.invalidateDeliveryReview(feature.milestoneId);
 
     return this.listRevisions(ownerUserId, featureId, kind);
   },
