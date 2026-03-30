@@ -21,7 +21,6 @@ import {
   featureTaskClarificationsTable,
   featureTaskPlanningSessionsTable,
   featureTechRevisionsTable,
-  featureTechSpecsTable,
   implementationRecordsTable,
   jobsTable,
   projectsTable,
@@ -29,6 +28,11 @@ import {
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
 import type { MilestoneService } from "./milestone-service.js";
+import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
+import {
+  buildTaskPlanningReadinessMessage,
+  isTaskPlanningReady,
+} from "./task-planning-support.js";
 
 const toTaskPlanningSession = (
   record: typeof featureTaskPlanningSessionsTable.$inferSelect,
@@ -87,7 +91,11 @@ const toImplementationRecord = (
 
 export type TaskPlanningService = ReturnType<typeof createTaskPlanningService>;
 
-export const createTaskPlanningService = (db: AppDatabase, milestoneService?: MilestoneService) => ({
+export const createTaskPlanningService = (
+  db: AppDatabase,
+  milestoneService?: MilestoneService,
+  featureWorkstreamService?: FeatureWorkstreamService,
+) => ({
   async getFeatureContext(ownerUserId: string, featureId: string) {
     const [record] = await db
       .select({
@@ -130,20 +138,16 @@ export const createTaskPlanningService = (db: AppDatabase, milestoneService?: Mi
       return toTaskPlanningSession(existing);
     }
 
-    const techSpec = await db.query.featureTechSpecsTable.findFirst({
-      where: eq(featureTechSpecsTable.featureId, featureId),
-    });
+    const tracks = featureWorkstreamService
+      ? await featureWorkstreamService.getTracks(ownerUserId, featureId)
+      : null;
 
-    if (!techSpec?.headRevisionId) {
-      throw new HttpError(400, "tech_spec_required", "Feature must have an approved tech specification.");
-    }
-
-    const techRevision = await db.query.featureTechRevisionsTable.findFirst({
-      where: eq(featureTechRevisionsTable.id, techSpec.headRevisionId),
-    });
-
-    if (!techRevision) {
-      throw new HttpError(400, "tech_spec_required", "Feature must have an approved tech specification.");
+    if (tracks && !isTaskPlanningReady(tracks.tracks)) {
+      throw new HttpError(
+        400,
+        "task_planning_documents_required",
+        buildTaskPlanningReadinessMessage(tracks.tracks),
+      );
     }
 
     const now = new Date();

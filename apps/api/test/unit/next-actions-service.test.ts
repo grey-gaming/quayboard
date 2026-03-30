@@ -353,7 +353,7 @@ describe("nextActionsService — milestone/feature routing", () => {
   });
 
   describe("task planning gating", () => {
-    it("skips features that do not require a tech spec when choosing task-planning actions", async () => {
+    it("allows task planning for documentation-only features once required documents are approved", async () => {
       const milestones = [
         makeMilestone({ id: "m1", status: "approved", featureCount: 2, isActive: true, position: 1, reconciliationStatus: "passed" }),
       ];
@@ -368,7 +368,10 @@ describe("nextActionsService — milestone/feature routing", () => {
             featureId === "f1"
               ? { required: false, headRevision: null, status: "missing" }
               : { required: true, headRevision: { id: `tech-${featureId}` }, status: "approved" },
-          userDocs: { required: false, headRevision: null, status: "missing" },
+          userDocs:
+            featureId === "f1"
+              ? { required: true, headRevision: { id: `user-docs-${featureId}`, approval: { id: `approval-${featureId}` } }, status: "approved" }
+              : { required: false, headRevision: null, status: "missing" },
           archDocs: { required: false, headRevision: null, status: "missing" },
         },
       }));
@@ -390,9 +393,9 @@ describe("nextActionsService — milestone/feature routing", () => {
       const { actions } = await service.build(USER_ID, PROJECT_ID);
 
       expect(actions[0]?.key).toBe("feature_task_clarifications_generate");
-      expect(actions[0]?.href).toContain("/features/f2?taskSession=missing");
+      expect(actions[0]?.href).toContain("/features/f1?taskSession=missing");
       expect(s.taskPlanningService.getSession).toHaveBeenCalledTimes(1);
-      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f2");
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f1");
     });
   });
 });

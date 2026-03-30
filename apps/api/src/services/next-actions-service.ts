@@ -9,6 +9,7 @@ import type { ProjectSetupService } from "./project-setup-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import { isTaskPlanningReady } from "./task-planning-support.js";
 
 export const createNextActionsService = (
   artifactApprovalService: ArtifactApprovalService,
@@ -322,12 +323,7 @@ export const createNextActionsService = (
                     const feature = milestoneFeatures[i]!;
                     const featureTracks = allTracks[i]!.tracks;
 
-                    // Task planning currently depends on an approved tech spec.
-                    if (
-                      !featureTracks.tech.required ||
-                      !featureTracks.tech.headRevision ||
-                      featureTracks.tech.status !== "approved"
-                    ) {
+                    if (!isTaskPlanningReady(featureTracks)) {
                       continue;
                     }
 
