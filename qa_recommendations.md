@@ -628,3 +628,9 @@
 - Result summary: the runner completed the full downstream chain for `F-027` and moved into UX generation for location management.
 - Quality assessment: workflow remains healthy, but the `F-028` product spec is already oversized for a small feature. It mixes creation, deletion, deletion blocking, sync, dashboard integration, item-entry integration, icon systems, open questions, and developer checklists. That again suggests the downstream UX job will inherit an overly large brief.
 - Recommendation: add a generic feature-product sanity check before downstream generation. If a product spec includes open-question sections, implementation checklists, metrics, and multiple cross-surface integrations, the system should classify it as over-broad and either split it or automatically strip it down to the primary user-facing responsibility before passing it to UX or tech jobs.
+
+### 2026-03-31T12:28:30Z - Job Review - GenerateFeatureUxSpec - F-028 Location Management
+- Status: succeeded and auto-approved; tech generation is now running.
+- Result summary: produced a UX spec covering list layout, creation modal, delete dialogs, icon selection, sync behavior, edge cases, API contracts, and success metrics.
+- Quality assessment: this is another strong example of cross-discipline spillover. The UX artifact includes data model tables, API contracts, sync conflict resolution, and measurement targets in addition to interface behavior. That reduces clarity about what the UX job is actually supposed to add after the product spec exists.
+- Recommendation: add a generic section-level validator for UX jobs. If a draft contains tables or sections titled `Data Model`, `API Contracts`, `Metrics`, `Sync`, or similar, require the model to move that material to the appropriate downstream discipline and regenerate a UX-focused version.
