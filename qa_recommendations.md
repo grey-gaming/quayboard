@@ -604,3 +604,15 @@
 - Result summary: produced a UX spec covering member list layout, removal confirmation, removed-member notice, real-time sync behavior, offline handling, copy reference, accessibility, and acceptance mapping.
 - Quality assessment: this artifact continues the generic downstream issue already seen in earlier features. The UX layer is not staying cleanly within interaction and presentation design; it pulls in data model definitions, SSE behavior, offline sync policy, backend validation behavior, and implementation state models. The result is polished but not discipline-focused.
 - Recommendation: add a generic “no hidden backend sections” rule to UX generation. If the model starts introducing tables, storage schemas, sync protocols, or API-side rules beyond what is necessary to explain a visible interaction, the job should be rewritten with a narrower UX-only brief.
+
+### 2026-03-31T12:18:30Z - Job Review - GenerateFeatureTechSpec - F-027 Membership Management
+- Status: succeeded and auto-approved; user-doc generation is now running.
+- Result summary: produced a technical specification covering schema, endpoints, SSE events, access revocation, client components, offline queueing, tests, and implementation checklists.
+- Quality assessment: this continues the same generic LLM-job weakness. The tech artifact is organized, but it again broadens into full implementation planning, client architecture, testing matrices, and rollout-style checklists instead of concentrating on the minimal technical contracts needed for the current feature. The output is useful, but it is still oversized and duplicative.
+- Recommendation: add a generic post-generation reducer for tech jobs that trims sections not directly tied to current feature implementation. If a draft includes extensive checklists, duplicated client architecture, or broad testing plans that mostly restate expected engineering hygiene, compress those sections automatically and keep the artifact focused on critical interfaces, data mutations, and invariants.
+
+### 2026-03-31T12:20:15Z - Job Review - GenerateFeatureUserDocs - F-027 Membership Management
+- Status: succeeded and auto-approved; architecture-doc generation is now running.
+- Result summary: produced user documentation for member roles, member list visibility, removal behavior, removed-member history, and FAQ-style guidance.
+- Quality assessment: this artifact is relatively concise, but it still demonstrates a generic user-doc issue: it states low-level operational behavior such as offline queueing and near-real-time update timing as if those are durable public promises. That can make user docs brittle and over-specific when implementation evolves.
+- Recommendation: add a generic user-doc conservatism rule. User-doc outputs should avoid operational guarantees, backend timing language, and implementation-specific offline behavior unless those behaviors are explicitly product-committed and already validated. Prefer stable user-facing expectations over internal mechanics.
