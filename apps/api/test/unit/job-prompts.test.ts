@@ -15,6 +15,9 @@ import {
   buildUserFlowPrompt,
   buildDecisionConsistencyPrompt,
   buildDeliveryReviewPrompt,
+  buildMilestoneDesignPrompt,
+  buildMilestoneDesignReviewPrompt,
+  buildMilestoneDesignConsistencyPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
 const sampleAnswers = {
@@ -119,6 +122,77 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
   });
 
+  it("keeps milestone design generation internally consistent across sections", () => {
+    const prompt = buildMilestoneDesignPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Foundations",
+      milestoneSummary: "First releasable slice.",
+      linkedUserFlows: [
+        {
+          title: "Onboard user",
+          userStory: "As a new user, I want a coherent first-use journey.",
+          entryPoint: "Landing page",
+          endState: "Dashboard",
+        },
+      ],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      hint: "Align the onboarding step order and screen inventory.",
+    });
+
+    expect(prompt).toContain("one internally consistent milestone");
+    expect(prompt).toContain("Do not let flow steps, listed screens, step counts");
+    expect(prompt).toContain("Every screen, schema, and core responsibility");
+    expect(prompt).toContain("Repair guidance:");
+  });
+
+  it("validates milestone design consistency with an explicit JSON contract", () => {
+    const prompt = buildMilestoneDesignConsistencyPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Foundations",
+      milestoneSummary: "First releasable slice.",
+      linkedUserFlows: [
+        {
+          title: "Onboard user",
+          userStory: "As a new user, I want a coherent first-use journey.",
+          entryPoint: "Landing page",
+          endState: "Dashboard",
+        },
+      ],
+      designTitle: "Milestone Design",
+      designMarkdown: "# Milestone Design",
+    });
+
+    expect(prompt).toContain('"ok" (boolean), "issues" (array of strings), and "hint" (string)');
+    expect(prompt).toContain("Check for contradictions in step order, step counts");
+    expect(prompt).toContain('If the document is internally consistent, return {"ok":true,"issues":[],"hint":""}.');
+  });
+
+  it("uses review guidance to reconcile milestone design contradictions", () => {
+    const prompt = buildMilestoneDesignReviewPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Foundations",
+      milestoneSummary: "First releasable slice.",
+      linkedUserFlows: [
+        {
+          title: "Onboard user",
+          userStory: "As a new user, I want a coherent first-use journey.",
+          entryPoint: "Landing page",
+          endState: "Dashboard",
+        },
+      ],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      draftTitle: "Milestone Design",
+      draftMarkdown: "# Milestone Design",
+      hint: "Align screen inventory and Delivery Shape ownership.",
+    });
+
+    expect(prompt).toContain("Resolve any contradictions across Included User Flows");
+    expect(prompt).toContain("one consistent onboarding step order");
+    expect(prompt).toContain("Repair guidance:");
+  });
+
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
     const prompt = buildMilestoneFeatureSetPrompt({
       existingFeatures: [
@@ -150,6 +224,7 @@ describe("job prompts", () => {
     expect(prompt).toContain("Prefer the smallest set of coherent features");
     expect(prompt).toContain("User flows linked to the selected milestone:");
     expect(prompt).toContain("keep it in one shared feature");
+    expect(prompt).toContain("Included User Flows and Delivery Shape groupings as hard boundary constraints");
   });
 
   it("asks the feature-set review pass to merge task-sized fragmentation", () => {
@@ -176,6 +251,7 @@ describe("job prompts", () => {
     expect(prompt).toContain("Review the full set as a whole");
     expect(prompt).toContain("Merge task-sized or overlapping features");
     expect(prompt).toContain("Prefer fewer, feature-sized items");
+    expect(prompt).toContain("named flow steps, screens, and Delivery Shape groups");
     expect(prompt).toContain(
       "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     );
@@ -219,6 +295,7 @@ describe("job prompts", () => {
     );
     expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
     expect(prompt).toContain("Coverage issues to close in this rewrite:");
+    expect(prompt).toContain("Resolve the named issues into one consistent ownership model");
   });
 
   it("keeps rewrite feature review constrained to the shared feature enums", () => {

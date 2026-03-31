@@ -1763,44 +1763,60 @@ export const createAutoAdvanceService = (
             issue.action === "rewrite_feature_set" || issue.action === "create_catch_up_feature",
         );
 
-        if (session.autoRepairMilestoneCoverage && nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS) {
+        if (
+          session.autoRepairMilestoneCoverage &&
+          hasStructuralIssues &&
+          nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
+        ) {
           await recordScopeReviewResult({
             milestoneId,
             issues: output.issues,
             jobId: job.id,
-            status: hasStructuralIssues ? "failed_first_pass" : "failed_needs_human",
+            status: "failed_first_pass",
           });
 
-          if (job.type === "ReviewMilestoneCoverage" && !hasStructuralIssues) {
-            await queueRepairJob({
-              ownerUserId: project.ownerUserId,
-              projectId: job.projectId,
-              sessionId: session.id,
-              repairCount: nextRepairCount,
-              currentStep: "milestone_reconciliation_resolve",
-              jobType: "ResolveMilestoneCoverageIssues",
-              jobInputs: {
-                milestoneId,
-                issues: output.issues,
-              },
-            });
-          } else {
-            await queueRepairJob({
-              ownerUserId: project.ownerUserId,
-              projectId: job.projectId,
-              sessionId: session.id,
-              repairCount: nextRepairCount,
-              currentStep:
-                job.type === "ReviewMilestoneCoverage"
-                  ? "milestone_reconciliation_resolve"
-                  : "milestone_scope_resolve",
-              jobType: "RewriteMilestoneFeatureSet",
-              jobInputs: {
-                milestoneId,
-                issues: output.issues,
-              },
-            });
-          }
+          await queueRepairJob({
+            ownerUserId: project.ownerUserId,
+            projectId: job.projectId,
+            sessionId: session.id,
+            repairCount: nextRepairCount,
+            currentStep:
+              job.type === "ReviewMilestoneCoverage"
+                ? "milestone_reconciliation_resolve"
+                : "milestone_scope_resolve",
+            jobType: "RewriteMilestoneFeatureSet",
+            jobInputs: {
+              milestoneId,
+              issues: output.issues,
+            },
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (
+          session.autoRepairMilestoneCoverage &&
+          job.type === "ReviewMilestoneCoverage" &&
+          nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
+        ) {
+          await recordScopeReviewResult({
+            milestoneId,
+            issues: output.issues,
+            jobId: job.id,
+            status: "failed_needs_human",
+          });
+          await queueRepairJob({
+            ownerUserId: project.ownerUserId,
+            projectId: job.projectId,
+            sessionId: session.id,
+            repairCount: nextRepairCount,
+            currentStep: "milestone_reconciliation_resolve",
+            jobType: "ResolveMilestoneCoverageIssues",
+            jobInputs: {
+              milestoneId,
+              issues: output.issues,
+            },
+          });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
           return;
         }
@@ -1815,7 +1831,9 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({
             status: "paused",
-            pausedReason: session.autoRepairMilestoneCoverage
+            pausedReason:
+              session.autoRepairMilestoneCoverage &&
+              (hasStructuralIssues || job.type === "ReviewMilestoneCoverage")
               ? "milestone_repair_limit_reached"
               : "needs_human",
             pausedAt: new Date(),

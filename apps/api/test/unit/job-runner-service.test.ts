@@ -1987,6 +1987,322 @@ describe("job runner service", () => {
     });
   });
 
+  it("repairs milestone design contradictions before persisting the design doc", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nFlow says account is inside onboarding.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nFlow says account is inside onboarding.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: false,
+          issues: ["Flow 3 and Scope Boundaries disagree on whether account creation is part of onboarding."],
+          hint: "Use one onboarding sequence and align the screen inventory to it.",
+        }),
+        promptTokens: 8,
+        completionTokens: 9,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: true,
+          issues: [],
+          hint: "",
+        }),
+        promptTokens: 8,
+        completionTokens: 9,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(6);
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestoneId: "milestone-id",
+        title: "Milestone Design",
+        markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
+  it("fails closed when milestone design consistency remains unresolved after retry", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nContradictory onboarding flow.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nContradictory onboarding flow.",
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: false,
+          issues: ["Flow 3 and Scope Boundaries still disagree."],
+          hint: "Use one coherent onboarding sequence.",
+        }),
+        promptTokens: 8,
+        completionTokens: 9,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nStill contradictory after repair.",
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          markdown: "# Milestone Design\n\nStill contradictory after repair.",
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: false,
+          issues: ["Delivery Shape still conflicts with the screen inventory."],
+          hint: "Rewrite the document with one ownership model.",
+        }),
+        promptTokens: 8,
+        completionTokens: 9,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-generate-design")).rejects.toMatchObject({
+      code: "milestone_design_conflict_unresolved",
+      retryable: false,
+    });
+    expect(createDesignDocVersion).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
   it("builds milestone feature generation prompts from approved planning context", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({

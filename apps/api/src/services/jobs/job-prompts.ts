@@ -771,6 +771,7 @@ export const buildMilestoneDesignPrompt = (input: {
   }>;
   uxSpec: string;
   technicalSpec: string;
+  hint?: string;
 }) =>
   [
     qualityCharter,
@@ -780,8 +781,18 @@ export const buildMilestoneDesignPrompt = (input: {
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
     "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
     "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
+    "Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria must describe one internally consistent milestone.",
+    "Do not let flow steps, listed screens, step counts, required-vs-optional rules, or feature-group ownership contradict each other across sections.",
     "In Delivery Shape, explicitly call out the cohesive feature-sized capability groupings for this milestone, any cross-cutting work that should stay grouped into one feature, and any work that must not be split into task-sized features.",
+    "Every screen, schema, and core responsibility named elsewhere in the document must map cleanly to exactly one Delivery Shape grouping for this milestone.",
     "Do not wrap the JSON in code fences.",
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -810,6 +821,7 @@ export const buildMilestoneDesignReviewPrompt = (input: {
   technicalSpec: string;
   draftTitle: string;
   draftMarkdown: string;
+  hint?: string;
 }) =>
   [
     qualityCharter,
@@ -818,9 +830,18 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     `Review and tighten the milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
     'Return valid JSON with exactly two string keys: "title" and "markdown".',
     "Preserve the same milestone scope and structure, but improve feature-shaping clarity, coverage, and internal consistency.",
+    "Resolve any contradictions across Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria.",
     "Ensure Delivery Shape clearly defines feature-sized capability groupings, grouped cross-cutting work, and boundaries that prevent task-sized feature fragmentation.",
+    "The reviewed document must use one consistent onboarding step order, one consistent screen inventory, and one consistent ownership model for schemas and responsibilities.",
     "Do not invent future-milestone scope.",
     "Do not wrap the JSON in code fences.",
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -839,6 +860,45 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     "",
     "First-pass milestone design markdown:",
     input.draftMarkdown,
+  ].join("\n");
+
+export const buildMilestoneDesignConsistencyPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  designTitle: string;
+  designMarkdown: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Validate the milestone design document for "${input.milestoneTitle}" in "${input.projectName}" for internal consistency.`,
+    'Return valid JSON with exactly three keys: "ok" (boolean), "issues" (array of strings), and "hint" (string).',
+    "Be conservative and only report real contradictions or ownership gaps that would make downstream feature planning ambiguous.",
+    "Check that Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria all describe the same milestone.",
+    "Check for contradictions in step order, step counts, screen inventory, required-vs-optional rules, redirect behavior, schema ownership, and Delivery Shape group boundaries.",
+    'If the document is internally consistent, return {"ok":true,"issues":[],"hint":""}.',
+    'If it is not internally consistent, return ok=false, list the contradictions in "issues", and provide one concise repair instruction in "hint".',
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Milestone design title:",
+    input.designTitle,
+    "",
+    "Milestone design markdown:",
+    input.designMarkdown,
   ].join("\n");
 
 export const buildMilestoneFeatureSetPrompt = (input: {
@@ -883,6 +943,9 @@ export const buildMilestoneFeatureSetPrompt = (input: {
     "Build on work already planned in earlier or parallel milestones instead of recreating it.",
     "Do not repeat or lightly rename an existing feature from any milestone.",
     "Prefer the smallest set of coherent features that fully covers the milestone without overlap.",
+    "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard boundary constraints.",
+    "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one feature in the output.",
+    "Do not assign a responsibility to one feature while another feature explicitly says that responsibility is out of scope.",
     "If documentation, architecture follow-up, or another cross-cutting concern belongs together for this milestone, keep it in one shared feature instead of splitting it across multiple small features.",
     "Order the proposed features so they can be implemented in a sensible sequence within the milestone.",
     "Prefer concrete vertical slices over vague epics.",
@@ -951,6 +1014,8 @@ export const buildMilestoneFeatureSetReviewPrompt = (input: {
     "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Review the full set as a whole. Merge task-sized or overlapping features, close obvious milestone coverage gaps, and keep sibling features non-overlapping.",
+    "Cross-check the set against the milestone design document's named flow steps, screens, and Delivery Shape groups before finalizing.",
+    "Remove or rewrite any feature boundary that contradicts the milestone design document's ownership model.",
     "Prefer fewer, feature-sized items over many tiny items.",
     "Keep the result scoped only to the selected milestone.",
     "Do not wrap the JSON in code fences.",
@@ -1410,6 +1475,9 @@ export const buildRewriteMilestoneFeatureSetPrompt = (input: {
     "The output is the full replacement feature set for this milestone, not just the incremental fix.",
     "Rewrite sibling boundaries as needed so cross-feature interaction issues are handled inside the feature set itself.",
     "Prefer fewer, coherent feature-sized items over task-sized fragments.",
+    "Resolve the named issues into one consistent ownership model across all features; do not restate the ambiguity in the rewritten set.",
+    "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard constraints while rewriting.",
+    "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one rewritten feature.",
     "Keep the result scoped only to the selected milestone and avoid duplicating features from other milestones.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1489,6 +1557,7 @@ export const buildRewriteMilestoneFeatureSetReviewPrompt = (input: {
     "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Preserve the intended full-set rewrite, close the named gap cleanly, and keep sibling feature ownership clear.",
+    "Ensure the final rewrite uses one consistent interpretation of the milestone design document's flow order, screen ownership, and Delivery Shape boundaries.",
     "Merge overlapping or task-sized items back into coherent features.",
     "Do not wrap the JSON in code fences.",
     "",

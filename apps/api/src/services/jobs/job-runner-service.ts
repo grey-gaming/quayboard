@@ -52,6 +52,7 @@ import {
   buildFeatureTechSpecPrompt,
   buildFeatureUserDocsPrompt,
   buildFeatureUxSpecPrompt,
+  buildMilestoneDesignConsistencyPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
@@ -633,6 +634,30 @@ const parseDecisionValidationResult = (value: string) => {
   }
 
   return parsed;
+};
+
+const parseMilestoneDesignConsistencyResult = (value: string) => {
+  const parsed = parseJson<{ hint?: string; issues?: string[]; ok?: boolean }>(value);
+
+  if (!parsed || typeof parsed.ok !== "boolean" || !Array.isArray(parsed.issues) || typeof parsed.hint !== "string") {
+    throw new Error(
+      "ValidateMilestoneDesignConsistency returned invalid content. Expected JSON with boolean ok, string-array issues, and string hint.",
+    );
+  }
+
+  return {
+    ok: parsed.ok,
+    issues: parsed.issues.map((issue, index) => {
+      if (typeof issue !== "string" || issue.trim().length === 0) {
+        throw new Error(
+          `ValidateMilestoneDesignConsistency returned an invalid issue at index ${index}.`,
+        );
+      }
+
+      return issue.trim();
+    }),
+    hint: parsed.hint.trim(),
+  };
 };
 
 const parseDecisionSelectionRepairPlan = (
@@ -1930,6 +1955,7 @@ export const createJobRunnerService = (input: {
 
       const clarificationsPrompt = buildTaskClarificationsPrompt({
         feature: featureContext,
+        milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
         planningDocuments,
         hint,
       });
@@ -1954,6 +1980,7 @@ export const createJobRunnerService = (input: {
           context: item.context,
         })),
         feature: featureContext,
+        milestoneDesignDoc: milestoneContext.milestoneDesignDoc,
         planningDocuments,
         hint,
       });
@@ -3014,31 +3041,102 @@ export const createJobRunnerService = (input: {
         const uxBlueprint = blueprints.uxBlueprint;
         const techBlueprint = blueprints.techBlueprint;
 
-        const prompt = buildMilestoneDesignPrompt({
-          projectName: project.name,
-          milestoneTitle: milestoneRecord.title,
-          milestoneSummary: milestoneRecord.summary,
-          linkedUserFlows: linkedFlows,
-          uxSpec: uxBlueprint.markdown,
-          technicalSpec: techBlueprint.markdown,
-        });
-        const designDoc = await runReviewedJsonGeneration({
+        const generateMilestoneDesignDoc = async (inputArgs: {
+          hint?: string;
+          templateId: string;
+        }) => {
+          const prompt = buildMilestoneDesignPrompt({
+            projectName: project.name,
+            milestoneTitle: milestoneRecord.title,
+            milestoneSummary: milestoneRecord.summary,
+            linkedUserFlows: linkedFlows,
+            uxSpec: uxBlueprint.markdown,
+            technicalSpec: techBlueprint.markdown,
+            hint: inputArgs.hint,
+          });
+
+          return runReviewedJsonGeneration({
+            templateId: inputArgs.templateId,
+            reviewTemplateId: `${inputArgs.templateId}Review`,
+            parameters: { milestoneId },
+            prompt,
+            parseDraft: parseBlueprintResult,
+            buildReviewPrompt: (draft) =>
+              buildMilestoneDesignReviewPrompt({
+                projectName: project.name,
+                milestoneTitle: milestoneRecord.title,
+                milestoneSummary: milestoneRecord.summary,
+                linkedUserFlows: linkedFlows,
+                uxSpec: uxBlueprint.markdown,
+                technicalSpec: techBlueprint.markdown,
+                draftTitle: draft.title,
+                draftMarkdown: draft.markdown,
+                hint: inputArgs.hint,
+              }),
+          });
+        };
+
+        const validateMilestoneDesignDoc = async (
+          designDoc: {
+            title: string;
+            markdown: string;
+          },
+          templateId = "ValidateMilestoneDesignConsistency",
+        ) => {
+          const prompt = buildMilestoneDesignConsistencyPrompt({
+            projectName: project.name,
+            milestoneTitle: milestoneRecord.title,
+            milestoneSummary: milestoneRecord.summary,
+            linkedUserFlows: linkedFlows,
+            designTitle: designDoc.title,
+            designMarkdown: designDoc.markdown,
+          });
+          const generated = await input.llmProviderService.generate(provider, prompt, {
+            responseFormat: "json",
+          });
+          await storeLlmRun({
+            templateId,
+            parameters: { milestoneId },
+            prompt,
+            generated,
+          });
+
+          return parseStructuredJsonWithRepair({
+            templateId,
+            parameters: { milestoneId },
+            prompt,
+            generated,
+            parse: parseMilestoneDesignConsistencyResult,
+          });
+        };
+
+        let designDoc = await generateMilestoneDesignDoc({
           templateId: rawJob.type,
-          parameters: { milestoneId },
-          prompt,
-          parseDraft: parseBlueprintResult,
-          buildReviewPrompt: (draft) =>
-            buildMilestoneDesignReviewPrompt({
-              projectName: project.name,
-              milestoneTitle: milestoneRecord.title,
-              milestoneSummary: milestoneRecord.summary,
-              linkedUserFlows: linkedFlows,
-              uxSpec: uxBlueprint.markdown,
-              technicalSpec: techBlueprint.markdown,
-              draftTitle: draft.title,
-              draftMarkdown: draft.markdown,
-            }),
         });
+        let designValidation = await validateMilestoneDesignDoc(designDoc);
+
+        if (!designValidation.ok) {
+          designDoc = await generateMilestoneDesignDoc({
+            hint: designValidation.hint.length > 0
+              ? designValidation.hint
+              : designValidation.issues.join(" "),
+            templateId: `${rawJob.type}Retry`,
+          });
+          designValidation = await validateMilestoneDesignDoc(
+            designDoc,
+            "ValidateMilestoneDesignConsistencyRetry",
+          );
+        }
+
+        if (!designValidation.ok) {
+          throw {
+            message:
+              `ValidateMilestoneDesignConsistency found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
+            code: "milestone_design_conflict_unresolved",
+            retryable: false,
+          };
+        }
+
         const created = await input.milestoneService.createDesignDocVersion({
           milestoneId,
           title: designDoc.title,

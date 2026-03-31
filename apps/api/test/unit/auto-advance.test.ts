@@ -1295,6 +1295,146 @@ describe("auto-advance service", () => {
       );
     });
 
+    it("queues a scope-review rewrite when structural issues remain", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        autoRepairMilestoneCoverage: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneScope",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "rewrite_feature_set", hint: "Align feature boundaries." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+        }),
+      } as never;
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: "batch-1",
+                  milestoneRepairCount: 1,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordReconciliationResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+          status: "failed_first_pass",
+        }),
+      );
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "RewriteMilestoneFeatureSet",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-1",
+            attemptNumber: 1,
+            issues: [{ action: "rewrite_feature_set", hint: "Align feature boundaries." }],
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
+    });
+
+    it("pauses immediately when scope review returns only needs_human_review issues", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        autoRepairMilestoneCoverage: true,
+        milestoneRepairCount: 0,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneScope",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "needs_human_review", hint: "Clarify source-of-truth ownership." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+        }),
+      } as never;
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "paused" as const,
+                  pausedReason: "needs_human",
+                  pendingJobCount: 0,
+                  activeBatchToken: null,
+                  milestoneRepairCount: 0,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordReconciliationResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+          status: "failed_needs_human",
+        }),
+      );
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      expect(
+        updates.some(
+          (update) => update.status === "paused" && update.pausedReason === "needs_human",
+        ),
+      ).toBe(true);
+      expect(
+        updates.some((update) => typeof update.milestoneRepairCount === "number"),
+      ).toBe(false);
+    });
+
     it("pauses when milestone reconciliation still has gaps after the rewrite limit", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
