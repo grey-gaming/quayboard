@@ -568,3 +568,33 @@
 - Result summary: the runner completed the full downstream chain for `F-025` and moved into UX generation for the invitation feature.
 - Quality assessment: workflow health remains good, but the approved `F-026` product spec is already broad. It includes generation, validation, multiple acceptance paths, pending invitations, share-sheet behavior, security requirements, performance targets, and test scenarios. That makes the main LLM-job risk predictable: the UX layer is likely to expand the already-large feature rather than isolate the minimum user interactions that need design definition.
 - Recommendation: add a generic prompt rule for branch-heavy features that forces prioritization of the primary actor path first. Secondary branches, exception states, and supporting surfaces should be summarized or deferred unless they are essential to the current milestone objective.
+
+### 2026-03-31T11:58:30Z - Job Review - GenerateFeatureUxSpec - F-026 Invitation System
+- Status: succeeded and auto-approved; tech generation is now running.
+- Result summary: produced a UX spec covering invitation generation modal, pending-invitations list, unauthenticated landing, signup path, existing-user acceptance, constraint screens, error states, deep-link logic, accessibility, and technical requirements.
+- Quality assessment: this is a strong example of the generic overlap problem. The UX artifact is well structured, but it re-specifies routing decisions, token lifecycle behavior, error contracts, security requirements, and data-model concerns that are not unique to the UX discipline. The result is broad coverage with limited new signal.
+- Recommendation: introduce a generic “discipline purity” check for UX jobs. Reject or rewrite outputs when they spend too much space on backend rules, security mechanics, API behavior, or data schemas. UX artifacts should primarily contribute layout, flows, state presentation, copy, and interaction behavior that remains unresolved after the product layer.
+
+### 2026-03-31T12:06:00Z - Job Review - GenerateFeatureTechSpec - F-026 Invitation System
+- Status: succeeded and auto-approved; user-doc generation is now running.
+- Result summary: produced a technical specification covering schema, endpoints, security model, client behavior, testing, implementation phases, monitoring, and post-MVP considerations.
+- Quality assessment: this is another generic example of downstream over-expansion. The tech artifact includes broad delivery phasing, monitoring plans, enhancement ideas, and cross-feature contracts that go well beyond the narrow technical decisions needed to implement the current feature. The document is polished, but it behaves more like a mini-program plan than a bounded tech spec.
+- Recommendation: add a generic max-scope policy for tech jobs. If a draft contains phased delivery plans, post-MVP roadmaps, or operational sections that are not explicitly requested, the system should trim or reject the output and ask for a feature-scoped rewrite focused on interfaces, persistence, invariants, and implementation constraints only.
+
+### 2026-03-31T12:09:00Z - Job Review - GenerateFeatureUserDocs - F-026 Invitation System
+- Status: succeeded and auto-approved; architecture-doc generation is now running.
+- Result summary: produced user documentation for invitation generation, sharing, recipient paths, pending invitations, errors, and security notes.
+- Quality assessment: this artifact is more concise than many previous downstream outputs, but it still shows a generic LLM-job weakness: user docs drift into implementation-adjacent detail and speculative product statements. Examples include cryptographic specifics, support workflow assumptions, and future-looking claims like possible multi-household support. That kind of content is not always appropriate for user-facing docs and can age badly.
+- Recommendation: add a generic user-doc filter that suppresses internal implementation detail, speculative roadmap language, and unnecessary system-internal explanations unless explicitly requested. User-doc jobs should prioritize stable user-visible behavior, recovery guidance, and terminology the product is ready to support publicly.
+
+### 2026-03-31T12:12:00Z - Job Review - GenerateFeatureArchDocs - F-026 Invitation System
+- Status: succeeded and auto-approved.
+- Result summary: produced architecture documentation covering services, data flows, API contracts, security, caching, observability, and extension points.
+- Quality assessment: this is another generic example of architecture output drifting into adjacent planning disciplines. The document is coherent, but it goes well beyond feature architecture into monitoring, rate limiting, extension ideas, and future capability framing. That reduces its value as a stable architectural artifact and repeats information already settled elsewhere.
+- Recommendation: enforce a generic architecture-doc acceptance rubric that rejects outputs containing too much observability, rollout, roadmap, or enhancement planning unless the job explicitly asked for those areas. Architecture jobs should primarily capture structure, responsibilities, contracts, and invariants.
+
+### 2026-03-31T12:12:10Z - Job Review - GenerateFeatureUxSpec - F-027 Membership Management
+- Status: currently running.
+- Result summary: the runner completed the full downstream chain for `F-026` and advanced into UX generation for membership management.
+- Quality assessment: workflow health remains good, but the `F-027` product spec is already broad. It combines member list display, owner/member role presentation, removal confirmation, removed-member messaging, soft-delete audit history, SSE propagation, offline queueing, and launch-readiness checklists. That creates the same recurring LLM-job risk: downstream artifacts will likely keep elaborating an already over-scoped feature instead of isolating the smallest useful slice.
+- Recommendation: add a generic pre-flight scope reducer before downstream jobs. If a feature spec spans multiple responsibility classes, the system should either split the feature or instruct downstream jobs to choose one primary responsibility and treat the rest as dependencies or deferred follow-ups.
