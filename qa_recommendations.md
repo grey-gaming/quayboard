@@ -394,3 +394,123 @@
 - Context: milestone two has now moved from milestone-level planning into the first feature product-spec generation.
 - QA assessment: the runner is healthy after the repaired milestone scope pass. Based on milestone two's feature set, the main quality risk is that the first feature may again over-commit adjacent concerns such as household setup and PWA behavior instead of staying tightly focused on authentication core.
 - Recommendation: review the first milestone-two feature spec for minimum-slice discipline before assuming the repaired milestone is genuinely well scoped.
+
+### 2026-03-31T09:41:08Z - Job Review - GenerateFeatureProductSpec - F-019 Authentication Core
+- Status: succeeded and auto-approved.
+- Result summary: produced a feature spec for welcome, signup, signin, password reset, validation, error handling, rate limiting, and email-related auth flows.
+- Quality assessment: this is meaningfully closer to the app's core than milestone one, but it is still too broad for a single “Authentication Core” slice in a small project. Password reset, delivery integration, and rate limiting all arrive immediately, which increases complexity before the basic signed-in path is proven. The document is coherent, but still inclined toward completeness over proportionality.
+- Recommendation: tighten auth feature specs to a minimal path first: signup, signin, and one successful authenticated entry flow. Recovery and hardening concerns can follow once the base loop exists.
+
+### 2026-03-31T09:41:08Z - Job Review - GenerateFeatureProductSpec - F-020 Session Management
+- Status: succeeded and auto-approved.
+- Result summary: produced a feature spec covering token persistence, graceful expiry handling, sign-out behavior, and protected-route access control.
+- Quality assessment: this is a sensible decomposition after authentication core, but it still layers in a lot of behavior at once, including preserved email prefill, shared-device safeguards, and route-guard patterns. The output is useful, yet it continues the general trend of maximizing coverage before proving the simplest path.
+- Recommendation: maintain this separation between auth operations and session state, but reduce the number of secondary behaviors bundled into the first session-management pass.
+
+### 2026-03-31T09:41:08Z - Job Review - GenerateFeatureProductSpec - F-021 Authenticated App Shell - in progress
+- Status: running with session state still `feature_product_create`.
+- Context: the runner advanced cleanly from `F-019` to `F-020` and then into `F-021` without any new pauses.
+- QA assessment: workflow remains healthy. The main quality risk is that the app-shell feature may become another broad aggregation point for empty states, navigation, layout, and setup guidance instead of staying narrowly focused on the first authenticated landing experience.
+- Recommendation: review this spec for whether it preserves a minimum authenticated shell or balloons into a generic “everything after login” container.
+
+### 2026-03-31T09:44:47Z - Job Review - GenerateFeatureProductSpec - F-021 Authenticated App Shell
+- Status: succeeded and auto-approved.
+- Result summary: produced a feature spec for the authenticated shell including header, bottom navigation, content regions, empty states, settings access, sync status, and general post-login framing.
+- Quality assessment: this repeats a familiar LLM-job pattern from earlier phases: when asked for a shell or foundation feature, the model broadens into multiple adjacent concerns at once. Here it pulls in sync status and offline-oriented cues even though those behaviors belong much later in the plan. The prose is clear, but the job again optimizes for completeness over a tight first authenticated experience.
+- Recommendation: improve the `GenerateFeatureProductSpec` prompt with a stronger anti-expansion rule for shell/foundation features. The job should explicitly reject downstream concerns like sync indicators, offline status, or generalized settings hooks unless the upstream milestone has already reached those capabilities. A good constraint would be: “If the feature is structural UI only, describe only the minimum visible scaffold needed to support already-approved flows.”
+
+### 2026-03-31T09:48:12Z - Job Review - GenerateFeatureProductSpec - F-022 PWA Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced a feature spec for installability, manifest configuration, service-worker lifecycle, offline auth-screen caching, and install prompt handling.
+- Quality assessment: this is the clearest repeated LLM-job failure in milestone two. Even after scope review rewrote the feature set once, the model still generated a full must-have PWA feature inside the authentication milestone and elaborated it as if it were core delivery. This is not a one-off wording issue; it is a repeated optimization bias toward “comprehensive modern app” patterns whenever the model sees a chance to add them.
+- Recommendation: add an explicit negative rule to milestone and feature generation prompts forbidding PWA, offline, push, or real-time capabilities unless those capabilities are already the current milestone theme or are directly quoted from the original brief. Also add a post-generation classifier check that flags any feature spec containing `manifest`, `service worker`, `offline`, `push`, or `sync` when the active milestone is not a platform-hardening milestone.
+
+### 2026-03-31T09:48:12Z - Job Review - GenerateFeatureProductSpec - F-023 Initial Household Creation - in progress
+- Status: running with session state still `feature_product_create`.
+- Context: this is the final product-spec job in the current milestone-two batch.
+- QA assessment: runner behavior remains healthy. The main content risk is that household creation may absorb onboarding, invitation, and member-management concerns prematurely, repeating the pattern of adjacent-scope bundling.
+- Recommendation: constrain the job to a single post-signup household bootstrap path. If the model starts introducing invitations, role management, or collaborative flows here, that should be treated as another prompt-discipline failure rather than added value.
+
+### 2026-03-31T09:52:20Z - Job Review - GenerateFeatureProductSpec - F-023 Initial Context Bootstrap
+- Status: succeeded and auto-approved.
+- Result summary: produced a feature spec for creating the first shared context entity during signup, extending auth responses, persisting the new context into session state, and surfacing it in downstream UI.
+- Quality assessment: this repeats another common LLM-job pattern: once the model identifies a prerequisite data entity, it tends to absorb API design, persistence, transactional guarantees, and UI presentation into a single feature spec. The output is internally coherent, but it over-aggregates responsibilities that could be staged more safely.
+- Recommendation: improve feature-spec generation with a “single responsibility per feature” constraint that asks the model to separate data creation, session propagation, and downstream display unless the user story truly requires them atomically. Also add a post-generation check for excessive cross-boundary verbs in one feature spec, for example simultaneous changes to storage, API, auth/session, and UI display layers.
+
+### 2026-03-31T10:03:04Z - Job Review - GenerateFeatureUxSpec / GenerateFeatureTechSpec - Milestone 2 early features
+- Status: `F-019` UX and tech succeeded; `F-020` UX succeeded and tech is currently running.
+- Result summary: the runner has progressed from feature product specs into the expected UX and tech workstreams for milestone two without any workflow interruption.
+- Quality assessment: the same LLM tendency is visible across workstream types, not only in product specs. UX and tech jobs repeatedly restate wide slices of behavior and infrastructure instead of adding only the layer-specific detail needed after the product spec is established. This makes artifacts verbose, duplicative, and more likely to drift into concerns that belong to later milestones.
+- Recommendation: add a generic “delta-only” instruction to all downstream LLM jobs. After a product spec exists, UX should describe interaction and presentation deltas only, tech should describe implementation deltas only, and both should be discouraged from re-expanding the entire feature. A useful generic rule is: “Do not re-state behavior already settled in upstream artifacts unless needed to resolve a conflict or add a missing implementation-specific constraint.”
+
+### 2026-03-31T10:12:38Z - Job Review - GenerateFeatureUxSpec / GenerateFeatureTechSpec - Milestone 2 mid-run update
+- Status: `F-020` tech succeeded; `F-021` UX succeeded; `F-021` tech is currently running.
+- Result summary: the runner continues to advance feature-by-feature through the second milestone workstreams without any automation stop.
+- Quality assessment: the repeated issue is now well established across multiple job types. Once a feature enters downstream workstreams, the model tends to regenerate full-scope narratives instead of confining each artifact to its own layer. That pattern is generic and likely to affect many project types because it reflects how the job prompts reward completeness over selective refinement.
+- Recommendation: add a shared post-processor or rubric step for all downstream LLM jobs that rejects outputs when too much of the content duplicates upstream artifacts. A generic rule could be: “At least 70% of this artifact must be unique to the current discipline (UX, tech, docs, tasks); if most sections simply restate the feature spec, revise with a narrower brief.”
+
+### 2026-03-31T10:18:05Z - Job Review - Cross-Workstream Pattern Check - F-021 Authenticated App Shell
+- Status: product, UX, tech, and architecture-doc artifacts are all now present for the same feature; runner has progressed to the next feature UX job.
+- Result summary: this feature now shows the full downstream artifact chain in one place.
+- Quality assessment: it demonstrates a general LLM-job weakness that should be addressed system-wide: each downstream job preserves internal quality, but the set as a whole becomes verbose and repetitive because there is no strong cross-job novelty check. This is not specific to UI shell features; the same pattern can occur for API, data, content, or workflow-heavy projects.
+- Recommendation: add a generic cross-artifact similarity check before accepting downstream outputs. If a new UX/tech/docs artifact is substantially paraphrasing the product artifact rather than contributing discipline-specific constraints, Quayboard should automatically trigger a revision with a prompt like: “Reduce overlap with previously approved artifacts; keep only decisions unique to this workstream.”
+
+### 2026-03-31T11:35:00Z - Job Review - GenerateMilestoneDesign - Milestone 3 Household Management & Onboarding
+- Status: succeeded and runner advanced normally.
+- Result summary: produced a milestone design centered on household setup, onboarding, invitations, membership, and location management.
+- Quality assessment: the output appears materially more aligned to the active milestone than earlier milestone-one and milestone-two planning. The remaining LLM-job risk is breadth control: even when the theme is correct, the generator still tends to pack several adjacent responsibilities into one milestone design without clearly identifying the smallest independently valuable slice.
+- Recommendation: strengthen milestone-design prompts with a generic constraint that each milestone must have one dominant user outcome and a short list of supporting capabilities. If the draft contains several equally large sub-problems, require the model to split or defer them instead of bundling them into one “complete area” milestone.
+
+### 2026-03-31T11:35:10Z - Job Review - GenerateMilestoneFeatureSet - Milestone 3 Household Management & Onboarding
+- Status: succeeded and passed scope review on the first attempt.
+- Result summary: generated a five-feature set covering household foundation, onboarding flow, invitation system, membership management, and location management.
+- Quality assessment: this is a better first-pass feature split than earlier milestones because the major concepts are at least separated into named features. The repeated LLM-job weakness is still present: the features are cleanly titled, but each one is written broadly enough that downstream jobs can still re-absorb neighboring concerns.
+- Recommendation: add a generic feature-set rule that every feature description must name both what it owns and what it explicitly does not own. That kind of negative boundary should reduce later prompt drift in any project domain, not just this one.
+
+### 2026-03-31T11:35:20Z - Job Review - ReviewMilestoneScope - Milestone 3 Household Management & Onboarding
+- Status: succeeded on the first review pass.
+- Result summary: the reviewer accepted the milestone-three feature set without requiring an automatic rewrite.
+- Quality assessment: this is a positive reliability signal, but it should not be treated as a guarantee that the feature set is sharply scoped. A review stage can pass a plan that is directionally correct while still allowing oversized feature boundaries, which is what the subsequent feature artifacts are already suggesting.
+- Recommendation: refine milestone-scope review prompts so they score not only thematic fit but also per-feature containment. A generic check should ask whether each feature can be implemented or reasoned about without importing major responsibilities from sibling features.
+
+### 2026-03-31T11:35:30Z - Job Review - GenerateFeatureProductSpec - F-024 Household Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced a product spec covering household creation, household naming, settings display, member list display, location list display, route guards, default location seeding, SSE sync, and offline caching behavior.
+- Quality assessment: this is the clearest current example of a repeated LLM-job problem. The artifact is polished, but it widens a “foundation” feature into a container for creation flows, settings UI, real-time sync, offline storage, and sibling-feature entry points. That weakens the value of later specialized jobs because too many decisions are already made here.
+- Recommendation: add a generic anti-expansion rule to feature product prompts: when a feature is labeled `foundation`, `shell`, `core`, or similar, the job must describe only the minimum owned capability and defer cross-cutting concerns like offline handling, real-time sync, or sibling workflow entry points unless they are explicitly required upstream.
+
+### 2026-03-31T11:35:40Z - Job Review - GenerateFeatureProductSpec - F-025 Guided Onboarding Flow
+- Status: succeeded and auto-approved.
+- Result summary: produced a product spec for onboarding structure and guided progression into household setup.
+- Quality assessment: the decomposition is sensible, but the overall pattern remains repetitive across feature products: each spec tends to restate surrounding journey context rather than only the decisions unique to that feature. That makes the artifact set look comprehensive while increasing overlap and future contradiction risk.
+- Recommendation: require feature-product jobs to include a brief “borrowed context” section capped at a small size, followed by a larger “new decisions introduced here” section. This generic structure would force the model to separate inherited context from genuinely feature-specific output.
+
+### 2026-03-31T11:35:50Z - Job Review - GenerateFeatureProductSpec - F-026 Invitation System
+- Status: succeeded and auto-approved.
+- Result summary: produced a product spec covering invitation token generation, acceptance routes, new-user and existing-user acceptance paths, share actions, and pending invitation visibility.
+- Quality assessment: the job remains useful, but it again prefers a fully elaborated end-to-end system on first pass. The pattern is generic: when the model encounters a transactional workflow, it tends to exhaustively specify every branch, state, and support affordance instead of identifying the smallest delivery slice.
+- Recommendation: add a generic “path-first, branches-later” instruction to workflow-oriented LLM jobs. The first pass should fully specify the primary successful path and only the minimum failure states required for correctness; secondary variants and convenience affordances should be deferred unless directly requested.
+
+### 2026-03-31T11:36:00Z - Job Review - GenerateFeatureProductSpec - F-027 Membership Management
+- Status: succeeded and auto-approved.
+- Result summary: produced a product spec for member list visibility, role display, removal confirmation, access revocation, and removed-member messaging.
+- Quality assessment: the output is coherent but still broad for a single feature. It bundles display, administration, audit behavior, revocation timing, and follow-up messaging into one artifact, which is a repeated signal that the prompt rewards exhaustiveness more than containment.
+- Recommendation: add a generic post-generation rubric that flags feature specs touching too many responsibility classes at once, for example display + administration + audit + cross-session messaging. When that threshold is exceeded, trigger a rewrite asking the model to keep only the responsibilities necessary for the named feature.
+
+### 2026-03-31T11:36:10Z - Job Review - GenerateFeatureProductSpec - F-028 Location Management
+- Status: succeeded and auto-approved.
+- Result summary: produced a product spec for user-defined locations, default-location protection, deletion rules, sync, and shared visibility.
+- Quality assessment: this continues the same LLM-job pattern seen elsewhere. The feature is plausibly named, but the spec still expands into protection semantics, synchronization guarantees, and cross-application visibility details before narrower CRUD behavior is proven.
+- Recommendation: add a generic sequencing instruction for CRUD-style features: define create/read/update/delete behavior first, then only include propagation, synchronization, and optimization details if the current milestone or upstream artifact explicitly requires them.
+
+### 2026-03-31T11:36:20Z - Job Review - GenerateFeatureUxSpec - F-024 Household Foundation
+- Status: succeeded and auto-approved; `GenerateFeatureTechSpec` is now running for the same feature.
+- Result summary: produced a large UX spec spanning onboarding household creation, settings creation state, owner and member views, offline messaging, animations, and accessibility detail.
+- Quality assessment: the same generic downstream issue persists. Once the UX job starts, it re-expands the full feature into a comprehensive experience narrative instead of staying focused on interaction and presentation decisions that are still unresolved after the product spec. The result is strong prose but low novelty relative to the upstream artifact.
+- Recommendation: apply a generic delta-only rule to UX jobs with an explicit novelty target. The prompt should instruct the model to avoid repeating settled product behavior and instead contribute only layout, interaction, state-transition, and accessibility decisions that are unique to the UX discipline.
+
+### 2026-03-31T11:36:30Z - Job Review - GenerateFeatureTechSpec - F-024 Household Foundation
+- Status: currently running.
+- Result summary: the runner has advanced cleanly from product to UX to tech for the first milestone-three feature without another automation pause.
+- Quality assessment: workflow behavior is healthy. Based on the repeated pattern in prior milestones and the size of the upstream product and UX artifacts, the main quality risk is that the tech job will again restate the entire feature and add speculative infrastructure choices rather than confining itself to implementation detail.
+- Recommendation: for all tech-generation jobs, add a generic instruction to reference upstream artifacts by identifier and describe only implementation decisions, data contracts, and technical constraints that are newly introduced here. Also reject tech outputs that duplicate large sections of product or UX prose without adding implementation-specific information.
