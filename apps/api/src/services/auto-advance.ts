@@ -896,6 +896,14 @@ export const createAutoAdvanceService = (
         }
         return false;
       }
+      if (stepKey === "milestone_complete") {
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "approved") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "complete" });
+          return true;
+        }
+        return false;
+      }
       for (const entry of featureApprovalKinds) {
         if (stepKey === entry.key) {
           const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);

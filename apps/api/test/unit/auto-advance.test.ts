@@ -570,6 +570,53 @@ describe("auto-advance service", () => {
       );
     });
 
+    it("auto-completes the milestone when skipReviewSteps is enabled", async () => {
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [
+              {
+                key: "milestone_complete",
+                label: "Complete the active milestone",
+                href: `/projects/${PROJECT_ID}/milestones`,
+              },
+            ],
+          };
+        }
+        return { actions: [] };
+      });
+      milestoneService.getActiveMilestone.mockResolvedValue({
+        id: "milestone-123",
+        status: "approved",
+      } as never);
+      milestoneService.transition.mockResolvedValue(undefined);
+
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+        skipReviewSteps: true,
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const, skipReviewSteps: true }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(milestoneService.transition).toHaveBeenCalledWith(
+        USER_ID,
+        "milestone-123",
+        { action: "complete" },
+      );
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "ReviewDelivery", projectId: PROJECT_ID }),
+      );
+    });
+
     it("enqueues ReviewDelivery when no actions remain", async () => {
       nextActionsService.build.mockResolvedValue({ actions: [] });
       const db = makeDb({ session: null });

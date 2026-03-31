@@ -173,3 +173,176 @@
 - Context: current latency is within the expected range for `glm-5:cloud` and is not being treated as a defect by itself.
 - QA assessment: the runner behavior is healthy after the feature-approval fix. The main quality risk to check on completion is whether this spec repeats the same greenfield/bootstrap assumptions seen in F-010 rather than adapting to the already-existing repository.
 - Recommendation: when this artifact lands, validate not just prose quality but repo-awareness. Repeated generation of setup/bootstrap requirements after the repo already exists would indicate a systemic context-grounding problem in feature-level planning.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureProductSpec - F-011 Development Environment
+- Status: succeeded and auto-approved.
+- Result summary: produced a detailed feature spec covering package manifest, `.env.example`, bootstrap scripts, migration setup, a dev server, health endpoint, README content, and smoke-path seed data.
+- Quality assessment: internally coherent, but still grounded in a fictional greenfield repository rather than the actual Quayboard codebase. It repeatedly specifies files and commands for a standalone `pocket-pantry-web` project, including `npm`-centric scripts, `src/api`, `src/web`, and SQLite bootstrap details that do not align with the current monorepo or its existing tooling. It also starts bleeding feature scope by assigning a shared-list API smoke path to an environment/bootstrap feature.
+- Recommendation: feature planning should incorporate current repository topology before drafting implementation artifacts. The content reads plausible, but it is not safely actionable for the repo it is supposed to guide.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureProductSpec - F-012 CI/CD Pipeline
+- Status: succeeded and auto-approved.
+- Result summary: generated a feature spec for pull-request validation, Docker build checks, test-framework setup, and a CI workflow intended to validate the bootstrap and shared-list path.
+- Quality assessment: proportionally stronger than the earlier setup features because CI/CD is naturally infrastructure-heavy, but it still inherits the same invented project shape and assumes a separate greenfield repo with `npm`, standalone Docker artifacts, and a simplified stack. The milestone itself remains mis-sequenced, so the artifact is solving pipeline concerns before the product's core pantry value path exists.
+- Recommendation: Quayboard should avoid treating infrastructure-first plans as default good practice for small applications. The artifact is coherent in isolation, but still reflects weak upstream milestone judgement.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureProductSpec - F-013 Public Shared Shopping List
+- Status: succeeded and auto-approved.
+- Result summary: produced a substantial feature spec for a public read-only shopping-list route including schema, API responses, SSR route behavior, React hydration, accessibility, error handling, and test expectations.
+- Quality assessment: this is the first feature artifact with a clear end-user surface, and it is more product-shaped than the bootstrap features. Even so, it remains over-detailed for a smoke-path milestone and is still built on assumptions from the inflated upstream specs: SSR, hydration details, strict performance budgets, and a large amount of implementation prescription for what should be a narrow validation slice.
+- Recommendation: the system should tighten feature specs around the smallest verifiable outcome. This document is useful, but it still over-commits implementation detail before proving the underlying milestone ordering is right.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureTechSpec - F-010 Repository Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced a technical spec for repository structure, `.gitignore`, ADR templates, branching rules, and a detailed file tree for a standalone Pocket Pantry repository.
+- Quality assessment: same core repo-awareness failure as the product spec. The document is precise, but it specifies a repository that does not match the actual Quayboard workspace and therefore risks generating high-confidence but incorrect implementation guidance.
+- Recommendation: technical-spec generation should validate assumptions against current repo state before emitting file-level directives. Precision without context fidelity is a quality defect, not a strength.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureArchDocs - F-010 Repository Foundation
+- Status: succeeded and auto-approved.
+- Result summary: generated architecture documentation for the repository foundation feature, including ownership boundaries and structural guidance.
+- Quality assessment: the architecture writing is organized, but it compounds the same problem as the product and tech artifacts by formalizing an imagined project skeleton. Once that is written as architecture truth, downstream artifacts are more likely to drift further from the real codebase.
+- Recommendation: architecture-doc generation should be especially conservative about declaring structure. This artifact type needs stronger coupling to verified repo facts than the current run provides.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureTechSpec - F-011 Development Environment
+- Status: succeeded and auto-approved.
+- Result summary: produced a technical implementation guide for package configuration, environment files, bootstrap sequencing, dev servers, database migrations, and file layout.
+- Quality assessment: high detail, but again for the wrong repository model. It prescribes a complete file tree and script inventory for a separate app instead of extending the existing Quayboard monorepo. It is also noticeably repetitive with the F-011 product spec rather than adding only the genuinely technical deltas.
+- Recommendation: feature workstreams should share context and avoid redundant restatement. The current product and tech artifacts are too duplicative and both repeat the same grounding error.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureUserDocs - F-011 Development Environment
+- Status: succeeded and auto-approved.
+- Result summary: generated user/developer-facing setup guidance for the development environment feature.
+- Quality assessment: this document is useful in tone and structure, but it documents a bootstrap workflow for a repo that does not exist in this project. That makes it another polished but misleading artifact rather than an accurate contributor document.
+- Recommendation: user-doc generation should inherit verified implementation context rather than whatever structure prior LLM artifacts invented. Documentation quality is only as good as its grounding.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureTechSpec - F-012 CI/CD Pipeline
+- Status: succeeded and auto-approved.
+- Result summary: produced a technical spec for multi-stage validation, GitHub Actions, Docker validation, and testing infrastructure around the early milestone features.
+- Quality assessment: coherent and better scoped than some earlier outputs, but still locked to the fabricated greenfield project structure and still oriented around proving infrastructure before user value. This is a planning-quality issue more than a prose-quality issue.
+- Recommendation: Quayboard should challenge whether pipeline design belongs in milestone one for a small app, rather than simply elaborating it well.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureUserDocs - F-012 CI/CD Pipeline
+- Status: succeeded and auto-approved.
+- Result summary: generated explanatory docs for the CI/CD pipeline feature, including workflow purpose and validation coverage.
+- Quality assessment: readable and consistent with the corresponding product/tech specs, but it adds little new information and inherits the same infra-first bias. The growing volume of adjacent artifact types is increasing documentation weight faster than product clarity.
+- Recommendation: feature documentation should be more selective. Not every infrastructure feature needs equally heavy product, tech, and user-doc treatment at this stage of planning.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureUxSpec - F-013 Public Shared Shopping List
+- Status: succeeded and auto-approved.
+- Result summary: produced a focused UX spec for a public shared shopping-list page, including user flows, component hierarchy, content states, typography, color, accessibility, and error behavior.
+- Quality assessment: this is one of the stronger generated artifacts in the run. It stays relatively close to a single screen and expresses a coherent interaction model. It still over-specifies implementation details such as exact layout values, SSR/hydration assumptions, and performance targets for what is supposed to be a small validation feature, but the document is materially more useful than the repo-bootstrap artifacts.
+- Recommendation: Quayboard should bias more strongly toward this level of task-focused UX specificity and away from sprawling system-wide elaboration. This artifact shows the model can be helpful when the scope is narrow enough.
+
+### 2026-03-31T09:00:43Z - Job Review - GenerateFeatureTechSpec - F-013 Public Shared Shopping List - in progress
+- Status: running since 2026-03-31T08:57:59Z with session state still `running` and no new pause or retry markers.
+- Context: active duration remains consistent with the known `glm-5:cloud` latency profile and is not being classified as a defect.
+- QA assessment: runner behavior is healthy. Based on the preceding feature artifacts, the main expected quality risk is continued over-prescription of implementation details around what should remain a narrow public-route slice.
+- Recommendation: review this output for proportionality and whether it stays aligned with the actual Quayboard repo rather than the imagined standalone Pocket Pantry project.
+
+### 2026-03-31T09:03:58Z - Job Review - GenerateFeatureTechSpec - F-013 Public Shared Shopping List
+- Status: succeeded and auto-approved.
+- Result summary: produced a technical spec for the public shared-list vertical slice, covering schema ownership, `/api/shared-list/:token`, `/shared-list/:token`, SSR plus hydration behavior, component states, token handling, and integration boundaries with earlier infrastructure features.
+- Quality assessment: this is a strong artifact relative to the rest of the run. It stays closer to a real user-facing slice and does a decent job of describing boundaries. The main weakness is still proportionality: it prescribes a lot of implementation detail, performance targets, and stack behavior for what should be a narrow smoke-path feature, and it still assumes the earlier fictional project structure as settled truth.
+- Recommendation: Quayboard should preserve this level of coherence while cutting the amount of speculative low-level prescription. The artifact becomes more useful when it focuses on contract and scope rather than exhaustive implementation choreography.
+
+### 2026-03-31T09:03:58Z - Job Review - GenerateTaskClarifications - F-010 Repository Foundation - in progress
+- Status: running with session state advanced to `feature_task_clarifications_generate`.
+- Context: task planning has begun at the first feature after all required feature workstreams were approved.
+- QA assessment: workflow progression is healthy. The main quality risk here is whether task clarifications will amplify the same repo-grounding mistake already present in the F-010 planning artifacts, because the clarification step is downstream of those documents.
+- Recommendation: review clarification questions for usefulness and whether they identify genuine implementation ambiguities rather than restating invented repository-bootstrap assumptions.
+
+### 2026-03-31T09:05:21Z - Job Review - GenerateTaskClarifications - F-010 Repository Foundation
+- Status: succeeded.
+- Result summary: generated five clarification questions for F-010 around branch types, commit scopes, README ownership, AGENTS.md governance, and `.gitignore` verification strategy.
+- Quality assessment: structurally useful and more discriminating than some earlier artifacts. Several questions identify real internal inconsistencies within the generated F-010 docs, especially README ownership and branch-type coverage. The weakness is that the whole clarification set still operates inside the invented repository-bootstrap frame rather than challenging whether F-010 belongs in an already-existing repo at all.
+- Recommendation: clarification generation is helpful as a consistency check, but it should also be allowed to question upstream assumptions when the feature itself is poorly grounded in repository reality.
+
+### 2026-03-31T09:05:21Z - Job Review - AutoAnswerTaskClarifications - F-010 Repository Foundation
+- Status: succeeded.
+- Result summary: auto-answered all five F-010 clarification questions with direct rationale and concrete decisions.
+- Quality assessment: the answers are articulate and mostly internally consistent. They resolve ambiguities in a sensible way, particularly around README scope and optional commit scopes. The limitation is again foundational: the answers improve coherence within a flawed feature premise instead of surfacing that premise as the main problem.
+- Recommendation: auto-answering works mechanically, but Quayboard would benefit from a higher-level escape hatch that can flag “this feature is based on a bad assumption” rather than always optimizing the current branch of generated planning.
+
+### 2026-03-31T09:05:21Z - Job Review - GenerateFeatureTaskList - F-010 Repository Foundation - in progress
+- Status: running with session state advanced to `feature_task_list_generate`.
+- Context: clarification generation and auto-answering completed in one pass with no pause or retry.
+- QA assessment: runner behavior remains healthy. The main quality risk is that the resulting task list may convert the already-misaligned F-010 planning documents into a large number of concrete but repo-inappropriate tasks.
+- Recommendation: review the generated tasks for actionability, duplication, and whether they reflect actual Quayboard repository work versus the fictional standalone Pocket Pantry bootstrap.
+
+### 2026-03-31T09:06:45Z - Job Review - GenerateFeatureTaskList - F-010 Repository Foundation
+- Status: succeeded.
+- Result summary: generated a three-task delivery plan for repository initialization, directory structure, and workflow/ADR documentation.
+- Quality assessment: this is the clearest downstream manifestation so far of the repo-grounding problem. The tasks are concrete, but they are concretely wrong for the live repository: they instruct `git init`, creating a new `main` branch, building a standalone `src/api`/`src/web` structure, and even reintroducing README work after the clarification step explicitly resolved README as out of scope for F-010. This is not just over-specification; it is contradiction across artifacts.
+- Recommendation: task generation must consume resolved clarifications as hard constraints, not soft hints. Once tasks are generated, the planning system is close enough to execution that contradictions of this kind become dangerous.
+
+### 2026-03-31T09:06:45Z - Job Review - GenerateTaskClarifications - F-011 Development Environment - in progress
+- Status: running with session state returned to `feature_task_clarifications_generate` for the next feature.
+- Context: the runner is progressing normally into the second feature's task-planning cycle.
+- QA assessment: workflow reliability remains good. The main open question is whether F-011 task planning will continue the same contradiction pattern or incorporate the lessons from the first feature's clarification pass.
+- Recommendation: specifically watch whether generated clarification questions and tasks remain tied to the fictional standalone Pocket Pantry repo instead of the actual Quayboard monorepo.
+
+### 2026-03-31T09:10:50Z - Job Review - GenerateTaskClarifications - F-011 Development Environment
+- Status: succeeded.
+- Result summary: generated six clarification questions covering VAPID key generation, migration failure handling, test-database strategy, port conflict behavior, SQLite WAL mode, and idempotent setup reruns.
+- Quality assessment: this is a comparatively strong clarification set. The questions are concrete, implementation-relevant, and expose real ambiguities in the generated F-011 feature docs rather than only restating boilerplate. They still assume the standalone Pocket Pantry app model, but within that frame they add useful precision.
+- Recommendation: this is the most valuable use of the clarification phase so far. Quayboard should preserve this kind of decision-focused questioning while reducing dependence on inaccurate upstream repo assumptions.
+
+### 2026-03-31T09:10:50Z - Job Review - AutoAnswerTaskClarifications - F-011 Development Environment
+- Status: succeeded.
+- Result summary: auto-answered all six F-011 clarifications with concrete decisions on manual VAPID generation, migration failure handling, mixed test-database strategy, fail-fast port handling, WAL mode, and idempotent setup behavior.
+- Quality assessment: the answers are specific and generally sensible. Unlike the F-010 cycle, I do not see an obvious contradiction between these answers and the resulting feature direction. The limitation remains contextual: the answers improve a generated implementation plan for the wrong repository shape.
+- Recommendation: the auto-answer step is effective when the questions are substantive. It would be more useful still if it could question repo-model assumptions, not just refine behavior inside them.
+
+### 2026-03-31T09:10:50Z - Job Review - GenerateFeatureTaskList - F-011 Development Environment
+- Status: succeeded.
+- Result summary: generated a seven-task plan covering package configuration, migrations and seed data, API foundation, Vite setup, dev orchestration, bootstrap automation, and README documentation.
+- Quality assessment: the task list is coherent and makes clear use of the answered clarifications. It is still a poor fit for the actual Quayboard repository because it prescribes building a standalone Node/Vite app from scratch inside a repo that already has API, web, shared packages, and tooling. Unlike F-010, I do not see an internal contradiction as sharp as the README scope bug, but the overall grounding problem remains severe.
+- Recommendation: task generation quality is no longer blocked by workflow reliability; it is blocked by context fidelity. The planning system needs a stronger notion of “existing product surface” before generated tasks become execution-safe.
+
+### 2026-03-31T09:10:50Z - Job Review - GenerateTaskClarifications - F-012 CI/CD Pipeline - in progress
+- Status: running with session state advanced to the next feature's clarification phase.
+- Context: the runner continues to cycle feature-by-feature through task planning without pausing.
+- QA assessment: system behavior remains healthy. The next quality check is whether F-012 clarifications surface useful CI/pipeline ambiguities or merely elaborate the same infrastructure-first bias.
+- Recommendation: pay particular attention to whether these clarifications challenge the milestone ordering or just continue optimizing an over-infrastructured plan.
+
+### 2026-03-31T09:22:57Z - Job Review - GenerateTaskClarifications - F-012 CI/CD Pipeline
+- Status: succeeded.
+- Result summary: generated six CI/pipeline clarification questions focused on `/health` ownership, Docker database initialization, build output contract, Alpine `wget`, `DATABASE_PATH`, and Vitest global setup ownership.
+- Quality assessment: this is a useful clarification set because it exposes cross-feature dependency confusion rather than just low-level implementation trivia. It shows the planning system is detecting inconsistencies between earlier generated artifacts. The downside is that it is still solving problems created by the inflated infra-first milestone design.
+- Recommendation: Quayboard should keep this style of dependency-focused clarification, but use it earlier in milestone planning to reduce downstream contradiction volume.
+
+### 2026-03-31T09:22:57Z - Job Review - AutoAnswerTaskClarifications - F-012 CI/CD Pipeline
+- Status: succeeded.
+- Result summary: auto-answered the CI clarifications with specific ownership decisions and interface contracts between F-011 and F-012.
+- Quality assessment: the answers are coherent, but they lean heavily on asserted cross-feature contracts that were never anchored to the real repository. They improve internal consistency inside the generated plan, but not its external validity.
+- Recommendation: clarification answers should have a path to cite or verify actual repo interfaces instead of only reconciling generated documents with each other.
+
+### 2026-03-31T09:22:57Z - Job Review - GenerateFeatureTaskList - F-012 CI/CD Pipeline
+- Status: succeeded.
+- Result summary: generated four CI-focused tasks covering test framework config, Docker configuration, GitHub Actions workflow, and infrastructure smoke tests plus documentation.
+- Quality assessment: the task list is consistent with the F-012 feature artifacts and clarifications. It is also extremely infrastructure-heavy for milestone one and remains tied to the same invented project structure. The resulting tasks are plausible for a greenfield app, but weakly aligned with the actual Quayboard repo and the original brief for a small pantry web app.
+- Recommendation: task generation is producing increasingly polished infrastructure plans, but the system still lacks proportionality controls. This is a product-quality issue rather than a runner-reliability issue.
+
+### 2026-03-31T09:22:57Z - Job Review - GenerateTaskClarifications - F-013 Public Shared Shopping List
+- Status: succeeded.
+- Result summary: generated ten clarification questions covering schema ownership, server ownership, token normalization, error contracts, SSR metadata, TypeScript globals, foreign-key cascades, caching, rollback behavior, and API field scope.
+- Quality assessment: this is the strongest clarification batch of the run in terms of practical engineering concerns. The questions are concrete and connected to real edge cases in the generated feature plan. The main weakness is that they continue to elaborate a technically ambitious public-route slice whose place in milestone one was questionable from the start.
+- Recommendation: the clarification subsystem is doing genuinely useful work here. The upstream milestone and feature generators should learn from this level of specificity instead of requiring so much downstream repair-by-clarification.
+
+### 2026-03-31T09:22:57Z - Job Review - AutoAnswerTaskClarifications - F-013 Public Shared Shopping List
+- Status: succeeded.
+- Result summary: auto-answered all ten F-013 clarifications with decisions on ownership boundaries, lowercase token normalization, error handling, OG metadata, cache control, cascade behavior, and migration rollback expectations.
+- Quality assessment: these answers are detailed and largely sensible. They strengthen the feature's internal contracts considerably. Some answers still broaden scope, such as introducing cache policy and global type declarations despite the milestone already being overloaded, but overall this is one of the better artifact sets generated in the run.
+- Recommendation: when the underlying feature is closer to a real user-facing slice, the auto-answer mechanism becomes substantially more valuable. The product should apply that discipline earlier in the planning chain.
+
+### 2026-03-31T09:22:57Z - Job Review - GenerateFeatureTaskList - F-013 Public Shared Shopping List
+- Status: succeeded.
+- Result summary: generated a five-task implementation plan covering database and queries, token utilities, API endpoint, SSR web route plus static assets, React components and hydration, and seed/test coverage.
+- Quality assessment: this is the best task list in the run from a pure product standpoint. It maps cleanly onto a user-visible slice and the tasks are understandable. It still over-specifies implementation details, but unlike the repo-bootstrap tasks, the work is at least tied to a concrete outcome a user could experience.
+- Recommendation: use this artifact as the benchmark for what “helpful” looks like. Even here, Quayboard should trim prescription and avoid locking in stack details that are not essential to the feature contract.
+
+### 2026-03-31T09:22:57Z - Job Review - ReviewMilestoneDelivery - in progress/completed before pause
+- Status: the milestone delivery review succeeded with `deliveryReviewStatus: passed`, but the runner then paused at `milestone_complete`.
+- QA assessment: the review itself appears healthy and produced no delivery issues. The stop that followed is a workflow defect, not a content-quality signal.
+- Recommendation: extend `skipReviewSteps` handling to milestone completion so the runner's hands-off mode remains consistent through the end of each milestone.
