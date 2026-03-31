@@ -616,3 +616,15 @@
 - Result summary: produced user documentation for member roles, member list visibility, removal behavior, removed-member history, and FAQ-style guidance.
 - Quality assessment: this artifact is relatively concise, but it still demonstrates a generic user-doc issue: it states low-level operational behavior such as offline queueing and near-real-time update timing as if those are durable public promises. That can make user docs brittle and over-specific when implementation evolves.
 - Recommendation: add a generic user-doc conservatism rule. User-doc outputs should avoid operational guarantees, backend timing language, and implementation-specific offline behavior unless those behaviors are explicitly product-committed and already validated. Prefer stable user-facing expectations over internal mechanics.
+
+### 2026-03-31T12:24:00Z - Job Review - GenerateFeatureArchDocs - F-027 Membership Management
+- Status: succeeded and auto-approved.
+- Result summary: produced architecture documentation covering data flows, interfaces, constraints, middleware, monitoring, edge cases, and future considerations.
+- Quality assessment: this follows the same generic architecture-doc failure mode observed in earlier features. The artifact is coherent, but it still widens into monitoring, future considerations, and operational edge-case planning instead of staying focused on stable structural decisions. It reads more like a cross-cutting design dossier than a tightly scoped feature architecture note.
+- Recommendation: add a generic architecture-doc output ceiling. After a small fixed number of sections, force the model to stop unless it is adding new structure-critical information. This would reduce the tendency to drift into observability, roadmap, and speculative extension content across all project types.
+
+### 2026-03-31T12:24:10Z - Job Review - GenerateFeatureUxSpec - F-028 Location Management
+- Status: currently running.
+- Result summary: the runner completed the full downstream chain for `F-027` and moved into UX generation for location management.
+- Quality assessment: workflow remains healthy, but the `F-028` product spec is already oversized for a small feature. It mixes creation, deletion, deletion blocking, sync, dashboard integration, item-entry integration, icon systems, open questions, and developer checklists. That again suggests the downstream UX job will inherit an overly large brief.
+- Recommendation: add a generic feature-product sanity check before downstream generation. If a product spec includes open-question sections, implementation checklists, metrics, and multiple cross-surface integrations, the system should classify it as over-broad and either split it or automatically strip it down to the primary user-facing responsibility before passing it to UX or tech jobs.
