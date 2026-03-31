@@ -514,3 +514,39 @@
 - Result summary: the runner has advanced cleanly from product to UX to tech for the first milestone-three feature without another automation pause.
 - Quality assessment: workflow behavior is healthy. Based on the repeated pattern in prior milestones and the size of the upstream product and UX artifacts, the main quality risk is that the tech job will again restate the entire feature and add speculative infrastructure choices rather than confining itself to implementation detail.
 - Recommendation: for all tech-generation jobs, add a generic instruction to reference upstream artifacts by identifier and describe only implementation decisions, data contracts, and technical constraints that are newly introduced here. Also reject tech outputs that duplicate large sections of product or UX prose without adding implementation-specific information.
+
+### 2026-03-31T11:40:00Z - Job Review - GenerateFeatureTechSpec - F-024 Household Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced a detailed tech spec covering API endpoints, data entities, business rules, routing, tests, migration checklists, deployment checklists, rate limits, SSE synchronization, and offline/cache-related implementation detail.
+- Quality assessment: the artifact is technically structured, but it confirms the broader LLM-job issue already visible in earlier milestones. The tech job is not staying narrowly technical relative to the feature boundary; it is re-authoring product decisions, introducing speculative implementation details, and emitting large checklists that read like a complete subsystem plan.
+- Recommendation: add a generic tech-job rubric that scores outputs on boundary discipline. Require the model to separate `confirmed from upstream`, `new technical decisions introduced here`, and `deferred decisions`. If the artifact introduces major infrastructure or operational detail that was not required by upstream context, trigger a rewrite.
+
+### 2026-03-31T11:40:10Z - Job Review - GenerateFeatureUserDocs - F-024 Household Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced user documentation for household creation, settings, member roles, default locations, related features, and troubleshooting.
+- Quality assessment: this is another strong example of a generic downstream redundancy problem. The document is readable, but it largely repackages the same scope already established in product and UX artifacts and even advertises sibling features before those features are complete. That lowers information density and increases the chance of cross-artifact drift.
+- Recommendation: change user-doc generation so it only documents behavior that is stable, user-visible, and unique to the current feature. Add a generic rule forbidding user-doc jobs from describing sibling or future features unless they are already approved and required for comprehension. Also require a short “what is new for the user in this feature” summary before any broader explanatory content.
+
+### 2026-03-31T11:40:20Z - Job Review - Cross-Artifact Pattern Check - F-024 Household Foundation
+- Status: product, UX, tech, and user-doc artifacts are all now approved; architecture docs are still pending.
+- Result summary: the full downstream chain for one feature is now available for direct comparison.
+- Quality assessment: the repeated issue is no longer isolated to one job type. Across product, UX, tech, and user docs, the model repeatedly rewrites overlapping feature narrative, carries forward speculative concerns like offline/sync behavior, and references adjacent features as though the whole system is already settled. This is a system-level LLM orchestration weakness rather than a one-off artifact problem.
+- Recommendation: add a generic acceptance-time overlap check across all feature workstreams. Before approving a downstream artifact, compare it against already-approved artifacts for the same feature and reject it when the overlap is mostly paraphrase rather than new discipline-specific content. A simple generic rule would be to require a minimum novelty threshold plus a small explicit `dependencies referenced` section instead of full narrative repetition.
+
+### 2026-03-31T11:45:00Z - Job Review - GenerateFeatureArchDocs - F-024 Household Foundation
+- Status: succeeded and auto-approved.
+- Result summary: produced architecture documentation covering aggregate ownership, data models, transactions, IndexedDB, SSE, offline behavior, rate limits, migration details, and future extensions.
+- Quality assessment: this confirms the same generic LLM-job weakness in the final downstream workstream. The architecture doc is polished, but it continues to broaden the feature with speculative platform concerns, future extension notes, and implementation assumptions that were never tightly justified by the upstream slice. The artifact reads like a subsystem handbook rather than a narrowly bounded architecture note for one feature.
+- Recommendation: add a generic architecture-doc prompt rule that limits the output to structural decisions that are both necessary and stable for the current feature. Require a short `decisions made here` list and forbid speculative future-design sections unless the upstream artifact explicitly requested them.
+
+### 2026-03-31T11:45:10Z - Job Review - GenerateFeatureUxSpec - F-025 Guided Onboarding Flow
+- Status: currently running.
+- Result summary: the runner has completed the full downstream chain for `F-024` and moved into UX generation for the next milestone-three feature.
+- Quality assessment: workflow health remains good. The content risk is already visible from the approved `F-025` product spec: it defines a four-step narrative flow, skip logic at every step, persistence, resume behavior, invitation entry, dashboard prompts, accessibility, and performance targets in one artifact. That makes it likely the UX job will further elaborate a feature that is already too wide for a first pass.
+- Recommendation: add a generic width-control rule for journey-style features. When a feature describes a multi-step flow, the LLM should first prove the minimum path to first user value and explicitly defer optional steps, reminders, and recovery mechanics unless those are the main purpose of the feature.
+
+### 2026-03-31T11:47:00Z - Job Review - GenerateFeatureUxSpec - F-025 Guided Onboarding Flow
+- Status: succeeded and auto-approved; tech generation is now running.
+- Result summary: produced a UX spec covering four screens, skip dialogs, progress bars, state persistence, resume behavior, dashboard prompts, accessibility detail, and timing expectations.
+- Quality assessment: the artifact is readable and internally coherent, but it reinforces the same generic downstream problem. The UX job is not limiting itself to unresolved interaction design; it is re-specifying flow control, persistence policy, invitation-token behavior, recovery logic, and post-onboarding dashboard behavior. That makes the artifact look thorough while reducing the signal added by the UX layer.
+- Recommendation: tighten UX-job prompts with a generic ownership filter. Require the model to mark each section as either `interaction design introduced here` or `inherited from upstream`, and reject outputs where too much content falls into the inherited bucket. This should reduce repeated full-flow rewrites across all project types.
