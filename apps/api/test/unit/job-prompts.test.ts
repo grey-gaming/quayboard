@@ -105,14 +105,15 @@ describe("job prompts", () => {
     expect(prompt).toContain("First-pass Product Spec markdown:");
   });
 
-  it("asks for broad, non-duplicative user-flow coverage", () => {
+  it("asks for prioritised, capped user-flow coverage", () => {
     const prompt = buildUserFlowPrompt({
       projectName: "Quayboard",
       sourceMaterial: "# Overview\n\nPlanning control plane.",
     });
 
     expect(prompt).toContain('"title", "userStory", "entryPoint", "endState", "flowSteps"');
-    expect(prompt).toContain("diverse and extensive set of flows");
+    expect(prompt).toContain("Prefer well-specified flows over volume");
+    expect(prompt).toContain("10 to 20 flows");
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
     expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");

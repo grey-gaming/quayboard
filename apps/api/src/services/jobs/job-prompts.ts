@@ -80,7 +80,9 @@ export const buildProjectOverviewPrompt = (input: {
     "Synthesize the full context into a coherent product direction and fill reasonable gaps with explicit proposed defaults when the source material is incomplete.",
     "Do not mirror the questionnaire ordering or quote answers back line-by-line.",
     "Use these section headings in this exact order: Product Summary, Users and Roles, Problem and Opportunity, Product Vision, Core Workflows, Key Capabilities, Constraints and Non-Goals, Experience and Product Feel, Success Measures, Assumptions and Proposed Defaults.",
-    "Make the writing concrete, creative, and product-quality. Avoid generic software-product filler and avoid narrowing the output to only what was stated explicitly.",
+    "Make the writing concrete, creative, and product-quality. Avoid generic software-product filler.",
+    "Stated requirements take priority over inferred additions. Place any inferred capabilities or proposed defaults exclusively in the Assumptions and Proposed Defaults section — do not embed them throughout the document as if they were confirmed scope.",
+    "Do not add platform capabilities (offline support, push notifications, real-time sync, PWA installability) unless the source material explicitly requires them.",
     "Do not wrap the JSON in code fences.",
     "",
     "Current project description:",
@@ -128,6 +130,13 @@ You must:
 3. Infer missing but necessary elements where needed.
 
 Do not leave major areas underspecified. When information is missing, do not stop. Make the strongest reasonable product assumptions.
+
+## Proportionality Rule
+Scale the depth and feature inventory to match the stated project size and scope. A "small web app" or simple utility does not need full enterprise subsystems, multi-device sync architecture, or a comprehensive platform feature stack.
+
+When you infer a capability that is not explicitly stated in the source material, mark it clearly as an assumption or proposed default — not as a settled requirement. Place all such inferences in the Assumptions section rather than embedding them throughout the spec as if they were confirmed scope.
+
+Do not add platform capabilities (offline support, push notifications, service workers, real-time sync, PWA installability, invitation systems, public sharing links) unless the source material explicitly requires them. If you believe one of these is a natural fit, note it as a proposed extension in the Assumptions section only.
 
 ## Output Requirements
 Write the specification using clear headings and structured subsections.
@@ -469,10 +478,11 @@ export const buildUserFlowPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Generate a broad first-pass set of user flows for "${input.projectName}".`,
+    `Generate a prioritised set of user flows for "${input.projectName}".`,
     'Return valid JSON as an array of objects with these keys: "title", "userStory", "entryPoint", "endState", "flowSteps", "coverageTags", "acceptanceCriteria", and "doneCriteriaRefs".',
     'Each "flowSteps" value must be an array of plain strings only. Do not return step objects, numbered objects, or nested structures.',
-    "Produce a diverse and extensive set of flows, not slight variations of the same journey.",
+    "Cover the core product journey, key supporting paths, and critical failure states. Prefer well-specified flows over volume.",
+    "Aim for the minimum set needed to inform milestone planning — typically 10 to 20 flows for a focused web or mobile app. Only exceed that range if the product genuinely requires more distinct journeys.",
     "Include the most important onboarding, happy-path, supporting, operational, and edge/failure journeys that are genuinely relevant to the product.",
     "Each flow must be specific, realistic, and distinct.",
     "Do not wrap the JSON in code fences.",
@@ -1019,6 +1029,8 @@ export const buildFeatureProductSpecPrompt = (input: {
     "The markdown must be detailed, implementation-oriented, and scoped only to the feature described below.",
     "The requirements object must contain boolean keys: uxRequired, techRequired, userDocsRequired, archDocsRequired.",
     "Use the milestone design doc and sibling feature list to keep ownership boundaries clear. Do not narrow the feature into a task-sized slice or expand it into neighboring feature scope.",
+    "If this feature's title contains structural terms such as 'Foundation', 'Core', 'Shell', 'Scaffold', 'Bootstrap', or 'Setup', describe only the minimum owned capability required to support the milestone. Defer cross-cutting concerns such as offline handling, real-time sync, notification integration, or sibling-feature entry points unless the milestone design document explicitly places them here.",
+    "Specify the primary success path in full before describing secondary branches, error states, or optional variants.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1116,6 +1128,8 @@ export const buildFeatureUxSpecPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project UX Spec as the UX-system reference.",
     "Use the milestone design doc and sibling feature summaries to avoid drifting into neighboring feature scope.",
+    "Focus exclusively on interaction design, layout, state transitions, copy, and accessibility decisions that are not already resolved in the feature Product Spec.",
+    "Do not re-state product behavior, data models, API contracts, sync protocols, or backend rules already settled upstream. If a decision is already made in the Product Spec, reference it briefly rather than restating it at length.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1156,6 +1170,9 @@ export const buildFeatureTechSpecPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project Technical Spec as the technical-system reference.",
     "Use the milestone design doc and sibling feature summaries to keep the implementation boundary clear.",
+    "Focus exclusively on implementation decisions, data contracts, interface definitions, persistence requirements, and technical constraints that are not already resolved in the feature Product Spec.",
+    "Do not re-state product behavior or UX decisions already settled upstream. If a decision is already made, reference it briefly rather than restating it at length.",
+    "Do not include monitoring plans, rollout strategies, post-MVP roadmaps, enhancement ideas, or operational procedures unless they are directly required for the current feature implementation.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1196,6 +1213,8 @@ export const buildFeatureUserDocsPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on user-facing behavior, setup expectations, and walkthrough guidance rather than implementation details.",
     "Keep documentation ownership aligned to this feature only. If related documentation belongs to a sibling feature, do not absorb it here.",
+    "Document only stable, user-visible behavior that the product is ready to support publicly. Do not document implementation details, cryptographic specifics, backend timing guarantees, offline queueing mechanics, or speculative roadmap language.",
+    "Do not describe sibling or future features unless they are already approved and directly required for a user to understand this feature.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1233,8 +1252,9 @@ export const buildFeatureArchDocsPrompt = (input: {
     "Task:",
     `Generate internal architecture documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
-    "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
+    "Focus on component boundaries, state ownership, interface contracts, data flow, and non-negotiable constraints that other engineers working in this area need to know.",
     "Keep the document scoped to this feature's owned architecture. Use the milestone design doc and sibling feature summaries to avoid duplicating another feature's architecture notes.",
+    "Do not include speculative extension points, future considerations, observability planning, or operational rollout detail unless explicitly required by the upstream specs.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1278,6 +1298,7 @@ export const buildFeatureWorkstreamReviewPrompt = (input: {
     'Return valid JSON with non-empty "title" and "markdown" keys.',
     "Preserve the same feature scope while improving completeness, consistency, and ownership boundaries.",
     "Do not widen the scope into sibling features and do not collapse it into a task-sized fragment.",
+    "If the draft re-states behavior already settled in the upstream feature Product Spec without adding discipline-specific decisions, revise it to focus only on what this workstream uniquely contributes.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1592,6 +1613,7 @@ export const buildFeatureTaskListPrompt = (input: {
     `Generate an ordered implementation task list for "${input.feature.title}".`,
     "Return valid JSON as a non-empty array of objects.",
     "Each object must have: \"title\", \"description\", \"instructions\" (optional), \"acceptanceCriteria\" (array).",
+    "Apply the clarification answers as narrowing constraints. If an answer confirms a simpler approach, eliminates a branch, or defers optional behavior, remove or reduce the corresponding task scope. The task list should be shorter and more focused after clarifications than a naive reading of the feature specs alone would produce.",
     "Order tasks in implementation sequence: setup, core logic, integration, testing.",
     "Prefer the smallest set of coherent implementation phases that can deliver this feature safely. Do not split the work into micro-tasks just because the steps are individually small.",
     "Merge tightly related coding, testing, and documentation work when they belong to the same implementation phase.",
