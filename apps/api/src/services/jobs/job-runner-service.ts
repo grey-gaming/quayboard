@@ -67,6 +67,7 @@ import {
   buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
+  buildProductSpecQualityCheckPrompt,
   buildProductSpecReviewPrompt,
   buildUserFlowPrompt,
   buildTaskClarificationsPrompt,
@@ -438,6 +439,21 @@ const parseProductSpecResult = (value: string, templateId: string) => {
   return {
     title: parsed.title.trim(),
     markdown: parsed.markdown.trim(),
+  };
+};
+
+const parseProductSpecQualityCheckResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{ hasSignificantIssues?: boolean; hint?: string }>(value);
+
+  if (parsed?.hasSignificantIssues === undefined) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with "hasSignificantIssues" boolean.`,
+    );
+  }
+
+  return {
+    hasSignificantIssues: Boolean(parsed.hasSignificantIssues),
+    hint: parsed.hint?.trim() ?? "",
   };
 };
 
@@ -2208,10 +2224,166 @@ export const createJobRunnerService = (input: {
           generated,
           parse: parseProductSpecResult,
         });
-        const reviewPrompt = buildProductSpecReviewPrompt({
+
+        // Quality check pass: detect significant domain or content failures before the tidy review.
+        const qualityCheckTemplateId = `${rawJob.type}QualityCheck`;
+        const qualityCheckPrompt = buildProductSpecQualityCheckPrompt({
           projectName: project.name,
           draftTitle: firstPass.title,
           draftMarkdown: firstPass.markdown,
+        });
+        const qualityCheckStartedAt = Date.now();
+        logProductSpecGeneration("start", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: qualityCheckTemplateId,
+          prompt: qualityCheckPrompt,
+        });
+        let qualityChecked;
+        try {
+          qualityChecked = await input.llmProviderService.generate(provider, qualityCheckPrompt, {
+            responseFormat: "json",
+          });
+        } catch (error) {
+          logProductSpecGeneration("failure", {
+            jobId: rawJob.id,
+            projectId: rawJob.projectId,
+            provider: provider.provider,
+            model: provider.model,
+            phaseName: qualityCheckTemplateId,
+            prompt: qualityCheckPrompt,
+            durationMs: Date.now() - qualityCheckStartedAt,
+            error,
+          });
+          throw error;
+        }
+        logProductSpecGeneration("success", {
+          jobId: rawJob.id,
+          projectId: rawJob.projectId,
+          provider: provider.provider,
+          model: provider.model,
+          phaseName: qualityCheckTemplateId,
+          prompt: qualityCheckPrompt,
+          durationMs: Date.now() - qualityCheckStartedAt,
+          outputChars: qualityChecked.content.length,
+          promptEvalCount: qualityChecked.promptEvalCount,
+          evalCount: qualityChecked.evalCount,
+          totalDuration: qualityChecked.totalDuration,
+        });
+        await assertAutoAdvanceBatchIsCurrent();
+        await input.db.insert(llmRunsTable).values({
+          id: generateId(),
+          projectId: rawJob.projectId,
+          jobId: rawJob.id,
+          provider: provider.provider,
+          model: provider.model,
+          templateId: qualityCheckTemplateId,
+          parameters: {},
+          input: { prompt: qualityCheckPrompt },
+          output: {
+            content: qualityChecked.content,
+            doneReason: qualityChecked.doneReason ?? null,
+            evalCount: qualityChecked.evalCount ?? null,
+            promptEvalCount: qualityChecked.promptEvalCount ?? null,
+            totalDuration: qualityChecked.totalDuration ?? null,
+          },
+          promptTokens: qualityChecked.promptTokens,
+          completionTokens: qualityChecked.completionTokens,
+          createdAt: new Date(),
+        });
+        const qualityCheck = await parseStructuredJsonWithRepair({
+          templateId: qualityCheckTemplateId,
+          parameters: {},
+          prompt: qualityCheckPrompt,
+          generated: qualityChecked,
+          parse: parseProductSpecQualityCheckResult,
+        });
+
+        // If significant issues were found, re-generate with a hint before the tidy review.
+        let specToReview = firstPass;
+        if (qualityCheck.hasSignificantIssues) {
+          const retryPrompt = buildProductSpecPrompt({
+            projectName: project.name,
+            sourceMaterial: onePager.markdown,
+            hint: qualityCheck.hint,
+          });
+          const retryTemplateId = `${rawJob.type}Retry`;
+          const retryStartedAt = Date.now();
+          logProductSpecGeneration("start", {
+            jobId: rawJob.id,
+            projectId: rawJob.projectId,
+            provider: provider.provider,
+            model: provider.model,
+            phaseName: retryTemplateId,
+            prompt: retryPrompt,
+          });
+          let retried;
+          try {
+            retried = await input.llmProviderService.generate(provider, retryPrompt, {
+              responseFormat: "json",
+            });
+          } catch (error) {
+            logProductSpecGeneration("failure", {
+              jobId: rawJob.id,
+              projectId: rawJob.projectId,
+              provider: provider.provider,
+              model: provider.model,
+              phaseName: retryTemplateId,
+              prompt: retryPrompt,
+              durationMs: Date.now() - retryStartedAt,
+              error,
+            });
+            throw error;
+          }
+          logProductSpecGeneration("success", {
+            jobId: rawJob.id,
+            projectId: rawJob.projectId,
+            provider: provider.provider,
+            model: provider.model,
+            phaseName: retryTemplateId,
+            prompt: retryPrompt,
+            durationMs: Date.now() - retryStartedAt,
+            outputChars: retried.content.length,
+            promptEvalCount: retried.promptEvalCount,
+            evalCount: retried.evalCount,
+            totalDuration: retried.totalDuration,
+          });
+          await assertAutoAdvanceBatchIsCurrent();
+          await input.db.insert(llmRunsTable).values({
+            id: generateId(),
+            projectId: rawJob.projectId,
+            jobId: rawJob.id,
+            provider: provider.provider,
+            model: provider.model,
+            templateId: retryTemplateId,
+            parameters: {},
+            input: { prompt: retryPrompt },
+            output: {
+              content: retried.content,
+              doneReason: retried.doneReason ?? null,
+              evalCount: retried.evalCount ?? null,
+              promptEvalCount: retried.promptEvalCount ?? null,
+              totalDuration: retried.totalDuration ?? null,
+            },
+            promptTokens: retried.promptTokens,
+            completionTokens: retried.completionTokens,
+            createdAt: new Date(),
+          });
+          specToReview = await parseStructuredJsonWithRepair({
+            templateId: retryTemplateId,
+            parameters: {},
+            prompt: retryPrompt,
+            generated: retried,
+            parse: parseProductSpecResult,
+          });
+        }
+
+        const reviewPrompt = buildProductSpecReviewPrompt({
+          projectName: project.name,
+          draftTitle: specToReview.title,
+          draftMarkdown: specToReview.markdown,
         });
         const reviewTemplateId = `${rawJob.type}Review`;
         const reviewStartedAt = Date.now();

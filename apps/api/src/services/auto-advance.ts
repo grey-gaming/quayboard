@@ -1395,7 +1395,8 @@ export const createAutoAdvanceService = (
       if (
         (session.currentStep !== "milestone_reconciliation_resolve" &&
           session.currentStep !== "milestone_scope_resolve" &&
-          session.currentStep !== "milestone_delivery_resolve") ||
+          session.currentStep !== "milestone_delivery_resolve" &&
+          session.currentStep !== "milestone_delivery_review") ||
         (session.pausedReason !== "milestone_repair_limit_reached" &&
           session.pausedReason !== "needs_human")
       ) {

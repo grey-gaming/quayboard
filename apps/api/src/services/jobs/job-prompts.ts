@@ -384,6 +384,7 @@ Before finalizing, silently review your own output and ensure:
 export const buildProductSpecPrompt = (input: {
   projectName: string;
   sourceMaterial: string;
+  hint?: string;
 }) =>
   [
     `Create a complete Product Spec for "${input.projectName}".`,
@@ -392,6 +393,13 @@ export const buildProductSpecPrompt = (input: {
     "Do not wrap the JSON in code fences.",
     "",
     productSpecPrompt,
+    ...(input.hint
+      ? [
+          "",
+          "## Important guidance for this attempt",
+          input.hint,
+        ]
+      : []),
     "",
     "I will now provide the product information.",
     "",
@@ -423,6 +431,32 @@ export const buildProductSpecReviewPrompt = (input: {
     input.draftTitle,
     "",
     "First-pass Product Spec markdown:",
+    input.draftMarkdown,
+  ].join("\n");
+
+export const buildProductSpecQualityCheckPrompt = (input: {
+  projectName: string;
+  draftTitle: string;
+  draftMarkdown: string;
+}) =>
+  [
+    `You are reviewing a generated Product Spec for the project "${input.projectName}".`,
+    "Your job is to detect significant quality failures only — not minor wording issues.",
+    "",
+    'Return valid JSON with exactly two top-level keys: "hasSignificantIssues" (boolean) and "hint" (string).',
+    'Set "hasSignificantIssues" to true only when the document has a critical problem, such as:',
+    `- The content is not a product spec at all (e.g. a job posting, article, legal document, or other unrelated content)`,
+    `- The content is for a completely different product or domain, with no meaningful alignment to "${input.projectName}"`,
+    "- The content is almost entirely placeholder or template text with no real specification",
+    'When "hasSignificantIssues" is true, set "hint" to a concise description of the specific problem found, suitable for guiding a regeneration attempt.',
+    'When "hasSignificantIssues" is false, set "hint" to an empty string.',
+    "Do not flag minor gaps, stylistic issues, or incomplete sections — those are handled in a separate review pass.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Product Spec title:",
+    input.draftTitle,
+    "",
+    "Product Spec markdown:",
     input.draftMarkdown,
   ].join("\n");
 

@@ -1055,6 +1055,11 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
+      })
+      .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Product Spec",
           markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
@@ -1125,14 +1130,18 @@ describe("job runner service", () => {
 
     await service.run("job-product-spec");
 
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(db.insert).toHaveBeenCalledTimes(3);
     expect(db.values).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ templateId: "GenerateProductSpec" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       2,
+      expect.objectContaining({ templateId: "GenerateProductSpecQualityCheck" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
     );
     expect(createVersion).toHaveBeenCalledWith(
@@ -1159,6 +1168,11 @@ describe("job runner service", () => {
           '```json\n{"title":"Product Spec","markdown":"# Product Spec\\n\\n## Specification Gaps\\n\\n- Clarify defaults."}\n```',
         promptTokens: 10,
         completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -1231,13 +1245,17 @@ describe("job runner service", () => {
 
     await service.run("job-product-spec");
 
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
     expect(db.values).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ templateId: "RegenerateProductSpec" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       2,
+      expect.objectContaining({ templateId: "RegenerateProductSpecQualityCheck" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({ templateId: "RegenerateProductSpecReview" }),
     );
     expect(createVersion).toHaveBeenCalledWith(
@@ -1266,6 +1284,11 @@ describe("job runner service", () => {
         }),
         promptTokens: 10,
         completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -1356,14 +1379,18 @@ describe("job runner service", () => {
       }),
     });
 
-    expect(generate).toHaveBeenCalledTimes(3);
-    expect(db.insert).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(4);
+    expect(db.insert).toHaveBeenCalledTimes(4);
     expect(db.values).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+      expect.objectContaining({ templateId: "GenerateProductSpecQualityCheck" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       3,
+      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      4,
       expect.objectContaining({ templateId: "GenerateProductSpecReviewRepair" }),
     );
     expect(createVersion).not.toHaveBeenCalled();

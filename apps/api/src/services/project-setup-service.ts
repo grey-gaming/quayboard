@@ -312,7 +312,8 @@ export const createProjectSetupService = (
       verifiedAt: new Date().toISOString(),
     });
 
-    return this.getSetupStatus(ownerUserId, projectId);
+    const status = await this.getSetupStatus(ownerUserId, projectId);
+    return { ...status, llmVerified: true };
   },
 
   async loadLlmModels(ownerUserId: string, projectId: string, provider: "ollama") {
@@ -402,7 +403,8 @@ export const createProjectSetupService = (
       },
     );
 
-    return this.getSetupStatus(ownerUserId, projectId);
+    const status = await this.getSetupStatus(ownerUserId, projectId);
+    return { ...status, sandboxVerified: true };
   },
 
   async completeSetup(ownerUserId: string, projectId: string) {
