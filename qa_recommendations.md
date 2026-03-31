@@ -550,3 +550,21 @@
 - Result summary: produced a UX spec covering four screens, skip dialogs, progress bars, state persistence, resume behavior, dashboard prompts, accessibility detail, and timing expectations.
 - Quality assessment: the artifact is readable and internally coherent, but it reinforces the same generic downstream problem. The UX job is not limiting itself to unresolved interaction design; it is re-specifying flow control, persistence policy, invitation-token behavior, recovery logic, and post-onboarding dashboard behavior. That makes the artifact look thorough while reducing the signal added by the UX layer.
 - Recommendation: tighten UX-job prompts with a generic ownership filter. Require the model to mark each section as either `interaction design introduced here` or `inherited from upstream`, and reject outputs where too much content falls into the inherited bucket. This should reduce repeated full-flow rewrites across all project types.
+
+### 2026-03-31T11:52:00Z - Job Review - GenerateFeatureTechSpec - F-025 Guided Onboarding Flow
+- Status: succeeded and auto-approved; architecture-doc generation is now running.
+- Result summary: produced a technical specification covering route structure, state machine, API contracts, components, offline handling, performance budgets, test plans, and deployment monitoring.
+- Quality assessment: this is another high-quality-looking but over-expanded downstream artifact. The tech job does not limit itself to implementation decisions that remain open after the product and UX layers; it reasserts wide feature scope, introduces operational monitoring and launch checklists, and embeds behavior that belongs to other layers or later planning stages.
+- Recommendation: add a generic “decision compression” requirement for tech jobs. The model should summarize inherited behavior briefly, then spend most of the document on a constrained list of technical choices, tradeoffs, and interfaces that are newly required by the current feature. If the output starts resembling a full delivery plan, force a rewrite with a narrower brief.
+
+### 2026-03-31T11:55:00Z - Job Review - GenerateFeatureArchDocs - F-025 Guided Onboarding Flow
+- Status: succeeded and auto-approved.
+- Result summary: produced architecture documentation covering rationale, route guards, state machines, interfaces, constraints, error handling, testing, and telemetry.
+- Quality assessment: the architecture job again expands beyond structural design into product rationale, monitoring, performance budgets, and operational behavior. The document is polished, but the repeated pattern is that architecture docs become another full-plan restatement instead of a concise record of structural decisions that matter for the feature.
+- Recommendation: constrain architecture jobs with a generic section budget and a narrow output contract. Require them to focus on component boundaries, state ownership, interface contracts, and a short list of non-negotiable constraints. If the model spends too much space on telemetry, product rationale, or repeated UX behavior, trigger a rewrite.
+
+### 2026-03-31T11:55:10Z - Job Review - GenerateFeatureUxSpec - F-026 Invitation System
+- Status: currently running.
+- Result summary: the runner completed the full downstream chain for `F-025` and moved into UX generation for the invitation feature.
+- Quality assessment: workflow health remains good, but the approved `F-026` product spec is already broad. It includes generation, validation, multiple acceptance paths, pending invitations, share-sheet behavior, security requirements, performance targets, and test scenarios. That makes the main LLM-job risk predictable: the UX layer is likely to expand the already-large feature rather than isolate the minimum user interactions that need design definition.
+- Recommendation: add a generic prompt rule for branch-heavy features that forces prioritization of the primary actor path first. Secondary branches, exception states, and supporting surfaces should be summarized or deferred unless they are essential to the current milestone objective.
