@@ -634,3 +634,15 @@
 - Result summary: produced a UX spec covering list layout, creation modal, delete dialogs, icon selection, sync behavior, edge cases, API contracts, and success metrics.
 - Quality assessment: this is another strong example of cross-discipline spillover. The UX artifact includes data model tables, API contracts, sync conflict resolution, and measurement targets in addition to interface behavior. That reduces clarity about what the UX job is actually supposed to add after the product spec exists.
 - Recommendation: add a generic section-level validator for UX jobs. If a draft contains tables or sections titled `Data Model`, `API Contracts`, `Metrics`, `Sync`, or similar, require the model to move that material to the appropriate downstream discipline and regenerate a UX-focused version.
+
+### 2026-03-31T12:31:30Z - Job Review - GenerateFeatureTechSpec - F-028 Location Management
+- Status: succeeded and auto-approved.
+- Result summary: produced a technical specification covering schema, APIs, SSE events, client stores, validation logic, integration surfaces, and implementation sequencing.
+- Quality assessment: this is consistent with the broader pattern. The tech document is coherent, but it again extends beyond core technical decisions into client architecture, implementation sequencing, and generalized testing structure. It remains more expansive than necessary for a feature-scoped technical artifact.
+- Recommendation: add a generic “artifact budget” for tech jobs. Limit the allowed number of top-level sections and require prioritization of schema changes, contract definitions, invariants, and failure modes first. If the output exceeds that budget by adding sequencing, duplicated UI integration notes, or broad testing plans, compress or reject it automatically.
+
+### 2026-03-31T12:31:40Z - Job Review - GenerateTaskClarifications - F-024 Household Foundation
+- Status: currently running; new task-planning session created with `status: pending_clarifications` for feature `F-024`.
+- Result summary: the runner has moved beyond feature-spec generation into task-planning work for milestone-three features, starting with `F-024`.
+- Quality assessment: workflow progression remains healthy. Based on the earlier confirmed bug in milestone-one task generation, this stage remains high risk for repeated LLM drift: clarification questions may still fail to constrain the later task list tightly enough, especially when upstream feature specs are already broad and repetitive.
+- Recommendation: strengthen task-planning jobs with a generic “clarifications must reduce scope” rule. Clarification generation should focus on unresolved implementation choices and explicit exclusions, not on rephrasing already-known feature context. Downstream task generation should then be required to cite which clarification answers caused each major task group to exist.
