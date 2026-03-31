@@ -346,3 +346,51 @@
 - Status: the milestone delivery review succeeded with `deliveryReviewStatus: passed`, but the runner then paused at `milestone_complete`.
 - QA assessment: the review itself appears healthy and produced no delivery issues. The stop that followed is a workflow defect, not a content-quality signal.
 - Recommendation: extend `skipReviewSteps` handling to milestone completion so the runner's hands-off mode remains consistent through the end of each milestone.
+
+### 2026-03-31T09:26:45Z - Job Review - ReviewMilestoneDelivery - Milestone 1 Infrastructure & Application Scaffolding
+- Status: succeeded and, after the milestone-complete skip-review fix, the runner advanced into milestone two.
+- Result summary: delivery review passed the first milestone with no recorded delivery issues.
+- Quality assessment: operationally this is a positive signal for the milestone review stage. Product-quality concerns remain, however: the milestone passed despite being infrastructure-heavy and based on repo-bootstrap assumptions that are misaligned with the actual Quayboard codebase. The review appears more focused on internal artifact completeness than on reality-checking the plan against current product context.
+- Recommendation: milestone delivery review should weigh repository-grounding and proportionality more heavily, not just internal consistency and coverage.
+
+### 2026-03-31T09:26:45Z - Job Review - GenerateMilestoneDesign - Milestone 2 Authentication & Session Management
+- Status: succeeded.
+- Result summary: generated and approved the design document for the second milestone, covering authentication and session management as the next phase after infrastructure scaffolding.
+- Quality assessment: this milestone is more plausible than milestone one because it starts to approach a real user-facing core flow. That said, it is still downstream of an over-scoped project definition and may continue to inherit complexity around PWA install, session expiry handling, and other generated surfaces that were never strongly justified by the original brief.
+- Recommendation: milestone design quality is improving as the plan approaches core product flows. Keep monitoring for whether the feature set stays focused on the minimum authentication slice or expands into too many adjacent concerns at once.
+
+### 2026-03-31T09:26:45Z - Job Review - GenerateMilestoneFeatureSet - Milestone 2 Authentication & Session Management - in progress
+- Status: running with session state advanced to `features_create`.
+- Context: milestone two feature generation began immediately after the design doc completed.
+- QA assessment: runner behavior remains healthy after the milestone-complete fix. The main quality risk is whether milestone two repeats the earlier pattern of broad feature bundling instead of a small vertical slice for authentication and session handling.
+- Recommendation: review the generated feature set for tight sequencing around signup/signin/session management before accepting any expansion into PWA polish or other adjacent surfaces.
+
+### 2026-03-31T09:29:29Z - Job Review - GenerateMilestoneFeatureSet - Milestone 2 Authentication & Session Management
+- Status: succeeded.
+- Result summary: generated five features for milestone two: `F-014 Authentication Core`, `F-015 Session Management`, `F-016 Authenticated App Shell`, `F-017 PWA Foundation`, and `F-018 Initial Household Creation`.
+- Quality assessment: this is a mixed result. The first three features map reasonably well to the milestone title, but `PWA Foundation` is still being pulled forward too early and widens the slice unnecessarily. `Initial Household Creation` may be defensible if signup truly needs immediate household context, but it also shows how the plan keeps expanding adjacent scope instead of holding a tight authentication MVP boundary.
+- Recommendation: milestone feature generation is improving, but it still lacks discipline around separating core flow from optional platform polish. PWA install support should not be treated as a default must-have inside an authentication milestone for a small web app.
+
+### 2026-03-31T09:29:29Z - Job Review - ReviewMilestoneScope - Milestone 2 Authentication & Session Management - in progress
+- Status: running with session state advanced to `milestone_scope_review`.
+- Context: scope review began immediately after the milestone two feature set was generated.
+- QA assessment: workflow remains healthy. Given the presence of `PWA Foundation` in the generated feature set, this review should have useful work to do if the scope guardrails are functioning well.
+- Recommendation: pay close attention to whether the review challenges the inclusion of platform polish features in what should be a narrower authentication milestone.
+
+### 2026-03-31T09:32:00Z - Job Review - ReviewMilestoneScope / RewriteMilestoneFeatureSet - Milestone 2 Authentication & Session Management
+- Status: initial scope review succeeded with issues and triggered an automatic rewrite; rewrite is currently running.
+- Result summary: the first milestone-two feature set did not pass scope review, and the runner entered the bounded repair path with `milestoneRepairCount: 1`.
+- Quality assessment: this is a good reliability signal. The scope-review stage correctly challenged the first-pass output instead of letting it proceed untouched. It also reinforces that milestone-two generation still needs repair assistance to stay disciplined, especially around adjacent scope like PWA infrastructure.
+- Recommendation: keep the auto-repair loop, but continue treating it as evidence of weak first-pass planning rather than a full success by itself. The more the system depends on rewrite passes, the less predictable end-to-end runs become.
+
+### 2026-03-31T09:34:30Z - Job Review - ReviewMilestoneScope / RewriteMilestoneFeatureSet / ReviewMilestoneScope - Milestone 2 Authentication & Session Management
+- Status: first review flagged issues, rewrite succeeded, second review passed, and the runner advanced into feature work.
+- Result summary: milestone two required one bounded rewrite before the revised feature set passed scope review and unlocked feature-level planning.
+- Quality assessment: this is operationally healthy and materially better than a silent bad pass. It also confirms that milestone two inherited the same first-pass planning weakness seen in milestone one, though with fewer repair attempts. The scope guardrails are carrying a substantial share of product quality here.
+- Recommendation: treat repeated reliance on scope-review rewrites as a product-design signal. The milestone generator is still too willing to over-bundle adjacent concerns, and the reviewer is compensating for that downstream.
+
+### 2026-03-31T09:34:30Z - Job Review - GenerateFeatureProductSpec - Milestone 2 first feature - in progress
+- Status: running with session state advanced to `feature_product_create`.
+- Context: milestone two has now moved from milestone-level planning into the first feature product-spec generation.
+- QA assessment: the runner is healthy after the repaired milestone scope pass. Based on milestone two's feature set, the main quality risk is that the first feature may again over-commit adjacent concerns such as household setup and PWA behavior instead of staying tightly focused on authentication core.
+- Recommendation: review the first milestone-two feature spec for minimum-slice discipline before assuming the repaired milestone is genuinely well scoped.
