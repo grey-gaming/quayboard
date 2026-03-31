@@ -598,3 +598,9 @@
 - Result summary: the runner completed the full downstream chain for `F-026` and advanced into UX generation for membership management.
 - Quality assessment: workflow health remains good, but the `F-027` product spec is already broad. It combines member list display, owner/member role presentation, removal confirmation, removed-member messaging, soft-delete audit history, SSE propagation, offline queueing, and launch-readiness checklists. That creates the same recurring LLM-job risk: downstream artifacts will likely keep elaborating an already over-scoped feature instead of isolating the smallest useful slice.
 - Recommendation: add a generic pre-flight scope reducer before downstream jobs. If a feature spec spans multiple responsibility classes, the system should either split the feature or instruct downstream jobs to choose one primary responsibility and treat the rest as dependencies or deferred follow-ups.
+
+### 2026-03-31T12:14:30Z - Job Review - GenerateFeatureUxSpec - F-027 Membership Management
+- Status: succeeded and auto-approved; tech generation is now running.
+- Result summary: produced a UX spec covering member list layout, removal confirmation, removed-member notice, real-time sync behavior, offline handling, copy reference, accessibility, and acceptance mapping.
+- Quality assessment: this artifact continues the generic downstream issue already seen in earlier features. The UX layer is not staying cleanly within interaction and presentation design; it pulls in data model definitions, SSE behavior, offline sync policy, backend validation behavior, and implementation state models. The result is polished but not discipline-focused.
+- Recommendation: add a generic “no hidden backend sections” rule to UX generation. If the model starts introducing tables, storage schemas, sync protocols, or API-side rules beyond what is necessary to explain a visible interaction, the job should be rewritten with a narrower UX-only brief.
