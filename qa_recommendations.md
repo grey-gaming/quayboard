@@ -161,3 +161,15 @@
 - Context: this pause is not attributable to the expected long runtime of `glm-5:cloud`; it is a workflow defect because `skipReviewSteps` was enabled for the session.
 - Quality assessment: the run made it cleanly into feature-level planning, which is positive, but the auto-runner still required manual rescue at a feature review gate. This breaks the expected hands-off continuation contract for skip-review mode.
 - Recommendation: treat skip-review handling as a single policy across all review gates, including feature workstreams. The current split between top-level artifact approvals and feature approvals creates inconsistent runner behavior and unnecessary intervention.
+
+### 2026-03-31T08:29:54Z - Job Review - GenerateFeatureProductSpec - `GenerateFeatureProductSpec` for F-010 Repository Foundation
+- Status: succeeded and auto-approved after the skip-review bug fix was applied and the session was resumed.
+- Result summary: produced a long, structured feature specification for `F-010 Repository Foundation`, including scope tables, acceptance criteria, implementation guidance, ADR content, and a validation checklist.
+- Quality assessment: the document is polished but weakly grounded in repository reality. It plans a greenfield bootstrap inside an already-existing Quayboard monorepo, including creating `AGENTS.md`, initializing `git`, adding `src/api` and `src/web`, and documenting a separate Pocket Pantry repository structure that does not match the actual project being advanced. This is a significant artifact-quality problem even though the prose is coherent.
+- Recommendation: feature-level generation needs stronger awareness of current repo state and project context. Quayboard should reject or heavily down-rank feature specs that restate repository bootstrapping work incompatible with an existing codebase, because they can look complete while being operationally misleading.
+
+### 2026-03-31T08:31:01Z - Job Review - GenerateFeatureProductSpec - `GenerateFeatureProductSpec` for F-011 Development Environment - in progress
+- Status: running since 2026-03-31T08:29:07Z with session state still `running` and no new pause or retry markers.
+- Context: current latency is within the expected range for `glm-5:cloud` and is not being treated as a defect by itself.
+- QA assessment: the runner behavior is healthy after the feature-approval fix. The main quality risk to check on completion is whether this spec repeats the same greenfield/bootstrap assumptions seen in F-010 rather than adapting to the already-existing repository.
+- Recommendation: when this artifact lands, validate not just prose quality but repo-awareness. Repeated generation of setup/bootstrap requirements after the repo already exists would indicate a systemic context-grounding problem in feature-level planning.
