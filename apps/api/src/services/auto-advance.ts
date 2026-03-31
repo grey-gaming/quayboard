@@ -827,8 +827,28 @@ export const createAutoAdvanceService = (
     stepHref: string,
     session: AutoAdvanceSessionRow,
   ): Promise<boolean> => {
-    // skipReviewSteps: auto-select the recommended option and auto-accept decision tiles
+    const featureApprovalKinds: Array<{
+      key: string;
+      track: "product" | "ux" | "tech" | "userDocs" | "archDocs";
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
+    }> = [
+      { key: "feature_product_approval", track: "product", kind: "product" },
+      { key: "feature_ux_approval", track: "ux", kind: "ux" },
+      { key: "feature_tech_approval", track: "tech", kind: "tech" },
+      { key: "feature_user_docs_approval", track: "userDocs", kind: "user_docs" },
+      { key: "feature_arch_docs_approval", track: "archDocs", kind: "arch_docs" },
+    ];
+
+    // skipReviewSteps: auto-select decision cards and auto-accept review gates.
     if (session.skipReviewSteps) {
+      if (stepKey === "overview_approval") {
+        await onePagerService.approveCanonical(ownerUserId, projectId);
+        return true;
+      }
+      if (stepKey === "product_spec_approval") {
+        await productSpecService.approveCanonical(ownerUserId, projectId);
+        return true;
+      }
       if (stepKey === "ux_decisions_select") {
         await autoSelectDecisionCards(ownerUserId, projectId, "ux");
         return true;
@@ -837,6 +857,13 @@ export const createAutoAdvanceService = (
         await blueprintService.acceptDecisionDeck(ownerUserId, projectId, "ux");
         return true;
       }
+      if (stepKey === "ux_spec_approval") {
+        const blueprint = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux");
+        if (blueprint) {
+          await artifactApprovalService.approve(ownerUserId, projectId, "blueprint_ux", blueprint.id);
+          return true;
+        }
+      }
       if (stepKey === "tech_decisions_select") {
         await autoSelectDecisionCards(ownerUserId, projectId, "tech");
         return true;
@@ -844,6 +871,48 @@ export const createAutoAdvanceService = (
       if (stepKey === "tech_decisions_accept") {
         await blueprintService.acceptDecisionDeck(ownerUserId, projectId, "tech");
         return true;
+      }
+      if (stepKey === "tech_spec_approval") {
+        const blueprint = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "tech");
+        if (blueprint) {
+          await artifactApprovalService.approve(ownerUserId, projectId, "blueprint_tech", blueprint.id);
+          return true;
+        }
+      }
+      if (stepKey === "user_flows_approve") {
+        const flowList = await userFlowService.list(ownerUserId, projectId);
+        if (flowList.userFlows.length > 0) {
+          await userFlowService.approve(ownerUserId, projectId, {
+            acceptedWarnings: flowList.coverage.warnings,
+          });
+          return true;
+        }
+      }
+      if (stepKey === "milestones_approve") {
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "draft") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "approve" });
+          return true;
+        }
+        return false;
+      }
+      for (const entry of featureApprovalKinds) {
+        if (stepKey === entry.key) {
+          const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);
+          const featureId = featureIdMatch?.[1];
+          if (!featureId) {
+            console.warn(`[auto-advance] Could not extract featureId from href: ${stepHref}`);
+            break;
+          }
+          const tracks = await featureWorkstreamService.getTracks(ownerUserId, featureId);
+          const trackData = tracks.tracks[entry.track];
+          const headRevisionId = trackData.headRevision?.id;
+          if (headRevisionId && trackData.status !== "approved") {
+            await featureWorkstreamService.approveRevision(ownerUserId, featureId, entry.kind, headRevisionId);
+            return true;
+          }
+          break;
+        }
       }
     }
 
@@ -896,17 +965,6 @@ export const createAutoAdvanceService = (
         }
         return false;
       }
-      const featureApprovalKinds: Array<{
-        key: string;
-        track: "product" | "ux" | "tech" | "userDocs" | "archDocs";
-        kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
-      }> = [
-        { key: "feature_product_approval", track: "product", kind: "product" },
-        { key: "feature_ux_approval", track: "ux", kind: "ux" },
-        { key: "feature_tech_approval", track: "tech", kind: "tech" },
-        { key: "feature_user_docs_approval", track: "userDocs", kind: "user_docs" },
-        { key: "feature_arch_docs_approval", track: "archDocs", kind: "arch_docs" },
-      ];
       for (const entry of featureApprovalKinds) {
         if (stepKey === entry.key) {
           const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);

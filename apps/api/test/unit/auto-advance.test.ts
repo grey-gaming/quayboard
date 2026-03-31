@@ -477,6 +477,99 @@ describe("auto-advance service", () => {
       expect(pauseUpdate?.pausedReason).toBe("needs_human");
     });
 
+    it("auto-approves the overview when skipReviewSteps is enabled", async () => {
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [
+              {
+                key: "overview_approval",
+                label: "Approve the overview document",
+                href: `/projects/${PROJECT_ID}/one-pager`,
+              },
+            ],
+          };
+        }
+        return { actions: [] };
+      });
+      onePagerService.approveCanonical.mockResolvedValue(undefined);
+
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+        skipReviewSteps: true,
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const, skipReviewSteps: true }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(onePagerService.approveCanonical).toHaveBeenCalledWith(USER_ID, PROJECT_ID);
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "ReviewDelivery", projectId: PROJECT_ID }),
+      );
+    });
+
+    it("auto-approves feature product specs when skipReviewSteps is enabled", async () => {
+      const featureId = "feature-123";
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [
+              {
+                key: "feature_product_approval",
+                label: "Approve a feature Product Spec",
+                href: `/projects/${PROJECT_ID}/features/${featureId}/product`,
+              },
+            ],
+          };
+        }
+        return { actions: [] };
+      });
+      featureWorkstreamService.getTracks.mockResolvedValue({
+        tracks: {
+          product: {
+            status: "draft",
+            headRevision: { id: "rev-123" },
+          },
+        },
+      } as never);
+      featureWorkstreamService.approveRevision.mockResolvedValue(undefined);
+
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+        skipReviewSteps: true,
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const, skipReviewSteps: true }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(featureWorkstreamService.getTracks).toHaveBeenCalledWith(USER_ID, featureId);
+      expect(featureWorkstreamService.approveRevision).toHaveBeenCalledWith(
+        USER_ID,
+        featureId,
+        "product",
+        "rev-123",
+      );
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "ReviewDelivery", projectId: PROJECT_ID }),
+      );
+    });
+
     it("enqueues ReviewDelivery when no actions remain", async () => {
       nextActionsService.build.mockResolvedValue({ actions: [] });
       const db = makeDb({ session: null });
