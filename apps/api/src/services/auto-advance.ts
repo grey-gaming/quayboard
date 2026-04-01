@@ -41,6 +41,7 @@ type AutoAdvanceJobInputs = Record<string, unknown> & {
 type JobFailurePayload = {
   message?: string;
   code?: string;
+  hint?: string;
   retryable?: boolean;
 };
 
@@ -119,6 +120,7 @@ const isRetryableJobFailure = (error: unknown) => {
     message.includes("econnreset") ||
     message.includes("enotfound") ||
     message.includes("econnrefused") ||
+    message.includes("500") ||
     message.includes("503") ||
     message.includes("502") ||
     message.includes("429")
@@ -1557,6 +1559,10 @@ export const createAutoAdvanceService = (
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
         const shouldRetry = isRetryableJobFailure(job.error);
+        const retryHint =
+          job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).hint === "string"
+            ? (job.error as JobFailurePayload).hint!.trim()
+            : "";
 
         if (shouldRetry && nextRetryCount < MAX_RETRIES) {
           // Retry the same failed job instead of inferring the next step from current state.
@@ -1576,7 +1582,10 @@ export const createAutoAdvanceService = (
             projectId: job.projectId,
             type: job.type,
             inputs: buildAutoAdvanceInputs(
-              stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+              {
+                ...stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+                ...(retryHint.length > 0 ? { hint: retryHint } : {}),
+              },
               session.id,
               autoAdvanceMeta.batchToken,
               nextRetryCount,
@@ -1911,9 +1920,10 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({
             status: "paused",
-            pausedReason: session.autoRepairMilestoneCoverage
-              ? "milestone_repair_limit_reached"
-              : "needs_human",
+            pausedReason:
+              session.autoRepairMilestoneCoverage && hasRepairIssue
+                ? "milestone_repair_limit_reached"
+                : "needs_human",
             pausedAt: new Date(),
             activeBatchToken: null,
             updatedAt: new Date(),
@@ -1977,9 +1987,11 @@ export const createAutoAdvanceService = (
             .update(autoAdvanceSessionsTable)
             .set({
               status: "paused",
-              pausedReason: session.autoRepairMilestoneCoverage
-                ? "milestone_repair_limit_reached"
-                : "needs_human",
+              pausedReason:
+                session.autoRepairMilestoneCoverage &&
+                issues.some((issue) => issue.action === "refresh_artifacts")
+                  ? "milestone_repair_limit_reached"
+                  : "needs_human",
               pausedAt: new Date(),
               activeBatchToken: null,
               updatedAt: new Date(),

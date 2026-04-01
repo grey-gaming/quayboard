@@ -128,4 +128,64 @@ describe("llm provider service", () => {
       }),
     );
   });
+
+  it("marks Ollama 500 generation failures as retryable provider errors", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      text: async () => JSON.stringify({ error: "temporary overload" }),
+    });
+
+    const service = createLlmProviderService({ requestTimeoutMs: 1_000 });
+
+    await expect(
+      service.generate(
+        {
+          apiKey: null,
+          baseUrl: "http://127.0.0.1:11434",
+          model: "glm-5:cloud",
+          provider: "ollama",
+        },
+        "Return JSON.",
+        { responseFormat: "json" },
+      ),
+    ).rejects.toMatchObject({
+      llmProviderError: expect.objectContaining({
+        provider: "ollama",
+        retryable: true,
+        statusCode: 500,
+      }),
+    });
+  });
+
+  it("marks OpenAI-compatible 400 generation failures as non-retryable provider errors", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      text: async () => JSON.stringify({ error: { message: "invalid request" } }),
+    });
+
+    const service = createLlmProviderService({ requestTimeoutMs: 1_000 });
+
+    await expect(
+      service.generate(
+        {
+          apiKey: "secret",
+          baseUrl: "http://127.0.0.1:4000",
+          model: "gpt-4.1",
+          provider: "openai",
+        },
+        "Return JSON.",
+        { responseFormat: "json" },
+      ),
+    ).rejects.toMatchObject({
+      llmProviderError: expect.objectContaining({
+        provider: "openai",
+        retryable: false,
+        statusCode: 400,
+      }),
+    });
+  });
 });

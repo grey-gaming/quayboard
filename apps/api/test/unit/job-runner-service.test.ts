@@ -1994,6 +1994,20 @@ describe("job runner service", () => {
       title: "Foundations",
       summary: "First releasable slice.",
     });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
     const createDesignDocVersion = vi.fn(async () => ({
       id: "design-doc-id",
     }));
@@ -2003,7 +2017,47 @@ describe("job runner service", () => {
       .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Milestone Design",
-          markdown: "# Milestone Design\n\nFlow says account is inside onboarding.",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page", "Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
         }),
         promptTokens: 10,
         completionTokens: 12,
@@ -2011,44 +2065,50 @@ describe("job runner service", () => {
       .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Milestone Design",
-          markdown: "# Milestone Design\n\nFlow says account is inside onboarding.",
-        }),
-        promptTokens: 10,
-        completionTokens: 12,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          ok: false,
-          issues: ["Flow 3 and Scope Boundaries disagree on whether account creation is part of onboarding."],
-          hint: "Use one onboarding sequence and align the screen inventory to it.",
-        }),
-        promptTokens: 8,
-        completionTokens: 9,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          title: "Milestone Design",
-          markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
         }),
         promptTokens: 11,
         completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          title: "Milestone Design",
-          markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          ok: true,
-          issues: [],
-          hint: "",
-        }),
-        promptTokens: 8,
-        completionTokens: 9,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -2134,12 +2194,17 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(6);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         milestoneId: "milestone-id",
         title: "Milestone Design",
-        markdown: "# Milestone Design\n\nOnboarding has one consistent six-step sequence.",
+        markdown: expect.stringContaining("## Included User Flows"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("### Account Shell (account-shell)"),
       }),
     );
     expect(markSucceeded).toHaveBeenCalledWith(
@@ -2157,6 +2222,20 @@ describe("job runner service", () => {
       title: "Foundations",
       summary: "First releasable slice.",
     });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
     const createDesignDocVersion = vi.fn(async () => ({
       id: "design-doc-id",
     }));
@@ -2166,7 +2245,47 @@ describe("job runner service", () => {
       .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Milestone Design",
-          markdown: "# Milestone Design\n\nContradictory onboarding flow.",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Dashboard"],
+            },
+          ],
         }),
         promptTokens: 10,
         completionTokens: 12,
@@ -2174,44 +2293,50 @@ describe("job runner service", () => {
       .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Milestone Design",
-          markdown: "# Milestone Design\n\nContradictory onboarding flow.",
-        }),
-        promptTokens: 10,
-        completionTokens: 12,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          ok: false,
-          issues: ["Flow 3 and Scope Boundaries still disagree."],
-          hint: "Use one coherent onboarding sequence.",
-        }),
-        promptTokens: 8,
-        completionTokens: 9,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          title: "Milestone Design",
-          markdown: "# Milestone Design\n\nStill contradictory after repair.",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "unknown-group" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Dashboard"],
+            },
+          ],
         }),
         promptTokens: 11,
         completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          title: "Milestone Design",
-          markdown: "# Milestone Design\n\nStill contradictory after repair.",
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          ok: false,
-          issues: ["Delivery Shape still conflicts with the screen inventory."],
-          hint: "Rewrite the document with one ownership model.",
-        }),
-        promptTokens: 8,
-        completionTokens: 9,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -2296,8 +2421,10 @@ describe("job runner service", () => {
     });
 
     await expect(service.run("job-generate-design")).rejects.toMatchObject({
-      code: "milestone_design_conflict_unresolved",
-      retryable: false,
+      jobError: expect.objectContaining({
+        code: "milestone_design_conflict_unresolved",
+        retryable: true,
+      }),
     });
     expect(createDesignDocVersion).not.toHaveBeenCalled();
     expect(markSucceeded).not.toHaveBeenCalled();

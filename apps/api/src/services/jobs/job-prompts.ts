@@ -777,14 +777,16 @@ export const buildMilestoneDesignPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Create a milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
-    "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
-    "Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria must describe one internally consistent milestone.",
-    "Do not let flow steps, listed screens, step counts, required-vs-optional rules, or feature-group ownership contradict each other across sections.",
-    "In Delivery Shape, explicitly call out the cohesive feature-sized capability groupings for this milestone, any cross-cutting work that should stay grouped into one feature, and any work that must not be split into task-sized features.",
-    "Every screen, schema, and core responsibility named elsewhere in the document must map cleanly to exactly one Delivery Shape grouping for this milestone.",
+    `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", "risksAndOpenQuestions", and "exitCriteria".',
+    "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens.",
+    'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.',
+    'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
+    "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
+    "Use stable kebab-case delivery group keys. Every named screen and owned responsibility must belong to exactly one delivery group.",
+    "dependenciesAndSequencing must be a non-empty array. Each item must contain: phase, deliveryGroupKeys, and notes.",
+    "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
+    "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
     "Do not wrap the JSON in code fences.",
     ...(input.hint?.trim()
       ? [
@@ -807,7 +809,7 @@ export const buildMilestoneDesignPrompt = (input: {
     input.technicalSpec,
   ].join("\n");
 
-export const buildMilestoneDesignReviewPrompt = (input: {
+export const buildMilestoneDesignRepairPrompt = (input: {
   projectName: string;
   milestoneTitle: string;
   milestoneSummary: string;
@@ -819,20 +821,18 @@ export const buildMilestoneDesignReviewPrompt = (input: {
   }>;
   uxSpec: string;
   technicalSpec: string;
-  draftTitle: string;
-  draftMarkdown: string;
+  issues: string[];
+  draftJson: string;
   hint?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Review and tighten the milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "Preserve the same milestone scope and structure, but improve feature-shaping clarity, coverage, and internal consistency.",
-    "Resolve any contradictions across Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria.",
-    "Ensure Delivery Shape clearly defines feature-sized capability groupings, grouped cross-cutting work, and boundaries that prevent task-sized feature fragmentation.",
-    "The reviewed document must use one consistent onboarding step order, one consistent screen inventory, and one consistent ownership model for schemas and responsibilities.",
+    `Repair the structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", "risksAndOpenQuestions", and "exitCriteria".',
+    "Preserve the milestone scope while resolving the validator issues below into one consistent ownership model.",
+    "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
     "Do not wrap the JSON in code fences.",
     ...(input.hint?.trim()
@@ -855,50 +855,11 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     "Approved Technical Spec:",
     input.technicalSpec,
     "",
-    "First-pass milestone design title:",
-    input.draftTitle,
+    "Validator issues:",
+    JSON.stringify(input.issues, null, 2),
     "",
-    "First-pass milestone design markdown:",
-    input.draftMarkdown,
-  ].join("\n");
-
-export const buildMilestoneDesignConsistencyPrompt = (input: {
-  projectName: string;
-  milestoneTitle: string;
-  milestoneSummary: string;
-  linkedUserFlows: Array<{
-    title: string;
-    userStory: string;
-    entryPoint: string;
-    endState: string;
-  }>;
-  designTitle: string;
-  designMarkdown: string;
-}) =>
-  [
-    qualityCharter,
-    "",
-    "Task:",
-    `Validate the milestone design document for "${input.milestoneTitle}" in "${input.projectName}" for internal consistency.`,
-    'Return valid JSON with exactly three keys: "ok" (boolean), "issues" (array of strings), and "hint" (string).',
-    "Be conservative and only report real contradictions or ownership gaps that would make downstream feature planning ambiguous.",
-    "Check that Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, and Exit Criteria all describe the same milestone.",
-    "Check for contradictions in step order, step counts, screen inventory, required-vs-optional rules, redirect behavior, schema ownership, and Delivery Shape group boundaries.",
-    'If the document is internally consistent, return {"ok":true,"issues":[],"hint":""}.',
-    'If it is not internally consistent, return ok=false, list the contradictions in "issues", and provide one concise repair instruction in "hint".',
-    "Do not wrap the JSON in code fences.",
-    "",
-    "Milestone summary:",
-    input.milestoneSummary,
-    "",
-    "Linked user flows:",
-    JSON.stringify(input.linkedUserFlows, null, 2),
-    "",
-    "Milestone design title:",
-    input.designTitle,
-    "",
-    "Milestone design markdown:",
-    input.designMarkdown,
+    "Previous structured milestone design draft:",
+    input.draftJson,
   ].join("\n");
 
 export const buildMilestoneFeatureSetPrompt = (input: {

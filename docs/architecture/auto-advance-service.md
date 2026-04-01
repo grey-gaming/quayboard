@@ -194,12 +194,14 @@ Called by the job scheduler after every job completes (success or failure).
 2. If the job has no `projectId`, returns early (noop).
 3. Queries for a `running` session for that project.
 4. If none exists, returns early.
-5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
+5. On `failure`: inspects the job's structured error payload. Retryable failures are re-queued up to the per-job retry limit, carrying any repair hint back into the next job inputs when that job accepts hints; non-retryable failures pause the session with `paused_reason: job_failed`. Publishes SSE.
 6. On `success`: clears any session retry counter and calls `advanceStep` to enqueue the next job. Publishes SSE.
 
-Malformed structured-output failures remain retryable after the in-job JSON repair pass is exhausted, so auto-advance can rerun the full job up to the normal retry limit. Prompt/context-limit failures remain non-retryable. Exhausted blueprint decision-repair failures are also retryable so the full blueprint job can re-enter its decision-repair loop on the next bounded job retry.
+Malformed structured-output failures remain retryable after the in-job JSON repair pass is exhausted, so auto-advance can rerun the full job up to the normal retry limit. Prompt/context-limit failures remain non-retryable. Exhausted blueprint decision-repair failures are also retryable so the full blueprint job can re-enter its decision-repair loop on the next bounded job retry. Transient provider failures (`429`, `5xx`, timeout, and connection errors) are treated as retryable; ordinary provider `4xx` request failures are not.
 
 For parallel feature batches, `onJobComplete` waits until the active batch fully settles before deciding whether to retry or pause. Any mixed-success batch with at least one failed job counts as a single retry attempt; already-succeeded feature work is left in place, and only unfinished work is re-enqueued on the next pass. The session pauses with `job_failed` only after three consecutive failed batch attempts.
+
+`milestone_repair_limit_reached` is reserved for milestone review/repair paths that actually consumed the bounded repair budget. Human-review-only milestone review results pause with `needs_human`.
 
 Errors inside `onJobComplete` are caught and logged; they do not propagate to the job runner so a failed auto-advance callback cannot break normal job processing.
 

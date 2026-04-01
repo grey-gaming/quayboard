@@ -24,7 +24,7 @@ import type { BlueprintService } from "../blueprint-service.js";
 import type { FeatureService } from "../feature-service.js";
 import type { FeatureWorkstreamService } from "../feature-workstream-service.js";
 import { generateId } from "../ids.js";
-import type { LlmProviderService } from "../llm-provider.js";
+import type { LlmProviderError, LlmProviderService } from "../llm-provider.js";
 import type { MilestoneService } from "../milestone-service.js";
 import type { OnePagerService } from "../one-pager-service.js";
 import type { ProductSpecService } from "../product-spec-service.js";
@@ -52,9 +52,8 @@ import {
   buildFeatureTechSpecPrompt,
   buildFeatureUserDocsPrompt,
   buildFeatureUxSpecPrompt,
-  buildMilestoneDesignConsistencyPrompt,
   buildMilestoneDesignPrompt,
-  buildMilestoneDesignReviewPrompt,
+  buildMilestoneDesignRepairPrompt,
   buildMilestoneCoverageReviewPrompt,
   buildMilestoneCoverageRepairPrompt,
   buildMilestoneCoverageRepairReviewPrompt,
@@ -168,6 +167,7 @@ type JobFailurePayload = {
   category?: StructuredOutputFailureCategory;
   templateId?: string;
   doneReason?: string | null;
+  hint?: string;
   retryable?: boolean;
 };
 
@@ -178,6 +178,88 @@ type DecisionSelectionRepairPlan = {
     reason: string;
     selectedOptionId: string | null;
   }>;
+};
+
+type MilestoneDesignFlowDraft = {
+  deliveryGroupKeys?: string[];
+  screens?: string[];
+  steps?: string[];
+  summary?: string;
+  title?: string;
+};
+
+type MilestoneDesignDraft = {
+  deliveryGroups?: Array<{
+    dependsOn?: string[];
+    key?: string;
+    mustNotSplit?: string[];
+    mustStayTogether?: string[];
+    ownedResponsibilities?: string[];
+    ownedScreens?: string[];
+    summary?: string;
+    title?: string;
+  }>;
+  dependenciesAndSequencing?: Array<{
+    deliveryGroupKeys?: string[];
+    notes?: string;
+    phase?: string;
+  }>;
+  exitCriteria?: Array<{
+    criterion?: string;
+    deliveryGroupKey?: string;
+    screens?: string[];
+  }>;
+  includedUserFlows?: MilestoneDesignFlowDraft[];
+  objective?: string;
+  risksAndOpenQuestions?: string[];
+  scopeBoundaries?: {
+    inScope?: Array<{
+      deliveryGroupKey?: string;
+      item?: string;
+    }>;
+    outOfScope?: string[];
+  };
+  title?: string;
+};
+
+type ParsedMilestoneDesignDraft = {
+  deliveryGroups: Array<{
+    dependsOn: string[];
+    key: string;
+    mustNotSplit: string[];
+    mustStayTogether: string[];
+    ownedResponsibilities: string[];
+    ownedScreens: string[];
+    summary: string;
+    title: string;
+  }>;
+  dependenciesAndSequencing: Array<{
+    deliveryGroupKeys: string[];
+    notes: string;
+    phase: string;
+  }>;
+  exitCriteria: Array<{
+    criterion: string;
+    deliveryGroupKey: string;
+    screens: string[];
+  }>;
+  includedUserFlows: Array<{
+    deliveryGroupKeys: string[];
+    screens: string[];
+    steps: string[];
+    summary: string;
+    title: string;
+  }>;
+  objective: string;
+  risksAndOpenQuestions: string[];
+  scopeBoundaries: {
+    inScope: Array<{
+      deliveryGroupKey: string;
+      item: string;
+    }>;
+    outOfScope: string[];
+  };
+  title: string;
 };
 
 const buildJsonRepairPrompt = (input: {
@@ -476,8 +558,17 @@ const parseFeatureWorkstreamResult = (value: string, templateId: string) => {
     );
   }
 
+  const normalizedRequirements = parsed.requirements
+    ? {
+        uxRequired: parsed.requirements.uxRequired ?? true,
+        techRequired: parsed.requirements.techRequired ?? true,
+        userDocsRequired: parsed.requirements.userDocsRequired ?? true,
+        archDocsRequired: parsed.requirements.archDocsRequired ?? true,
+      }
+    : null;
+
   const requirements = parsed.requirements
-    ? createFeatureProductRevisionRequestSchema.shape.requirements.parse(parsed.requirements)
+    ? createFeatureProductRevisionRequestSchema.shape.requirements.parse(normalizedRequirements)
     : null;
 
   return {
@@ -636,28 +727,445 @@ const parseDecisionValidationResult = (value: string) => {
   return parsed;
 };
 
-const parseMilestoneDesignConsistencyResult = (value: string) => {
-  const parsed = parseJson<{ hint?: string; issues?: string[]; ok?: boolean }>(value);
+const normalizeStringArray = (
+  value: unknown,
+  errorMessage: string,
+  { allowEmpty = false, unique = false }: { allowEmpty?: boolean; unique?: boolean } = {},
+) => {
+  if (!Array.isArray(value)) {
+    throw new Error(errorMessage);
+  }
 
-  if (!parsed || typeof parsed.ok !== "boolean" || !Array.isArray(parsed.issues) || typeof parsed.hint !== "string") {
+  const normalized = value.map((item, index) => {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw new Error(`${errorMessage} Invalid string at index ${index}.`);
+    }
+
+    return item.trim();
+  });
+
+  if (!allowEmpty && normalized.length === 0) {
+    throw new Error(errorMessage);
+  }
+
+  return unique ? [...new Set(normalized)] : normalized;
+};
+
+const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMilestoneDesignDraft => {
+  const parsed = parseJson<MilestoneDesignDraft>(value);
+
+  if (!parsed?.title?.trim() || !parsed.objective?.trim()) {
     throw new Error(
-      "ValidateMilestoneDesignConsistency returned invalid content. Expected JSON with boolean ok, string-array issues, and string hint.",
+      `${templateId} returned invalid content. Expected non-empty "title" and "objective".`,
+    );
+  }
+
+  const includedUserFlows = Array.isArray(parsed.includedUserFlows)
+    ? parsed.includedUserFlows.map((flow, index) => {
+        if (!flow?.title?.trim() || !flow.summary?.trim()) {
+          throw new Error(
+            `${templateId} returned an includedUserFlow without title or summary at index ${index}.`,
+          );
+        }
+
+        return {
+          title: flow.title.trim(),
+          summary: flow.summary.trim(),
+          steps: normalizeStringArray(
+            flow.steps,
+            `${templateId} returned an includedUserFlow without non-empty steps at index ${index}.`,
+          ),
+          deliveryGroupKeys: normalizeStringArray(
+            flow.deliveryGroupKeys,
+            `${templateId} returned an includedUserFlow without deliveryGroupKeys at index ${index}.`,
+            { unique: true },
+          ),
+          screens: normalizeStringArray(
+            flow.screens,
+            `${templateId} returned an includedUserFlow without screens at index ${index}.`,
+            { unique: true },
+          ),
+        };
+      })
+    : null;
+
+  if (!includedUserFlows || includedUserFlows.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a non-empty "includedUserFlows" array.`,
+    );
+  }
+
+  if (!parsed.scopeBoundaries || typeof parsed.scopeBoundaries !== "object") {
+    throw new Error(`${templateId} returned invalid content. Expected "scopeBoundaries" object.`);
+  }
+
+  const inScope = Array.isArray(parsed.scopeBoundaries.inScope)
+    ? parsed.scopeBoundaries.inScope.map((item, index) => {
+        if (!item?.item?.trim() || !item.deliveryGroupKey?.trim()) {
+          throw new Error(
+            `${templateId} returned an invalid inScope item at index ${index}.`,
+          );
+        }
+
+        return {
+          item: item.item.trim(),
+          deliveryGroupKey: item.deliveryGroupKey.trim(),
+        };
+      })
+    : null;
+
+  if (!inScope || inScope.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a non-empty "scopeBoundaries.inScope" array.`,
+    );
+  }
+
+  const outOfScope = normalizeStringArray(
+    parsed.scopeBoundaries.outOfScope,
+    `${templateId} returned invalid content. Expected "scopeBoundaries.outOfScope" array.`,
+    { allowEmpty: true, unique: true },
+  );
+
+  const deliveryGroups = Array.isArray(parsed.deliveryGroups)
+    ? parsed.deliveryGroups.map((group, index) => {
+        if (!group?.key?.trim() || !group.title?.trim() || !group.summary?.trim()) {
+          throw new Error(
+            `${templateId} returned an invalid deliveryGroup at index ${index}.`,
+          );
+        }
+
+        return {
+          key: group.key.trim(),
+          title: group.title.trim(),
+          summary: group.summary.trim(),
+          ownedScreens: normalizeStringArray(
+            group.ownedScreens,
+            `${templateId} returned an invalid ownedScreens array for deliveryGroup ${group.key.trim()}.`,
+            { unique: true },
+          ),
+          ownedResponsibilities: normalizeStringArray(
+            group.ownedResponsibilities,
+            `${templateId} returned an invalid ownedResponsibilities array for deliveryGroup ${group.key.trim()}.`,
+            { unique: true },
+          ),
+          dependsOn: normalizeStringArray(
+            group.dependsOn,
+            `${templateId} returned an invalid dependsOn array for deliveryGroup ${group.key.trim()}.`,
+            { allowEmpty: true, unique: true },
+          ),
+          mustStayTogether: normalizeStringArray(
+            group.mustStayTogether,
+            `${templateId} returned an invalid mustStayTogether array for deliveryGroup ${group.key.trim()}.`,
+            { allowEmpty: true, unique: true },
+          ),
+          mustNotSplit: normalizeStringArray(
+            group.mustNotSplit,
+            `${templateId} returned an invalid mustNotSplit array for deliveryGroup ${group.key.trim()}.`,
+            { allowEmpty: true, unique: true },
+          ),
+        };
+      })
+    : null;
+
+  if (!deliveryGroups || deliveryGroups.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a non-empty "deliveryGroups" array.`,
+    );
+  }
+
+  const dependenciesAndSequencing = Array.isArray(parsed.dependenciesAndSequencing)
+    ? parsed.dependenciesAndSequencing.map((phase, index) => {
+        if (!phase?.phase?.trim() || !phase.notes?.trim()) {
+          throw new Error(
+            `${templateId} returned an invalid dependenciesAndSequencing item at index ${index}.`,
+          );
+        }
+
+        return {
+          phase: phase.phase.trim(),
+          notes: phase.notes.trim(),
+          deliveryGroupKeys: normalizeStringArray(
+            phase.deliveryGroupKeys,
+            `${templateId} returned an invalid deliveryGroupKeys array for dependenciesAndSequencing item ${index}.`,
+            { unique: true },
+          ),
+        };
+      })
+    : null;
+
+  if (!dependenciesAndSequencing || dependenciesAndSequencing.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a non-empty "dependenciesAndSequencing" array.`,
+    );
+  }
+
+  const exitCriteria = Array.isArray(parsed.exitCriteria)
+    ? parsed.exitCriteria.map((criterion, index) => {
+        if (!criterion?.criterion?.trim() || !criterion.deliveryGroupKey?.trim()) {
+          throw new Error(`${templateId} returned an invalid exitCriteria item at index ${index}.`);
+        }
+
+        return {
+          criterion: criterion.criterion.trim(),
+          deliveryGroupKey: criterion.deliveryGroupKey.trim(),
+          screens: normalizeStringArray(
+            criterion.screens,
+            `${templateId} returned an invalid screens array for exitCriteria item ${index}.`,
+            { unique: true },
+          ),
+        };
+      })
+    : null;
+
+  if (!exitCriteria || exitCriteria.length === 0) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a non-empty "exitCriteria" array.`,
     );
   }
 
   return {
-    ok: parsed.ok,
-    issues: parsed.issues.map((issue, index) => {
-      if (typeof issue !== "string" || issue.trim().length === 0) {
-        throw new Error(
-          `ValidateMilestoneDesignConsistency returned an invalid issue at index ${index}.`,
+    title: parsed.title.trim(),
+    objective: parsed.objective.trim(),
+    includedUserFlows,
+    scopeBoundaries: {
+      inScope,
+      outOfScope,
+    },
+    deliveryGroups,
+    dependenciesAndSequencing,
+    risksAndOpenQuestions: normalizeStringArray(
+      parsed.risksAndOpenQuestions,
+      `${templateId} returned invalid content. Expected "risksAndOpenQuestions" array.`,
+      { allowEmpty: true, unique: true },
+    ),
+    exitCriteria,
+  };
+};
+
+const validateMilestoneDesignDraft = (
+  draft: ParsedMilestoneDesignDraft,
+  linkedFlows: Array<{ title: string }>,
+) => {
+  const issues: string[] = [];
+  const linkedTitles = new Set(linkedFlows.map((flow) => flow.title.trim()));
+  const seenFlowTitles = new Set<string>();
+  const groupByKey = new Map<string, ParsedMilestoneDesignDraft["deliveryGroups"][number]>();
+  const screenOwners = new Map<string, string>();
+  const responsibilityOwners = new Map<string, string>();
+
+  for (const group of draft.deliveryGroups) {
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(group.key)) {
+      issues.push(`Delivery group "${group.key}" must use stable kebab-case.`);
+    }
+
+    if (groupByKey.has(group.key)) {
+      issues.push(`Delivery group key "${group.key}" is duplicated.`);
+      continue;
+    }
+
+    groupByKey.set(group.key, group);
+
+    for (const screen of group.ownedScreens) {
+      const existingOwner = screenOwners.get(screen);
+      if (existingOwner && existingOwner !== group.key) {
+        issues.push(`Screen "${screen}" is owned by both "${existingOwner}" and "${group.key}".`);
+      } else {
+        screenOwners.set(screen, group.key);
+      }
+    }
+
+    for (const responsibility of group.ownedResponsibilities) {
+      const existingOwner = responsibilityOwners.get(responsibility);
+      if (existingOwner && existingOwner !== group.key) {
+        issues.push(
+          `Responsibility "${responsibility}" is owned by both "${existingOwner}" and "${group.key}".`,
+        );
+      } else {
+        responsibilityOwners.set(responsibility, group.key);
+      }
+    }
+  }
+
+  for (const flow of draft.includedUserFlows) {
+    if (!linkedTitles.has(flow.title)) {
+      issues.push(`Included user flow "${flow.title}" is not linked to the milestone.`);
+    }
+    if (seenFlowTitles.has(flow.title)) {
+      issues.push(`Included user flow "${flow.title}" appears more than once.`);
+    }
+    seenFlowTitles.add(flow.title);
+
+    for (const groupKey of flow.deliveryGroupKeys) {
+      if (!groupByKey.has(groupKey)) {
+        issues.push(`Included user flow "${flow.title}" references unknown delivery group "${groupKey}".`);
+      }
+    }
+
+    for (const screen of flow.screens) {
+      const owner = screenOwners.get(screen);
+      if (!owner) {
+        issues.push(`Included user flow "${flow.title}" references unowned screen "${screen}".`);
+      } else if (!flow.deliveryGroupKeys.includes(owner)) {
+        issues.push(
+          `Included user flow "${flow.title}" references screen "${screen}" but does not include owning delivery group "${owner}".`,
         );
       }
+    }
+  }
 
-      return issue.trim();
-    }),
-    hint: parsed.hint.trim(),
-  };
+  for (const linkedTitle of linkedTitles) {
+    if (!seenFlowTitles.has(linkedTitle)) {
+      issues.push(`Linked user flow "${linkedTitle}" is missing from Included User Flows.`);
+    }
+  }
+
+  for (const item of draft.scopeBoundaries.inScope) {
+    if (!groupByKey.has(item.deliveryGroupKey)) {
+      issues.push(`In-scope item "${item.item}" references unknown delivery group "${item.deliveryGroupKey}".`);
+    }
+  }
+
+  for (const phase of draft.dependenciesAndSequencing) {
+    for (const groupKey of phase.deliveryGroupKeys) {
+      if (!groupByKey.has(groupKey)) {
+        issues.push(`Sequencing phase "${phase.phase}" references unknown delivery group "${groupKey}".`);
+      }
+    }
+  }
+
+  for (const group of draft.deliveryGroups) {
+    for (const dependencyKey of group.dependsOn) {
+      if (!groupByKey.has(dependencyKey)) {
+        issues.push(`Delivery group "${group.key}" depends on unknown group "${dependencyKey}".`);
+      } else if (dependencyKey === group.key) {
+        issues.push(`Delivery group "${group.key}" cannot depend on itself.`);
+      } else if (groupByKey.get(dependencyKey)?.dependsOn.includes(group.key)) {
+        issues.push(`Delivery groups "${group.key}" and "${dependencyKey}" form a dependency cycle.`);
+      }
+    }
+  }
+
+  for (const criterion of draft.exitCriteria) {
+    const group = groupByKey.get(criterion.deliveryGroupKey);
+    if (!group) {
+      issues.push(`Exit criterion "${criterion.criterion}" references unknown delivery group "${criterion.deliveryGroupKey}".`);
+      continue;
+    }
+
+    for (const screen of criterion.screens) {
+      const owner = screenOwners.get(screen);
+      if (!owner) {
+        issues.push(`Exit criterion "${criterion.criterion}" references unowned screen "${screen}".`);
+      } else if (owner !== group.key) {
+        issues.push(
+          `Exit criterion "${criterion.criterion}" references screen "${screen}" owned by "${owner}" instead of "${group.key}".`,
+        );
+      }
+    }
+  }
+
+  const hint = issues[0] ?? "";
+  return { ok: issues.length === 0, issues, hint };
+};
+
+const renderMilestoneDesignMarkdown = (draft: ParsedMilestoneDesignDraft) => {
+  const lines = [
+    "# Milestone Design",
+    "",
+    "## Milestone Objective",
+    draft.objective,
+    "",
+    "## Included User Flows",
+  ];
+
+  for (const flow of draft.includedUserFlows) {
+    lines.push(`### ${flow.title}`);
+    lines.push(flow.summary);
+    lines.push("");
+    lines.push("Steps:");
+    for (const step of flow.steps) {
+      lines.push(`- ${step}`);
+    }
+    lines.push("Delivery groups:");
+    for (const groupKey of flow.deliveryGroupKeys) {
+      lines.push(`- ${groupKey}`);
+    }
+    lines.push("Screens:");
+    for (const screen of flow.screens) {
+      lines.push(`- ${screen}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Scope Boundaries");
+  lines.push("In scope:");
+  for (const item of draft.scopeBoundaries.inScope) {
+    lines.push(`- ${item.item} [owner: ${item.deliveryGroupKey}]`);
+  }
+  if (draft.scopeBoundaries.outOfScope.length > 0) {
+    lines.push("Out of scope:");
+    for (const item of draft.scopeBoundaries.outOfScope) {
+      lines.push(`- ${item}`);
+    }
+  }
+  lines.push("");
+  lines.push("## Delivery Shape");
+  for (const group of draft.deliveryGroups) {
+    lines.push(`### ${group.title} (${group.key})`);
+    lines.push(group.summary);
+    lines.push("");
+    lines.push("Owned screens:");
+    for (const screen of group.ownedScreens) {
+      lines.push(`- ${screen}`);
+    }
+    lines.push("Owned responsibilities:");
+    for (const responsibility of group.ownedResponsibilities) {
+      lines.push(`- ${responsibility}`);
+    }
+    if (group.dependsOn.length > 0) {
+      lines.push("Depends on:");
+      for (const dependency of group.dependsOn) {
+        lines.push(`- ${dependency}`);
+      }
+    }
+    if (group.mustStayTogether.length > 0) {
+      lines.push("Keep together:");
+      for (const item of group.mustStayTogether) {
+        lines.push(`- ${item}`);
+      }
+    }
+    if (group.mustNotSplit.length > 0) {
+      lines.push("Do not split:");
+      for (const item of group.mustNotSplit) {
+        lines.push(`- ${item}`);
+      }
+    }
+    lines.push("");
+  }
+
+  lines.push("## Dependencies and Sequencing");
+  for (const phase of draft.dependenciesAndSequencing) {
+    lines.push(`### ${phase.phase}`);
+    lines.push(`Delivery groups: ${phase.deliveryGroupKeys.join(", ")}`);
+    lines.push(phase.notes);
+    lines.push("");
+  }
+
+  lines.push("## Risks and Open Questions");
+  if (draft.risksAndOpenQuestions.length === 0) {
+    lines.push("- None identified.");
+  } else {
+    for (const item of draft.risksAndOpenQuestions) {
+      lines.push(`- ${item}`);
+    }
+  }
+  lines.push("");
+  lines.push("## Exit Criteria");
+  for (const criterion of draft.exitCriteria) {
+    lines.push(`- ${criterion.criterion} [owner: ${criterion.deliveryGroupKey}; screens: ${criterion.screens.join(", ")}]`);
+  }
+
+  return lines.join("\n").trim();
 };
 
 const parseDecisionSelectionRepairPlan = (
@@ -1393,6 +1901,34 @@ export const createJobRunnerService = (input: {
       });
     };
 
+    const generateWithJobFailure = async (
+      prompt: string,
+      options?: { responseFormat?: "json" },
+    ) => {
+      try {
+        return await input.llmProviderService.generate(provider, prompt, options);
+      } catch (error) {
+        const providerError =
+          error && typeof error === "object" && "llmProviderError" in error
+            ? (error as { llmProviderError: LlmProviderError }).llmProviderError
+            : null;
+
+        if (!providerError) {
+          throw error;
+        }
+
+        throw createJobFailure({
+          message: providerError.message,
+          code:
+            providerError.kind === "http_error"
+              ? "llm_provider_http_error"
+              : "llm_provider_transport_error",
+          hint: providerError.message,
+          retryable: providerError.retryable,
+        });
+      }
+    };
+
     const parseStructuredJsonWithRepair = async <T>(inputArgs: {
       templateId: string;
       parameters: Record<string, unknown>;
@@ -1420,7 +1956,7 @@ export const createJobRunnerService = (input: {
           validationMessage,
           invalidResponse: inputArgs.generated.content,
         });
-        const repaired = await input.llmProviderService.generate(provider, repairPrompt, {
+        const repaired = await generateWithJobFailure(repairPrompt, {
           responseFormat: "json",
         });
         await storeLlmRun({
@@ -1452,7 +1988,7 @@ export const createJobRunnerService = (input: {
       prompt: string;
       parse: (content: string, templateId: string) => T;
     }) => {
-      const generated = await input.llmProviderService.generate(provider, inputArgs.prompt, {
+      const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
       });
       await storeLlmRun({
@@ -1480,7 +2016,7 @@ export const createJobRunnerService = (input: {
       buildReviewPrompt: (draft: TDraft) => string;
       parseReviewed?: (content: string, templateId: string) => TFinal;
     }) => {
-      const generated = await input.llmProviderService.generate(provider, inputArgs.prompt, {
+      const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
       });
       await storeLlmRun({
@@ -1499,7 +2035,7 @@ export const createJobRunnerService = (input: {
       });
       const reviewTemplateId = inputArgs.reviewTemplateId ?? `${inputArgs.templateId}Review`;
       const reviewPrompt = inputArgs.buildReviewPrompt(draft);
-      const reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+      const reviewed = await generateWithJobFailure(reviewPrompt, {
         responseFormat: "json",
       });
       await storeLlmRun({
@@ -2038,7 +2574,7 @@ export const createJobRunnerService = (input: {
       case "GenerateProjectDescription": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
-        const generated = await input.llmProviderService.generate(provider, prompt);
+        const generated = await generateWithJobFailure(prompt);
         await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
@@ -2194,7 +2730,7 @@ export const createJobRunnerService = (input: {
         });
         let generated;
         try {
-          generated = await input.llmProviderService.generate(provider, prompt, {
+          generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
           });
         } catch (error) {
@@ -2270,7 +2806,7 @@ export const createJobRunnerService = (input: {
         });
         let qualityChecked;
         try {
-          qualityChecked = await input.llmProviderService.generate(provider, qualityCheckPrompt, {
+          qualityChecked = await generateWithJobFailure(qualityCheckPrompt, {
             responseFormat: "json",
           });
         } catch (error) {
@@ -2348,7 +2884,7 @@ export const createJobRunnerService = (input: {
           });
           let retried;
           try {
-            retried = await input.llmProviderService.generate(provider, retryPrompt, {
+            retried = await generateWithJobFailure(retryPrompt, {
               responseFormat: "json",
             });
           } catch (error) {
@@ -2424,7 +2960,7 @@ export const createJobRunnerService = (input: {
         });
         let reviewed;
         try {
-          reviewed = await input.llmProviderService.generate(provider, reviewPrompt, {
+          reviewed = await generateWithJobFailure(reviewPrompt, {
             responseFormat: "json",
           });
         } catch (error) {
@@ -2824,7 +3360,7 @@ export const createJobRunnerService = (input: {
           })),
           hint: generateMilestonesInput?.hint,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await assertAutoAdvanceBatchIsCurrent();
@@ -2886,7 +3422,7 @@ export const createJobRunnerService = (input: {
           })),
         });
 
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await storeLlmRun({
@@ -2957,7 +3493,7 @@ export const createJobRunnerService = (input: {
           })),
           hint: hint.length > 0 ? hint : undefined,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await assertAutoAdvanceBatchIsCurrent();
@@ -2999,7 +3535,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneDesign requires milestone service support.");
         }
 
-        const jobInput = parseJobInputs<{ milestoneId?: string }>(rawJob.inputs);
+        const jobInput = parseJobInputs<{ hint?: string; milestoneId?: string }>(rawJob.inputs);
         const milestoneId = jobInput?.milestoneId;
 
         if (!milestoneId) {
@@ -3041,7 +3577,7 @@ export const createJobRunnerService = (input: {
         const uxBlueprint = blueprints.uxBlueprint;
         const techBlueprint = blueprints.techBlueprint;
 
-        const generateMilestoneDesignDoc = async (inputArgs: {
+        const generateMilestoneDesignDraft = async (inputArgs: {
           hint?: string;
           templateId: string;
         }) => {
@@ -3055,87 +3591,71 @@ export const createJobRunnerService = (input: {
             hint: inputArgs.hint,
           });
 
-          return runReviewedJsonGeneration({
+          return runStructuredJsonGeneration({
             templateId: inputArgs.templateId,
-            reviewTemplateId: `${inputArgs.templateId}Review`,
             parameters: { milestoneId },
             prompt,
-            parseDraft: parseBlueprintResult,
-            buildReviewPrompt: (draft) =>
-              buildMilestoneDesignReviewPrompt({
-                projectName: project.name,
-                milestoneTitle: milestoneRecord.title,
-                milestoneSummary: milestoneRecord.summary,
-                linkedUserFlows: linkedFlows,
-                uxSpec: uxBlueprint.markdown,
-                technicalSpec: techBlueprint.markdown,
-                draftTitle: draft.title,
-                draftMarkdown: draft.markdown,
-                hint: inputArgs.hint,
-              }),
+            parse: parseMilestoneDesignDraft,
           });
         };
 
-        const validateMilestoneDesignDoc = async (
-          designDoc: {
-            title: string;
-            markdown: string;
-          },
-          templateId = "ValidateMilestoneDesignConsistency",
-        ) => {
-          const prompt = buildMilestoneDesignConsistencyPrompt({
+        const repairMilestoneDesignDraft = async (inputArgs: {
+          draft: ParsedMilestoneDesignDraft;
+          hint?: string;
+          issues: string[];
+          templateId: string;
+        }) => {
+          const prompt = buildMilestoneDesignRepairPrompt({
             projectName: project.name,
             milestoneTitle: milestoneRecord.title,
             milestoneSummary: milestoneRecord.summary,
             linkedUserFlows: linkedFlows,
-            designTitle: designDoc.title,
-            designMarkdown: designDoc.markdown,
+            uxSpec: uxBlueprint.markdown,
+            technicalSpec: techBlueprint.markdown,
+            issues: inputArgs.issues,
+            draftJson: JSON.stringify(inputArgs.draft, null, 2),
+            hint: inputArgs.hint,
           });
-          const generated = await input.llmProviderService.generate(provider, prompt, {
-            responseFormat: "json",
-          });
-          await storeLlmRun({
-            templateId,
+          return runStructuredJsonGeneration({
+            templateId: inputArgs.templateId,
             parameters: { milestoneId },
             prompt,
-            generated,
-          });
-
-          return parseStructuredJsonWithRepair({
-            templateId,
-            parameters: { milestoneId },
-            prompt,
-            generated,
-            parse: parseMilestoneDesignConsistencyResult,
+            parse: parseMilestoneDesignDraft,
           });
         };
 
-        let designDoc = await generateMilestoneDesignDoc({
+        let designDraft = await generateMilestoneDesignDraft({
+          hint: jobInput?.hint,
           templateId: rawJob.type,
         });
-        let designValidation = await validateMilestoneDesignDoc(designDoc);
+        let designValidation = validateMilestoneDesignDraft(designDraft, linkedFlows);
 
         if (!designValidation.ok) {
-          designDoc = await generateMilestoneDesignDoc({
+          designDraft = await repairMilestoneDesignDraft({
+            draft: designDraft,
+            issues: designValidation.issues,
             hint: designValidation.hint.length > 0
               ? designValidation.hint
               : designValidation.issues.join(" "),
             templateId: `${rawJob.type}Retry`,
           });
-          designValidation = await validateMilestoneDesignDoc(
-            designDoc,
-            "ValidateMilestoneDesignConsistencyRetry",
-          );
+          designValidation = validateMilestoneDesignDraft(designDraft, linkedFlows);
         }
 
         if (!designValidation.ok) {
-          throw {
+          throw createJobFailure({
             message:
-              `ValidateMilestoneDesignConsistency found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
+              `Milestone design validation found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
             code: "milestone_design_conflict_unresolved",
-            retryable: false,
-          };
+            hint: designValidation.hint.length > 0 ? designValidation.hint : designValidation.issues[0],
+            retryable: true,
+          });
         }
+
+        const designDoc = {
+          title: designDraft.title,
+          markdown: renderMilestoneDesignMarkdown(designDraft),
+        };
 
         const created = await input.milestoneService.createDesignDocVersion({
           milestoneId,
@@ -3212,7 +3732,7 @@ export const createJobRunnerService = (input: {
           milestoneDesignDoc: milestoneDesignDoc.markdown,
           features: featurePayload,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await storeLlmRun({
@@ -3577,7 +4097,7 @@ export const createJobRunnerService = (input: {
           milestoneDesignDoc: milestoneDesignDoc.markdown,
           features: featurePayload,
         });
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await storeLlmRun({
@@ -4242,7 +4762,7 @@ export const createJobRunnerService = (input: {
           })),
         });
 
-        const generated = await input.llmProviderService.generate(provider, prompt, {
+        const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
         });
         await storeLlmRun({

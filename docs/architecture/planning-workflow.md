@@ -49,10 +49,11 @@ The current planning workflow builds on the M1 foundation and M2-M3 planning flo
 - `phaseGateService` now treats the Features phase as requiring at least one feature with an approved Product workstream revision
 - `nextActionsService` now scopes detailed planning to the active milestone only, then continues through task planning and milestone reconciliation before milestone completion
 - `jobService` and the in-process `jobScheduler` execute planning jobs asynchronously and publish SSE updates, including milestone generation, milestone design doc generation, milestone feature-set generation, milestone feature-set rewrite, and feature workstream generation
-- milestone design, milestone feature-set generation, milestone feature-set rewrite, feature workstream generation, and feature task-list generation now follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
+- milestone design generation now uses a structured JSON draft, deterministic local validation of flow/group/screen ownership, one targeted repair pass, and a renderer that persists the validated result as markdown
+- milestone feature-set generation, milestone feature-set rewrite, feature workstream generation, and feature task-list generation follow a draft-plus-review/rewrite LLM pattern so the persisted artifact is the reviewed result rather than the first pass
 - feature and task generation prompts now use milestone design guidance and sibling-boundary context to reduce task-sized feature fragmentation and milestone-coverage gaps
 - blueprint generation now self-repairs accepted decision selections when `ValidateDecisionConsistency` reports conflicts, then reruns validation before creating the UX or Technical spec
-- auto-advance retries only failures marked retryable by job execution; malformed structured-output failures and exhausted blueprint decision-conflict repairs now re-enter the bounded job retry loop, while prompt/context-limit failures still pause cleanly
+- auto-advance retries only failures marked retryable by job execution; malformed structured-output failures, transient provider failures (`429`, `5xx`, timeout, and connection errors), and exhausted blueprint decision-conflict repairs now re-enter the bounded job retry loop, while prompt/context-limit failures still pause cleanly
 
 ## External Adapters
 

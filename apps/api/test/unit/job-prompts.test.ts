@@ -16,8 +16,7 @@ import {
   buildDecisionConsistencyPrompt,
   buildDeliveryReviewPrompt,
   buildMilestoneDesignPrompt,
-  buildMilestoneDesignReviewPrompt,
-  buildMilestoneDesignConsistencyPrompt,
+  buildMilestoneDesignRepairPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
 const sampleAnswers = {
@@ -140,36 +139,14 @@ describe("job prompts", () => {
       hint: "Align the onboarding step order and screen inventory.",
     });
 
-    expect(prompt).toContain("one internally consistent milestone");
-    expect(prompt).toContain("Do not let flow steps, listed screens, step counts");
-    expect(prompt).toContain("Every screen, schema, and core responsibility");
+    expect(prompt).toContain('"title", "objective", "includedUserFlows", "scopeBoundaries"');
+    expect(prompt).toContain("Each includedUserFlows title must exactly match one linked user-flow title");
+    expect(prompt).toContain("Use stable kebab-case delivery group keys");
     expect(prompt).toContain("Repair guidance:");
   });
 
-  it("validates milestone design consistency with an explicit JSON contract", () => {
-    const prompt = buildMilestoneDesignConsistencyPrompt({
-      projectName: "Quayboard",
-      milestoneTitle: "Foundations",
-      milestoneSummary: "First releasable slice.",
-      linkedUserFlows: [
-        {
-          title: "Onboard user",
-          userStory: "As a new user, I want a coherent first-use journey.",
-          entryPoint: "Landing page",
-          endState: "Dashboard",
-        },
-      ],
-      designTitle: "Milestone Design",
-      designMarkdown: "# Milestone Design",
-    });
-
-    expect(prompt).toContain('"ok" (boolean), "issues" (array of strings), and "hint" (string)');
-    expect(prompt).toContain("Check for contradictions in step order, step counts");
-    expect(prompt).toContain('If the document is internally consistent, return {"ok":true,"issues":[],"hint":""}.');
-  });
-
-  it("uses review guidance to reconcile milestone design contradictions", () => {
-    const prompt = buildMilestoneDesignReviewPrompt({
+  it("uses repair guidance to reconcile structured milestone design contradictions", () => {
+    const prompt = buildMilestoneDesignRepairPrompt({
       projectName: "Quayboard",
       milestoneTitle: "Foundations",
       milestoneSummary: "First releasable slice.",
@@ -183,13 +160,14 @@ describe("job prompts", () => {
       ],
       uxSpec: "# UX Spec",
       technicalSpec: "# Technical Spec",
-      draftTitle: "Milestone Design",
-      draftMarkdown: "# Milestone Design",
+      issues: ["Flow ownership and screen inventory disagree."],
+      draftJson: '{"title":"Milestone Design"}',
       hint: "Align screen inventory and Delivery Shape ownership.",
     });
 
-    expect(prompt).toContain("Resolve any contradictions across Included User Flows");
-    expect(prompt).toContain("one consistent onboarding step order");
+    expect(prompt).toContain("Repair the structured milestone design draft");
+    expect(prompt).toContain("Validator issues:");
+    expect(prompt).toContain("Previous structured milestone design draft:");
     expect(prompt).toContain("Repair guidance:");
   });
 

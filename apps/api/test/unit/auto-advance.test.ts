@@ -151,6 +151,8 @@ describe("auto-advance service", () => {
     getActiveMilestone: ReturnType<typeof vi.fn>;
     incrementAutoCatchUpCount: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
+    recordDeliveryReviewResult: ReturnType<typeof vi.fn>;
+    recordScopeReviewResult: ReturnType<typeof vi.fn>;
     recordReconciliationResult: ReturnType<typeof vi.fn>;
     transition: ReturnType<typeof vi.fn>;
   };
@@ -178,6 +180,7 @@ describe("auto-advance service", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    const recordScopeReviewResult = vi.fn().mockResolvedValue(undefined);
     nextActionsService = {
       build: vi.fn().mockResolvedValue({
         actions: [
@@ -211,7 +214,9 @@ describe("auto-advance service", () => {
     milestoneService = {
       list: vi.fn().mockResolvedValue({ milestones: [] }),
       getActiveMilestone: vi.fn().mockResolvedValue(null),
-      recordReconciliationResult: vi.fn().mockResolvedValue(undefined),
+      recordDeliveryReviewResult: vi.fn().mockResolvedValue(undefined),
+      recordScopeReviewResult,
+      recordReconciliationResult: recordScopeReviewResult,
       incrementAutoCatchUpCount: vi.fn().mockResolvedValue(undefined),
       transition: vi.fn().mockResolvedValue(undefined),
     };
@@ -762,6 +767,7 @@ describe("auto-advance service", () => {
         type: "GenerateFeatureTechSpec",
         error: {
           message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          hint: "retry with the same scope after timeout",
           retryable: true,
         },
         inputs: {
@@ -796,6 +802,7 @@ describe("auto-advance service", () => {
           projectId: PROJECT_ID,
           inputs: expect.objectContaining({
             featureId: "feature-123",
+            hint: "retry with the same scope after timeout",
             _autoAdvance: expect.objectContaining({
               sessionId: SESSION_ID,
               batchToken: "batch-1",
@@ -853,6 +860,7 @@ describe("auto-advance service", () => {
         type: "GenerateFeatureTechSpec",
         error: {
           message: "OpenAI-compatible generation request failed: timed out after 30000ms",
+          hint: "retry with the same scope after timeout",
           retryable: true,
         },
         inputs: {
@@ -1021,6 +1029,64 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).not.toHaveBeenCalled();
       const pauseUpdate = updates.find((update) => update.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("job_failed");
+    });
+
+    it("pauses with needs_human when delivery review finds only human-review issues", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        autoRepairMilestoneCoverage: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneDelivery",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          milestoneId: "milestone-1",
+          issues: [{ action: "needs_human_review", hint: "Clarify artifact ownership." }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: data.status === "paused" ? ("paused" as const) : ("running" as const),
+                  pausedReason: "needs_human",
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      expect(milestoneService.recordDeliveryReviewResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: "milestone-1",
+          status: "failed_needs_human",
+        }),
+      );
+      expect(
+        updates.some(
+          (update) => update.status === "paused" && update.pausedReason === "needs_human",
+        ),
+      ).toBe(true);
     });
 
     it("marks session completed when ReviewDelivery reports complete:true", async () => {
@@ -1883,7 +1949,7 @@ describe("auto-advance service", () => {
               returning: vi.fn().mockResolvedValue([
                 makeSessionRow({
                   status: "paused" as const,
-                  pausedReason: "milestone_repair_limit_reached",
+                  pausedReason: "needs_human",
                 }),
               ]),
             }),
@@ -1899,7 +1965,7 @@ describe("auto-advance service", () => {
         updates.some(
           (update) =>
             update.status === "paused" &&
-            update.pausedReason === "milestone_repair_limit_reached",
+            update.pausedReason === "needs_human",
         ),
       ).toBe(true);
     });
