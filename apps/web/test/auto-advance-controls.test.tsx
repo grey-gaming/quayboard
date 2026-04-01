@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AutoAdvanceSession, User } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
+import { AutoAdvanceBanner } from "../src/components/workflow/AutoAdvanceBanner.js";
 import { MissionControlPage } from "../src/pages/MissionControlPage.js";
 
 const projectId = "b278b3d6-4dba-4f78-88e5-4651dc289cb3";
@@ -156,6 +157,24 @@ describe("auto-advance controls", () => {
     await waitFor(() => {
       expect(startBodies).toEqual([{}]);
     });
+  });
+
+  it("shows milestone-design intervention guidance after retries are exhausted", async () => {
+    render(
+      <AutoAdvanceBanner
+        nextStep="milestone_design_generate"
+        session={buildSession({
+          currentStep: "milestone_design_generate",
+          pausedReason: "needs_human",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Auto-advance exhausted milestone design retries. Review the milestone inputs or change the configured model before rerunning this step.",
+      ),
+    ).toBeTruthy();
   });
 
   it("renders the backend error message when start fails", async () => {

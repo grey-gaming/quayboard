@@ -46,6 +46,10 @@ export const getDefaultJobFailureHint = (message: string, workflowLabel: string)
     return `The API shut down before ${workflowLabel} finished. Start it again, confirm it is healthy, then queue the job again.`;
   }
 
+  if (message.includes("GenerateMilestoneDesign returned")) {
+    return "The configured model could not produce a valid milestone design draft after repair. Review the milestone inputs or switch models before retrying.";
+  }
+
   return `Review the failure details, adjust the source inputs if needed, then retry ${workflowLabel}.`;
 };
 

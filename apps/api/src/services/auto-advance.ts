@@ -1559,6 +1559,10 @@ export const createAutoAdvanceService = (
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
         const shouldRetry = isRetryableJobFailure(job.error);
+        const errorCode =
+          job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).code === "string"
+            ? (job.error as JobFailurePayload).code!
+            : "";
         const retryHint =
           job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).hint === "string"
             ? (job.error as JobFailurePayload).hint!.trim()
@@ -1594,11 +1598,17 @@ export const createAutoAdvanceService = (
           await publishSessionUpdate(project.ownerUserId, job.projectId);
         } else {
           // Non-retryable failure or retries exhausted — pause and reset count for next run.
+          const pausedReason =
+            job.type === "GenerateMilestoneDesign" &&
+            shouldRetry &&
+            errorCode.startsWith("llm_output_")
+              ? "needs_human"
+              : "job_failed";
           await db
             .update(autoAdvanceSessionsTable)
             .set({
               status: "paused",
-              pausedReason: "job_failed",
+              pausedReason,
               retryCount: 0,
               pausedAt: new Date(),
               updatedAt: new Date(),

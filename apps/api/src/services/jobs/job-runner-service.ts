@@ -181,53 +181,60 @@ type DecisionSelectionRepairPlan = {
 };
 
 type MilestoneDesignFlowDraft = {
-  deliveryGroupKeys?: string[];
-  screens?: string[];
-  steps?: string[];
+  deliveryGroupKeys?: unknown;
+  screens?: unknown;
+  steps?: unknown;
   summary?: string;
   title?: string;
 };
 
+type MilestoneDesignGroupConstraintDraft = boolean | string[];
+
 type MilestoneDesignDraft = {
   deliveryGroups?: Array<{
-    dependsOn?: string[];
+    dependsOn?: unknown;
     key?: string;
-    mustNotSplit?: string[];
-    mustStayTogether?: string[];
-    ownedResponsibilities?: string[];
-    ownedScreens?: string[];
+    mustNotSplit?: MilestoneDesignGroupConstraintDraft;
+    mustStayTogether?: MilestoneDesignGroupConstraintDraft;
+    ownedResponsibilities?: unknown;
+    ownedScreens?: unknown;
     summary?: string;
     title?: string;
   }>;
   dependenciesAndSequencing?: Array<{
-    deliveryGroupKeys?: string[];
+    deliveryGroupKeys?: unknown;
     notes?: string;
     phase?: string;
   }>;
   exitCriteria?: Array<{
     criterion?: string;
     deliveryGroupKey?: string;
-    screens?: string[];
+    screens?: unknown;
   }>;
   includedUserFlows?: MilestoneDesignFlowDraft[];
   objective?: string;
-  risksAndOpenQuestions?: string[];
+  risksAndOpenQuestions?: unknown;
   scopeBoundaries?: {
     inScope?: Array<{
       deliveryGroupKey?: string;
       item?: string;
     }>;
-    outOfScope?: string[];
+    outOfScope?: unknown;
   };
   title?: string;
+};
+
+type ParsedMilestoneDesignGroupConstraint = {
+  items: string[];
+  wholeGroup: boolean;
 };
 
 type ParsedMilestoneDesignDraft = {
   deliveryGroups: Array<{
     dependsOn: string[];
     key: string;
-    mustNotSplit: string[];
-    mustStayTogether: string[];
+    mustNotSplit: ParsedMilestoneDesignGroupConstraint;
+    mustStayTogether: ParsedMilestoneDesignGroupConstraint;
     ownedResponsibilities: string[];
     ownedScreens: string[];
     summary: string;
@@ -751,6 +758,57 @@ const normalizeStringArray = (
   return unique ? [...new Set(normalized)] : normalized;
 };
 
+const normalizeStringArrayFromItems = (
+  value: unknown,
+  errorMessage: string,
+  { allowEmpty = false, unique = false }: { allowEmpty?: boolean; unique?: boolean } = {},
+) => {
+  if (!Array.isArray(value)) {
+    throw new Error(errorMessage);
+  }
+
+  const normalized = value.map((item, index) => {
+    if (typeof item === "string" && item.trim().length > 0) {
+      return item.trim();
+    }
+
+    if (
+      item &&
+      typeof item === "object" &&
+      "item" in item &&
+      typeof (item as { item?: unknown }).item === "string" &&
+      (item as { item: string }).item.trim().length > 0
+    ) {
+      return (item as { item: string }).item.trim();
+    }
+
+    throw new Error(`${errorMessage} Invalid item at index ${index}.`);
+  });
+
+  if (!allowEmpty && normalized.length === 0) {
+    throw new Error(errorMessage);
+  }
+
+  return unique ? [...new Set(normalized)] : normalized;
+};
+
+const normalizeMilestoneDesignGroupConstraint = (
+  value: unknown,
+  errorMessage: string,
+): ParsedMilestoneDesignGroupConstraint => {
+  if (typeof value === "boolean") {
+    return {
+      items: [],
+      wholeGroup: value,
+    };
+  }
+
+  return {
+    items: normalizeStringArray(value, errorMessage, { allowEmpty: true, unique: true }),
+    wholeGroup: false,
+  };
+};
+
 const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMilestoneDesignDraft => {
   const parsed = parseJson<MilestoneDesignDraft>(value);
 
@@ -771,10 +829,7 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
         return {
           title: flow.title.trim(),
           summary: flow.summary.trim(),
-          steps: normalizeStringArray(
-            flow.steps,
-            `${templateId} returned an includedUserFlow without non-empty steps at index ${index}.`,
-          ),
+          steps: normalizeGeneratedFlowSteps(flow.steps),
           deliveryGroupKeys: normalizeStringArray(
             flow.deliveryGroupKeys,
             `${templateId} returned an includedUserFlow without deliveryGroupKeys at index ${index}.`,
@@ -793,6 +848,14 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
     throw new Error(
       `${templateId} returned invalid content. Expected a non-empty "includedUserFlows" array.`,
     );
+  }
+
+  for (const [index, flow] of includedUserFlows.entries()) {
+    if (flow.steps.length === 0) {
+      throw new Error(
+        `${templateId} returned an includedUserFlow without non-empty steps at index ${index}.`,
+      );
+    }
   }
 
   if (!parsed.scopeBoundaries || typeof parsed.scopeBoundaries !== "object") {
@@ -820,7 +883,7 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
     );
   }
 
-  const outOfScope = normalizeStringArray(
+  const outOfScope = normalizeStringArrayFromItems(
     parsed.scopeBoundaries.outOfScope,
     `${templateId} returned invalid content. Expected "scopeBoundaries.outOfScope" array.`,
     { allowEmpty: true, unique: true },
@@ -839,9 +902,9 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
           title: group.title.trim(),
           summary: group.summary.trim(),
           ownedScreens: normalizeStringArray(
-            group.ownedScreens,
+            group.ownedScreens ?? [],
             `${templateId} returned an invalid ownedScreens array for deliveryGroup ${group.key.trim()}.`,
-            { unique: true },
+            { allowEmpty: true, unique: true },
           ),
           ownedResponsibilities: normalizeStringArray(
             group.ownedResponsibilities,
@@ -849,19 +912,17 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
             { unique: true },
           ),
           dependsOn: normalizeStringArray(
-            group.dependsOn,
+            group.dependsOn ?? [],
             `${templateId} returned an invalid dependsOn array for deliveryGroup ${group.key.trim()}.`,
             { allowEmpty: true, unique: true },
           ),
-          mustStayTogether: normalizeStringArray(
-            group.mustStayTogether,
-            `${templateId} returned an invalid mustStayTogether array for deliveryGroup ${group.key.trim()}.`,
-            { allowEmpty: true, unique: true },
+          mustStayTogether: normalizeMilestoneDesignGroupConstraint(
+            group.mustStayTogether ?? [],
+            `${templateId} returned an invalid mustStayTogether value for deliveryGroup ${group.key.trim()}.`,
           ),
-          mustNotSplit: normalizeStringArray(
-            group.mustNotSplit,
-            `${templateId} returned an invalid mustNotSplit array for deliveryGroup ${group.key.trim()}.`,
-            { allowEmpty: true, unique: true },
+          mustNotSplit: normalizeMilestoneDesignGroupConstraint(
+            group.mustNotSplit ?? [],
+            `${templateId} returned an invalid mustNotSplit value for deliveryGroup ${group.key.trim()}.`,
           ),
         };
       })
@@ -909,9 +970,9 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
           criterion: criterion.criterion.trim(),
           deliveryGroupKey: criterion.deliveryGroupKey.trim(),
           screens: normalizeStringArray(
-            criterion.screens,
+            criterion.screens ?? [],
             `${templateId} returned an invalid screens array for exitCriteria item ${index}.`,
-            { unique: true },
+            { allowEmpty: true, unique: true },
           ),
         };
       })
@@ -934,7 +995,7 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
     deliveryGroups,
     dependenciesAndSequencing,
     risksAndOpenQuestions: normalizeStringArray(
-      parsed.risksAndOpenQuestions,
+      parsed.risksAndOpenQuestions ?? [],
       `${templateId} returned invalid content. Expected "risksAndOpenQuestions" array.`,
       { allowEmpty: true, unique: true },
     ),
@@ -1128,15 +1189,21 @@ const renderMilestoneDesignMarkdown = (draft: ParsedMilestoneDesignDraft) => {
         lines.push(`- ${dependency}`);
       }
     }
-    if (group.mustStayTogether.length > 0) {
+    if (group.mustStayTogether.wholeGroup || group.mustStayTogether.items.length > 0) {
       lines.push("Keep together:");
-      for (const item of group.mustStayTogether) {
+      if (group.mustStayTogether.wholeGroup) {
+        lines.push("- Entire delivery group");
+      }
+      for (const item of group.mustStayTogether.items) {
         lines.push(`- ${item}`);
       }
     }
-    if (group.mustNotSplit.length > 0) {
+    if (group.mustNotSplit.wholeGroup || group.mustNotSplit.items.length > 0) {
       lines.push("Do not split:");
-      for (const item of group.mustNotSplit) {
+      if (group.mustNotSplit.wholeGroup) {
+        lines.push("- Entire delivery group");
+      }
+      for (const item of group.mustNotSplit.items) {
         lines.push(`- ${item}`);
       }
     }
@@ -3577,6 +3644,98 @@ export const createJobRunnerService = (input: {
         const uxBlueprint = blueprints.uxBlueprint;
         const techBlueprint = blueprints.techBlueprint;
 
+        const parseMilestoneDesignWithShapeRepair = async (inputArgs: {
+          generated: Awaited<ReturnType<LlmProviderService["generate"]>>;
+          hint?: string;
+          parameters: Record<string, unknown>;
+          templateId: string;
+        }) => {
+          try {
+            return parseMilestoneDesignDraft(inputArgs.generated.content, inputArgs.templateId);
+          } catch (error) {
+            const validationMessage =
+              error instanceof Error
+                ? error.message
+                : `${inputArgs.templateId} returned invalid content.`;
+
+            if (inputArgs.generated.doneReason === "length") {
+              throw createStructuredOutputFailure({
+                message: validationMessage,
+                templateId: inputArgs.templateId,
+                doneReason: inputArgs.generated.doneReason,
+              });
+            }
+
+            const jsonRepairTemplateId = `${inputArgs.templateId}Repair`;
+            const jsonRepairPrompt = buildJsonRepairPrompt({
+              templateId: inputArgs.templateId,
+              validationMessage,
+              invalidResponse: inputArgs.generated.content,
+            });
+            const jsonRepaired = await generateWithJobFailure(jsonRepairPrompt, {
+              responseFormat: "json",
+            });
+            await storeLlmRun({
+              templateId: jsonRepairTemplateId,
+              parameters: {
+                ...inputArgs.parameters,
+                repairOf: inputArgs.templateId,
+              },
+              prompt: jsonRepairPrompt,
+              generated: jsonRepaired,
+            });
+
+            try {
+              return parseMilestoneDesignDraft(jsonRepaired.content, inputArgs.templateId);
+            } catch (jsonRepairError) {
+              const shapeRepairMessage =
+                jsonRepairError instanceof Error ? jsonRepairError.message : validationMessage;
+              const shapeRepairTemplateId = `${inputArgs.templateId}ShapeRetry`;
+              const shapeRepairPrompt = buildMilestoneDesignRepairPrompt({
+                projectName: project.name,
+                milestoneTitle: milestoneRecord.title,
+                milestoneSummary: milestoneRecord.summary,
+                linkedUserFlows: linkedFlows,
+                uxSpec: uxBlueprint.markdown,
+                technicalSpec: techBlueprint.markdown,
+                issues: [shapeRepairMessage],
+                draftJson: jsonRepaired.content,
+                hint: inputArgs.hint?.trim() || shapeRepairMessage,
+              });
+              const shapeRepaired = await generateWithJobFailure(shapeRepairPrompt, {
+                responseFormat: "json",
+              });
+              await storeLlmRun({
+                templateId: shapeRepairTemplateId,
+                parameters: {
+                  ...inputArgs.parameters,
+                  repairOf: inputArgs.templateId,
+                  repairKind: "shape",
+                },
+                prompt: shapeRepairPrompt,
+                generated: shapeRepaired,
+              });
+
+              try {
+                return parseMilestoneDesignDraft(shapeRepaired.content, inputArgs.templateId);
+              } catch (shapeRepairError) {
+                throw createStructuredOutputFailure({
+                  message:
+                    shapeRepairError instanceof Error
+                      ? shapeRepairError.message
+                      : shapeRepairMessage,
+                  templateId: inputArgs.templateId,
+                  doneReason:
+                    shapeRepaired.doneReason ??
+                    jsonRepaired.doneReason ??
+                    inputArgs.generated.doneReason ??
+                    null,
+                });
+              }
+            }
+          }
+        };
+
         const generateMilestoneDesignDraft = async (inputArgs: {
           hint?: string;
           templateId: string;
@@ -3591,11 +3750,20 @@ export const createJobRunnerService = (input: {
             hint: inputArgs.hint,
           });
 
-          return runStructuredJsonGeneration({
+          const generated = await generateWithJobFailure(prompt, {
+            responseFormat: "json",
+          });
+          await storeLlmRun({
             templateId: inputArgs.templateId,
             parameters: { milestoneId },
             prompt,
-            parse: parseMilestoneDesignDraft,
+            generated,
+          });
+          return parseMilestoneDesignWithShapeRepair({
+            generated,
+            hint: inputArgs.hint,
+            parameters: { milestoneId },
+            templateId: inputArgs.templateId,
           });
         };
 
@@ -3616,11 +3784,20 @@ export const createJobRunnerService = (input: {
             draftJson: JSON.stringify(inputArgs.draft, null, 2),
             hint: inputArgs.hint,
           });
-          return runStructuredJsonGeneration({
+          const generated = await generateWithJobFailure(prompt, {
+            responseFormat: "json",
+          });
+          await storeLlmRun({
             templateId: inputArgs.templateId,
             parameters: { milestoneId },
             prompt,
-            parse: parseMilestoneDesignDraft,
+            generated,
+          });
+          return parseMilestoneDesignWithShapeRepair({
+            generated,
+            hint: inputArgs.hint,
+            parameters: { milestoneId },
+            templateId: inputArgs.templateId,
           });
         };
 
@@ -3637,7 +3814,7 @@ export const createJobRunnerService = (input: {
             hint: designValidation.hint.length > 0
               ? designValidation.hint
               : designValidation.issues.join(" "),
-            templateId: `${rawJob.type}Retry`,
+            templateId: `${rawJob.type}ConsistencyRetry`,
           });
           designValidation = validateMilestoneDesignDraft(designDraft, linkedFlows);
         }

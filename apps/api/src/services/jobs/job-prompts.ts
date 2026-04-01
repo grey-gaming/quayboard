@@ -788,6 +788,47 @@ export const buildMilestoneDesignPrompt = (input: {
     "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
     "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
     "Do not wrap the JSON in code fences.",
+    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        includedUserFlows: [
+          {
+            title: "Linked flow title",
+            summary: "Short summary.",
+            steps: ["User opens signup", "System creates account"],
+            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
+            screens: ["signup-page"],
+          },
+        ],
+        scopeBoundaries: {
+          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
+          outOfScope: ["Password reset"],
+        },
+        deliveryGroups: [
+          {
+            key: "auth-backend",
+            title: "Authentication Backend",
+            summary: "Owns auth APIs.",
+            ownedScreens: [],
+            ownedResponsibilities: ["Create account endpoint"],
+            dependsOn: [],
+            mustStayTogether: true,
+            mustNotSplit: false,
+          },
+        ],
+        exitCriteria: [
+          {
+            criterion: "Signup API stores a session.",
+            deliveryGroupKey: "auth-backend",
+            screens: [],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
     ...(input.hint?.trim()
       ? [
           "",
@@ -835,6 +876,47 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
     "Do not wrap the JSON in code fences.",
+    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        includedUserFlows: [
+          {
+            title: "Linked flow title",
+            summary: "Short summary.",
+            steps: ["User opens signup", "System creates account"],
+            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
+            screens: ["signup-page"],
+          },
+        ],
+        scopeBoundaries: {
+          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
+          outOfScope: ["Password reset"],
+        },
+        deliveryGroups: [
+          {
+            key: "auth-backend",
+            title: "Authentication Backend",
+            summary: "Owns auth APIs.",
+            ownedScreens: [],
+            ownedResponsibilities: ["Create account endpoint"],
+            dependsOn: [],
+            mustStayTogether: true,
+            mustNotSplit: false,
+          },
+        ],
+        exitCriteria: [
+          {
+            criterion: "Signup API stores a session.",
+            deliveryGroupKey: "auth-backend",
+            screens: [],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
     ...(input.hint?.trim()
       ? [
           "",

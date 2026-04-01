@@ -849,6 +849,46 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("pauses milestone design retries with needs_human after the retry budget is exhausted", async () => {
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateMilestoneDesign",
+        error: {
+          message:
+            "GenerateMilestoneDesign returned an invalid ownedScreens array for deliveryGroup account-shell.",
+          code: "llm_output_invalid",
+          retryable: true,
+        },
+        inputs: {
+          milestoneId: "milestone-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+            retryAttempt: 2,
+          },
+        },
+      };
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const failureUpdates: Array<{ status?: string; pausedReason?: string }> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: { status?: string; pausedReason?: string }) => {
+          failureUpdates.push(data);
+          return { where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }) };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      const pauseUpdate = failureUpdates.find((u) => u.status === "paused");
+      expect(pauseUpdate?.pausedReason).toBe("needs_human");
+      expect(jobService.createJob).not.toHaveBeenCalled();
+    });
+
     it("uses per-job retry metadata instead of the session retry count", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
