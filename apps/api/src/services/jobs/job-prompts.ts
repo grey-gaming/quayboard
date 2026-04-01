@@ -778,7 +778,7 @@ export const buildMilestoneDesignPrompt = (input: {
     "",
     "Task:",
     `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", "risksAndOpenQuestions", and "exitCriteria".',
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
     "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens.",
     'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.',
     'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
@@ -871,7 +871,7 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     "",
     "Task:",
     `Repair the structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", "risksAndOpenQuestions", and "exitCriteria".',
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
     "Preserve the milestone scope while resolving the validator issues below into one consistent ownership model.",
     "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
@@ -941,6 +941,133 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     JSON.stringify(input.issues, null, 2),
     "",
     "Previous structured milestone design draft:",
+    input.draftJson,
+  ].join("\n");
+
+export const buildMilestoneDesignRisksPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  validatedDesignJson: string;
+  hint?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `List the risks and open questions for the validated milestone design "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "risksAndOpenQuestions".',
+    "risksAndOpenQuestions may be an empty array.",
+    'Each item must be either a plain string or an object with a concise description/question plus optional mitigation. Allowed object fields: "risk", "question", "description", "mitigation", and "type".',
+    "Keep the list specific to the validated milestone design. Do not restate scope, user flows, or delivery groups unless needed to describe a risk or open question.",
+    "Do not invent future-milestone scope.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        risksAndOpenQuestions: [
+          {
+            risk: "Email delivery may delay verification links.",
+            mitigation: "Use a transactional provider with retry and delivery monitoring.",
+          },
+          {
+            type: "open_question",
+            description: "Should session expiry be fixed or sliding within this milestone?",
+          },
+          "Risk: Password reset email copy may need legal review.",
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Validated milestone design draft:",
+    input.validatedDesignJson,
+  ].join("\n");
+
+export const buildMilestoneDesignRisksRepairPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  validatedDesignJson: string;
+  issues: string[];
+  draftJson: string;
+  hint?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Repair the risks and open questions for the validated milestone design "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "risksAndOpenQuestions".',
+    "Preserve the validated milestone scope. Only repair the risks/open-questions payload.",
+    'Each item must be either a plain string or an object with a concise description/question plus optional mitigation. Allowed object fields: "risk", "question", "description", "mitigation", and "type".',
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        risksAndOpenQuestions: [
+          {
+            risk: "Image uploads may fail on poor mobile connections.",
+            mitigation: "Show upload progress and allow retry before save.",
+          },
+          {
+            type: "open_question",
+            description: "Should image compression happen on device or on the server?",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Validated milestone design draft:",
+    input.validatedDesignJson,
+    "",
+    "Validator issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Previous risks/open-questions draft:",
     input.draftJson,
   ].join("\n");
 
