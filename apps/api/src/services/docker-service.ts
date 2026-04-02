@@ -1,9 +1,19 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const dockerCommandTimeoutMs = 5_000;
 const containerCommandTimeoutMs = 60_000;
+const imageBuildTimeoutMs = 30 * 60_000;
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
+const localSandboxImage = {
+  contextPath: path.join(repoRoot, "docker", "agent-sandbox"),
+  dockerfilePath: path.join(repoRoot, "docker", "agent-sandbox", "Dockerfile"),
+  image: "quayboard-agent-sandbox:latest",
+} as const;
 
 type DockerCommandOptions = {
   dockerHost?: string | null;
@@ -42,6 +52,42 @@ export const createDockerService = (dockerHost: string | null) => {
       env: buildEnv(options.dockerHost),
       timeout: options.timeoutMs ?? dockerCommandTimeoutMs,
     });
+  const resolveLocalImageBuild = (image: string) =>
+    image === localSandboxImage.image && existsSync(localSandboxImage.dockerfilePath)
+      ? localSandboxImage
+      : null;
+  const materializeImage = async (image: string, overrideDockerHost?: string | null) => {
+    try {
+      await runDockerCommand(["image", "inspect", image], {
+        dockerHost: overrideDockerHost,
+      });
+      return;
+    } catch {
+      const localBuild = resolveLocalImageBuild(image);
+      if (localBuild) {
+        await runDockerCommand(
+          [
+            "build",
+            "--tag",
+            image,
+            "--file",
+            localBuild.dockerfilePath,
+            localBuild.contextPath,
+          ],
+          {
+            dockerHost: overrideDockerHost,
+            timeoutMs: imageBuildTimeoutMs,
+          },
+        );
+        return;
+      }
+
+      await runDockerCommand(["pull", image], {
+        dockerHost: overrideDockerHost,
+        timeoutMs: containerCommandTimeoutMs,
+      });
+    }
+  };
 
   return {
     async checkAvailability(overrideDockerHost?: string | null) {
@@ -55,20 +101,14 @@ export const createDockerService = (dockerHost: string | null) => {
 
     async verifySandboxImage(image = "alpine:3.20", overrideDockerHost?: string | null) {
       try {
-        await runDockerCommand(["image", "inspect", image], {
-          dockerHost: overrideDockerHost,
-        });
+        await materializeImage(image, overrideDockerHost);
       } catch {
-        try {
-          await runDockerCommand(["pull", image], {
-            dockerHost: overrideDockerHost,
-          });
-        } catch {
-          return {
-            ok: false,
-            message: `Sandbox image pull failed for ${image}. Make sure Docker can pull images, then retry verification.`,
-          };
-        }
+        return {
+          ok: false,
+          message: resolveLocalImageBuild(image)
+            ? `Sandbox image build failed for ${image}. Make sure Docker can build images from docker/agent-sandbox/Dockerfile, then retry verification.`
+            : `Sandbox image pull failed for ${image}. Make sure Docker can pull images, then retry verification.`,
+        };
       }
 
       try {
@@ -89,16 +129,7 @@ export const createDockerService = (dockerHost: string | null) => {
     },
 
     async ensureImage(image: string, overrideDockerHost?: string | null) {
-      try {
-        await runDockerCommand(["image", "inspect", image], {
-          dockerHost: overrideDockerHost,
-        });
-      } catch {
-        await runDockerCommand(["pull", image], {
-          dockerHost: overrideDockerHost,
-          timeoutMs: containerCommandTimeoutMs,
-        });
-      }
+      await materializeImage(image, overrideDockerHost);
     },
 
     async createManagedContainer(input: CreateManagedContainerInput) {
@@ -121,6 +152,7 @@ export const createDockerService = (dockerHost: string | null) => {
 
       args.push("--mount", `type=bind,src=${input.workspaceDir},dst=/workspace`);
       args.push("--mount", `type=bind,src=${input.artifactDir},dst=/run/artifacts`);
+      args.push("--add-host", "host.docker.internal:host-gateway");
       args.push("--cpus", String(input.cpuLimit));
       args.push("--memory", `${Math.max(128, input.memoryMb)}m`);
 

@@ -656,6 +656,12 @@ export const createStubServices = (): AppServices => ({
       memoryMb: 1024,
       timeoutSeconds: 300,
     }),
+    getEffectiveLlmDefinition: async () => ({
+      provider: "openai" as const,
+      model: "gpt-4.1-mini",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: null,
+    }),
     getOptions: async () => ({
       executionSettings: {
         defaultImage: "quayboard-agent-sandbox:latest",

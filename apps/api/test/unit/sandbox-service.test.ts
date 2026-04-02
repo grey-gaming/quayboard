@@ -27,6 +27,10 @@ const makeService = () =>
     featureService: {} as never,
     featureWorkstreamService: {} as never,
     githubService: {} as never,
+    llmRuntimeDefaults: {
+      ollamaHost: "http://127.0.0.1:11434/v1",
+      openAiBaseUrl: "https://api.openai.com/v1",
+    },
     secretService: {} as never,
     sseHub: {} as never,
     taskPlanningService: {} as never,

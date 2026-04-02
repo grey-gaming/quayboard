@@ -153,7 +153,9 @@ export const ExecutionSettingsPage = () => {
               </Button>
               <p className="text-sm text-secondary">
                 These defaults apply to sandbox execution unless a project&apos;s saved sandbox
-                limits override CPU, memory, timeout, or egress.
+                limits override CPU, memory, timeout, or egress. The default
+                `quayboard-agent-sandbox:latest` image is built locally from
+                `docker/agent-sandbox/Dockerfile` when it is not already present.
               </p>
             </div>
           </div>

@@ -62,6 +62,49 @@ describe("docker service", () => {
     ]);
   });
 
+  it("builds the Quayboard sandbox image locally when it is missing", async () => {
+    execFileMock
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(new Error("missing image"));
+        },
+      )
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(null, { stdout: "", stderr: "" });
+        },
+      );
+
+    const service = createDockerService(null);
+    await service.ensureImage("quayboard-agent-sandbox:latest");
+
+    expect(execFileMock.mock.calls).toHaveLength(2);
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual([
+      "image",
+      "inspect",
+      "quayboard-agent-sandbox:latest",
+    ]);
+    expect(execFileMock.mock.calls[1]?.[1]).toEqual(
+      expect.arrayContaining([
+        "build",
+        "--tag",
+        "quayboard-agent-sandbox:latest",
+        "--file",
+      ]),
+    );
+    expect(execFileMock.mock.calls[1]?.[1]?.at(-1)).toContain("docker/agent-sandbox");
+  });
+
   it("returns a specific error when the image pull fails", async () => {
     execFileMock
       .mockImplementationOnce(

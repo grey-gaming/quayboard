@@ -275,6 +275,10 @@ export const createAppServices = async (
     featureService,
     featureWorkstreamService,
     githubService,
+    llmRuntimeDefaults: {
+      ollamaHost: appConfig.ollamaHost,
+      openAiBaseUrl: appConfig.openAiBaseUrl,
+    },
     secretService,
     sseHub,
     taskPlanningService,

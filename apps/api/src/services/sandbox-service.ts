@@ -55,6 +55,7 @@ import type { ExecutionSettingsService } from "./execution-settings-service.js";
 import type { FeatureService } from "./feature-service.js";
 import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { GithubService } from "./github-service.js";
+import type { ProviderDefinition } from "./llm-provider.js";
 import type { SecretService } from "./secret-service.js";
 import type { SseHub } from "./sse.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
@@ -205,6 +206,16 @@ const isMissingRemoteBranchError = (error: unknown, branch: string) => {
   );
 };
 
+const rewriteBaseUrlForContainer = (baseUrl: string | null) => {
+  if (!baseUrl) {
+    return "";
+  }
+
+  return baseUrl
+    .replace("://127.0.0.1", "://host.docker.internal")
+    .replace("://localhost", "://host.docker.internal");
+};
+
 export const createSandboxService = (input: {
   artifactStorageService: ArtifactStorageService;
   contextPackService: ContextPackService;
@@ -214,6 +225,10 @@ export const createSandboxService = (input: {
   featureService: FeatureService;
   featureWorkstreamService: FeatureWorkstreamService;
   githubService: GithubService;
+  llmRuntimeDefaults: {
+    ollamaHost: string;
+    openAiBaseUrl: string;
+  };
   secretService: SecretService;
   sseHub: SseHub;
   taskPlanningService: TaskPlanningService;
@@ -279,6 +294,43 @@ export const createSandboxService = (input: {
       timeoutSeconds:
         value?.timeoutSeconds ?? executionSettings.defaultTimeoutSeconds,
     };
+  },
+
+  async getEffectiveLlmDefinition(ownerUserId: string, projectId: string): Promise<ProviderDefinition> {
+    const raw = await input.db.query.settingsTable.findFirst({
+      where: and(
+        eq(settingsTable.scope, "project"),
+        eq(settingsTable.scopeId, projectId),
+        eq(settingsTable.key, PROJECT_SETTING_KEYS.llm),
+      ),
+    });
+
+    const value = (raw?.value ?? null) as
+      | {
+          model?: string;
+          provider?: "ollama" | "openai";
+        }
+      | null;
+
+    if (!value?.model || !value.provider) {
+      throw new HttpError(409, "llm_not_configured", "LLM settings are incomplete.");
+    }
+
+    const envMap = await input.secretService.buildSecretEnvMap(ownerUserId, projectId);
+
+    return value.provider === "ollama"
+      ? {
+          provider: "ollama",
+          model: value.model,
+          baseUrl: input.llmRuntimeDefaults.ollamaHost,
+          apiKey: null,
+        }
+      : {
+          provider: "openai",
+          model: value.model,
+          baseUrl: input.llmRuntimeDefaults.openAiBaseUrl,
+          apiKey: envMap.LLM_API_KEY ?? null,
+        };
   },
 
   async listRuns(ownerUserId: string, projectId: string) {
@@ -992,6 +1044,7 @@ export const createSandboxService = (input: {
       const tasks = run.taskPlanningSessionId
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
+      const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
       await writeFile(path.join(workspaceDir, ".quayboard-context.md"), pack.content);
       await writeFile(
         path.join(workspaceDir, ".quayboard-tasks.md"),
@@ -1015,8 +1068,11 @@ export const createSandboxService = (input: {
         dockerHost: executionSettings.dockerHost,
         env: {
           ...secretEnv,
-          OPENAI_BASE_URL: secretEnv.OPENAI_BASE_URL ?? "",
           QB_CONTEXT_PATH: "/workspace/.quayboard-context.md",
+          QB_LLM_API_KEY: llmDefinition.apiKey ?? "",
+          QB_LLM_BASE_URL: rewriteBaseUrlForContainer(llmDefinition.baseUrl),
+          QB_LLM_MODEL: llmDefinition.model,
+          QB_LLM_PROVIDER: llmDefinition.provider,
           QB_TASKS_PATH: "/workspace/.quayboard-tasks.md",
           QB_RUN_KIND: run.kind,
         },
