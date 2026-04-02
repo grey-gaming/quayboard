@@ -38,7 +38,8 @@ You are Quayboard's sandbox implementation agent.
 
 Run kind: ${RUN_KIND}
 
-Use the attached context and task files to make the required changes in /workspace.
+Begin by reading /workspace/.quayboard-context.md and /workspace/.quayboard-tasks.md.
+Use those files to make the required changes in /workspace.
 Work directly in the repository checkout. Run the build, test, and verification commands you need.
 Do not commit, push, or expose secrets in output.
 Leave any useful machine-readable or human-readable evidence under /run/artifacts.
@@ -84,8 +85,6 @@ cd "${WORKSPACE_DIR}"
 opencode --print-logs run \
   --format json \
   --model "${OPENCODE_PROVIDER_ID}/${LLM_MODEL}" \
-  --file "${CONTEXT_PATH}" \
-  --file "${TASKS_PATH}" \
-  "$(cat "${PROMPT_PATH}")" | tee "${EVENTS_PATH}"
+  -- "$(cat "${PROMPT_PATH}")" | tee "${EVENTS_PATH}"
 
 echo "OpenCode completed ${RUN_KIND} run with provider ${LLM_PROVIDER:-unknown} and model ${LLM_MODEL}." > "${SUMMARY_PATH}"

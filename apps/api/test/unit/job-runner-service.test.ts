@@ -88,6 +88,58 @@ describe("job runner service", () => {
     vi.clearAllMocks();
   });
 
+  it("does not mark sandbox jobs succeeded when sandbox execution fails", async () => {
+    const markSucceeded = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: {} as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-implement",
+          projectId,
+          createdByUserId: userId,
+          type: "ImplementChange",
+          inputs: {
+            sandboxRunId: "sandbox-run-1",
+          },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {} as never,
+      milestoneService: {} as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Governed planning workspace.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "ollama",
+          model: "glm-5:cloud",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      sandboxService: {
+        executeRun: vi.fn(async () => {
+          throw new Error("implement run exited with code 1.");
+        }),
+      } as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-implement")).rejects.toThrow(
+      "implement run exited with code 1.",
+    );
+    expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
   it("fills only blank questionnaire answers during auto-answer", async () => {
     const db = createDbStub();
     const markSucceeded = vi.fn(async () => undefined);

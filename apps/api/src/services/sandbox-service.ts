@@ -206,15 +206,47 @@ const isMissingRemoteBranchError = (error: unknown, branch: string) => {
   );
 };
 
-const rewriteBaseUrlForContainer = (baseUrl: string | null) => {
+const isLocalHostName = (hostname: string) =>
+  hostname === "127.0.0.1" ||
+  hostname === "localhost" ||
+  hostname === "::1" ||
+  hostname === "host.docker.internal";
+
+const normalizeModelBaseUrl = (
+  provider: ProviderDefinition["provider"],
+  baseUrl: string | null,
+) => {
   if (!baseUrl) {
     return "";
   }
 
-  return baseUrl
+  const normalized =
+    provider === "ollama" && !baseUrl.endsWith("/v1") ? `${baseUrl.replace(/\/$/, "")}/v1` : baseUrl;
+
+  return normalized
     .replace("://127.0.0.1", "://host.docker.internal")
-    .replace("://localhost", "://host.docker.internal");
+    .replace("://localhost", "://host.docker.internal")
+    .replace("://[::1]", "://host.docker.internal");
 };
+
+const allowsLocalModelAccessWhileLocked = (baseUrl: string) => {
+  try {
+    return isLocalHostName(new URL(baseUrl).hostname);
+  } catch {
+    return false;
+  }
+};
+
+const createHandledRunFailure = (message: string) =>
+  Object.assign(new Error(message), { sandboxRunFailed: true as const });
+
+const isHandledRunFailure = (error: unknown): error is Error & { sandboxRunFailed: true } =>
+  Boolean(
+    error &&
+      typeof error === "object" &&
+      "sandboxRunFailed" in error &&
+      (error as { sandboxRunFailed?: unknown }).sandboxRunFailed === true,
+  );
 
 export const createSandboxService = (input: {
   artifactStorageService: ArtifactStorageService;
@@ -1045,6 +1077,13 @@ export const createSandboxService = (input: {
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
       const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
+      const sandboxModelBaseUrl = normalizeModelBaseUrl(
+        llmDefinition.provider,
+        llmDefinition.baseUrl,
+      );
+      const keepModelNetworkAccess =
+        sandboxConfig.egressPolicy === "locked" &&
+        allowsLocalModelAccessWhileLocked(sandboxModelBaseUrl);
       await writeFile(path.join(workspaceDir, ".quayboard-context.md"), pack.content);
       await writeFile(
         path.join(workspaceDir, ".quayboard-tasks.md"),
@@ -1070,7 +1109,7 @@ export const createSandboxService = (input: {
           ...secretEnv,
           QB_CONTEXT_PATH: "/workspace/.quayboard-context.md",
           QB_LLM_API_KEY: llmDefinition.apiKey ?? "",
-          QB_LLM_BASE_URL: rewriteBaseUrlForContainer(llmDefinition.baseUrl),
+          QB_LLM_BASE_URL: sandboxModelBaseUrl,
           QB_LLM_MODEL: llmDefinition.model,
           QB_LLM_PROVIDER: llmDefinition.provider,
           QB_TASKS_PATH: "/workspace/.quayboard-tasks.md",
@@ -1083,7 +1122,8 @@ export const createSandboxService = (input: {
         },
         memoryMb: sandboxConfig.memoryMb,
         name: `qb-${run.id.slice(0, 8)}`,
-        networkDisabled: sandboxConfig.egressPolicy === "locked",
+        networkDisabled:
+          sandboxConfig.egressPolicy === "locked" && !keepModelNetworkAccess,
         workspaceDir,
       });
 
@@ -1222,7 +1262,11 @@ export const createSandboxService = (input: {
         "run_failed",
         `${run.kind} run exited with code ${exitCode}.`,
       );
+      throw createHandledRunFailure(`${run.kind} run exited with code ${exitCode}.`);
     } catch (error) {
+      if (isHandledRunFailure(error)) {
+        throw error;
+      }
       const sanitizedError = sanitizeGitError(error, secretsToRedact);
       await this.updateRunState(sandboxRunId, {
         status: "failed",
