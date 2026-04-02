@@ -15,7 +15,6 @@ PROMPT_PATH="${ARTIFACT_DIR}/opencode-prompt.md"
 EVENTS_PATH="${ARTIFACT_DIR}/opencode-events.jsonl"
 SUMMARY_PATH="${ARTIFACT_DIR}/opencode-summary.txt"
 CONFIG_PATH="/tmp/quayboard-opencode.json"
-BASH_ENV_PATH="/usr/local/share/quayboard/qb_bash_env.sh"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -42,6 +41,9 @@ Run kind: ${RUN_KIND}
 Begin by reading /workspace/.quayboard-context.md and /workspace/.quayboard-tasks.md.
 Use those files to make the required changes in /workspace.
 Work directly in the repository checkout. Run the build, test, and verification commands you need.
+Any server or background process you start for testing must be short-lived and cleaned up before the command exits.
+Prefer single-command verification patterns that start the server, probe it, and tear it down in the same command.
+Do not leave watch processes, dev servers, or background jobs running between steps.
 Do not commit, push, or expose secrets in output.
 Leave any useful machine-readable or human-readable evidence under /run/artifacts.
 EOF
@@ -80,7 +82,6 @@ PY
 export OPENCODE_CONFIG="${CONFIG_PATH}"
 export OPENCODE_DISABLE_DEFAULT_PLUGINS=1
 export OPENCODE_DISABLE_MODELS_FETCH=1
-export BASH_ENV="${BASH_ENV_PATH}"
 
 cleanup_entrypoint_children() {
   local child_pid

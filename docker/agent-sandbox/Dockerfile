@@ -21,6 +21,8 @@ RUN apt-get update \
     curl \
     git \
     jq \
+    procps \
+    util-linux \
     xz-utils \
   && rm -rf /var/lib/apt/lists/*
 
@@ -46,8 +48,10 @@ RUN pip install --no-cache-dir litellm==1.75.0 playwright \
   && python -m playwright install --with-deps chromium
 
 COPY qb_entrypoint.sh /usr/local/bin/qb_entrypoint.sh
-COPY qb_bash_env.sh /usr/local/share/quayboard/qb_bash_env.sh
-RUN chmod +x /usr/local/bin/qb_entrypoint.sh /usr/local/share/quayboard/qb_bash_env.sh
+COPY qb_bash_wrapper.sh /usr/local/share/quayboard/qb_bash_wrapper.sh
+RUN mv /usr/bin/bash /usr/local/share/quayboard/bash.real \
+  && chmod +x /usr/local/bin/qb_entrypoint.sh /usr/local/share/quayboard/qb_bash_wrapper.sh \
+  && ln -s /usr/local/share/quayboard/qb_bash_wrapper.sh /usr/bin/bash
 
 WORKDIR /workspace
 

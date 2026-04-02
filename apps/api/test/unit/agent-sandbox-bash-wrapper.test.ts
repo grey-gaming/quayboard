@@ -8,26 +8,32 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const bashEnvPath = fileURLToPath(
-  new URL("../../../../docker/agent-sandbox/qb_bash_env.sh", import.meta.url),
+const wrapperPath = fileURLToPath(
+  new URL("../../../../docker/agent-sandbox/qb_bash_wrapper.sh", import.meta.url),
 );
 
-describe("agent sandbox bash environment", () => {
+describe("agent sandbox bash wrapper", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
   });
 
-  it("kills background jobs when a non-interactive bash command exits", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "qb-bash-env-"));
+  it("kills orphaned background processes when the wrapped bash command exits", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "qb-bash-wrapper-"));
     tempDirs.push(tempDir);
     const pidFile = path.join(tempDir, "sleep.pid");
 
-    await execFileAsync("bash", [
+    await execFileAsync("sh", [
+      wrapperPath,
       "-lc",
-      `BASH_ENV='${bashEnvPath}' bash -c 'sleep 30 & echo $! > "${pidFile}"'`,
-    ]);
+      `sleep 30 & echo $! > "${pidFile}"`,
+    ], {
+      env: {
+        ...process.env,
+        REAL_BASH: process.env.SHELL ?? "/bin/bash",
+      },
+    });
 
     const pid = (await readFile(pidFile, "utf8")).trim();
     const result = await execFileAsync("bash", [
