@@ -105,6 +105,54 @@ describe("docker service", () => {
     expect(execFileMock.mock.calls[1]?.[1]?.at(-1)).toContain("docker/agent-sandbox");
   });
 
+  it("rebuilds the Quayboard sandbox image when local sandbox files are newer", async () => {
+    execFileMock
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(null, { stdout: "", stderr: "" });
+        },
+      )
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(null, { stdout: "1970-01-01T00:00:00.000Z\n", stderr: "" });
+        },
+      )
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(null, { stdout: "", stderr: "" });
+        },
+      );
+
+    const service = createDockerService(null);
+    await service.ensureImage("quayboard-agent-sandbox:latest");
+
+    expect(execFileMock.mock.calls.map((call) => call[1])).toEqual([
+      ["image", "inspect", "quayboard-agent-sandbox:latest"],
+      ["image", "inspect", "quayboard-agent-sandbox:latest", "--format", "{{.Created}}"],
+      expect.arrayContaining([
+        "build",
+        "--tag",
+        "quayboard-agent-sandbox:latest",
+        "--file",
+      ]),
+    ]);
+  });
+
   it("returns a specific error when the image pull fails", async () => {
     execFileMock
       .mockImplementationOnce(

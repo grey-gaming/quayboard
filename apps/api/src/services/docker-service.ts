@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -56,14 +56,76 @@ export const createDockerService = (dockerHost: string | null) => {
     image === localSandboxImage.image && existsSync(localSandboxImage.dockerfilePath)
       ? localSandboxImage
       : null;
+  const getLatestFileMtimeMs = (rootPath: string): number => {
+    const stack = [rootPath];
+    let latest = 0;
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || !existsSync(current)) {
+        continue;
+      }
+
+      const stats = statSync(current);
+      latest = Math.max(latest, stats.mtimeMs);
+
+      if (stats.isDirectory()) {
+        for (const entry of readdirSync(current)) {
+          stack.push(path.join(current, entry));
+        }
+      }
+    }
+
+    return latest;
+  };
+  const getImageCreatedAtMs = async (image: string, overrideDockerHost?: string | null) => {
+    const result = await runDockerCommand(
+      ["image", "inspect", image, "--format", "{{.Created}}"],
+      {
+        dockerHost: overrideDockerHost,
+      },
+    );
+    const createdAtMs = Date.parse(result.stdout.trim());
+
+    return Number.isNaN(createdAtMs) ? 0 : createdAtMs;
+  };
   const materializeImage = async (image: string, overrideDockerHost?: string | null) => {
+    const localBuild = resolveLocalImageBuild(image);
+
     try {
       await runDockerCommand(["image", "inspect", image], {
         dockerHost: overrideDockerHost,
       });
+
+      if (localBuild) {
+        const [imageCreatedAtMs, sourceMtimeMs] = await Promise.all([
+          getImageCreatedAtMs(image, overrideDockerHost),
+          Promise.resolve(getLatestFileMtimeMs(localBuild.contextPath)),
+        ]);
+
+        if (sourceMtimeMs <= imageCreatedAtMs) {
+          return;
+        }
+
+        await runDockerCommand(
+          [
+            "build",
+            "--tag",
+            image,
+            "--file",
+            localBuild.dockerfilePath,
+            localBuild.contextPath,
+          ],
+          {
+            dockerHost: overrideDockerHost,
+            timeoutMs: imageBuildTimeoutMs,
+          },
+        );
+        return;
+      }
+
       return;
     } catch {
-      const localBuild = resolveLocalImageBuild(image);
       if (localBuild) {
         await runDockerCommand(
           [
