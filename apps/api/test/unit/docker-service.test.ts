@@ -249,4 +249,31 @@ describe("docker service", () => {
     );
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
   });
+
+  it("raises a structured timeout error when waiting for a container exceeds the limit", async () => {
+    execFileMock.mockImplementationOnce(
+      (
+        _file: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+      ) => {
+        callback(
+          Object.assign(new Error("timed out"), {
+            code: "ETIMEDOUT",
+            killed: true,
+            signal: "SIGTERM",
+          }),
+        );
+      },
+    );
+
+    const service = createDockerService(null);
+
+    await expect(service.waitForContainer("container-123")).rejects.toMatchObject({
+      code: "docker_wait_timeout",
+      containerId: "container-123",
+      timeoutMs: 10 * 60_000,
+    });
+  });
 });

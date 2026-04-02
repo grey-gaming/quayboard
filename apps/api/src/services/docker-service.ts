@@ -41,6 +41,18 @@ type ListManagedContainersInput = {
   projectId?: string;
 };
 
+const createDockerWaitTimeoutError = (containerId: string) =>
+  Object.assign(
+    new Error(
+      `Sandbox container ${containerId} did not exit within ${Math.round(containerWaitTimeoutMs / 60_000)} minutes.`,
+    ),
+    {
+      code: "docker_wait_timeout" as const,
+      containerId,
+      timeoutMs: containerWaitTimeoutMs,
+    },
+  );
+
 export const createDockerService = (dockerHost: string | null) => {
   const buildEnv = (overrideDockerHost?: string | null) =>
     overrideDockerHost ?? dockerHost
@@ -252,10 +264,25 @@ export const createDockerService = (dockerHost: string | null) => {
     },
 
     async waitForContainer(containerId: string, overrideDockerHost?: string | null) {
-      const result = await runDockerCommand(["wait", containerId], {
-        dockerHost: overrideDockerHost,
-        timeoutMs: containerWaitTimeoutMs,
-      });
+      let result;
+      try {
+        result = await runDockerCommand(["wait", containerId], {
+          dockerHost: overrideDockerHost,
+          timeoutMs: containerWaitTimeoutMs,
+        });
+      } catch (error) {
+        const record = error as { code?: string; killed?: boolean; signal?: string } | undefined;
+        const timedOut =
+          record?.code === "ETIMEDOUT" ||
+          record?.killed === true ||
+          record?.signal === "SIGTERM";
+
+        if (timedOut) {
+          throw createDockerWaitTimeoutError(containerId);
+        }
+
+        throw error;
+      }
 
       return Number.parseInt(result.stdout.trim(), 10);
     },

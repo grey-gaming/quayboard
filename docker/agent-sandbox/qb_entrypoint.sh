@@ -15,6 +15,7 @@ PROMPT_PATH="${ARTIFACT_DIR}/opencode-prompt.md"
 EVENTS_PATH="${ARTIFACT_DIR}/opencode-events.jsonl"
 SUMMARY_PATH="${ARTIFACT_DIR}/opencode-summary.txt"
 CONFIG_PATH="/tmp/quayboard-opencode.json"
+BASH_ENV_PATH="/usr/local/share/quayboard/qb_bash_env.sh"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -79,6 +80,17 @@ PY
 export OPENCODE_CONFIG="${CONFIG_PATH}"
 export OPENCODE_DISABLE_DEFAULT_PLUGINS=1
 export OPENCODE_DISABLE_MODELS_FETCH=1
+export BASH_ENV="${BASH_ENV_PATH}"
+
+cleanup_entrypoint_children() {
+  local child_pid
+
+  for child_pid in $(jobs -pr 2>/dev/null); do
+    kill -TERM "$child_pid" 2>/dev/null || true
+  done
+}
+
+trap cleanup_entrypoint_children EXIT INT TERM
 
 cd "${WORKSPACE_DIR}"
 

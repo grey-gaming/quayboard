@@ -268,6 +268,20 @@ const isHandledRunFailure = (error: unknown): error is Error & { sandboxRunFaile
       (error as { sandboxRunFailed?: unknown }).sandboxRunFailed === true,
   );
 
+const isDockerWaitTimeoutError = (
+  error: unknown,
+): error is Error & {
+  code: "docker_wait_timeout";
+  containerId: string;
+  timeoutMs: number;
+} =>
+  Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "docker_wait_timeout",
+  );
+
 export const createSandboxService = (input: {
   artifactStorageService: ArtifactStorageService;
   contextPackService: ContextPackService;
@@ -500,15 +514,26 @@ export const createSandboxService = (input: {
     storagePath: string,
     sizeBytes: number,
   ) {
-    await input.db.insert(sandboxRunArtifactsTable).values({
-      id: generateId(),
-      sandboxRunId,
-      name,
-      contentType,
-      storagePath,
-      sizeBytes,
-      createdAt: new Date(),
-    });
+    await input.db
+      .insert(sandboxRunArtifactsTable)
+      .values({
+        id: generateId(),
+        sandboxRunId,
+        name,
+        contentType,
+        storagePath,
+        sizeBytes,
+        createdAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [sandboxRunArtifactsTable.sandboxRunId, sandboxRunArtifactsTable.name],
+        set: {
+          contentType,
+          storagePath,
+          sizeBytes,
+          createdAt: new Date(),
+        },
+      });
   },
 
   async getRunArtifact(ownerUserId: string, runId: string, name: string) {
@@ -1155,34 +1180,77 @@ export const createSandboxService = (input: {
         containerId,
       });
 
+      let outputsCaptured = false;
+      const captureRunOutputs = async () => {
+        if (outputsCaptured) {
+          return;
+        }
+
+        outputsCaptured = true;
+
+        const logs = await input.dockerService.readLogs(
+          containerId,
+          executionSettings.dockerHost,
+        ).catch(() => "");
+        const storedLog = await input.artifactStorageService.writeRunArtifact(
+          sandboxRunId,
+          "container.log",
+          logs,
+          "text/plain",
+        );
+        await this.attachArtifact(
+          sandboxRunId,
+          "container.log",
+          storedLog.contentType,
+          storedLog.path,
+          storedLog.sizeBytes,
+        );
+
+        await this.captureArtifactsFromDir(sandboxRunId, artifactDir).catch(() => undefined);
+        await this.captureGitArtifacts(sandboxRunId, workspaceDir).catch(() => undefined);
+      };
+
       await input.dockerService.startContainer(
         containerId,
         executionSettings.dockerHost,
       );
-      const exitCode = await input.dockerService.waitForContainer(
-        containerId,
-        executionSettings.dockerHost,
-      );
-      const logs = await input.dockerService.readLogs(
-        containerId,
-        executionSettings.dockerHost,
-      );
-      const storedLog = await input.artifactStorageService.writeRunArtifact(
-        sandboxRunId,
-        "container.log",
-        logs,
-        "text/plain",
-      );
-      await this.attachArtifact(
-        sandboxRunId,
-        "container.log",
-        storedLog.contentType,
-        storedLog.path,
-        storedLog.sizeBytes,
-      );
+      let exitCode: number;
+      try {
+        exitCode = await input.dockerService.waitForContainer(
+          containerId,
+          executionSettings.dockerHost,
+        );
+      } catch (error) {
+        if (isDockerWaitTimeoutError(error)) {
+          await input.dockerService.stopContainer(
+            containerId,
+            executionSettings.dockerHost,
+          ).catch(() => undefined);
+          await captureRunOutputs();
 
-      await this.captureArtifactsFromDir(sandboxRunId, artifactDir);
-      await this.captureGitArtifacts(sandboxRunId, workspaceDir);
+          const timeoutMinutes = Math.round(error.timeoutMs / 60_000);
+          const timeoutMessage =
+            `${run.kind} run did not exit within ${timeoutMinutes} minutes. ` +
+            "This usually means a long-lived background process was left running.";
+
+          await this.updateRunState(sandboxRunId, {
+            status: "failed",
+            outcome: run.kind === "verify" ? "verification_failed" : "error",
+            completedAt: new Date(),
+          });
+          await this.appendEvent(
+            sandboxRunId,
+            "error",
+            "run_failed",
+            timeoutMessage,
+          );
+          throw createHandledRunFailure(timeoutMessage);
+        }
+
+        throw error;
+      }
+
+      await captureRunOutputs();
 
       const headCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(
         () => baseCommitSha,
@@ -1290,7 +1358,38 @@ export const createSandboxService = (input: {
       if (isHandledRunFailure(error)) {
         throw error;
       }
+      const current = await input.db.query.sandboxRunsTable.findFirst({
+        where: eq(sandboxRunsTable.id, sandboxRunId),
+      });
+      if (current?.containerId) {
+        await input.dockerService.stopContainer(
+          current.containerId,
+          executionSettings.dockerHost,
+        ).catch(() => undefined);
+      }
       const sanitizedError = sanitizeGitError(error, secretsToRedact);
+      const currentContainerId = current?.containerId ?? null;
+      if (currentContainerId) {
+        const logs = await input.dockerService.readLogs(
+          currentContainerId,
+          executionSettings.dockerHost,
+        ).catch(() => "");
+        const storedLog = await input.artifactStorageService.writeRunArtifact(
+          sandboxRunId,
+          "container.log",
+          logs,
+          "text/plain",
+        );
+        await this.attachArtifact(
+          sandboxRunId,
+          "container.log",
+          storedLog.contentType,
+          storedLog.path,
+          storedLog.sizeBytes,
+        ).catch(() => undefined);
+        await this.captureArtifactsFromDir(sandboxRunId, artifactDir).catch(() => undefined);
+        await this.captureGitArtifacts(sandboxRunId, workspaceDir).catch(() => undefined);
+      }
       await this.updateRunState(sandboxRunId, {
         status: "failed",
         outcome: run.kind === "verify" ? "verification_failed" : "error",
@@ -1308,6 +1407,12 @@ export const createSandboxService = (input: {
         where: eq(sandboxRunsTable.id, sandboxRunId),
       });
       if (current?.containerId) {
+        await input.dockerService.stopContainer(
+          current.containerId,
+          executionSettingsSchema.parse(
+            await input.executionSettingsService.get(),
+          ).dockerHost,
+        ).catch(() => undefined);
         await input.dockerService.removeContainer(current.containerId, {
           dockerHost: executionSettingsSchema.parse(
             await input.executionSettingsService.get(),

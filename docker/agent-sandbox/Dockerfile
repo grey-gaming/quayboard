@@ -46,7 +46,8 @@ RUN pip install --no-cache-dir litellm==1.75.0 playwright \
   && python -m playwright install --with-deps chromium
 
 COPY qb_entrypoint.sh /usr/local/bin/qb_entrypoint.sh
-RUN chmod +x /usr/local/bin/qb_entrypoint.sh
+COPY qb_bash_env.sh /usr/local/share/quayboard/qb_bash_env.sh
+RUN chmod +x /usr/local/bin/qb_entrypoint.sh /usr/local/share/quayboard/qb_bash_env.sh
 
 WORKDIR /workspace
 
