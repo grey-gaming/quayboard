@@ -9,6 +9,7 @@ import type { ProjectSetupService } from "./project-setup-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import { orderMilestoneFeatures } from "./milestone-delivery-branch.js";
 import { isTaskPlanningReady } from "./task-planning-support.js";
 
 export const createNextActionsService = (
@@ -236,9 +237,9 @@ export const createNextActionsService = (
               });
             }
           } else if (activeMilestone.status === "approved") {
-            const milestoneFeatures = features.features
-              .filter((feature) => feature.milestoneId === activeMilestone.id)
-              .sort((left, right) => left.featureKey.localeCompare(right.featureKey));
+            const milestoneFeatures = orderMilestoneFeatures(
+              features.features.filter((feature) => feature.milestoneId === activeMilestone.id),
+            );
 
             if (milestoneFeatures.length === 0) {
               actions.push({
@@ -524,10 +525,10 @@ export const createNextActionsService = (
     const milestones = await milestoneService.list(ownerUserId, projectId);
     const activeMilestone = milestones.milestones.find((milestone) => milestone.isActive) ?? null;
     const features = await featureService.list(ownerUserId, projectId);
-    const orderedFeatures = features.features
-      .filter((feature) => !activeMilestone || feature.milestoneId === activeMilestone.id)
-      .sort((left, right) =>
-      left.featureKey.localeCompare(right.featureKey),
+    const orderedFeatures = orderMilestoneFeatures(
+      features.features.filter(
+        (feature) => !activeMilestone || feature.milestoneId === activeMilestone.id,
+      ),
     );
     const allTracks = await Promise.all(
       orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),

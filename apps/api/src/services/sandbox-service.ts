@@ -56,6 +56,11 @@ import type { FeatureService } from "./feature-service.js";
 import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { GithubService } from "./github-service.js";
 import type { ProviderDefinition } from "./llm-provider.js";
+import {
+  buildMilestoneDeliveryBranchName,
+  buildPostMergeFixBranchName,
+  orderMilestoneFeatures,
+} from "./milestone-delivery-branch.js";
 import type { SecretService } from "./secret-service.js";
 import type { SseHub } from "./sse.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
@@ -92,45 +97,12 @@ const mapArtifact = (record: typeof sandboxRunArtifactsTable.$inferSelect) => ({
   createdAt: record.createdAt.toISOString(),
 });
 
-const topoSortFeatures = <
-  T extends { dependencyIds: string[]; id: string },
->(
-  features: T[],
-) => {
-  const byId = new Map(features.map((feature) => [feature.id, feature]));
-  const visited = new Set<string>();
-  const temp = new Set<string>();
-  const ordered: T[] = [];
-
-  const visit = (featureId: string) => {
-    if (visited.has(featureId)) {
-      return;
-    }
-
-    if (temp.has(featureId)) {
-      return;
-    }
-
-    temp.add(featureId);
-    const feature = byId.get(featureId);
-    if (!feature) {
-      return;
-    }
-
-    for (const dependencyId of feature.dependencyIds) {
-      visit(dependencyId);
-    }
-
-    temp.delete(featureId);
-    visited.add(featureId);
-    ordered.push(feature);
-  };
-
-  for (const feature of features) {
-    visit(feature.id);
-  }
-
-  return ordered;
+type DeliveryBranchPlan = {
+  baseBranchName: string;
+  cloneBranchName: string;
+  pullRequestBody: string;
+  pullRequestTitle: string;
+  targetBranchName: string;
 };
 
 const toManagedContainer = (record: Record<string, string>): ManagedContainerSummary =>
@@ -641,6 +613,63 @@ export const createSandboxService = (input: {
     });
   },
 
+  async resolveDeliveryBranchPlan(
+    ownerUserId: string,
+    sandboxRunId: string,
+    repo: typeof reposTable.$inferSelect,
+    featureId: string,
+    token: string,
+  ): Promise<DeliveryBranchPlan> {
+    if (!repo.owner || !repo.name) {
+      throw new Error("Sandbox execution requires a verified GitHub repository.");
+    }
+
+    const feature = await input.featureService.get(ownerUserId, featureId);
+    const milestone = await input.db.query.milestonesTable.findFirst({
+      where: eq(milestonesTable.id, feature.milestoneId),
+    });
+
+    if (!milestone) {
+      throw new Error("Feature milestone not found.");
+    }
+
+    const defaultBranchName = repo.defaultBranch ?? "main";
+    const activeMilestone = await input.db.query.milestonesTable.findFirst({
+      where: and(
+        eq(milestonesTable.projectId, feature.projectId),
+        inArray(milestonesTable.status, ["draft", "approved"]),
+      ),
+      orderBy: [asc(milestonesTable.position)],
+    });
+
+    if (activeMilestone?.id === milestone.id && milestone.status === "approved") {
+      const targetBranchName = buildMilestoneDeliveryBranchName(milestone);
+      const branchExists = await input.githubService.branchExists({
+        owner: repo.owner,
+        repo: repo.name,
+        token,
+        branch: targetBranchName,
+      });
+
+      return {
+        baseBranchName: defaultBranchName,
+        cloneBranchName: branchExists ? targetBranchName : defaultBranchName,
+        targetBranchName,
+        pullRequestTitle: `Deliver Milestone ${milestone.position}: ${milestone.title}`,
+        pullRequestBody: `Automated milestone delivery branch for ${milestone.title}.`,
+      };
+    }
+
+    const targetBranchName = buildPostMergeFixBranchName(feature.featureKey, sandboxRunId);
+    return {
+      baseBranchName: defaultBranchName,
+      cloneBranchName: defaultBranchName,
+      targetBranchName,
+      pullRequestTitle: `Fix ${feature.featureKey}: ${feature.headRevision.title}`,
+      pullRequestBody: `Automated follow-up fix run ${sandboxRunId}.`,
+    };
+  },
+
   async createRun(
     ownerUserId: string,
     projectId: string,
@@ -863,7 +892,7 @@ export const createSandboxService = (input: {
 
     await this.assertOwnedProject(ownerUserId, milestone.projectId);
     const features = await input.featureService.list(ownerUserId, milestone.projectId);
-    const milestoneFeatures = topoSortFeatures(
+    const milestoneFeatures = orderMilestoneFeatures(
       features.features.filter((feature) => feature.milestoneId === milestoneId),
     );
     const now = new Date();
@@ -1033,6 +1062,16 @@ export const createSandboxService = (input: {
     const artifactDir = path.join(workspaceRoot, "artifacts");
     await mkdir(workspaceDir, { recursive: true });
     await mkdir(artifactDir, { recursive: true });
+    const defaultBranchName = repo.defaultBranch ?? "main";
+    const deliveryBranchPlan = run.featureId
+      ? await this.resolveDeliveryBranchPlan(
+          project.ownerUserId,
+          sandboxRunId,
+          repo,
+          run.featureId,
+          secretEnv.GITHUB_PAT,
+        )
+      : null;
 
     const cleanup = async () => {
       await rm(workspaceRoot, { force: true, recursive: true }).catch(() => undefined);
@@ -1105,16 +1144,26 @@ export const createSandboxService = (input: {
             "Restored warm-start workspace from previous implementation run.",
           );
         } else {
-          await this.cloneRepository(repo.repoUrl, repo.defaultBranch ?? "main", secretEnv.GITHUB_PAT, workspaceDir);
+          await this.cloneRepository(
+            repo.repoUrl,
+            deliveryBranchPlan?.cloneBranchName ?? defaultBranchName,
+            secretEnv.GITHUB_PAT,
+            workspaceDir,
+          );
         }
       } else {
-        await this.cloneRepository(repo.repoUrl, repo.defaultBranch ?? "main", secretEnv.GITHUB_PAT, workspaceDir);
+        await this.cloneRepository(
+          repo.repoUrl,
+          deliveryBranchPlan?.cloneBranchName ?? defaultBranchName,
+          secretEnv.GITHUB_PAT,
+          workspaceDir,
+        );
       }
 
-      const baseBranchName =
+      const currentBranchName =
         (await this.git(["branch", "--show-current"], workspaceDir).catch(() => "")) ||
-        repo.defaultBranch ||
-        "main";
+        deliveryBranchPlan?.cloneBranchName ||
+        defaultBranchName;
       const baseCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
       await this.updateRunState(sandboxRunId, { baseCommitSha });
 
@@ -1297,7 +1346,14 @@ export const createSandboxService = (input: {
           secretEnv.GITHUB_PAT,
           run.featureId!,
           sandboxRunId,
-          baseBranchName,
+          deliveryBranchPlan ??
+            ({
+              baseBranchName: defaultBranchName,
+              cloneBranchName: currentBranchName,
+              targetBranchName: currentBranchName,
+              pullRequestTitle: `Implement ${run.featureId!}`,
+              pullRequestBody: `Automated sandbox verification run ${sandboxRunId}.`,
+            } satisfies DeliveryBranchPlan),
           baseCommitSha,
         );
         const approvedTechRevision = await input.db.query.featureTechRevisionsTable.findFirst({
@@ -1554,7 +1610,7 @@ export const createSandboxService = (input: {
     token: string,
     featureId: string,
     sandboxRunId: string,
-    baseBranch: string,
+    branchPlan: DeliveryBranchPlan,
     baseCommitSha: string | null,
   ): Promise<{
     bootstrappedDefaultBranch: boolean;
@@ -1590,9 +1646,28 @@ export const createSandboxService = (input: {
     }
 
     const targetBranch = baseCommitSha
-      ? `quayboard/${feature.featureKey.toLowerCase()}/${sandboxRunId.slice(0, 8)}`
-      : baseBranch;
-    await this.git(["checkout", baseCommitSha ? "-b" : "-B", targetBranch], workspaceDir);
+      ? branchPlan.targetBranchName
+      : branchPlan.baseBranchName;
+    const currentBranch = await this.git(["branch", "--show-current"], workspaceDir).catch(
+      () => "",
+    );
+
+    if (currentBranch !== targetBranch) {
+      const localBranchExists = await this.git(
+        ["rev-parse", "--verify", targetBranch],
+        workspaceDir,
+      )
+        .then(() => true)
+        .catch(() => false);
+
+      await this.git(
+        localBranchExists
+          ? ["checkout", targetBranch]
+          : ["checkout", baseCommitSha ? "-b" : "-B", targetBranch],
+        workspaceDir,
+      );
+    }
+
     await this.git(["add", "-A"], workspaceDir);
     await this.git(
       ["commit", "-m", `Implement ${feature.featureKey}: ${headRevision.title}`],
@@ -1614,26 +1689,36 @@ export const createSandboxService = (input: {
       };
     }
 
-    const pr = await input.githubService.createPullRequest({
+    const existingPr = await input.githubService.findOpenPullRequestForHead({
       owner: repo.owner,
       repo: repo.name,
       token,
-      title: `Implement ${feature.featureKey}: ${headRevision.title}`,
       head: targetBranch,
-      base: baseBranch,
-      body: `Automated sandbox verification run ${sandboxRunId}.`,
     });
+    const pullRequestUrl =
+      existingPr?.url ??
+      (
+        await input.githubService.createPullRequest({
+          owner: repo.owner,
+          repo: repo.name,
+          token,
+          title: branchPlan.pullRequestTitle,
+          head: targetBranch,
+          base: branchPlan.baseBranchName,
+          body: branchPlan.pullRequestBody,
+        })
+      ).url;
 
     await this.updateRunState(sandboxRunId, {
       branchName: targetBranch,
-      pullRequestUrl: pr.url,
+      pullRequestUrl,
     });
 
     return {
       bootstrappedDefaultBranch: false,
       branchName: targetBranch,
       commitSha,
-      pullRequestUrl: pr.url,
+      pullRequestUrl,
     };
   },
 });

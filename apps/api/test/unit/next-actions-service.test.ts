@@ -36,16 +36,31 @@ const makeMilestone = (overrides: {
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
-const makeFeature = (id: string, milestoneId: string) => ({
+const makeFeature = (
+  id: string,
+  milestoneId: string,
+  overrides: {
+    dependencyIds?: string[];
+    featureKey?: string;
+    title?: string;
+  } = {},
+) => ({
   id,
   milestoneId,
   projectId: PROJECT_ID,
-  featureKey: `F-${id.slice(0, 4)}`,
+  featureKey: overrides.featureKey ?? `F-${id.slice(0, 4)}`,
   milestoneTitle: "Milestone 1",
   kind: "screen" as const,
   priority: "must_have" as const,
   status: "draft" as const,
-  headRevision: { id: `rev-${id}`, version: 1, title: "Feature", summary: "", acceptanceCriteria: [], source: "generated" },
+  headRevision: {
+    id: `rev-${id}`,
+    version: 1,
+    title: overrides.title ?? "Feature",
+    summary: "",
+    acceptanceCriteria: [],
+    source: "generated",
+  },
   documents: {
     product: { required: true, state: "missing" as const },
     ux: { required: false, state: "missing" as const },
@@ -57,7 +72,7 @@ const makeFeature = (id: string, milestoneId: string) => ({
     hasTasks: false,
     taskCount: 0,
   },
-  dependencyIds: [],
+  dependencyIds: overrides.dependencyIds ?? [],
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
   archivedAt: null,
@@ -451,6 +466,70 @@ describe("nextActionsService — milestone/feature routing", () => {
 
       expect(actions[0]?.key).toBe("feature_implement");
       expect(actions[0]?.href).toBe(`/projects/${PROJECT_ID}/develop?featureId=f1`);
+    });
+
+    it("orders implementation actions by dependency topology before feature key order", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "passed",
+        }),
+      ];
+      const features = [
+        makeFeature("f-child", "m1", {
+          featureKey: "F-001",
+          dependencyIds: ["f-parent"],
+          title: "Child feature",
+        }),
+        makeFeature("f-parent", "m1", {
+          featureKey: "F-002",
+          title: "Parent feature",
+        }),
+      ];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: { id: "product-1" }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: {
+            required: true,
+            headRevision: { id: "tech-1" },
+            status: "approved",
+            implementationStatus: "not_implemented",
+          },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      s.taskPlanningService.getSession = vi.fn().mockResolvedValue({
+        id: "task-session-1",
+        status: "tasks_generated",
+      });
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.href).toBe(
+        `/projects/${PROJECT_ID}/develop?featureId=f-parent`,
+      );
     });
   });
 });

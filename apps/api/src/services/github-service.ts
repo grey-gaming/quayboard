@@ -21,11 +21,53 @@ type CreatePullRequestInput = {
   token: string;
 };
 
+type FindOpenPullRequestForHeadInput = {
+  head: string;
+  owner: string;
+  repo: string;
+  token: string;
+};
+
+type MergePullRequestInput = {
+  method: "merge" | "rebase" | "squash";
+  owner: string;
+  pullNumber: number;
+  repo: string;
+  token: string;
+};
+
+type DeleteBranchInput = {
+  branch: string;
+  owner: string;
+  repo: string;
+  token: string;
+};
+
+type BranchExistsInput = {
+  branch: string;
+  owner: string;
+  repo: string;
+  token: string;
+};
+
 const buildHeaders = (token: string) => ({
   Accept: "application/vnd.github+json",
   Authorization: `Bearer ${token}`,
   "X-GitHub-Api-Version": "2022-11-28",
 });
+
+const buildGithubError = async (response: Response, fallbackMessage: string) => {
+  let detail = "";
+
+  try {
+    const payload = (await response.json()) as { message?: string };
+    detail = payload.message?.trim() ?? "";
+  } catch {
+    detail = "";
+  }
+
+  return new Error(detail.length > 0 ? detail : fallbackMessage);
+};
 
 const parseRepository = (payload: {
   default_branch?: string;
@@ -155,6 +197,106 @@ export const createGithubService = () => ({
     return {
       url: payload.html_url ?? null,
     };
+  },
+
+  async findOpenPullRequestForHead(input: FindOpenPullRequestForHeadInput) {
+    const url = new URL(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/pulls`,
+    );
+    url.searchParams.set("state", "open");
+    url.searchParams.set("head", `${input.owner}:${input.head}`);
+
+    const response = await fetch(url, {
+      headers: buildHeaders(input.token),
+    });
+
+    if (!response.ok) {
+      throw await buildGithubError(
+        response,
+        "GitHub pull request lookup failed.",
+      );
+    }
+
+    const payload = (await response.json()) as Array<{
+      html_url?: string;
+      number?: number;
+    }>;
+    const pr = payload[0];
+
+    if (!pr || typeof pr.number !== "number") {
+      return null;
+    }
+
+    return {
+      number: pr.number,
+      url: pr.html_url ?? null,
+    };
+  },
+
+  async mergePullRequest(input: MergePullRequestInput) {
+    const response = await fetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/pulls/${input.pullNumber}/merge`,
+      {
+        method: "PUT",
+        headers: buildHeaders(input.token),
+        body: JSON.stringify({
+          merge_method: input.method,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw await buildGithubError(response, "GitHub pull request merge failed.");
+    }
+
+    const payload = (await response.json()) as {
+      merged?: boolean;
+      sha?: string;
+    };
+
+    return {
+      merged: payload.merged ?? false,
+      sha: payload.sha ?? null,
+    };
+  },
+
+  async deleteBranch(input: DeleteBranchInput) {
+    const response = await fetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/git/refs/heads/${encodeURIComponent(input.branch)}`,
+      {
+        method: "DELETE",
+        headers: buildHeaders(input.token),
+      },
+    );
+
+    if (response.status === 404) {
+      return { deleted: false, notFound: true };
+    }
+
+    if (!response.ok) {
+      throw await buildGithubError(response, "GitHub branch deletion failed.");
+    }
+
+    return { deleted: true, notFound: false };
+  },
+
+  async branchExists(input: BranchExistsInput) {
+    const response = await fetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/branches/${encodeURIComponent(input.branch)}`,
+      {
+        headers: buildHeaders(input.token),
+      },
+    );
+
+    if (response.status === 404) {
+      return false;
+    }
+
+    if (!response.ok) {
+      throw await buildGithubError(response, "GitHub branch lookup failed.");
+    }
+
+    return true;
   },
 });
 

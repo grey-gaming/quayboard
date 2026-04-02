@@ -153,6 +153,8 @@ The mapping table connects next-action keys to the job types and input factories
 
 Any key not in this map causes the session to pause with `needs_human`, prompting the user to take the manual action and then Resume.
 
+Feature implementation runs share one temporary delivery branch and one open PR per active milestone. Auto-advance keeps pushing later milestone features onto that branch until the milestone is completed. Completing the milestone merges the PR, deletes the remote milestone branch, and only then marks the milestone complete. Any later stale-implementation or follow-up fix run starts again from the latest remote default branch on a fresh fix branch and PR.
+
 ## Milestone Reconciliation
 
 When the active milestone has no remaining feature, workstream, or task-planning actions, auto-advance queues `ReviewMilestoneCoverage`. That review compares the canonical milestone design doc against the active milestone's approved feature workstreams and generated delivery tasks.

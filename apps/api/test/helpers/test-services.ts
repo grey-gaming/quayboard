@@ -282,7 +282,11 @@ export const createStubServices = (): AppServices => ({
     listRevisions: async () => ({ revisions: [] }),
   },
   githubService: {
+    branchExists: async () => false,
     createPullRequest: async () => ({ url: "https://github.com/acme/repo/pull/1" }),
+    deleteBranch: async () => ({ deleted: true, notFound: false }),
+    findOpenPullRequestForHead: async () => null,
+    mergePullRequest: async () => ({ merged: true, sha: "abc123" }),
     validatePat: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -393,6 +397,7 @@ export const createStubServices = (): AppServices => ({
     invalidateMapReview: async () => undefined,
     recordMapReviewResult: async () => undefined,
     markMapGenerated: async () => undefined,
+    mergeMilestoneDeliveryBranchIfNeeded: async () => undefined,
     invalidateScopeReview: async () => undefined,
     recordScopeReviewResult: async () => undefined,
     invalidateDeliveryReview: async () => undefined,
@@ -689,6 +694,13 @@ export const createStubServices = (): AppServices => ({
     listManagedContainers: async () => ({ containers: [] }),
     listMilestoneSessions: async () => ({ sessions: [] }),
     listRuns: async () => ({ runs: [] }),
+    resolveDeliveryBranchPlan: async () => ({
+      baseBranchName: "main",
+      cloneBranchName: "main",
+      targetBranchName: "quayboard/fix/f-001/test-run",
+      pullRequestTitle: "Fix F-001: Stub Feature",
+      pullRequestBody: "Stub branch plan.",
+    }),
     publishPullRequestIfNeeded: async () => ({
       bootstrappedDefaultBranch: false,
       branchName: null,

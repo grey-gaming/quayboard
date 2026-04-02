@@ -318,3 +318,5 @@ Instance-level defaults for Auto-Advance can be found at **Settings → Workflow
 If a feature's Technical Spec has been revised after an implementation record was produced, the Next Actions Panel will show a **"Re-implement stale feature: \<name\>"** action for that feature. This ensures implementation records always reflect the latest approved spec.
 
 Auto-Advance will pick up this staleness action and re-enqueue the relevant implementation job automatically when running.
+
+During milestone delivery, feature implementation runs reuse one milestone delivery branch and one open PR. When the milestone is completed, Quayboard merges that PR, deletes the remote milestone branch, and future follow-up fixes start from the latest default branch on a fresh fix branch.
