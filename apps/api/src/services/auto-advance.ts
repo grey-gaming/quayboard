@@ -70,6 +70,7 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   pausedReason: row.pausedReason ?? null,
   autoApproveWhenClear: row.autoApproveWhenClear,
   skipReviewSteps: row.skipReviewSteps,
+  skipHumanReview: row.skipHumanReview,
   autoRepairMilestoneCoverage: row.autoRepairMilestoneCoverage,
   creativityMode: (row.creativityMode ?? "balanced") as AutoAdvanceSession["creativityMode"],
   retryCount: row.retryCount ?? 0,
@@ -1137,6 +1138,33 @@ export const createAutoAdvanceService = (
               .where(eq(autoAdvanceSessionsTable.id, sessionId));
             continue;
           }
+
+          if (
+            session.skipHumanReview &&
+            (nextAction.key === "milestone_scope_resolve" ||
+              nextAction.key === "milestone_reconciliation_resolve" ||
+              nextAction.key === "milestone_delivery_resolve" ||
+              nextAction.key === "milestone_map_resolve")
+          ) {
+            const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+            if (activeMilestone) {
+              if (
+                nextAction.key === "milestone_scope_resolve" ||
+                nextAction.key === "milestone_reconciliation_resolve"
+              ) {
+                await milestoneService.invalidateScopeReview(activeMilestone.id);
+              } else if (nextAction.key === "milestone_delivery_resolve") {
+                await milestoneService.invalidateDeliveryReview(activeMilestone.id);
+              } else {
+                await milestoneService.invalidateMapReview(projectId);
+              }
+            }
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({ currentStep: nextAction.key, milestoneRepairCount: 0, updatedAt: new Date() })
+              .where(eq(autoAdvanceSessionsTable.id, sessionId));
+            continue;
+          }
         }
 
         await db
@@ -1266,6 +1294,7 @@ export const createAutoAdvanceService = (
             pausedReason: null,
             autoApproveWhenClear: opts.autoApproveWhenClear ?? existing.autoApproveWhenClear,
             skipReviewSteps: opts.skipReviewSteps ?? existing.skipReviewSteps,
+            skipHumanReview: opts.skipHumanReview ?? existing.skipHumanReview,
             autoRepairMilestoneCoverage:
               opts.autoRepairMilestoneCoverage ??
               existing.autoRepairMilestoneCoverage,
@@ -1297,6 +1326,7 @@ export const createAutoAdvanceService = (
           status: "running",
           autoApproveWhenClear: opts.autoApproveWhenClear ?? false,
           skipReviewSteps: opts.skipReviewSteps ?? false,
+          skipHumanReview: opts.skipHumanReview ?? false,
           autoRepairMilestoneCoverage:
             opts.autoRepairMilestoneCoverage ?? false,
           creativityMode: opts.creativityMode ?? "balanced",

@@ -35,6 +35,7 @@ const buildSession = (overrides: Partial<AutoAdvanceSession> = {}): AutoAdvanceS
   pausedReason: "needs_human",
   autoApproveWhenClear: false,
   skipReviewSteps: false,
+  skipHumanReview: false,
   autoRepairMilestoneCoverage: false,
   creativityMode: "balanced",
   retryCount: 0,

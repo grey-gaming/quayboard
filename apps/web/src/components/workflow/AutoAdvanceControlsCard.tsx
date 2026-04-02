@@ -18,6 +18,7 @@ import {
 import { Badge } from "../ui/Badge.js";
 import { Button } from "../ui/Button.js";
 import { Card } from "../ui/Card.js";
+import { InfoTooltip } from "../ui/InfoTooltip.js";
 
 const creativityModeOptions: { value: CreativityMode; label: string }[] = [
   { value: "conservative", label: "Conservative" },
@@ -28,6 +29,7 @@ const creativityModeOptions: { value: CreativityMode; label: string }[] = [
 const buildStartRequest = (input: {
   creativityMode: CreativityMode;
   skipReviewSteps: boolean;
+  skipHumanReview: boolean;
   autoApproveWhenClear: boolean;
   autoRepairMilestoneCoverage: boolean;
   maxConcurrentJobs: number;
@@ -40,6 +42,10 @@ const buildStartRequest = (input: {
 
   if (input.skipReviewSteps) {
     request.skipReviewSteps = true;
+  }
+
+  if (input.skipHumanReview) {
+    request.skipHumanReview = true;
   }
 
   if (input.autoApproveWhenClear) {
@@ -80,6 +86,7 @@ export const AutoAdvanceControlsCard = ({
 
   const [creativityMode, setCreativityMode] = useState<CreativityMode>("balanced");
   const [skipReviewSteps, setSkipReviewSteps] = useState(false);
+  const [skipHumanReview, setSkipHumanReview] = useState(false);
   const [autoApproveWhenClear, setAutoApproveWhenClear] = useState(false);
   const [autoRepairMilestoneCoverage, setAutoRepairMilestoneCoverage] =
     useState(false);
@@ -108,6 +115,7 @@ export const AutoAdvanceControlsCard = ({
 
   const displayCreativityMode = isActive ? session!.creativityMode : creativityMode;
   const displaySkipReviewSteps = isActive ? session!.skipReviewSteps : skipReviewSteps;
+  const displaySkipHumanReview = isActive ? session!.skipHumanReview : skipHumanReview;
   const displayAutoApproveWhenClear = isActive ? session!.autoApproveWhenClear : autoApproveWhenClear;
   const displayAutoRepairMilestoneCoverage = isActive
     ? session!.autoRepairMilestoneCoverage
@@ -135,8 +143,9 @@ export const AutoAdvanceControlsCard = ({
       <div className="mt-4 grid gap-3">
         <div className="grid gap-2 border-b border-border/60 pb-3">
           <div className="flex items-center justify-between gap-3">
-            <label className="text-xs text-secondary" htmlFor="creativity-mode">
+            <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="creativity-mode">
               Creativity mode
+              <InfoTooltip text="Controls how inventive the AI is when generating content. Conservative favours safe, predictable output; Creative favours novel ideas. Balanced is recommended for most runs." />
             </label>
             <select
               id="creativity-mode"
@@ -153,8 +162,9 @@ export const AutoAdvanceControlsCard = ({
             </select>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <label className="text-xs text-secondary" htmlFor="skip-review-steps">
+            <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="skip-review-steps">
               Skip review steps
+              <InfoTooltip text="Automatically accepts all approval gates (overviews, specs, blueprints, decision cards, feature approvals) without pausing. Use for fully unattended runs where you trust the AI output." />
             </label>
             <input
               id="skip-review-steps"
@@ -166,8 +176,23 @@ export const AutoAdvanceControlsCard = ({
             />
           </div>
           <div className="flex items-center justify-between gap-3">
-            <label className="text-xs text-secondary" htmlFor="auto-approve-when-clear">
+            <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="skip-human-review">
+              Skip human review
+              <InfoTooltip text="When a milestone scope or delivery review flags issues that would normally require human intervention, automatically bypasses the resolve step and continues. Equivalent to clicking 'Skip & continue' manually." />
+            </label>
+            <input
+              id="skip-human-review"
+              type="checkbox"
+              className="h-4 w-4 accent-accent disabled:opacity-60"
+              checked={displaySkipHumanReview}
+              disabled={isActive || isPending}
+              onChange={(e) => setSkipHumanReview(e.target.checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="auto-approve-when-clear">
               Auto-approve gates
+              <InfoTooltip text="Automatically approves review gates (overviews, specs, blueprints, feature approvals) when the artifact is ready. Unlike 'Skip review steps', does not auto-select decision cards." />
             </label>
             <input
               id="auto-approve-when-clear"
@@ -180,10 +205,11 @@ export const AutoAdvanceControlsCard = ({
           </div>
           <div className="flex items-center justify-between gap-3">
             <label
-              className="text-xs text-secondary"
+              className="flex items-center gap-1 text-xs text-secondary"
               htmlFor="auto-repair-milestone-coverage"
             >
               Auto-repair milestone coverage
+              <InfoTooltip text="When a milestone scope or delivery review finds structural issues (e.g. missing or misaligned features), automatically queues repair jobs and retries rather than pausing. Up to 3 repair attempts per milestone." />
             </label>
             <input
               id="auto-repair-milestone-coverage"
@@ -195,8 +221,9 @@ export const AutoAdvanceControlsCard = ({
             />
           </div>
           <div className="flex items-center justify-between gap-3">
-            <label className="text-xs text-secondary" htmlFor="max-concurrent-jobs">
+            <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="max-concurrent-jobs">
               Max parallel jobs
+              <InfoTooltip text="How many jobs can run simultaneously. Higher values speed up feature-heavy milestones but increase LLM API usage and cost. Start with 1 and increase once you are confident in output quality." />
             </label>
             <input
               id="max-concurrent-jobs"
@@ -221,6 +248,7 @@ export const AutoAdvanceControlsCard = ({
                   buildStartRequest({
                     creativityMode,
                     skipReviewSteps,
+                    skipHumanReview,
                     autoApproveWhenClear,
                     autoRepairMilestoneCoverage,
                     maxConcurrentJobs,

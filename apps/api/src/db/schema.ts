@@ -1180,6 +1180,7 @@ export const autoAdvanceSessionsTable = pgTable(
       .notNull()
       .default(false),
     skipReviewSteps: boolean("skip_review_steps").notNull().default(false),
+    skipHumanReview: boolean("skip_human_review").notNull().default(false),
     autoRepairMilestoneCoverage: boolean("auto_repair_milestone_coverage")
       .notNull()
       .default(false),
