@@ -38,3 +38,6 @@ yarn-error.log*
 *.sqlite-journal
 tmp/
 temp/
+
+# QA log files
+qa_*.md

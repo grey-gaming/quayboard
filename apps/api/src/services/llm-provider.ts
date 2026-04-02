@@ -23,6 +23,14 @@ export type GeneratedContent = {
   totalDuration?: number | null;
 };
 
+export type LlmProviderError = {
+  kind: "http_error" | "transport_error";
+  message: string;
+  provider: ProviderDefinition["provider"];
+  retryable: boolean;
+  statusCode?: number;
+};
+
 export type LlmProviderAdapter = {
   generate(input: {
     baseUrl: string | null;
@@ -36,6 +44,13 @@ export type LlmProviderAdapter = {
     apiKey: string | null;
   }): Promise<ProviderHealth>;
 };
+
+const createLlmProviderError = (input: LlmProviderError) =>
+  Object.assign(new Error(input.message), {
+    llmProviderError: input,
+  });
+
+const isRetryableStatus = (statusCode: number) => statusCode === 429 || statusCode >= 500;
 
 const parseJson = async (response: { text(): Promise<string> }) => {
   const text = await response.text();
@@ -148,7 +163,12 @@ const createOllamaAdapter = (input: {
           : error instanceof Error
             ? error.message
             : "unknown fetch failure";
-      throw new Error(`Ollama generation request failed: ${message}`);
+      throw createLlmProviderError({
+        kind: "transport_error",
+        message: `Ollama generation request failed: ${message}`,
+        provider: "ollama",
+        retryable: true,
+      });
     } finally {
       timeout.clear();
     }
@@ -162,9 +182,13 @@ const createOllamaAdapter = (input: {
           : typeof payload.message === "string"
             ? payload.message
             : null;
-      throw new Error(
-        `Ollama generation failed with status ${response.status} ${response.statusText}${payloadError ? `: ${payloadError}` : ""}.`,
-      );
+      throw createLlmProviderError({
+        kind: "http_error",
+        message: `Ollama generation failed with status ${response.status} ${response.statusText}${payloadError ? `: ${payloadError}` : ""}.`,
+        provider: "ollama",
+        retryable: isRetryableStatus(response.status),
+        statusCode: response.status,
+      });
     }
 
     return {
@@ -269,7 +293,12 @@ const createOpenAiAdapter = (input: {
           : error instanceof Error
             ? error.message
             : "unknown fetch failure";
-      throw new Error(`OpenAI-compatible generation request failed: ${message}`);
+      throw createLlmProviderError({
+        kind: "transport_error",
+        message: `OpenAI-compatible generation request failed: ${message}`,
+        provider: "openai",
+        retryable: true,
+      });
     } finally {
       timeout.clear();
     }
@@ -277,9 +306,13 @@ const createOpenAiAdapter = (input: {
     const payload = await parseJson(response);
 
     if (!response.ok) {
-      throw new Error(
-        `OpenAI-compatible generation failed with status ${response.status} ${response.statusText}.`,
-      );
+      throw createLlmProviderError({
+        kind: "http_error",
+        message: `OpenAI-compatible generation failed with status ${response.status} ${response.statusText}.`,
+        provider: "openai",
+        retryable: isRetryableStatus(response.status),
+        statusCode: response.status,
+      });
     }
 
     const choices = Array.isArray(payload.choices) ? payload.choices : [];

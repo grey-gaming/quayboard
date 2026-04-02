@@ -80,7 +80,9 @@ export const buildProjectOverviewPrompt = (input: {
     "Synthesize the full context into a coherent product direction and fill reasonable gaps with explicit proposed defaults when the source material is incomplete.",
     "Do not mirror the questionnaire ordering or quote answers back line-by-line.",
     "Use these section headings in this exact order: Product Summary, Users and Roles, Problem and Opportunity, Product Vision, Core Workflows, Key Capabilities, Constraints and Non-Goals, Experience and Product Feel, Success Measures, Assumptions and Proposed Defaults.",
-    "Make the writing concrete, creative, and product-quality. Avoid generic software-product filler and avoid narrowing the output to only what was stated explicitly.",
+    "Make the writing concrete, creative, and product-quality. Avoid generic software-product filler.",
+    "Stated requirements take priority over inferred additions. Place any inferred capabilities or proposed defaults exclusively in the Assumptions and Proposed Defaults section — do not embed them throughout the document as if they were confirmed scope.",
+    "Do not add platform capabilities (offline support, push notifications, real-time sync, PWA installability) unless the source material explicitly requires them.",
     "Do not wrap the JSON in code fences.",
     "",
     "Current project description:",
@@ -128,6 +130,13 @@ You must:
 3. Infer missing but necessary elements where needed.
 
 Do not leave major areas underspecified. When information is missing, do not stop. Make the strongest reasonable product assumptions.
+
+## Proportionality Rule
+Scale the depth and feature inventory to match the stated project size and scope. A "small web app" or simple utility does not need full enterprise subsystems, multi-device sync architecture, or a comprehensive platform feature stack.
+
+When you infer a capability that is not explicitly stated in the source material, mark it clearly as an assumption or proposed default — not as a settled requirement. Place all such inferences in the Assumptions section rather than embedding them throughout the spec as if they were confirmed scope.
+
+Do not add platform capabilities (offline support, push notifications, service workers, real-time sync, PWA installability, invitation systems, public sharing links) unless the source material explicitly requires them. If you believe one of these is a natural fit, note it as a proposed extension in the Assumptions section only.
 
 ## Output Requirements
 Write the specification using clear headings and structured subsections.
@@ -384,6 +393,7 @@ Before finalizing, silently review your own output and ensure:
 export const buildProductSpecPrompt = (input: {
   projectName: string;
   sourceMaterial: string;
+  hint?: string;
 }) =>
   [
     `Create a complete Product Spec for "${input.projectName}".`,
@@ -392,6 +402,13 @@ export const buildProductSpecPrompt = (input: {
     "Do not wrap the JSON in code fences.",
     "",
     productSpecPrompt,
+    ...(input.hint
+      ? [
+          "",
+          "## Important guidance for this attempt",
+          input.hint,
+        ]
+      : []),
     "",
     "I will now provide the product information.",
     "",
@@ -426,6 +443,32 @@ export const buildProductSpecReviewPrompt = (input: {
     input.draftMarkdown,
   ].join("\n");
 
+export const buildProductSpecQualityCheckPrompt = (input: {
+  projectName: string;
+  draftTitle: string;
+  draftMarkdown: string;
+}) =>
+  [
+    `You are reviewing a generated Product Spec for the project "${input.projectName}".`,
+    "Your job is to detect significant quality failures only — not minor wording issues.",
+    "",
+    'Return valid JSON with exactly two top-level keys: "hasSignificantIssues" (boolean) and "hint" (string).',
+    'Set "hasSignificantIssues" to true only when the document has a critical problem, such as:',
+    `- The content is not a product spec at all (e.g. a job posting, article, legal document, or other unrelated content)`,
+    `- The content is for a completely different product or domain, with no meaningful alignment to "${input.projectName}"`,
+    "- The content is almost entirely placeholder or template text with no real specification",
+    'When "hasSignificantIssues" is true, set "hint" to a concise description of the specific problem found, suitable for guiding a regeneration attempt.',
+    'When "hasSignificantIssues" is false, set "hint" to an empty string.',
+    "Do not flag minor gaps, stylistic issues, or incomplete sections — those are handled in a separate review pass.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Product Spec title:",
+    input.draftTitle,
+    "",
+    "Product Spec markdown:",
+    input.draftMarkdown,
+  ].join("\n");
+
 export const buildUserFlowPrompt = (input: {
   projectName: string;
   sourceMaterial: string;
@@ -435,10 +478,11 @@ export const buildUserFlowPrompt = (input: {
     qualityCharter,
     "",
     "Task:",
-    `Generate a broad first-pass set of user flows for "${input.projectName}".`,
+    `Generate a prioritised set of user flows for "${input.projectName}".`,
     'Return valid JSON as an array of objects with these keys: "title", "userStory", "entryPoint", "endState", "flowSteps", "coverageTags", "acceptanceCriteria", and "doneCriteriaRefs".',
     'Each "flowSteps" value must be an array of plain strings only. Do not return step objects, numbered objects, or nested structures.',
-    "Produce a diverse and extensive set of flows, not slight variations of the same journey.",
+    "Cover the core product journey, key supporting paths, and critical failure states. Prefer well-specified flows over volume.",
+    "Aim for the minimum set needed to inform milestone planning — typically 10 to 20 flows for a focused web or mobile app. Only exceed that range if the product genuinely requires more distinct journeys.",
     "Include the most important onboarding, happy-path, supporting, operational, and edge/failure journeys that are genuinely relevant to the product.",
     "Each flow must be specific, realistic, and distinct.",
     "Do not wrap the JSON in code fences.",
@@ -727,17 +771,71 @@ export const buildMilestoneDesignPrompt = (input: {
   }>;
   uxSpec: string;
   technicalSpec: string;
+  hint?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Create a milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "The markdown must be a polished planning artifact suitable for implementation sequencing and milestone review.",
-    "Use these section headings in this exact order: Milestone Objective, Included User Flows, Scope Boundaries, Delivery Shape, Dependencies and Sequencing, Risks and Open Questions, Exit Criteria.",
-    "In Delivery Shape, explicitly call out the cohesive feature-sized capability groupings for this milestone, any cross-cutting work that should stay grouped into one feature, and any work that must not be split into task-sized features.",
+    `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
+    "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens.",
+    'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.',
+    'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
+    "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
+    "Use stable kebab-case delivery group keys. Every named screen and owned responsibility must belong to exactly one delivery group.",
+    "dependenciesAndSequencing must be a non-empty array. Each item must contain: phase, deliveryGroupKeys, and notes.",
+    "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
+    "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
     "Do not wrap the JSON in code fences.",
+    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        includedUserFlows: [
+          {
+            title: "Linked flow title",
+            summary: "Short summary.",
+            steps: ["User opens signup", "System creates account"],
+            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
+            screens: ["signup-page"],
+          },
+        ],
+        scopeBoundaries: {
+          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
+          outOfScope: ["Password reset"],
+        },
+        deliveryGroups: [
+          {
+            key: "auth-backend",
+            title: "Authentication Backend",
+            summary: "Owns auth APIs.",
+            ownedScreens: [],
+            ownedResponsibilities: ["Create account endpoint"],
+            dependsOn: [],
+            mustStayTogether: true,
+            mustNotSplit: false,
+          },
+        ],
+        exitCriteria: [
+          {
+            criterion: "Signup API stores a session.",
+            deliveryGroupKey: "auth-backend",
+            screens: [],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -752,7 +850,7 @@ export const buildMilestoneDesignPrompt = (input: {
     input.technicalSpec,
   ].join("\n");
 
-export const buildMilestoneDesignReviewPrompt = (input: {
+export const buildMilestoneDesignRepairPrompt = (input: {
   projectName: string;
   milestoneTitle: string;
   milestoneSummary: string;
@@ -764,19 +862,68 @@ export const buildMilestoneDesignReviewPrompt = (input: {
   }>;
   uxSpec: string;
   technicalSpec: string;
-  draftTitle: string;
-  draftMarkdown: string;
+  issues: string[];
+  draftJson: string;
+  hint?: string;
 }) =>
   [
     qualityCharter,
     "",
     "Task:",
-    `Review and tighten the milestone design document for "${input.milestoneTitle}" in "${input.projectName}".`,
-    'Return valid JSON with exactly two string keys: "title" and "markdown".',
-    "Preserve the same milestone scope and structure, but improve feature-shaping clarity, coverage, and internal consistency.",
-    "Ensure Delivery Shape clearly defines feature-sized capability groupings, grouped cross-cutting work, and boundaries that prevent task-sized feature fragmentation.",
+    `Repair the structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
+    "Preserve the milestone scope while resolving the validator issues below into one consistent ownership model.",
+    "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
     "Do not wrap the JSON in code fences.",
+    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        includedUserFlows: [
+          {
+            title: "Linked flow title",
+            summary: "Short summary.",
+            steps: ["User opens signup", "System creates account"],
+            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
+            screens: ["signup-page"],
+          },
+        ],
+        scopeBoundaries: {
+          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
+          outOfScope: ["Password reset"],
+        },
+        deliveryGroups: [
+          {
+            key: "auth-backend",
+            title: "Authentication Backend",
+            summary: "Owns auth APIs.",
+            ownedScreens: [],
+            ownedResponsibilities: ["Create account endpoint"],
+            dependsOn: [],
+            mustStayTogether: true,
+            mustNotSplit: false,
+          },
+        ],
+        exitCriteria: [
+          {
+            criterion: "Signup API stores a session.",
+            deliveryGroupKey: "auth-backend",
+            screens: [],
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -790,11 +937,138 @@ export const buildMilestoneDesignReviewPrompt = (input: {
     "Approved Technical Spec:",
     input.technicalSpec,
     "",
-    "First-pass milestone design title:",
-    input.draftTitle,
+    "Validator issues:",
+    JSON.stringify(input.issues, null, 2),
     "",
-    "First-pass milestone design markdown:",
-    input.draftMarkdown,
+    "Previous structured milestone design draft:",
+    input.draftJson,
+  ].join("\n");
+
+export const buildMilestoneDesignRisksPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  validatedDesignJson: string;
+  hint?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `List the risks and open questions for the validated milestone design "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "risksAndOpenQuestions".',
+    "risksAndOpenQuestions may be an empty array.",
+    'Each item must be either a plain string or an object with a concise description/question plus optional mitigation. Allowed object fields: "risk", "question", "description", "mitigation", and "type".',
+    "Keep the list specific to the validated milestone design. Do not restate scope, user flows, or delivery groups unless needed to describe a risk or open question.",
+    "Do not invent future-milestone scope.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        risksAndOpenQuestions: [
+          {
+            risk: "Email delivery may delay verification links.",
+            mitigation: "Use a transactional provider with retry and delivery monitoring.",
+          },
+          {
+            type: "open_question",
+            description: "Should session expiry be fixed or sliding within this milestone?",
+          },
+          "Risk: Password reset email copy may need legal review.",
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Validated milestone design draft:",
+    input.validatedDesignJson,
+  ].join("\n");
+
+export const buildMilestoneDesignRisksRepairPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  validatedDesignJson: string;
+  issues: string[];
+  draftJson: string;
+  hint?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Repair the risks and open questions for the validated milestone design "${input.milestoneTitle}" in "${input.projectName}".`,
+    'Return valid JSON with exactly one top-level key: "risksAndOpenQuestions".',
+    "Preserve the validated milestone scope. Only repair the risks/open-questions payload.",
+    'Each item must be either a plain string or an object with a concise description/question plus optional mitigation. Allowed object fields: "risk", "question", "description", "mitigation", and "type".',
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Example JSON fragment:",
+    JSON.stringify(
+      {
+        risksAndOpenQuestions: [
+          {
+            risk: "Image uploads may fail on poor mobile connections.",
+            mitigation: "Show upload progress and allow retry before save.",
+          },
+          {
+            type: "open_question",
+            description: "Should image compression happen on device or on the server?",
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    ...(input.hint?.trim()
+      ? [
+          "",
+          "Repair guidance:",
+          input.hint.trim(),
+        ]
+      : []),
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Validated milestone design draft:",
+    input.validatedDesignJson,
+    "",
+    "Validator issues:",
+    JSON.stringify(input.issues, null, 2),
+    "",
+    "Previous risks/open-questions draft:",
+    input.draftJson,
   ].join("\n");
 
 export const buildMilestoneFeatureSetPrompt = (input: {
@@ -839,6 +1113,9 @@ export const buildMilestoneFeatureSetPrompt = (input: {
     "Build on work already planned in earlier or parallel milestones instead of recreating it.",
     "Do not repeat or lightly rename an existing feature from any milestone.",
     "Prefer the smallest set of coherent features that fully covers the milestone without overlap.",
+    "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard boundary constraints.",
+    "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one feature in the output.",
+    "Do not assign a responsibility to one feature while another feature explicitly says that responsibility is out of scope.",
     "If documentation, architecture follow-up, or another cross-cutting concern belongs together for this milestone, keep it in one shared feature instead of splitting it across multiple small features.",
     "Order the proposed features so they can be implemented in a sensible sequence within the milestone.",
     "Prefer concrete vertical slices over vague epics.",
@@ -907,6 +1184,8 @@ export const buildMilestoneFeatureSetReviewPrompt = (input: {
     "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Review the full set as a whole. Merge task-sized or overlapping features, close obvious milestone coverage gaps, and keep sibling features non-overlapping.",
+    "Cross-check the set against the milestone design document's named flow steps, screens, and Delivery Shape groups before finalizing.",
+    "Remove or rewrite any feature boundary that contradicts the milestone design document's ownership model.",
     "Prefer fewer, feature-sized items over many tiny items.",
     "Keep the result scoped only to the selected milestone.",
     "Do not wrap the JSON in code fences.",
@@ -985,6 +1264,8 @@ export const buildFeatureProductSpecPrompt = (input: {
     "The markdown must be detailed, implementation-oriented, and scoped only to the feature described below.",
     "The requirements object must contain boolean keys: uxRequired, techRequired, userDocsRequired, archDocsRequired.",
     "Use the milestone design doc and sibling feature list to keep ownership boundaries clear. Do not narrow the feature into a task-sized slice or expand it into neighboring feature scope.",
+    "If this feature's title contains structural terms such as 'Foundation', 'Core', 'Shell', 'Scaffold', 'Bootstrap', or 'Setup', describe only the minimum owned capability required to support the milestone. Defer cross-cutting concerns such as offline handling, real-time sync, notification integration, or sibling-feature entry points unless the milestone design document explicitly places them here.",
+    "Specify the primary success path in full before describing secondary branches, error states, or optional variants.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1082,6 +1363,8 @@ export const buildFeatureUxSpecPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project UX Spec as the UX-system reference.",
     "Use the milestone design doc and sibling feature summaries to avoid drifting into neighboring feature scope.",
+    "Focus exclusively on interaction design, layout, state transitions, copy, and accessibility decisions that are not already resolved in the feature Product Spec.",
+    "Do not re-state product behavior, data models, API contracts, sync protocols, or backend rules already settled upstream. If a decision is already made in the Product Spec, reference it briefly rather than restating it at length.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1122,6 +1405,9 @@ export const buildFeatureTechSpecPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Use the approved feature Product Spec as the main scope definition and the approved project Technical Spec as the technical-system reference.",
     "Use the milestone design doc and sibling feature summaries to keep the implementation boundary clear.",
+    "Focus exclusively on implementation decisions, data contracts, interface definitions, persistence requirements, and technical constraints that are not already resolved in the feature Product Spec.",
+    "Do not re-state product behavior or UX decisions already settled upstream. If a decision is already made, reference it briefly rather than restating it at length.",
+    "Do not include monitoring plans, rollout strategies, post-MVP roadmaps, enhancement ideas, or operational procedures unless they are directly required for the current feature implementation.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1162,6 +1448,8 @@ export const buildFeatureUserDocsPrompt = (input: {
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
     "Focus on user-facing behavior, setup expectations, and walkthrough guidance rather than implementation details.",
     "Keep documentation ownership aligned to this feature only. If related documentation belongs to a sibling feature, do not absorb it here.",
+    "Document only stable, user-visible behavior that the product is ready to support publicly. Do not document implementation details, cryptographic specifics, backend timing guarantees, offline queueing mechanics, or speculative roadmap language.",
+    "Do not describe sibling or future features unless they are already approved and directly required for a user to understand this feature.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1199,8 +1487,9 @@ export const buildFeatureArchDocsPrompt = (input: {
     "Task:",
     `Generate internal architecture documentation for "${input.featureTitle}".`,
     "Return valid JSON with non-empty \"title\" and \"markdown\" keys.",
-    "Focus on architecture rationale, responsibilities, data flow, interfaces, and constraints.",
+    "Focus on component boundaries, state ownership, interface contracts, data flow, and non-negotiable constraints that other engineers working in this area need to know.",
     "Keep the document scoped to this feature's owned architecture. Use the milestone design doc and sibling feature summaries to avoid duplicating another feature's architecture notes.",
+    "Do not include speculative extension points, future considerations, observability planning, or operational rollout detail unless explicitly required by the upstream specs.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1244,6 +1533,7 @@ export const buildFeatureWorkstreamReviewPrompt = (input: {
     'Return valid JSON with non-empty "title" and "markdown" keys.',
     "Preserve the same feature scope while improving completeness, consistency, and ownership boundaries.",
     "Do not widen the scope into sibling features and do not collapse it into a task-sized fragment.",
+    "If the draft re-states behavior already settled in the upstream feature Product Spec without adding discipline-specific decisions, revise it to focus only on what this workstream uniquely contributes.",
     "Do not wrap the JSON in code fences.",
     "",
     ...renderRepairHint(input.hint),
@@ -1355,6 +1645,9 @@ export const buildRewriteMilestoneFeatureSetPrompt = (input: {
     "The output is the full replacement feature set for this milestone, not just the incremental fix.",
     "Rewrite sibling boundaries as needed so cross-feature interaction issues are handled inside the feature set itself.",
     "Prefer fewer, coherent feature-sized items over task-sized fragments.",
+    "Resolve the named issues into one consistent ownership model across all features; do not restate the ambiguity in the rewritten set.",
+    "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard constraints while rewriting.",
+    "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one rewritten feature.",
     "Keep the result scoped only to the selected milestone and avoid duplicating features from other milestones.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1434,6 +1727,7 @@ export const buildRewriteMilestoneFeatureSetReviewPrompt = (input: {
     "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Preserve the intended full-set rewrite, close the named gap cleanly, and keep sibling feature ownership clear.",
+    "Ensure the final rewrite uses one consistent interpretation of the milestone design document's flow order, screen ownership, and Delivery Shape boundaries.",
     "Merge overlapping or task-sized items back into coherent features.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -1558,6 +1852,7 @@ export const buildFeatureTaskListPrompt = (input: {
     `Generate an ordered implementation task list for "${input.feature.title}".`,
     "Return valid JSON as a non-empty array of objects.",
     "Each object must have: \"title\", \"description\", \"instructions\" (optional), \"acceptanceCriteria\" (array).",
+    "Apply the clarification answers as narrowing constraints. If an answer confirms a simpler approach, eliminates a branch, or defers optional behavior, remove or reduce the corresponding task scope. The task list should be shorter and more focused after clarifications than a naive reading of the feature specs alone would produce.",
     "Order tasks in implementation sequence: setup, core logic, integration, testing.",
     "Prefer the smallest set of coherent implementation phases that can deliver this feature safely. Do not split the work into micro-tasks just because the steps are individually small.",
     "Merge tightly related coding, testing, and documentation work when they belong to the same implementation phase.",

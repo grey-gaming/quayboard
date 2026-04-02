@@ -105,6 +105,13 @@ export const AutoAdvanceBanner = ({
               follow-up.
             </p>
           ) : null}
+          {session?.pausedReason === "needs_human" &&
+          session.currentStep === "milestone_design_generate" ? (
+            <p className="text-xs text-warning">
+              Auto-advance exhausted milestone design retries. Review the milestone inputs or change
+              the configured model before rerunning this step.
+            </p>
+          ) : null}
         </div>
       )}
     </div>

@@ -1055,6 +1055,11 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
+      })
+      .mockResolvedValueOnce({
         content: JSON.stringify({
           title: "Product Spec",
           markdown: "# Product Spec\n\n## Assumptions and Proposed Defaults\n\n- Default clarified.",
@@ -1125,14 +1130,18 @@ describe("job runner service", () => {
 
     await service.run("job-product-spec");
 
-    expect(generate).toHaveBeenCalledTimes(2);
-    expect(db.insert).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(db.insert).toHaveBeenCalledTimes(3);
     expect(db.values).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ templateId: "GenerateProductSpec" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       2,
+      expect.objectContaining({ templateId: "GenerateProductSpecQualityCheck" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
     );
     expect(createVersion).toHaveBeenCalledWith(
@@ -1159,6 +1168,11 @@ describe("job runner service", () => {
           '```json\n{"title":"Product Spec","markdown":"# Product Spec\\n\\n## Specification Gaps\\n\\n- Clarify defaults."}\n```',
         promptTokens: 10,
         completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -1231,13 +1245,17 @@ describe("job runner service", () => {
 
     await service.run("job-product-spec");
 
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
     expect(db.values).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ templateId: "RegenerateProductSpec" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       2,
+      expect.objectContaining({ templateId: "RegenerateProductSpecQualityCheck" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      3,
       expect.objectContaining({ templateId: "RegenerateProductSpecReview" }),
     );
     expect(createVersion).toHaveBeenCalledWith(
@@ -1266,6 +1284,11 @@ describe("job runner service", () => {
         }),
         promptTokens: 10,
         completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ hasSignificantIssues: false, hint: "" }),
+        promptTokens: 8,
+        completionTokens: 6,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -1356,14 +1379,18 @@ describe("job runner service", () => {
       }),
     });
 
-    expect(generate).toHaveBeenCalledTimes(3);
-    expect(db.insert).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(4);
+    expect(db.insert).toHaveBeenCalledTimes(4);
     expect(db.values).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+      expect.objectContaining({ templateId: "GenerateProductSpecQualityCheck" }),
     );
     expect(db.values).toHaveBeenNthCalledWith(
       3,
+      expect.objectContaining({ templateId: "GenerateProductSpecReview" }),
+    );
+    expect(db.values).toHaveBeenNthCalledWith(
+      4,
       expect.objectContaining({ templateId: "GenerateProductSpecReviewRepair" }),
     );
     expect(createVersion).not.toHaveBeenCalled();
@@ -1958,6 +1985,1369 @@ describe("job runner service", () => {
     expect(markSucceeded).toHaveBeenCalledWith("job-generate-use-cases", {
       createdCount: 1,
     });
+  });
+
+  it("repairs milestone design contradictions before persisting the design doc", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page", "Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: [
+            {
+              risk: "Dashboard handoff may confuse new users.",
+              mitigation: "Show a short success state before redirecting.",
+            },
+          ],
+        }),
+        promptTokens: 12,
+        completionTokens: 14,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestoneId: "milestone-id",
+        title: "Milestone Design",
+        markdown: expect.stringContaining("## Included User Flows"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("### Account Shell (account-shell)"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining(
+          "Risk: Dashboard handoff may confuse new users. Mitigation: Show a short success state before redirecting.",
+        ),
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
+  it("normalizes recoverable milestone design shapes before persisting the design doc", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: [
+                {
+                  action: "Open landing page",
+                  systemResponse: "Landing page renders.",
+                },
+                {
+                  action: "Create account",
+                  outcome: "Dashboard becomes available.",
+                },
+              ],
+              deliveryGroupKeys: ["account-frontend", "account-backend"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-backend" }],
+            outOfScope: [{ item: "Password reset" }],
+          },
+          deliveryGroups: [
+            {
+              key: "account-frontend",
+              title: "Account Frontend",
+              summary: "Owns the landing page shell.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Landing page shell"],
+              dependsOn: ["account-backend"],
+              mustStayTogether: false,
+              mustNotSplit: false,
+            },
+            {
+              key: "account-backend",
+              title: "Account Backend",
+              summary: "Owns account creation and session issuance.",
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: true,
+              mustNotSplit: false,
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-frontend", "account-backend"],
+              notes: "Stand up account creation first.",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "Account creation stores a session.",
+              deliveryGroupKey: "account-backend",
+              screens: [],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: [
+            {
+              type: "risk",
+              description: "First-session completion may drop if redirect timing feels abrupt.",
+              mitigation: "Show confirmation before returning to the dashboard.",
+            },
+            {
+              type: "open_question",
+              description: "Should password rules be visible before submission?",
+            },
+          ],
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("- Open landing page Outcome: Landing page renders."),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("Out of scope:\n- Password reset"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("Keep together:\n- Entire delivery group"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining(
+          "Risk: First-session completion may drop if redirect timing feels abrupt. Mitigation: Show confirmation before returning to the dashboard.",
+        ),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining(
+          "Open question: Should password rules be visible before submission?",
+        ),
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
+  it("runs a milestone-specific repair pass when JSON repair still leaves invalid milestone design shapes", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: [{ action: "Open landing page" }],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: ["Password reset"],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: "Account creation",
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: [{}],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: ["Password reset"],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: "Account creation",
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: ["Password reset"],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 12,
+        completionTokens: 14,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: [
+            "Risk: The onboarding copy may need localization review.",
+          ],
+        }),
+        promptTokens: 13,
+        completionTokens: 15,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(4);
+    expect(createDesignDocVersion).toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
+  it("fails closed when milestone design consistency remains unresolved after retry", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Dashboard"],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Dashboard"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "unknown-group" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          risksAndOpenQuestions: [],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Dashboard"],
+            },
+          ],
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-generate-design")).rejects.toMatchObject({
+      jobError: expect.objectContaining({
+        code: "milestone_design_conflict_unresolved",
+        retryable: true,
+      }),
+    });
+    expect(createDesignDocVersion).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("repairs milestone risks separately after the core design succeeds", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: {
+            risk: "wrong-shape",
+          },
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: [
+            {
+              risk: "Users may abandon the flow if the password form feels too long.",
+              mitigation: "Limit required fields and keep validation inline.",
+            },
+          ],
+        }),
+        promptTokens: 12,
+        completionTokens: 14,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining(
+          "Risk: Users may abandon the flow if the password form feels too long. Mitigation: Limit required fields and keep validation inline.",
+        ),
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
+  it("persists the core milestone design when risks stay invalid after repair", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Foundations",
+      summary: "First releasable slice.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Onboard user",
+              userStory: "As a new user, I want a coherent first-use journey.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Ship the first coherent onboarding slice.",
+          includedUserFlows: [
+            {
+              title: "Onboard user",
+              summary: "Guide a new user into the dashboard.",
+              steps: ["Open landing page", "Create account", "Reach dashboard"],
+              deliveryGroupKeys: ["account-shell"],
+              screens: ["Landing Page"],
+            },
+          ],
+          scopeBoundaries: {
+            inScope: [{ item: "Account creation", deliveryGroupKey: "account-shell" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "account-shell",
+              title: "Account Shell",
+              summary: "Owns onboarding routing and dashboard handoff.",
+              ownedScreens: ["Landing Page"],
+              ownedResponsibilities: ["Account creation"],
+              dependsOn: [],
+              mustStayTogether: [],
+              mustNotSplit: [],
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              phase: "Phase 1",
+              deliveryGroupKeys: ["account-shell"],
+              notes: "Stand up the onboarding shell first.",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "A new user can create an account from the landing page.",
+              deliveryGroupKey: "account-shell",
+              screens: ["Landing Page"],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: {
+            risk: "wrong-shape",
+          },
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: {
+            type: "risk",
+          },
+        }),
+        promptTokens: 12,
+        completionTokens: 14,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          risksAndOpenQuestions: [
+            {
+              type: "risk",
+            },
+          ],
+        }),
+        promptTokens: 13,
+        completionTokens: 15,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Foundations",
+          summary: "First releasable slice.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(4);
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("## Risks and Open Questions\n- None identified."),
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
   });
 
   it("builds milestone feature generation prompts from approved planning context", async () => {

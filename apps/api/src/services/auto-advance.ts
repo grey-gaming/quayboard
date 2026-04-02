@@ -41,6 +41,7 @@ type AutoAdvanceJobInputs = Record<string, unknown> & {
 type JobFailurePayload = {
   message?: string;
   code?: string;
+  hint?: string;
   retryable?: boolean;
 };
 
@@ -69,6 +70,7 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   pausedReason: row.pausedReason ?? null,
   autoApproveWhenClear: row.autoApproveWhenClear,
   skipReviewSteps: row.skipReviewSteps,
+  skipHumanReview: row.skipHumanReview,
   autoRepairMilestoneCoverage: row.autoRepairMilestoneCoverage,
   creativityMode: (row.creativityMode ?? "balanced") as AutoAdvanceSession["creativityMode"],
   retryCount: row.retryCount ?? 0,
@@ -119,6 +121,7 @@ const isRetryableJobFailure = (error: unknown) => {
     message.includes("econnreset") ||
     message.includes("enotfound") ||
     message.includes("econnrefused") ||
+    message.includes("500") ||
     message.includes("503") ||
     message.includes("502") ||
     message.includes("429")
@@ -827,8 +830,28 @@ export const createAutoAdvanceService = (
     stepHref: string,
     session: AutoAdvanceSessionRow,
   ): Promise<boolean> => {
-    // skipReviewSteps: auto-select the recommended option and auto-accept decision tiles
+    const featureApprovalKinds: Array<{
+      key: string;
+      track: "product" | "ux" | "tech" | "userDocs" | "archDocs";
+      kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
+    }> = [
+      { key: "feature_product_approval", track: "product", kind: "product" },
+      { key: "feature_ux_approval", track: "ux", kind: "ux" },
+      { key: "feature_tech_approval", track: "tech", kind: "tech" },
+      { key: "feature_user_docs_approval", track: "userDocs", kind: "user_docs" },
+      { key: "feature_arch_docs_approval", track: "archDocs", kind: "arch_docs" },
+    ];
+
+    // skipReviewSteps: auto-select decision cards and auto-accept review gates.
     if (session.skipReviewSteps) {
+      if (stepKey === "overview_approval") {
+        await onePagerService.approveCanonical(ownerUserId, projectId);
+        return true;
+      }
+      if (stepKey === "product_spec_approval") {
+        await productSpecService.approveCanonical(ownerUserId, projectId);
+        return true;
+      }
       if (stepKey === "ux_decisions_select") {
         await autoSelectDecisionCards(ownerUserId, projectId, "ux");
         return true;
@@ -837,6 +860,13 @@ export const createAutoAdvanceService = (
         await blueprintService.acceptDecisionDeck(ownerUserId, projectId, "ux");
         return true;
       }
+      if (stepKey === "ux_spec_approval") {
+        const blueprint = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "ux");
+        if (blueprint) {
+          await artifactApprovalService.approve(ownerUserId, projectId, "blueprint_ux", blueprint.id);
+          return true;
+        }
+      }
       if (stepKey === "tech_decisions_select") {
         await autoSelectDecisionCards(ownerUserId, projectId, "tech");
         return true;
@@ -844,6 +874,56 @@ export const createAutoAdvanceService = (
       if (stepKey === "tech_decisions_accept") {
         await blueprintService.acceptDecisionDeck(ownerUserId, projectId, "tech");
         return true;
+      }
+      if (stepKey === "tech_spec_approval") {
+        const blueprint = await blueprintService.getCanonicalByKind(ownerUserId, projectId, "tech");
+        if (blueprint) {
+          await artifactApprovalService.approve(ownerUserId, projectId, "blueprint_tech", blueprint.id);
+          return true;
+        }
+      }
+      if (stepKey === "user_flows_approve") {
+        const flowList = await userFlowService.list(ownerUserId, projectId);
+        if (flowList.userFlows.length > 0) {
+          await userFlowService.approve(ownerUserId, projectId, {
+            acceptedWarnings: flowList.coverage.warnings,
+          });
+          return true;
+        }
+      }
+      if (stepKey === "milestones_approve") {
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "draft") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "approve" });
+          return true;
+        }
+        return false;
+      }
+      if (stepKey === "milestone_complete") {
+        const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+        if (activeMilestone?.status === "approved") {
+          await milestoneService.transition(ownerUserId, activeMilestone.id, { action: "complete" });
+          return true;
+        }
+        return false;
+      }
+      for (const entry of featureApprovalKinds) {
+        if (stepKey === entry.key) {
+          const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);
+          const featureId = featureIdMatch?.[1];
+          if (!featureId) {
+            console.warn(`[auto-advance] Could not extract featureId from href: ${stepHref}`);
+            break;
+          }
+          const tracks = await featureWorkstreamService.getTracks(ownerUserId, featureId);
+          const trackData = tracks.tracks[entry.track];
+          const headRevisionId = trackData.headRevision?.id;
+          if (headRevisionId && trackData.status !== "approved") {
+            await featureWorkstreamService.approveRevision(ownerUserId, featureId, entry.kind, headRevisionId);
+            return true;
+          }
+          break;
+        }
       }
     }
 
@@ -896,17 +976,6 @@ export const createAutoAdvanceService = (
         }
         return false;
       }
-      const featureApprovalKinds: Array<{
-        key: string;
-        track: "product" | "ux" | "tech" | "userDocs" | "archDocs";
-        kind: "product" | "ux" | "tech" | "user_docs" | "arch_docs";
-      }> = [
-        { key: "feature_product_approval", track: "product", kind: "product" },
-        { key: "feature_ux_approval", track: "ux", kind: "ux" },
-        { key: "feature_tech_approval", track: "tech", kind: "tech" },
-        { key: "feature_user_docs_approval", track: "userDocs", kind: "user_docs" },
-        { key: "feature_arch_docs_approval", track: "archDocs", kind: "arch_docs" },
-      ];
       for (const entry of featureApprovalKinds) {
         if (stepKey === entry.key) {
           const featureIdMatch = stepHref.match(/\/features\/([^/]+)/);
@@ -1069,6 +1138,33 @@ export const createAutoAdvanceService = (
               .where(eq(autoAdvanceSessionsTable.id, sessionId));
             continue;
           }
+
+          if (
+            session.skipHumanReview &&
+            (nextAction.key === "milestone_scope_resolve" ||
+              nextAction.key === "milestone_reconciliation_resolve" ||
+              nextAction.key === "milestone_delivery_resolve" ||
+              nextAction.key === "milestone_map_resolve")
+          ) {
+            const activeMilestone = await milestoneService.getActiveMilestone(ownerUserId, projectId);
+            if (activeMilestone) {
+              if (
+                nextAction.key === "milestone_scope_resolve" ||
+                nextAction.key === "milestone_reconciliation_resolve"
+              ) {
+                await milestoneService.invalidateScopeReview(activeMilestone.id);
+              } else if (nextAction.key === "milestone_delivery_resolve") {
+                await milestoneService.invalidateDeliveryReview(activeMilestone.id);
+              } else {
+                await milestoneService.invalidateMapReview(projectId);
+              }
+            }
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({ currentStep: nextAction.key, milestoneRepairCount: 0, updatedAt: new Date() })
+              .where(eq(autoAdvanceSessionsTable.id, sessionId));
+            continue;
+          }
         }
 
         await db
@@ -1198,6 +1294,7 @@ export const createAutoAdvanceService = (
             pausedReason: null,
             autoApproveWhenClear: opts.autoApproveWhenClear ?? existing.autoApproveWhenClear,
             skipReviewSteps: opts.skipReviewSteps ?? existing.skipReviewSteps,
+            skipHumanReview: opts.skipHumanReview ?? existing.skipHumanReview,
             autoRepairMilestoneCoverage:
               opts.autoRepairMilestoneCoverage ??
               existing.autoRepairMilestoneCoverage,
@@ -1229,6 +1326,7 @@ export const createAutoAdvanceService = (
           status: "running",
           autoApproveWhenClear: opts.autoApproveWhenClear ?? false,
           skipReviewSteps: opts.skipReviewSteps ?? false,
+          skipHumanReview: opts.skipHumanReview ?? false,
           autoRepairMilestoneCoverage:
             opts.autoRepairMilestoneCoverage ?? false,
           creativityMode: opts.creativityMode ?? "balanced",
@@ -1395,7 +1493,8 @@ export const createAutoAdvanceService = (
       if (
         (session.currentStep !== "milestone_reconciliation_resolve" &&
           session.currentStep !== "milestone_scope_resolve" &&
-          session.currentStep !== "milestone_delivery_resolve") ||
+          session.currentStep !== "milestone_delivery_resolve" &&
+          session.currentStep !== "milestone_delivery_review") ||
         (session.pausedReason !== "milestone_repair_limit_reached" &&
           session.pausedReason !== "needs_human")
       ) {
@@ -1490,6 +1589,14 @@ export const createAutoAdvanceService = (
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
         const shouldRetry = isRetryableJobFailure(job.error);
+        const errorCode =
+          job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).code === "string"
+            ? (job.error as JobFailurePayload).code!
+            : "";
+        const retryHint =
+          job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).hint === "string"
+            ? (job.error as JobFailurePayload).hint!.trim()
+            : "";
 
         if (shouldRetry && nextRetryCount < MAX_RETRIES) {
           // Retry the same failed job instead of inferring the next step from current state.
@@ -1509,7 +1616,10 @@ export const createAutoAdvanceService = (
             projectId: job.projectId,
             type: job.type,
             inputs: buildAutoAdvanceInputs(
-              stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+              {
+                ...stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+                ...(retryHint.length > 0 ? { hint: retryHint } : {}),
+              },
               session.id,
               autoAdvanceMeta.batchToken,
               nextRetryCount,
@@ -1518,11 +1628,17 @@ export const createAutoAdvanceService = (
           await publishSessionUpdate(project.ownerUserId, job.projectId);
         } else {
           // Non-retryable failure or retries exhausted — pause and reset count for next run.
+          const pausedReason =
+            job.type === "GenerateMilestoneDesign" &&
+            shouldRetry &&
+            errorCode.startsWith("llm_output_")
+              ? "needs_human"
+              : "job_failed";
           await db
             .update(autoAdvanceSessionsTable)
             .set({
               status: "paused",
-              pausedReason: "job_failed",
+              pausedReason,
               retryCount: 0,
               pausedAt: new Date(),
               updatedAt: new Date(),
@@ -1696,44 +1812,60 @@ export const createAutoAdvanceService = (
             issue.action === "rewrite_feature_set" || issue.action === "create_catch_up_feature",
         );
 
-        if (session.autoRepairMilestoneCoverage && nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS) {
+        if (
+          session.autoRepairMilestoneCoverage &&
+          hasStructuralIssues &&
+          nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
+        ) {
           await recordScopeReviewResult({
             milestoneId,
             issues: output.issues,
             jobId: job.id,
-            status: hasStructuralIssues ? "failed_first_pass" : "failed_needs_human",
+            status: "failed_first_pass",
           });
 
-          if (job.type === "ReviewMilestoneCoverage" && !hasStructuralIssues) {
-            await queueRepairJob({
-              ownerUserId: project.ownerUserId,
-              projectId: job.projectId,
-              sessionId: session.id,
-              repairCount: nextRepairCount,
-              currentStep: "milestone_reconciliation_resolve",
-              jobType: "ResolveMilestoneCoverageIssues",
-              jobInputs: {
-                milestoneId,
-                issues: output.issues,
-              },
-            });
-          } else {
-            await queueRepairJob({
-              ownerUserId: project.ownerUserId,
-              projectId: job.projectId,
-              sessionId: session.id,
-              repairCount: nextRepairCount,
-              currentStep:
-                job.type === "ReviewMilestoneCoverage"
-                  ? "milestone_reconciliation_resolve"
-                  : "milestone_scope_resolve",
-              jobType: "RewriteMilestoneFeatureSet",
-              jobInputs: {
-                milestoneId,
-                issues: output.issues,
-              },
-            });
-          }
+          await queueRepairJob({
+            ownerUserId: project.ownerUserId,
+            projectId: job.projectId,
+            sessionId: session.id,
+            repairCount: nextRepairCount,
+            currentStep:
+              job.type === "ReviewMilestoneCoverage"
+                ? "milestone_reconciliation_resolve"
+                : "milestone_scope_resolve",
+            jobType: "RewriteMilestoneFeatureSet",
+            jobInputs: {
+              milestoneId,
+              issues: output.issues,
+            },
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (
+          session.autoRepairMilestoneCoverage &&
+          job.type === "ReviewMilestoneCoverage" &&
+          nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
+        ) {
+          await recordScopeReviewResult({
+            milestoneId,
+            issues: output.issues,
+            jobId: job.id,
+            status: "failed_needs_human",
+          });
+          await queueRepairJob({
+            ownerUserId: project.ownerUserId,
+            projectId: job.projectId,
+            sessionId: session.id,
+            repairCount: nextRepairCount,
+            currentStep: "milestone_reconciliation_resolve",
+            jobType: "ResolveMilestoneCoverageIssues",
+            jobInputs: {
+              milestoneId,
+              issues: output.issues,
+            },
+          });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
           return;
         }
@@ -1748,7 +1880,9 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({
             status: "paused",
-            pausedReason: session.autoRepairMilestoneCoverage
+            pausedReason:
+              session.autoRepairMilestoneCoverage &&
+              (hasStructuralIssues || job.type === "ReviewMilestoneCoverage")
               ? "milestone_repair_limit_reached"
               : "needs_human",
             pausedAt: new Date(),
@@ -1826,9 +1960,10 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({
             status: "paused",
-            pausedReason: session.autoRepairMilestoneCoverage
-              ? "milestone_repair_limit_reached"
-              : "needs_human",
+            pausedReason:
+              session.autoRepairMilestoneCoverage && hasRepairIssue
+                ? "milestone_repair_limit_reached"
+                : "needs_human",
             pausedAt: new Date(),
             activeBatchToken: null,
             updatedAt: new Date(),
@@ -1892,9 +2027,11 @@ export const createAutoAdvanceService = (
             .update(autoAdvanceSessionsTable)
             .set({
               status: "paused",
-              pausedReason: session.autoRepairMilestoneCoverage
-                ? "milestone_repair_limit_reached"
-                : "needs_human",
+              pausedReason:
+                session.autoRepairMilestoneCoverage &&
+                issues.some((issue) => issue.action === "refresh_artifacts")
+                  ? "milestone_repair_limit_reached"
+                  : "needs_human",
               pausedAt: new Date(),
               activeBatchToken: null,
               updatedAt: new Date(),
