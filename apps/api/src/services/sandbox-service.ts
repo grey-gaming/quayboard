@@ -152,6 +152,59 @@ const toManagedContainer = (record: Record<string, string>): ManagedContainerSum
 const buildAuthenticatedRepoUrl = (repoUrl: string, token: string) =>
   repoUrl.replace("https://github.com/", `https://x-access-token:${token}@github.com/`);
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const sanitizeSecretText = (value: string, secrets: string[]) => {
+  let sanitized = value.replace(
+    /(https:\/\/[^:\s]+:)[^@\s]+@/g,
+    "$1[redacted]@",
+  );
+
+  for (const secret of secrets.filter((entry) => entry.trim().length > 0)) {
+    sanitized = sanitized.replace(new RegExp(escapeRegExp(secret), "g"), "[redacted]");
+  }
+
+  return sanitized;
+};
+
+const sanitizeGitError = (error: unknown, secrets: string[]) => {
+  const message =
+    error instanceof Error
+      ? sanitizeSecretText(error.message, secrets)
+      : sanitizeSecretText(String(error), secrets);
+  const sanitized = new Error(message);
+
+  if (error && typeof error === "object") {
+      const record = error as Record<string, unknown>;
+      for (const key of ["code", "category", "retryable"] as const) {
+        if (key in record) {
+          (sanitized as unknown as Record<string, unknown>)[key] = record[key];
+        }
+      }
+    }
+
+  return sanitized;
+};
+
+const getErrorText = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return String(error);
+  }
+
+  const record = error as Record<string, unknown>;
+  return [record.message, record.stderr, record.stdout]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join("\n");
+};
+
+const isMissingRemoteBranchError = (error: unknown, branch: string) => {
+  const text = getErrorText(error);
+  return (
+    text.includes(`Remote branch ${branch} not found`) ||
+    text.includes(`fatal: Remote branch ${branch} not found in upstream origin`)
+  );
+};
+
 export const createSandboxService = (input: {
   artifactStorageService: ArtifactStorageService;
   contextPackService: ContextPackService;
@@ -833,10 +886,14 @@ export const createSandboxService = (input: {
       await input.executionSettingsService.get(),
     );
     const sandboxConfig = await this.getEffectiveSandboxConfig(run.projectId);
-    const secretEnv = await input.secretService.buildSecretEnvMap(
+    let secretEnv: Record<string, string> = {};
+    let secretsToRedact: string[] = [];
+
+    secretEnv = await input.secretService.buildSecretEnvMap(
       project.ownerUserId,
       run.projectId,
     );
+    secretsToRedact = [secretEnv.GITHUB_PAT ?? ""];
 
     if (!secretEnv.GITHUB_PAT) {
       throw new Error("Sandbox execution requires a GitHub PAT.");
@@ -925,10 +982,11 @@ export const createSandboxService = (input: {
         await this.cloneRepository(repo.repoUrl, repo.defaultBranch ?? "main", secretEnv.GITHUB_PAT, workspaceDir);
       }
 
-      const baseCommitSha = await this.git(
-        ["rev-parse", "HEAD"],
-        workspaceDir,
-      );
+      const baseBranchName =
+        (await this.git(["branch", "--show-current"], workspaceDir).catch(() => "")) ||
+        repo.defaultBranch ||
+        "main";
+      const baseCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
       await this.updateRunState(sandboxRunId, { baseCommitSha });
 
       const tasks = run.taskPlanningSessionId
@@ -1046,12 +1104,14 @@ export const createSandboxService = (input: {
       }
 
       if (run.kind === "verify" && exitCode === 0) {
-        const prUrl = await this.publishPullRequestIfNeeded(
+        const publishResult = await this.publishPullRequestIfNeeded(
           workspaceDir,
           repo,
           secretEnv.GITHUB_PAT,
           run.featureId!,
           sandboxRunId,
+          baseBranchName,
+          baseCommitSha,
         );
         const approvedTechRevision = await input.db.query.featureTechRevisionsTable.findFirst({
           where: eq(featureTechRevisionsTable.featureId, run.featureId!),
@@ -1062,7 +1122,7 @@ export const createSandboxService = (input: {
             project.ownerUserId,
             run.featureId!,
             approvedTechRevision.id,
-            headCommitSha,
+            publishResult.commitSha ?? headCommitSha,
             sandboxRunId,
           );
         }
@@ -1078,15 +1138,18 @@ export const createSandboxService = (input: {
         await this.updateRunState(sandboxRunId, {
           status: "succeeded",
           outcome: "verification_passed",
-          pullRequestUrl: prUrl,
+          headCommitSha: publishResult.commitSha ?? headCommitSha,
+          pullRequestUrl: publishResult.pullRequestUrl,
           completedAt: new Date(),
         });
         await this.appendEvent(
           sandboxRunId,
           "info",
           "verified",
-          prUrl
+          publishResult.pullRequestUrl
             ? "Verification completed and pull request created."
+            : publishResult.bootstrappedDefaultBranch
+              ? "Verification completed and pushed the initial commit to the default branch."
             : "Verification completed with no pull request because the workspace was unchanged.",
         );
         return;
@@ -1103,6 +1166,20 @@ export const createSandboxService = (input: {
         "run_failed",
         `${run.kind} run exited with code ${exitCode}.`,
       );
+    } catch (error) {
+      const sanitizedError = sanitizeGitError(error, secretsToRedact);
+      await this.updateRunState(sandboxRunId, {
+        status: "failed",
+        outcome: run.kind === "verify" ? "verification_failed" : "error",
+        completedAt: new Date(),
+      }).catch(() => undefined);
+      await this.appendEvent(
+        sandboxRunId,
+        "error",
+        "run_failed",
+        sanitizedError.message,
+      ).catch(() => undefined);
+      throw sanitizedError;
     } finally {
       const current = await input.db.query.sandboxRunsTable.findFirst({
         where: eq(sandboxRunsTable.id, sandboxRunId),
@@ -1120,34 +1197,68 @@ export const createSandboxService = (input: {
   },
 
   async cloneRepository(repoUrl: string, defaultBranch: string, token: string, targetPath: string) {
-    await execFileAsync(
-      "git",
-      [
-        "clone",
-        "--depth",
-        "1",
-        "--branch",
-        defaultBranch,
-        buildAuthenticatedRepoUrl(repoUrl, token),
-        targetPath,
-      ],
-      {
+    const authenticatedRepoUrl = buildAuthenticatedRepoUrl(repoUrl, token);
+    try {
+      await execFileAsync(
+        "git",
+        [
+          "clone",
+          "--depth",
+          "1",
+          "--branch",
+          defaultBranch,
+          authenticatedRepoUrl,
+          targetPath,
+        ],
+        {
+          env: {
+            ...process.env,
+            ...gitUserEnv,
+          },
+        },
+      );
+    } catch (error) {
+      if (!isMissingRemoteBranchError(error, defaultBranch)) {
+        throw sanitizeGitError(error, [token]);
+      }
+
+      try {
+        await execFileAsync(
+          "git",
+          ["clone", authenticatedRepoUrl, targetPath],
+          {
+            env: {
+              ...process.env,
+              ...gitUserEnv,
+            },
+          },
+        );
+      } catch (cloneError) {
+        throw sanitizeGitError(cloneError, [token]);
+      }
+
+      const hasHeadCommit = await this.git(["rev-parse", "--verify", "HEAD"], targetPath).catch(
+        () => null,
+      );
+      if (!hasHeadCommit) {
+        await this.git(["symbolic-ref", "HEAD", `refs/heads/${defaultBranch}`], targetPath);
+      }
+    }
+  },
+
+  async git(args: string[], cwd: string, secrets: string[] = []) {
+    let result;
+    try {
+      result = await execFileAsync("git", args, {
+        cwd,
         env: {
           ...process.env,
           ...gitUserEnv,
         },
-      },
-    );
-  },
-
-  async git(args: string[], cwd: string) {
-    const result = await execFileAsync("git", args, {
-      cwd,
-      env: {
-        ...process.env,
-        ...gitUserEnv,
-      },
-    });
+      });
+    } catch (error) {
+      throw sanitizeGitError(error, secrets);
+    }
 
     return result.stdout.trim();
   },
@@ -1215,10 +1326,22 @@ export const createSandboxService = (input: {
     token: string,
     featureId: string,
     sandboxRunId: string,
-  ) {
+    baseBranch: string,
+    baseCommitSha: string | null,
+  ): Promise<{
+    bootstrappedDefaultBranch: boolean;
+    branchName: string | null;
+    commitSha: string | null;
+    pullRequestUrl: string | null;
+  }> {
     const dirty = await this.hasWorkingTreeChanges(workspaceDir);
     if (!dirty || !repo.owner || !repo.name || !repo.repoUrl) {
-      return null;
+      return {
+        bootstrappedDefaultBranch: false,
+        branchName: null,
+        commitSha: await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null),
+        pullRequestUrl: null,
+      };
     }
 
     const feature = await input.db.query.featureCasesTable.findFirst({
@@ -1230,34 +1353,60 @@ export const createSandboxService = (input: {
     });
 
     if (!feature || !headRevision) {
-      return null;
+      return {
+        bootstrappedDefaultBranch: false,
+        branchName: null,
+        commitSha: await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null),
+        pullRequestUrl: null,
+      };
     }
 
-    const branchName = `quayboard/${feature.featureKey.toLowerCase()}/${sandboxRunId.slice(0, 8)}`;
-    await this.git(["checkout", "-b", branchName], workspaceDir);
+    const targetBranch = baseCommitSha
+      ? `quayboard/${feature.featureKey.toLowerCase()}/${sandboxRunId.slice(0, 8)}`
+      : baseBranch;
+    await this.git(["checkout", baseCommitSha ? "-b" : "-B", targetBranch], workspaceDir);
     await this.git(["add", "-A"], workspaceDir);
     await this.git(
       ["commit", "-m", `Implement ${feature.featureKey}: ${headRevision.title}`],
       workspaceDir,
     );
-    await this.git(["push", "origin", `HEAD:${branchName}`], workspaceDir);
+    await this.git(["push", "origin", `HEAD:${targetBranch}`], workspaceDir, [token]);
+    const commitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
+
+    if (!baseCommitSha) {
+      await this.updateRunState(sandboxRunId, {
+        branchName: targetBranch,
+        pullRequestUrl: null,
+      });
+      return {
+        bootstrappedDefaultBranch: true,
+        branchName: targetBranch,
+        commitSha,
+        pullRequestUrl: null,
+      };
+    }
 
     const pr = await input.githubService.createPullRequest({
       owner: repo.owner,
       repo: repo.name,
       token,
       title: `Implement ${feature.featureKey}: ${headRevision.title}`,
-      head: branchName,
-      base: repo.defaultBranch ?? "main",
+      head: targetBranch,
+      base: baseBranch,
       body: `Automated sandbox verification run ${sandboxRunId}.`,
     });
 
     await this.updateRunState(sandboxRunId, {
-      branchName,
+      branchName: targetBranch,
       pullRequestUrl: pr.url,
     });
 
-    return pr.url;
+    return {
+      bootstrappedDefaultBranch: false,
+      branchName: targetBranch,
+      commitSha,
+      pullRequestUrl: pr.url,
+    };
   },
 });
 

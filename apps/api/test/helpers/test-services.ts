@@ -683,7 +683,12 @@ export const createStubServices = (): AppServices => ({
     listManagedContainers: async () => ({ containers: [] }),
     listMilestoneSessions: async () => ({ sessions: [] }),
     listRuns: async () => ({ runs: [] }),
-    publishPullRequestIfNeeded: async () => null,
+    publishPullRequestIfNeeded: async () => ({
+      bootstrappedDefaultBranch: false,
+      branchName: null,
+      commitSha: null,
+      pullRequestUrl: null,
+    }),
     runMilestoneSession: async () => undefined,
     updateRunState: async () => {
       throw new Error("Not implemented in test stub.");
