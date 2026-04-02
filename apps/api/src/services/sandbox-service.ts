@@ -464,6 +464,7 @@ export const createSandboxService = (input: {
     projectId: string,
     request: { featureId: string; kind: "implement" | "verify" },
     triggeredByJobId: string | null = null,
+    jobInputs: Record<string, unknown> | null = null,
   ) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const payload = createSandboxRunRequestSchema.parse(request);
@@ -513,7 +514,7 @@ export const createSandboxService = (input: {
         dependencyJobId: null,
         type: payload.kind === "implement" ? "ImplementChange" : "TestAndVerify",
         status: "queued",
-        inputs: { sandboxRunId: created.id },
+        inputs: { ...(jobInputs ?? {}), sandboxRunId: created.id },
         outputs: null,
         error: null,
         queuedAt: new Date(),

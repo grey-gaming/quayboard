@@ -148,7 +148,8 @@ The mapping table connects next-action keys to the job types and input factories
 | `feature_arch_docs_create` | `GenerateFeatureArchDocs` | `{ featureId }` |
 | `feature_task_clarifications_generate` | `GenerateTaskClarifications` | `{ featureId, sessionId }` |
 | `feature_task_list_generate` | `GenerateFeatureTaskList` | `{ featureId, sessionId }` |
-| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` |
+| `feature_implement` | `ImplementChange` via sandbox run creation | `{ featureId }` (from Develop href query) |
+| `feature_stale_implementation` | `ImplementChange` via sandbox run creation | `{ featureId }` (from Develop href query) |
 
 Any key not in this map causes the session to pause with `needs_human`, prompting the user to take the manual action and then Resume.
 

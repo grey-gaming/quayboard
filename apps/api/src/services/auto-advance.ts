@@ -322,6 +322,7 @@ const AUTOMATABLE_STEPS: Record<
       };
     },
   },
+  feature_implement: null,
   feature_stale_implementation: null,
 };
 
@@ -717,6 +718,50 @@ export const createAutoAdvanceService = (
     }
   };
 
+  const extractFeatureIdFromHref = (href: string) => href.match(/[?&]featureId=([^&]+)/)?.[1] ?? null;
+
+  const tryQueueImplementationRun = async (input: {
+    ownerUserId: string;
+    projectId: string;
+    sessionId: string;
+    stepKey: string;
+    href: string;
+  }) => {
+    if (
+      !sandboxService ||
+      (input.stepKey !== "feature_implement" && input.stepKey !== "feature_stale_implementation")
+    ) {
+      return false;
+    }
+
+    const featureId = extractFeatureIdFromHref(input.href);
+    if (!featureId) {
+      console.warn(`[auto-advance] Could not extract featureId from href: ${input.href}`);
+      return false;
+    }
+
+    const batchToken = generateId();
+    await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        currentStep: input.stepKey,
+        pendingJobCount: 1,
+        activeBatchToken: batchToken,
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, input.sessionId));
+
+    await sandboxService.createRun(
+      input.ownerUserId,
+      input.projectId,
+      { featureId, kind: "implement" },
+      null,
+      buildAutoAdvanceInputs({}, input.sessionId, batchToken),
+    );
+
+    return true;
+  };
+
   const reconcileStaleRunningSession = async (
     ownerUserId: string,
     projectId: string,
@@ -1061,6 +1106,17 @@ export const createAutoAdvanceService = (
       const stepConfig = AUTOMATABLE_STEPS[nextAction.key];
 
       if (stepConfig === undefined || stepConfig === null) {
+        const queuedImplementationRun = await tryQueueImplementationRun({
+          ownerUserId,
+          projectId,
+          sessionId,
+          stepKey: nextAction.key,
+          href: nextAction.href,
+        });
+        if (queuedImplementationRun) {
+          return;
+        }
+
         if (session) {
           if (
             nextAction.key === "milestone_reconciliation_resolve" ||

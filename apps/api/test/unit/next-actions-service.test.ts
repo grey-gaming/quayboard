@@ -398,4 +398,59 @@ describe("nextActionsService — milestone/feature routing", () => {
       expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f1");
     });
   });
+
+  describe("implementation routing", () => {
+    it("includes the feature id in the develop href for implementation actions", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 1,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "passed",
+        }),
+      ];
+      const features = [makeFeature("f1", "m1")];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: { id: "product-1" }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: {
+            required: true,
+            headRevision: { id: "tech-1" },
+            status: "approved",
+            implementationStatus: "not_implemented",
+          },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      s.taskPlanningService.getSession = vi.fn().mockResolvedValue({
+        id: "task-session-1",
+        status: "tasks_generated",
+      });
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_implement");
+      expect(actions[0]?.href).toBe(`/projects/${PROJECT_ID}/develop?featureId=f1`);
+    });
+  });
 });

@@ -161,6 +161,7 @@ describe("auto-advance service", () => {
   let featureWorkstreamService: { getTracks: ReturnType<typeof vi.fn>; approveRevision: ReturnType<typeof vi.fn> };
   let userFlowService: { list: ReturnType<typeof vi.fn>; approve: ReturnType<typeof vi.fn> };
   let taskPlanningService: { autoAnswerClarifications: ReturnType<typeof vi.fn>; getOrCreateSession: ReturnType<typeof vi.fn> };
+  let sandboxService: { createRun: ReturnType<typeof vi.fn> };
 
   const makeService = (db: ReturnType<typeof makeDb>) =>
     createAutoAdvanceService(
@@ -176,6 +177,7 @@ describe("auto-advance service", () => {
       featureWorkstreamService as never,
       userFlowService as never,
       taskPlanningService as never,
+      sandboxService as never,
     );
 
   beforeEach(() => {
@@ -233,6 +235,9 @@ describe("auto-advance service", () => {
     taskPlanningService = {
       autoAnswerClarifications: vi.fn().mockResolvedValue(undefined),
       getOrCreateSession: vi.fn().mockResolvedValue({ id: "session-id" }),
+    };
+    sandboxService = {
+      createRun: vi.fn().mockResolvedValue({ id: "sandbox-run-1" }),
     };
   });
 
@@ -480,6 +485,54 @@ describe("auto-advance service", () => {
       expect(jobService.createJob).not.toHaveBeenCalled();
       const pauseUpdate = updates.find((u) => u.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("needs_human");
+    });
+
+    it("queues a sandbox implementation run when the next action is feature_implement", async () => {
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_implement",
+            label: "Implement feature: Feature",
+            href: `/projects/${PROJECT_ID}/develop?featureId=feature-1`,
+          },
+        ],
+      });
+      const db = makeDb({ session: null });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([makeSessionRow()]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.start(USER_ID, PROJECT_ID, {});
+
+      expect(sandboxService.createRun).toHaveBeenCalledWith(
+        USER_ID,
+        PROJECT_ID,
+        { featureId: "feature-1", kind: "implement" },
+        null,
+        expect.objectContaining({
+          _autoAdvance: expect.objectContaining({
+            sessionId: SESSION_ID,
+            batchToken: expect.any(String),
+          }),
+        }),
+      );
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      expect(
+        updates.some(
+          (update) =>
+            update.currentStep === "feature_implement" &&
+            update.pendingJobCount === 1,
+        ),
+      ).toBe(true);
     });
 
     it("auto-approves the overview when skipReviewSteps is enabled", async () => {

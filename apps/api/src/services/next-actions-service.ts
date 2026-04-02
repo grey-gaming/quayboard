@@ -427,7 +427,7 @@ export const createNextActionsService = (
                       actions.push({
                         key: "feature_implement",
                         label: `Implement feature: ${feature.headRevision.title}`,
-                        href: `/projects/${projectId}/develop`,
+                        href: `/projects/${projectId}/develop?featureId=${feature.id}`,
                       });
                       break;
                     }
@@ -443,7 +443,7 @@ export const createNextActionsService = (
                       actions.push({
                         key: "feature_stale_implementation",
                         label: `Re-implement stale feature: ${feature.headRevision.title}`,
-                        href: `/projects/${projectId}/develop`,
+                        href: `/projects/${projectId}/develop?featureId=${feature.id}`,
                       });
                       break;
                     }
