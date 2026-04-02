@@ -11,6 +11,16 @@ type GitHubRepoOption = {
   repoUrl: string;
 };
 
+type CreatePullRequestInput = {
+  base: string;
+  body: string;
+  head: string;
+  owner: string;
+  repo: string;
+  title: string;
+  token: string;
+};
+
 const buildHeaders = (token: string) => ({
   Accept: "application/vnd.github+json",
   Authorization: `Bearer ${token}`,
@@ -116,6 +126,34 @@ export const createGithubService = () => ({
     return {
       viewerLogin: userPayload.login ?? null,
       repositories,
+    };
+  },
+
+  async createPullRequest(input: CreatePullRequestInput) {
+    const response = await fetch(
+      `https://api.github.com/repos/${input.owner}/${input.repo}/pulls`,
+      {
+        method: "POST",
+        headers: buildHeaders(input.token),
+        body: JSON.stringify({
+          title: input.title,
+          head: input.head,
+          base: input.base,
+          body: input.body,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("GitHub pull request creation failed.");
+    }
+
+    const payload = (await response.json()) as {
+      html_url?: string;
+    };
+
+    return {
+      url: payload.html_url ?? null,
     };
   },
 });

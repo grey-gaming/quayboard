@@ -17,9 +17,12 @@ import { UxSpecApprovalGate } from "./components/layout/UxSpecApprovalGate.js";
 import { Spinner } from "./components/ui/Spinner.js";
 import { useCurrentUserQuery } from "./hooks/use-auth.js";
 import { DeleteProjectPage } from "./pages/DeleteProjectPage.js";
+import { DevelopContextPacksDebugPage } from "./pages/DevelopContextPacksDebugPage.js";
+import { DevelopPage } from "./pages/DevelopPage.js";
 import { DocsArticlePage } from "./pages/DocsArticlePage.js";
 import { FeatureEditorPage } from "./pages/FeatureEditorPage.js";
 import { DocsHomePage } from "./pages/DocsHomePage.js";
+import { ExecutionSettingsPage } from "./pages/ExecutionSettingsPage.js";
 import { FeatureBuilderPage } from "./pages/FeatureBuilderPage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
 import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
@@ -128,6 +131,10 @@ export const appRouter = createBrowserRouter([
             element: <WorkflowSettingsPage />,
           },
           {
+            path: "/settings/execution",
+            element: <ExecutionSettingsPage />,
+          },
+          {
             path: "/projects/:id",
             element: <MissionControlPage />,
           },
@@ -206,6 +213,14 @@ export const appRouter = createBrowserRouter([
                               {
                                 path: "/projects/:id/features/:featureId/:tab",
                                 element: <FeatureEditorPage />,
+                              },
+                              {
+                                path: "/projects/:id/develop",
+                                element: <DevelopPage />,
+                              },
+                              {
+                                path: "/projects/:id/develop/debug",
+                                element: <DevelopContextPacksDebugPage />,
                               },
                             ],
                           },

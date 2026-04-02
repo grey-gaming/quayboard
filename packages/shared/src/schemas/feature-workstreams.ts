@@ -86,8 +86,13 @@ export const featureTrackSummarySchema = z.object({
   status: featureWorkstreamStatusSchema,
   headRevision: featureWorkstreamRevisionSchema.nullable(),
   approvedRevisionId: z.string().uuid().nullable(),
-  implementationStatus: z.literal("not_implemented"),
-  isOutOfDate: z.literal(false),
+  implementationStatus: z.enum([
+    "not_implemented",
+    "running",
+    "implemented",
+    "out_of_date",
+  ]),
+  isOutOfDate: z.boolean(),
 });
 
 export type FeatureTrackSummary = z.infer<typeof featureTrackSummarySchema>;

@@ -3,13 +3,18 @@ import type {
   ArtifactApprovalStateResponse,
   ArtifactType,
   BlueprintKind,
+  ContextPack,
+  ContextPackListResponse,
   CreateFeatureProductRevisionRequest,
   CreateFeatureWorkstreamRevisionRequest,
   CreateProjectRequest,
+  ExecutionSettings,
   DecisionCardListResponse,
   Job,
   JobListResponse,
   LoadLlmModelsResponse,
+  ManagedContainerListResponse,
+  MemoryChunkListResponse,
   Milestone,
   MilestoneDesignDoc,
   MilestoneDesignDocListResponse,
@@ -26,8 +31,15 @@ import type {
   ProjectSetupStatus,
   QuestionnaireAnswers,
   SecretMetadata,
+  SandboxMilestoneSession,
+  SandboxMilestoneSessionListResponse,
+  SandboxOptions,
+  SandboxRun,
+  SandboxRunDetailResponse,
+  SandboxRunListResponse,
   SystemReadiness,
   UpdateDecisionCardsRequest,
+  UpdateExecutionSettingsRequest,
   UpdateQuestionnaireAnswersRequest,
   Feature,
   FeatureDependencyListResponse,
@@ -886,5 +898,93 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+  getExecutionSettings() {
+    return apiRequest<ExecutionSettings>("/api/settings/execution");
+  },
+  updateExecutionSettings(payload: UpdateExecutionSettingsRequest) {
+    return apiRequest<ExecutionSettings>("/api/settings/execution", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  getSandboxOptions(projectId: string) {
+    return apiRequest<SandboxOptions>(`/api/projects/${projectId}/sandbox/options`);
+  },
+  getSandboxRuns(projectId: string) {
+    return apiRequest<SandboxRunListResponse>(`/api/projects/${projectId}/sandbox/runs`);
+  },
+  createSandboxRun(
+    projectId: string,
+    payload: { featureId: string; kind?: "implement" | "verify" },
+  ) {
+    return apiRequest<SandboxRun>(`/api/projects/${projectId}/sandbox/runs`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getSandboxRun(runId: string) {
+    return apiRequest<SandboxRunDetailResponse>(`/api/sandbox/runs/${runId}`);
+  },
+  cancelSandboxRun(runId: string, payload?: { reason?: string }) {
+    return apiRequest<SandboxRun>(`/api/sandbox/runs/${runId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    });
+  },
+  getSandboxRunArtifactUrl(runId: string, name: string) {
+    return `/api/sandbox/runs/${runId}/artifacts/${encodeURIComponent(name)}`;
+  },
+  listManagedContainers(projectId: string) {
+    return apiRequest<ManagedContainerListResponse>(
+      `/api/sandbox/containers?projectId=${encodeURIComponent(projectId)}`,
+    );
+  },
+  disposeManagedContainer(projectId: string, containerId: string) {
+    return apiRequest<{ ok: boolean }>(
+      `/api/sandbox/containers?projectId=${encodeURIComponent(projectId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ containerId }),
+      },
+    );
+  },
+  listSandboxMilestoneSessions(milestoneId: string) {
+    return apiRequest<SandboxMilestoneSessionListResponse>(
+      `/api/milestones/${milestoneId}/sandbox-sessions`,
+    );
+  },
+  createSandboxMilestoneSession(milestoneId: string) {
+    return apiRequest<SandboxMilestoneSession>(
+      `/api/milestones/${milestoneId}/sandbox-sessions`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
+  },
+  listContextPacks(projectId: string, featureId?: string) {
+    const params = new URLSearchParams({ projectId });
+    if (featureId) {
+      params.set("featureId", featureId);
+    }
+    return apiRequest<ContextPackListResponse>(`/api/debug/context-packs?${params.toString()}`);
+  },
+  buildContextPack(
+    projectId: string,
+    payload: { featureId?: string; type?: "planning" | "coding" },
+  ) {
+    return apiRequest<ContextPack>(
+      `/api/debug/context-packs/build?projectId=${encodeURIComponent(projectId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+  getMemoryChunks(projectId: string) {
+    return apiRequest<MemoryChunkListResponse>(
+      `/api/debug/memory?projectId=${encodeURIComponent(projectId)}`,
+    );
   },
 };

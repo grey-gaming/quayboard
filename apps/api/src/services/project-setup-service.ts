@@ -5,6 +5,7 @@ import { reposTable } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
 import type { DockerService } from "./docker-service.js";
+import type { ExecutionSettingsService } from "./execution-settings-service.js";
 import type { GithubService } from "./github-service.js";
 import type { LlmProviderService, ProviderDefinition } from "./llm-provider.js";
 import type { ProjectService } from "./project-service.js";
@@ -124,6 +125,7 @@ export const createProjectSetupService = (
   llmProviderService: LlmProviderService,
   githubService: GithubService,
   dockerService: DockerService,
+  executionSettingsService: ExecutionSettingsService,
   defaultConfig: {
     ollamaHost: string;
     openAiBaseUrl: string;
@@ -389,7 +391,11 @@ export const createProjectSetupService = (
       throw new HttpError(503, "docker_unavailable", availability.message);
     }
 
-    const startup = await dockerService.verifySandboxImage();
+    const executionSettings = await executionSettingsService.get();
+    const startup = await dockerService.verifySandboxImage(
+      executionSettings.defaultImage,
+      executionSettings.dockerHost,
+    );
     if (!startup.ok) {
       throw new HttpError(503, "sandbox_verification_failed", startup.message);
     }

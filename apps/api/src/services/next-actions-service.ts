@@ -412,23 +412,38 @@ export const createNextActionsService = (
                 if (!actions.length && taskPlanningService) {
                   for (let i = 0; i < milestoneFeatures.length; i++) {
                     const feature = milestoneFeatures[i]!;
-                    const headTechRevisionId = allTracks[i]!.tracks.tech.headRevision?.id ?? null;
+                    const featureTracks = allTracks[i]!.tracks;
+                    const session = await taskPlanningService.getSession(ownerUserId, feature.id);
 
-                    if (!headTechRevisionId) {
+                    if (!session || session.status !== "tasks_generated") {
                       continue;
                     }
 
-                    const records = await taskPlanningService.getImplementationRecords(
-                      ownerUserId,
-                      feature.id,
-                    );
-                    const latestRecord = records[0] ?? null;
+                    if (featureTracks.tech.implementationStatus === "running") {
+                      continue;
+                    }
 
-                    if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
+                    if (featureTracks.tech.implementationStatus === "not_implemented") {
+                      actions.push({
+                        key: "feature_implement",
+                        label: `Implement feature: ${feature.headRevision.title}`,
+                        href: `/projects/${projectId}/develop`,
+                      });
+                      break;
+                    }
+                  }
+                }
+
+                if (!actions.length && taskPlanningService) {
+                  for (let i = 0; i < milestoneFeatures.length; i++) {
+                    const feature = milestoneFeatures[i]!;
+                    const techTrack = allTracks[i]!.tracks.tech;
+
+                    if (techTrack.implementationStatus === "out_of_date") {
                       actions.push({
                         key: "feature_stale_implementation",
                         label: `Re-implement stale feature: ${feature.headRevision.title}`,
-                        href: `/projects/${projectId}/features/${feature.id}`,
+                        href: `/projects/${projectId}/develop`,
                       });
                       break;
                     }

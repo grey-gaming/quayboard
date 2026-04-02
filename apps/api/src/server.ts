@@ -9,6 +9,7 @@ import { autoAdvanceRoutes } from "./routes/api/auto-advance.js";
 import { blueprintRoutes } from "./routes/api/blueprints.js";
 import { bugRoutes } from "./routes/api/bugs.js";
 import { debugRoutes } from "./routes/api/debug.js";
+import { executionSettingsRoutes } from "./routes/api/execution-settings.js";
 import { eventsRoutes } from "./routes/api/events.js";
 import { featureRoutes } from "./routes/api/features.js";
 import { featureWorkstreamRoutes } from "./routes/api/feature-workstreams.js";
@@ -62,9 +63,10 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
     await apiApp.register(bugRoutes);
     await apiApp.register(artifactRoutes(services));
     await apiApp.register(autoAdvanceRoutes(services));
-    await apiApp.register(sandboxRoutes);
+    await apiApp.register(executionSettingsRoutes(services));
+    await apiApp.register(sandboxRoutes(services));
     await apiApp.register(toolSystemRoutes);
-    await apiApp.register(debugRoutes);
+    await apiApp.register(debugRoutes(services));
   }, { prefix: "/api" });
 
   return app;

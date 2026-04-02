@@ -1,15 +1,15 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import type { AppDatabase } from "../db/client.js";
 import { settingsTable } from "../db/schema.js";
 import { generateId } from "./ids.js";
 
 export const createSettingsService = (db: AppDatabase) => ({
-  async getProjectSetting<T>(projectId: string, key: string) {
+  async getScopedSetting<T>(scope: "project" | "system", scopeId: string | null, key: string) {
     const setting = await db.query.settingsTable.findFirst({
       where: and(
-        eq(settingsTable.scope, "project"),
-        eq(settingsTable.scopeId, projectId),
+        eq(settingsTable.scope, scope),
+        scopeId === null ? isNull(settingsTable.scopeId) : eq(settingsTable.scopeId, scopeId),
         eq(settingsTable.key, key),
       ),
     });
@@ -17,12 +17,12 @@ export const createSettingsService = (db: AppDatabase) => ({
     return (setting?.value ?? null) as T | null;
   },
 
-  async upsertProjectSetting<T>(projectId: string, key: string, value: T) {
+  async upsertScopedSetting<T>(scope: "project" | "system", scopeId: string | null, key: string, value: T) {
     const now = new Date();
     const existing = await db.query.settingsTable.findFirst({
       where: and(
-        eq(settingsTable.scope, "project"),
-        eq(settingsTable.scopeId, projectId),
+        eq(settingsTable.scope, scope),
+        scopeId === null ? isNull(settingsTable.scopeId) : eq(settingsTable.scopeId, scopeId),
         eq(settingsTable.key, key),
       ),
     });
@@ -41,8 +41,8 @@ export const createSettingsService = (db: AppDatabase) => ({
       .insert(settingsTable)
       .values({
         id: generateId(),
-        scope: "project",
-        scopeId: projectId,
+        scope,
+        scopeId,
         key,
         value,
         createdAt: now,
@@ -51,6 +51,22 @@ export const createSettingsService = (db: AppDatabase) => ({
       .returning();
 
     return created;
+  },
+
+  async getProjectSetting<T>(projectId: string, key: string) {
+    return this.getScopedSetting<T>("project", projectId, key);
+  },
+
+  async upsertProjectSetting<T>(projectId: string, key: string, value: T) {
+    return this.upsertScopedSetting("project", projectId, key, value);
+  },
+
+  async getSystemSetting<T>(key: string) {
+    return this.getScopedSetting<T>("system", null, key);
+  },
+
+  async upsertSystemSetting<T>(key: string, value: T) {
+    return this.upsertScopedSetting("system", null, key, value);
   },
 });
 

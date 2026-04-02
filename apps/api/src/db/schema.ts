@@ -70,6 +70,24 @@ const featureKindValues = [
 ] as const;
 const priorityValues = ["must_have", "should_have", "could_have", "wont_have"] as const;
 const featureEdgeTypeValues = ["depends_on", "leads_to", "contains"] as const;
+const contextPackTypeValues = ["planning", "coding"] as const;
+const sandboxRunKindValues = ["implement", "verify"] as const;
+const sandboxRunStatusValues = [
+  "queued",
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+const sandboxRunOutcomeValues = [
+  "changes_applied",
+  "no_op",
+  "verification_passed",
+  "verification_failed",
+  "cancelled",
+  "error",
+] as const;
+const sandboxEventLevelValues = ["info", "warning", "error"] as const;
 
 const now = () => sql`now()`;
 
@@ -1162,6 +1180,271 @@ export const implementationRecordsTable = pgTable(
   }),
 );
 
+export const logbookVersionsTable = pgTable(
+  "logbook_versions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    coverageFlags: jsonb("coverage_flags").notNull().default(sql`'{}'::jsonb`),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("logbook_versions_project_id_idx").on(table.projectId),
+  }),
+);
+
+export const memoryChunksTable = pgTable(
+  "memory_chunks",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    logbookVersionId: text("logbook_version_id").references(() => logbookVersionsTable.id, {
+      onDelete: "set null",
+    }),
+    key: text("key").notNull(),
+    content: text("content").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id"),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("memory_chunks_project_id_idx").on(table.projectId),
+    projectKeyUnique: uniqueIndex("memory_chunks_project_id_key_key").on(
+      table.projectId,
+      table.key,
+    ),
+  }),
+);
+
+export const contextPacksTable = pgTable(
+  "context_packs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").references(() => featureCasesTable.id, {
+      onDelete: "cascade",
+    }),
+    type: text("type").notNull().$type<(typeof contextPackTypeValues)[number]>(),
+    version: integer("version").notNull(),
+    content: text("content").notNull(),
+    summary: text("summary").notNull(),
+    stale: boolean("stale").notNull().default(false),
+    omissionList: jsonb("omission_list").notNull().default(sql`'[]'::jsonb`),
+    sourceCoverage: jsonb("source_coverage").notNull().default(sql`'[]'::jsonb`),
+    createdByJobId: text("created_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("context_packs_project_id_idx").on(table.projectId),
+    featureIndex: index("context_packs_feature_id_idx").on(table.featureId),
+    projectFeatureTypeVersionUnique: uniqueIndex(
+      "context_packs_project_id_feature_id_type_version_key",
+    ).on(table.projectId, table.featureId, table.type, table.version),
+    typeCheck: check(
+      "context_packs_type_check",
+      sql`${table.type} in (${sql.join(contextPackTypeValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const sandboxRunsTable = pgTable(
+  "sandbox_runs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").references(() => featureCasesTable.id, {
+      onDelete: "cascade",
+    }),
+    milestoneId: text("milestone_id").references(() => milestonesTable.id, {
+      onDelete: "cascade",
+    }),
+    taskPlanningSessionId: text("task_planning_session_id").references(
+      () => featureTaskPlanningSessionsTable.id,
+      { onDelete: "set null" },
+    ),
+    contextPackId: text("context_pack_id").references(() => contextPacksTable.id, {
+      onDelete: "set null",
+    }),
+    triggeredByJobId: text("triggered_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    kind: text("kind").notNull().$type<(typeof sandboxRunKindValues)[number]>(),
+    status: text("status").notNull().$type<(typeof sandboxRunStatusValues)[number]>(),
+    outcome: text("outcome").$type<(typeof sandboxRunOutcomeValues)[number]>(),
+    containerId: text("container_id"),
+    baseCommitSha: text("base_commit_sha"),
+    headCommitSha: text("head_commit_sha"),
+    branchName: text("branch_name"),
+    pullRequestUrl: text("pull_request_url"),
+    cancellationReason: text("cancellation_reason"),
+    workspaceArchivePath: text("workspace_archive_path"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("sandbox_runs_project_id_idx").on(table.projectId),
+    featureIndex: index("sandbox_runs_feature_id_idx").on(table.featureId),
+    milestoneIndex: index("sandbox_runs_milestone_id_idx").on(table.milestoneId),
+    statusIndex: index("sandbox_runs_status_idx").on(table.status),
+    kindCheck: check(
+      "sandbox_runs_kind_check",
+      sql`${table.kind} in (${sql.join(sandboxRunKindValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    statusCheck: check(
+      "sandbox_runs_status_check",
+      sql`${table.status} in (${sql.join(sandboxRunStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    outcomeCheck: check(
+      "sandbox_runs_outcome_check",
+      sql`${table.outcome} is null or ${table.outcome} in (${sql.join(sandboxRunOutcomeValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const sandboxRunEventsTable = pgTable(
+  "sandbox_run_events",
+  {
+    id: text("id").primaryKey(),
+    sandboxRunId: text("sandbox_run_id")
+      .notNull()
+      .references(() => sandboxRunsTable.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    level: text("level").notNull().$type<(typeof sandboxEventLevelValues)[number]>(),
+    type: text("type").notNull(),
+    message: text("message").notNull(),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    runIndex: index("sandbox_run_events_run_id_idx").on(table.sandboxRunId),
+    runSequenceUnique: uniqueIndex("sandbox_run_events_run_id_sequence_key").on(
+      table.sandboxRunId,
+      table.sequence,
+    ),
+    levelCheck: check(
+      "sandbox_run_events_level_check",
+      sql`${table.level} in (${sql.join(sandboxEventLevelValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const sandboxRunArtifactsTable = pgTable(
+  "sandbox_run_artifacts",
+  {
+    id: text("id").primaryKey(),
+    sandboxRunId: text("sandbox_run_id")
+      .notNull()
+      .references(() => sandboxRunsTable.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    contentType: text("content_type").notNull(),
+    storagePath: text("storage_path").notNull(),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    runIndex: index("sandbox_run_artifacts_run_id_idx").on(table.sandboxRunId),
+    runNameUnique: uniqueIndex("sandbox_run_artifacts_run_id_name_key").on(
+      table.sandboxRunId,
+      table.name,
+    ),
+  }),
+);
+
+export const sandboxMilestoneSessionsTable = pgTable(
+  "sandbox_milestone_sessions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    milestoneId: text("milestone_id")
+      .notNull()
+      .references(() => milestonesTable.id, { onDelete: "cascade" }),
+    triggeredByJobId: text("triggered_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().$type<(typeof sandboxRunStatusValues)[number]>(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("sandbox_milestone_sessions_project_id_idx").on(table.projectId),
+    milestoneIndex: index("sandbox_milestone_sessions_milestone_id_idx").on(table.milestoneId),
+    statusCheck: check(
+      "sandbox_milestone_sessions_status_check",
+      sql`${table.status} in (${sql.join(sandboxRunStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const sandboxMilestoneSessionTasksTable = pgTable(
+  "sandbox_milestone_session_tasks",
+  {
+    id: text("id").primaryKey(),
+    sandboxMilestoneSessionId: text("sandbox_milestone_session_id")
+      .notNull()
+      .references(() => sandboxMilestoneSessionsTable.id, { onDelete: "cascade" }),
+    featureId: text("feature_id")
+      .notNull()
+      .references(() => featureCasesTable.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    sandboxRunId: text("sandbox_run_id").references(() => sandboxRunsTable.id, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull().$type<(typeof sandboxRunStatusValues)[number]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    sessionIndex: index("sandbox_milestone_session_tasks_session_id_idx").on(
+      table.sandboxMilestoneSessionId,
+    ),
+    sessionPositionUnique: uniqueIndex(
+      "sandbox_milestone_session_tasks_session_id_position_key",
+    ).on(table.sandboxMilestoneSessionId, table.position),
+    statusCheck: check(
+      "sandbox_milestone_session_tasks_status_check",
+      sql`${table.status} in (${sql.join(sandboxRunStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
 export const autoAdvanceSessionsTable = pgTable(
   "auto_advance_sessions",
   {
@@ -1340,6 +1623,7 @@ export const encryptedSecretsTable = pgTable(
 export type DatabaseSchema = {
   artifactApprovalsTable: typeof artifactApprovalsTable;
   autoAdvanceSessionsTable: typeof autoAdvanceSessionsTable;
+  contextPacksTable: typeof contextPacksTable;
   encryptedSecretsTable: typeof encryptedSecretsTable;
   featureArchDocRevisionsTable: typeof featureArchDocRevisionsTable;
   featureArchDocSpecsTable: typeof featureArchDocSpecsTable;
@@ -1362,6 +1646,8 @@ export type DatabaseSchema = {
   implementationRecordsTable: typeof implementationRecordsTable;
   jobsTable: typeof jobsTable;
   llmRunsTable: typeof llmRunsTable;
+  logbookVersionsTable: typeof logbookVersionsTable;
+  memoryChunksTable: typeof memoryChunksTable;
   milestoneDesignDocsTable: typeof milestoneDesignDocsTable;
   milestoneUseCasesTable: typeof milestoneUseCasesTable;
   milestonesTable: typeof milestonesTable;
@@ -1371,6 +1657,11 @@ export type DatabaseSchema = {
   questionnaireAnswersTable: typeof questionnaireAnswersTable;
   questionsTable: typeof questionsTable;
   reposTable: typeof reposTable;
+  sandboxMilestoneSessionsTable: typeof sandboxMilestoneSessionsTable;
+  sandboxMilestoneSessionTasksTable: typeof sandboxMilestoneSessionTasksTable;
+  sandboxRunArtifactsTable: typeof sandboxRunArtifactsTable;
+  sandboxRunEventsTable: typeof sandboxRunEventsTable;
+  sandboxRunsTable: typeof sandboxRunsTable;
   sessionsTable: typeof sessionsTable;
   settingsTable: typeof settingsTable;
   useCasesTable: typeof useCasesTable;

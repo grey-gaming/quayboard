@@ -73,8 +73,8 @@ export const WorkflowSettingsPage = () => (
         </p>
         <div className="mt-4 border border-border/70 bg-panel-inset px-4 py-3">
           <p className="text-sm text-secondary">
-            Full review loop configuration — including auto-approval thresholds and quality gate
-            bypass rules — will be available in M8 (Sandbox Execution).
+            Persisted workflow defaults are still future work. Sandbox execution is now available
+            separately from the Develop surface and execution settings page.
           </p>
         </div>
       </Card>

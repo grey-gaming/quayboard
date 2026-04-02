@@ -21,6 +21,7 @@ import {
 } from "../../db/schema.js";
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
+import type { ContextPackService } from "../context-pack-service.js";
 import type { FeatureService } from "../feature-service.js";
 import type { FeatureWorkstreamService } from "../feature-workstream-service.js";
 import { generateId } from "../ids.js";
@@ -31,6 +32,7 @@ import type { ProductSpecService } from "../product-spec-service.js";
 import type { ProjectService } from "../project-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
+import type { SandboxService } from "../sandbox-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
@@ -1908,6 +1910,7 @@ const validateGeneratedFeatures = (
 export const createJobRunnerService = (input: {
   artifactApprovalService: ArtifactApprovalService;
   blueprintService: BlueprintService;
+  contextPackService?: ContextPackService;
   db: AppDatabase;
   featureService?: FeatureService;
   featureWorkstreamService?: FeatureWorkstreamService;
@@ -1919,6 +1922,7 @@ export const createJobRunnerService = (input: {
   projectService: ProjectService;
   projectSetupService: ProjectSetupService;
   questionnaireService: QuestionnaireService;
+  sandboxService?: SandboxService;
   userFlowService: UserFlowService;
 }) => ({
   async run(jobId: string) {
@@ -5139,6 +5143,83 @@ export const createJobRunnerService = (input: {
         await taskPlanning.createTasks(sessionId, tasks);
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+      }
+
+      case "RepoFingerprint": {
+        if (!input.contextPackService) {
+          throw new Error("RepoFingerprint requires context pack support.");
+        }
+
+        const chunk = await input.contextPackService.buildRepoFingerprint(
+          ownerUserId,
+          projectId,
+          rawJob.id,
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          chunkId: chunk.id,
+          projectId,
+        });
+      }
+
+      case "BuildContextPack": {
+        if (!input.contextPackService) {
+          throw new Error("BuildContextPack requires context pack support.");
+        }
+
+        const jobInput = rawJob.inputs as {
+          featureId?: string;
+          type?: "planning" | "coding";
+        };
+        const pack = await input.contextPackService.buildContextPack(
+          ownerUserId,
+          projectId,
+          {
+            featureId: jobInput.featureId,
+            type: jobInput.type ?? "coding",
+            createdByJobId: rawJob.id,
+          },
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          contextPackId: pack.id,
+          featureId: pack.featureId,
+          type: pack.type,
+        });
+      }
+
+      case "ImplementChange":
+      case "TestAndVerify": {
+        if (!input.sandboxService) {
+          throw new Error(`${rawJob.type} requires sandbox service support.`);
+        }
+
+        const sandboxRunId = (rawJob.inputs as { sandboxRunId?: string }).sandboxRunId;
+        if (!sandboxRunId) {
+          throw new Error(`${rawJob.type} requires sandboxRunId.`);
+        }
+
+        await input.sandboxService.executeRun(rawJob.id, sandboxRunId);
+        return input.jobService.markSucceeded(rawJob.id, { sandboxRunId });
+      }
+
+      case "ExecuteMilestoneSession": {
+        if (!input.sandboxService) {
+          throw new Error("ExecuteMilestoneSession requires sandbox service support.");
+        }
+
+        const sandboxMilestoneSessionId = (
+          rawJob.inputs as { sandboxMilestoneSessionId?: string }
+        ).sandboxMilestoneSessionId;
+        if (!sandboxMilestoneSessionId) {
+          throw new Error("ExecuteMilestoneSession requires sandboxMilestoneSessionId.");
+        }
+
+        await input.sandboxService.runMilestoneSession(
+          rawJob.id,
+          sandboxMilestoneSessionId,
+        );
+        return input.jobService.markSucceeded(rawJob.id, { sandboxMilestoneSessionId });
       }
 
       case "ReviewDelivery": {

@@ -26,6 +26,7 @@ import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import type { SandboxService } from "./sandbox-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
 type AutoAdvanceSessionRow = typeof autoAdvanceSessionsTable.$inferSelect;
@@ -337,7 +338,9 @@ export const createAutoAdvanceService = (
   featureWorkstreamService: FeatureWorkstreamService,
   userFlowService: UserFlowService,
   taskPlanningService: TaskPlanningService,
+  sandboxService?: SandboxService,
 ) => {
+  void sandboxService;
   const requireProject = async (ownerUserId: string, projectId: string) => {
     const project = await db.query.projectsTable.findFirst({
       where: and(

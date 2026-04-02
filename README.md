@@ -29,6 +29,11 @@ Quayboard is a web control plane for shaping software projects into reviewable d
   - Milestones and milestone design docs
   - Feature Builder
   - Feature Editor workstreams: Product, UX, Tech, User Docs, Arch Docs, Tasks
+- Implementation surfaces for:
+  - project-level Develop runs and managed container inspection
+  - milestone sandbox sessions
+  - context pack and memory debugging
+  - instance execution settings
 - Task planning inside the Feature Editor:
   - clarification generation
   - manual and automatic clarification answers
@@ -47,8 +52,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 ### Current Boundaries
 
 - The import path at `/projects/:id/import` is a stub. The supported workflow starts from scratch.
-- The project navigation includes an `Implementation` section, but it is intentionally disabled in the UI.
-- Bug-management routes, sandbox-execution routes, and tool-policy routes are registered in the API but currently return `501 Not Implemented`.
+- Bug-management routes and tool-policy routes are still registered but return `501 Not Implemented`.
 - Workflow settings are present as a read-only UI surface; persisted workflow defaults are not implemented.
 - The public docs under `docs/user` still need a wider consistency pass. Use the product and code as the source of truth where they disagree.
 
@@ -68,6 +72,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 - `/projects/new`
 - `/settings`
 - `/settings/workflow`
+- `/settings/execution`
 - `/projects/:id`
 - `/projects/:id/setup`
 - `/projects/:id/questions`
@@ -81,12 +86,14 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 - `/projects/:id/features`
 - `/projects/:id/features/:featureId`
 - `/projects/:id/features/:featureId/:tab`
+- `/projects/:id/develop`
+- `/projects/:id/develop/debug`
 
 The web route map lives in [`apps/web/src/app.tsx`](/home/mirdinj/quayboard/apps/web/src/app.tsx). The API route registration lives in [`apps/api/src/server.ts`](/home/mirdinj/quayboard/apps/api/src/server.ts).
 
 ## API Surface
 
-The authenticated API currently exposes project, setup, questionnaire, one-pager, product spec, blueprint, user-flow, milestone, feature, feature-workstream, task-planning, auto-advance, jobs, artifacts, secrets, events, and system-readiness routes.
+The authenticated API currently exposes project, setup, questionnaire, one-pager, product spec, blueprint, user-flow, milestone, feature, feature-workstream, task-planning, implementation-record, sandbox, execution-settings, debug, auto-advance, jobs, artifacts, secrets, events, and system-readiness routes.
 
 Shared request and response contracts live in [`packages/shared/src`](/home/mirdinj/quayboard/packages/shared/src).
 
