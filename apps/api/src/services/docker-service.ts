@@ -31,6 +31,7 @@ type CreateManagedContainerInput = {
   labels: Record<string, string>;
   memoryMb: number;
   name?: string;
+  networkMode?: "bridge" | "host" | "none";
   networkDisabled?: boolean;
   workspaceDir: string;
 };
@@ -215,11 +216,17 @@ export const createDockerService = (dockerHost: string | null) => {
 
       args.push("--mount", `type=bind,src=${input.workspaceDir},dst=/workspace`);
       args.push("--mount", `type=bind,src=${input.artifactDir},dst=/run/artifacts`);
-      args.push("--add-host", "host.docker.internal:host-gateway");
+
+      if (input.networkMode !== "host") {
+        args.push("--add-host", "host.docker.internal:host-gateway");
+      }
+
       args.push("--cpus", String(input.cpuLimit));
       args.push("--memory", `${Math.max(128, input.memoryMb)}m`);
 
-      if (input.networkDisabled) {
+      if (input.networkMode === "host") {
+        args.push("--network", "host");
+      } else if (input.networkMode === "none" || input.networkDisabled) {
         args.push("--network", "none");
       }
 

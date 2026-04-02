@@ -218,4 +218,35 @@ describe("docker service", () => {
         "Sandbox startup failed for alpine:3.20. Make sure Docker can start containers, then retry verification.",
     });
   });
+
+  it("uses host networking without host-gateway alias when requested", async () => {
+    execFileMock.mockImplementationOnce(
+      (
+        _file: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+      ) => {
+        callback(null, { stdout: "container-id\n", stderr: "" });
+      },
+    );
+
+    const service = createDockerService(null);
+    await service.createManagedContainer({
+      artifactDir: "/tmp/artifacts",
+      cpuLimit: 1,
+      image: "quayboard-agent-sandbox:latest",
+      labels: {
+        "quayboard.project_id": "project-1",
+      },
+      memoryMb: 1024,
+      networkMode: "host",
+      workspaceDir: "/tmp/workspace",
+    });
+
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining(["create", "--pull=never", "--network", "host"]),
+    );
+    expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
+  });
 });

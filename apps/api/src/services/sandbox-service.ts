@@ -212,9 +212,33 @@ const isLocalHostName = (hostname: string) =>
   hostname === "::1" ||
   hostname === "host.docker.internal";
 
+const determineNetworkModeForModel = (
+  provider: ProviderDefinition["provider"],
+  baseUrl: string | null,
+  egressPolicy: "allowlisted" | "locked",
+) => {
+  if (!baseUrl) {
+    return "none" as const;
+  }
+
+  try {
+    const url = new URL(baseUrl);
+    const isLocal = isLocalHostName(url.hostname);
+
+    if (isLocal) {
+      return "host" as const;
+    }
+
+    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+  } catch {
+    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+  }
+};
+
 const normalizeModelBaseUrl = (
   provider: ProviderDefinition["provider"],
   baseUrl: string | null,
+  networkMode: "bridge" | "host" | "none",
 ) => {
   if (!baseUrl) {
     return "";
@@ -223,18 +247,14 @@ const normalizeModelBaseUrl = (
   const normalized =
     provider === "ollama" && !baseUrl.endsWith("/v1") ? `${baseUrl.replace(/\/$/, "")}/v1` : baseUrl;
 
+  if (networkMode === "host") {
+    return normalized;
+  }
+
   return normalized
     .replace("://127.0.0.1", "://host.docker.internal")
     .replace("://localhost", "://host.docker.internal")
     .replace("://[::1]", "://host.docker.internal");
-};
-
-const allowsLocalModelAccessWhileLocked = (baseUrl: string) => {
-  try {
-    return isLocalHostName(new URL(baseUrl).hostname);
-  } catch {
-    return false;
-  }
 };
 
 const createHandledRunFailure = (message: string) =>
@@ -1077,13 +1097,16 @@ export const createSandboxService = (input: {
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
       const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
+      const networkMode = determineNetworkModeForModel(
+        llmDefinition.provider,
+        llmDefinition.baseUrl,
+        sandboxConfig.egressPolicy,
+      );
       const sandboxModelBaseUrl = normalizeModelBaseUrl(
         llmDefinition.provider,
         llmDefinition.baseUrl,
+        networkMode,
       );
-      const keepModelNetworkAccess =
-        sandboxConfig.egressPolicy === "locked" &&
-        allowsLocalModelAccessWhileLocked(sandboxModelBaseUrl);
       await writeFile(path.join(workspaceDir, ".quayboard-context.md"), pack.content);
       await writeFile(
         path.join(workspaceDir, ".quayboard-tasks.md"),
@@ -1122,8 +1145,8 @@ export const createSandboxService = (input: {
         },
         memoryMb: sandboxConfig.memoryMb,
         name: `qb-${run.id.slice(0, 8)}`,
-        networkDisabled:
-          sandboxConfig.egressPolicy === "locked" && !keepModelNetworkAccess,
+        networkDisabled: networkMode === "none",
+        networkMode,
         workspaceDir,
       });
 
