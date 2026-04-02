@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const dockerCommandTimeoutMs = 5_000;
 const containerCommandTimeoutMs = 60_000;
+const containerWaitTimeoutMs = 10 * 60_000;
 const imageBuildTimeoutMs = 30 * 60_000;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
 const localSandboxImage = {
@@ -246,7 +247,7 @@ export const createDockerService = (dockerHost: string | null) => {
     async waitForContainer(containerId: string, overrideDockerHost?: string | null) {
       const result = await runDockerCommand(["wait", containerId], {
         dockerHost: overrideDockerHost,
-        timeoutMs: containerCommandTimeoutMs,
+        timeoutMs: containerWaitTimeoutMs,
       });
 
       return Number.parseInt(result.stdout.trim(), 10);
