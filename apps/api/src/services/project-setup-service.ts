@@ -71,6 +71,8 @@ const defaultEvidencePolicy: EvidencePolicy = {
   requireUserDocs: false,
 };
 
+const sandboxReadinessImage = "alpine:3.20";
+
 const isSetupCompletedProjectState = (state: string) =>
   state === "READY_PARTIAL" || state === "READY";
 
@@ -393,7 +395,7 @@ export const createProjectSetupService = (
 
     const executionSettings = await executionSettingsService.get();
     const startup = await dockerService.verifySandboxImage(
-      executionSettings.defaultImage,
+      sandboxReadinessImage,
       executionSettings.dockerHost,
     );
     if (!startup.ok) {
