@@ -4352,6 +4352,8 @@ describe("job runner service", () => {
     expect(prompt).not.toContain("Long ux markdown");
     expect(prompt).not.toContain("Long tech markdown");
     expect(prompt).not.toContain("Long arch markdown");
+    expect(prompt).toContain('If the milestone design doc itself is coherent and the gap can be fixed by rewriting or expanding features, prefer "rewrite_feature_set".');
+    expect(prompt).toContain('Use "needs_human_review" only when the milestone design doc still contains an unresolved contradiction or missing decision');
   });
 
   it("downgrades milestone repair plans without feature keys into actionable unresolved output", async () => {
