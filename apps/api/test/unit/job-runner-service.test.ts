@@ -231,6 +231,110 @@ describe("job runner service", () => {
     );
   });
 
+  it("marks malformed GenerateMilestones output as retryable structured-output failure", async () => {
+    const db = createDbStub();
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: "{}",
+        promptTokens: 10,
+        completionTokens: 12,
+        doneReason: null,
+      })
+      .mockResolvedValueOnce({
+        content: "{}",
+        promptTokens: 11,
+        completionTokens: 13,
+        doneReason: null,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-milestones",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestones",
+          inputs: {},
+        })),
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        replaceDraftMilestoneMap: vi.fn(async () => undefined),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          userFlows: [
+            {
+              id: "flow-1",
+              title: "Onboard user",
+              userStory: "As a user, I want to get started quickly.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ],
+        })),
+      } as never,
+    });
+
+    await expect(service.run("job-generate-milestones")).rejects.toMatchObject({
+      jobError: expect.objectContaining({
+        retryable: true,
+        code: "llm_output_invalid",
+      }),
+    });
+    expect(generate).toHaveBeenCalledTimes(2);
+  });
+
   it("updates the project description when generating an overview", async () => {
     const db = createDbStub();
     const updateOwnedProject = vi.fn(async () => undefined);
@@ -2161,18 +2265,6 @@ describe("job runner service", () => {
         }),
         promptTokens: 11,
         completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            {
-              risk: "Dashboard handoff may confuse new users.",
-              mitigation: "Show a short success state before redirecting.",
-            },
-          ],
-        }),
-        promptTokens: 12,
-        completionTokens: 14,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -2258,7 +2350,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         milestoneId: "milestone-id",
@@ -2273,9 +2365,7 @@ describe("job runner service", () => {
     );
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "Risk: Dashboard handoff may confuse new users. Mitigation: Show a short success state before redirecting.",
-        ),
+        markdown: expect.not.stringContaining("## Risks and Open Questions"),
       }),
     );
     expect(markSucceeded).toHaveBeenCalledWith(
@@ -2479,7 +2569,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(1);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.stringContaining("- Open landing page Outcome: Landing page renders."),
@@ -2497,14 +2587,12 @@ describe("job runner service", () => {
     );
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "Risk: First-session completion may drop if redirect timing feels abrupt. Mitigation: Show confirmation before returning to the dashboard.",
-        ),
+        markdown: expect.not.stringContaining("## Risks and Open Questions"),
       }),
     );
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining(
+        markdown: expect.not.stringContaining(
           "Open question: Should password rules be visible before submission?",
         ),
       }),
@@ -2781,7 +2869,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(4);
+    expect(generate).toHaveBeenCalledTimes(3);
     expect(createDesignDocVersion).toHaveBeenCalled();
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-generate-design",
@@ -3006,7 +3094,7 @@ describe("job runner service", () => {
     expect(markSucceeded).not.toHaveBeenCalled();
   });
 
-  it("repairs milestone risks separately after the core design succeeds", async () => {
+  it("persists the repaired milestone design without a risks section", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
@@ -3185,12 +3273,10 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(1);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining(
-          "Risk: Users may abandon the flow if the password form feels too long. Mitigation: Limit required fields and keep validation inline.",
-        ),
+        markdown: expect.not.stringContaining("## Risks and Open Questions"),
       }),
     );
     expect(markSucceeded).toHaveBeenCalledWith(
@@ -3201,7 +3287,7 @@ describe("job runner service", () => {
     );
   });
 
-  it("persists the core milestone design when risks stay invalid after repair", async () => {
+  it("persists the milestone design without adding a risks section", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
@@ -3274,35 +3360,6 @@ describe("job runner service", () => {
         }),
         promptTokens: 10,
         completionTokens: 12,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: {
-            risk: "wrong-shape",
-          },
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: {
-            type: "risk",
-          },
-        }),
-        promptTokens: 12,
-        completionTokens: 14,
-      })
-      .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            {
-              type: "risk",
-            },
-          ],
-        }),
-        promptTokens: 13,
-        completionTokens: 15,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -3388,10 +3445,10 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(4);
+    expect(generate).toHaveBeenCalledTimes(1);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
-        markdown: expect.stringContaining("## Risks and Open Questions\n- None identified."),
+        markdown: expect.not.stringContaining("## Risks and Open Questions"),
       }),
     );
     expect(markSucceeded).toHaveBeenCalledWith(

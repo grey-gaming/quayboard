@@ -178,7 +178,7 @@ export const AutoAdvanceControlsCard = ({
           <div className="flex items-center justify-between gap-3">
             <label className="flex items-center gap-1 text-xs text-secondary" htmlFor="skip-human-review">
               Skip human review
-              <InfoTooltip text="When a milestone scope or delivery review flags issues that would normally require human intervention, automatically bypasses the resolve step and continues. Equivalent to clicking 'Skip & continue' manually." />
+              <InfoTooltip text="When milestone map, scope, reconciliation, delivery, or follow-up repair checks flag issues that would normally require human intervention, automatically bypasses the human-review gate and continues. Equivalent to clicking 'Skip & continue' manually." />
             </label>
             <input
               id="skip-human-review"

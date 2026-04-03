@@ -17,8 +17,6 @@ import {
   buildDeliveryReviewPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
-  buildMilestoneDesignRisksPrompt,
-  buildMilestoneDesignRisksRepairPrompt,
   buildMilestoneCoverageReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
@@ -180,56 +178,6 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not leave an exit criterion, transition, ordering rule, or acceptance expectation");
     expect(prompt).toContain("If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger");
     expect(prompt).toContain("Repair guidance:");
-  });
-
-  it("asks for milestone risks separately with an explicit flexible shape", () => {
-    const prompt = buildMilestoneDesignRisksPrompt({
-      projectName: "Quayboard",
-      milestoneTitle: "Foundations",
-      milestoneSummary: "First releasable slice.",
-      linkedUserFlows: [
-        {
-          title: "Onboard user",
-          userStory: "As a new user, I want a coherent first-use journey.",
-          entryPoint: "Landing page",
-          endState: "Dashboard",
-        },
-      ],
-      validatedDesignJson: '{"title":"Milestone Design"}',
-      hint: "Keep risks concise and milestone-specific.",
-    });
-
-    expect(prompt).toContain('exactly one top-level key: "risksAndOpenQuestions"');
-    expect(prompt).toContain('Allowed object fields: "risk", "question", "description", "mitigation", and "type"');
-    expect(prompt).toContain("Validated milestone design draft:");
-    expect(prompt).toContain("Treat the validated milestone design draft as the resolved source of truth.");
-    expect(prompt).toContain("Do not describe alternate interpretations that conflict with the validated design");
-    expect(prompt).toContain("Repair guidance:");
-  });
-
-  it("repairs milestone risks without reopening the core design shape", () => {
-    const prompt = buildMilestoneDesignRisksRepairPrompt({
-      projectName: "Quayboard",
-      milestoneTitle: "Foundations",
-      milestoneSummary: "First releasable slice.",
-      linkedUserFlows: [
-        {
-          title: "Onboard user",
-          userStory: "As a new user, I want a coherent first-use journey.",
-          entryPoint: "Landing page",
-          endState: "Dashboard",
-        },
-      ],
-      validatedDesignJson: '{"title":"Milestone Design"}',
-      issues: ["Expected risksAndOpenQuestions array."],
-      draftJson: '{"risksAndOpenQuestions":{}}',
-      hint: "Return the risks list only.",
-    });
-
-    expect(prompt).toContain("Repair the risks and open questions");
-    expect(prompt).toContain('exactly one top-level key: "risksAndOpenQuestions"');
-    expect(prompt).toContain("Previous risks/open-questions draft:");
-    expect(prompt).toContain("Validator issues:");
   });
 
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {

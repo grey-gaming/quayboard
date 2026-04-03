@@ -16,6 +16,7 @@ const makeSessionRow = (
     pausedReason: string | null;
     autoApproveWhenClear: boolean;
     skipReviewSteps: boolean;
+    skipHumanReview: boolean;
     autoRepairMilestoneCoverage: boolean;
     creativityMode: string;
     retryCount: number;
@@ -36,6 +37,7 @@ const makeSessionRow = (
   pausedReason: null,
   autoApproveWhenClear: false,
   skipReviewSteps: false,
+  skipHumanReview: false,
   autoRepairMilestoneCoverage: false,
   creativityMode: "balanced",
   retryCount: 0,
@@ -150,7 +152,11 @@ describe("auto-advance service", () => {
   let milestoneService: {
     getActiveMilestone: ReturnType<typeof vi.fn>;
     incrementAutoCatchUpCount: ReturnType<typeof vi.fn>;
+    invalidateDeliveryReview: ReturnType<typeof vi.fn>;
+    invalidateMapReview: ReturnType<typeof vi.fn>;
+    invalidateScopeReview: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
+    recordMapReviewResult: ReturnType<typeof vi.fn>;
     recordDeliveryReviewResult: ReturnType<typeof vi.fn>;
     recordScopeReviewResult: ReturnType<typeof vi.fn>;
     recordReconciliationResult: ReturnType<typeof vi.fn>;
@@ -216,6 +222,10 @@ describe("auto-advance service", () => {
     milestoneService = {
       list: vi.fn().mockResolvedValue({ milestones: [] }),
       getActiveMilestone: vi.fn().mockResolvedValue(null),
+      invalidateDeliveryReview: vi.fn().mockResolvedValue(undefined),
+      invalidateMapReview: vi.fn().mockResolvedValue(undefined),
+      invalidateScopeReview: vi.fn().mockResolvedValue(undefined),
+      recordMapReviewResult: vi.fn().mockResolvedValue(undefined),
       recordDeliveryReviewResult: vi.fn().mockResolvedValue(undefined),
       recordScopeReviewResult,
       recordReconciliationResult: recordScopeReviewResult,
@@ -866,6 +876,65 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("retries ImplementChange with a fresh sandbox run even when the failure is not marked retryable", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "ImplementChange",
+        error: {
+          message: "implement run exited with code 1.",
+        },
+        inputs: {
+          featureId: "feature-123",
+          sandboxRunId: "sandbox-run-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const updates: Array<{ retryCount?: number; pendingJobCount?: number; status?: string }> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(
+          (data: { retryCount?: number; pendingJobCount?: number; status?: string }) => {
+            updates.push(data);
+            return {
+              where: vi
+                .fn()
+                .mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]) }),
+            };
+          },
+        ),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(jobService.createJob).not.toHaveBeenCalled();
+      expect(sandboxService.createRun).toHaveBeenCalledWith(
+        USER_ID,
+        PROJECT_ID,
+        { featureId: "feature-123", kind: "implement" },
+        null,
+        expect.objectContaining({
+          featureId: "feature-123",
+          _autoAdvance: expect.objectContaining({
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+            retryAttempt: 1,
+          }),
+        }),
+      );
+      expect(
+        updates.some((update) => update.retryCount === 1 && update.pendingJobCount === 1),
+      ).toBe(true);
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
+    });
+
     it("pauses session with job_failed on the third consecutive failure", async () => {
       const failedJob = {
         ...makeJob(),
@@ -1180,6 +1249,147 @@ describe("auto-advance service", () => {
           (update) => update.status === "paused" && update.pausedReason === "needs_human",
         ),
       ).toBe(true);
+    });
+
+    it("skips delivery-review human gates when skipHumanReview is enabled", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        skipHumanReview: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneDelivery",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          milestoneId: "milestone-1",
+          issues: [{ action: "needs_human_review", hint: "Clarify artifact ownership." }],
+        } as never,
+      };
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_product_create",
+            label: "Author the first feature Product Spec",
+            href: `/projects/${PROJECT_ID}/features/feature-123`,
+          },
+        ],
+      });
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: updateCall >= 3 ? "batch-2" : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      milestoneService.getActiveMilestone.mockResolvedValue({
+        id: "milestone-1",
+        status: "approved",
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.invalidateDeliveryReview).toHaveBeenCalledWith("milestone-1");
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureProductSpec",
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
+    });
+
+    it("skips milestone-map human gates when skipHumanReview is enabled", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        skipHumanReview: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneMap",
+        inputs: {
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "needs_human_review", hint: "Clarify milestone sequencing." }],
+        } as never,
+      };
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "milestones_generate",
+            label: "Generate milestones",
+            href: `/projects/${PROJECT_ID}/milestones`,
+          },
+        ],
+      });
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: updateCall >= 3 ? "batch-2" : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.recordMapReviewResult).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: PROJECT_ID,
+          status: "failed_needs_human",
+        }),
+      );
+      expect(milestoneService.invalidateMapReview).toHaveBeenCalledWith(PROJECT_ID);
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateMilestones",
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
     it("marks session completed when ReviewDelivery reports complete:true", async () => {
@@ -1592,6 +1802,82 @@ describe("auto-advance service", () => {
       expect(
         updates.some((update) => typeof update.milestoneRepairCount === "number"),
       ).toBe(false);
+    });
+
+    it("skips scope-review human gates when skipHumanReview is enabled", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        skipHumanReview: true,
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewMilestoneScope",
+        inputs: {
+          milestoneId: "milestone-1",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          complete: false,
+          issues: [{ action: "needs_human_review", hint: "Clarify source-of-truth ownership." }],
+        } as never,
+      };
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_product_create",
+            label: "Author the first feature Product Spec",
+            href: `/projects/${PROJECT_ID}/features/feature-123`,
+          },
+        ],
+      });
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.query.milestonesTable = {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "milestone-1",
+        }),
+      } as never;
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: updateCall >= 3 ? "batch-2" : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      milestoneService.getActiveMilestone.mockResolvedValue({
+        id: "milestone-1",
+        status: "approved",
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.invalidateScopeReview).toHaveBeenCalledWith("milestone-1");
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureProductSpec",
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
     it("pauses when milestone reconciliation still has gaps after the rewrite limit", async () => {
@@ -2061,6 +2347,79 @@ describe("auto-advance service", () => {
             update.pausedReason === "needs_human",
         ),
       ).toBe(true);
+    });
+
+    it("skips unresolved milestone repair human gates when skipHumanReview is enabled", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        skipHumanReview: true,
+        milestoneRepairCount: 3,
+      });
+      const repairJob = {
+        ...makeJob(),
+        type: "ResolveMilestoneCoverageIssues",
+        inputs: {
+          milestoneId: "milestone-1",
+          issues: [{ action: "needs_human_review", hint: "Clarify scope." }],
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          resolved: false,
+          unresolvedReasons: ["Still requires a manual scope decision."],
+        } as never,
+      };
+      nextActionsService.build.mockResolvedValue({
+        actions: [
+          {
+            key: "feature_product_create",
+            label: "Author the first feature Product Spec",
+            href: `/projects/${PROJECT_ID}/features/feature-123`,
+          },
+        ],
+      });
+      const db = makeDb({ session: runningSession, job: repairJob });
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: updateCall >= 3 ? "batch-2" : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      milestoneService.getActiveMilestone.mockResolvedValue({
+        id: "milestone-1",
+        status: "approved",
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(milestoneService.invalidateScopeReview).toHaveBeenCalledWith("milestone-1");
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateFeatureProductSpec",
+          inputs: expect.objectContaining({
+            featureId: "feature-123",
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
     it("advances after an ambiguous reconciliation repair resolves the blocking issues", async () => {

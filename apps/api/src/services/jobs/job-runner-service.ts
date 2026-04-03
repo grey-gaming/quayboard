@@ -56,8 +56,6 @@ import {
   buildFeatureUxSpecPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
-  buildMilestoneDesignRisksPrompt,
-  buildMilestoneDesignRisksRepairPrompt,
   buildMilestoneCoverageReviewPrompt,
   buildMilestoneCoverageRepairPrompt,
   buildMilestoneCoverageRepairReviewPrompt,
@@ -227,10 +225,6 @@ type MilestoneDesignDraft = {
   title?: string;
 };
 
-type MilestoneDesignRisksDraft = {
-  risksAndOpenQuestions?: unknown;
-};
-
 type ParsedMilestoneDesignGroupConstraint = {
   items: string[];
   wholeGroup: boolean;
@@ -265,7 +259,6 @@ type ParsedMilestoneDesignDraft = {
     title: string;
   }>;
   objective: string;
-  risksAndOpenQuestions: string[];
   scopeBoundaries: {
     inScope: Array<{
       deliveryGroupKey: string;
@@ -1009,65 +1002,7 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
     },
     deliveryGroups,
     dependenciesAndSequencing,
-    risksAndOpenQuestions: [],
     exitCriteria,
-  };
-};
-
-const normalizeMilestoneRiskEntry = (value: unknown, errorMessage: string) => {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
-  }
-
-  if (!value || typeof value !== "object") {
-    throw new Error(errorMessage);
-  }
-
-  const record = value as Record<string, unknown>;
-  const risk = typeof record.risk === "string" ? record.risk.trim() : "";
-  const question = typeof record.question === "string" ? record.question.trim() : "";
-  const description = typeof record.description === "string" ? record.description.trim() : "";
-  const mitigation = typeof record.mitigation === "string" ? record.mitigation.trim() : "";
-  const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
-  const body = risk || question || description;
-
-  if (!body) {
-    throw new Error(errorMessage);
-  }
-
-  let prefix = "";
-  if (question) {
-    prefix = "Open question";
-  } else if (type.includes("question")) {
-    prefix = "Open question";
-  } else if (type.includes("risk")) {
-    prefix = "Risk";
-  } else if (risk) {
-    prefix = "Risk";
-  }
-
-  const normalized = prefix.length > 0 ? `${prefix}: ${body}` : body;
-  return mitigation ? `${normalized} Mitigation: ${mitigation}` : normalized;
-};
-
-const parseMilestoneDesignRisksDraft = (value: string, templateId: string) => {
-  const parsed = parseJson<MilestoneDesignRisksDraft>(value);
-
-  if (!parsed || !Array.isArray(parsed.risksAndOpenQuestions)) {
-    throw new Error(
-      `${templateId} returned invalid content. Expected "risksAndOpenQuestions" array.`,
-    );
-  }
-
-  const normalized = parsed.risksAndOpenQuestions.map((item, index) =>
-    normalizeMilestoneRiskEntry(
-      item,
-      `${templateId} returned invalid content. Invalid risksAndOpenQuestions item at index ${index}.`,
-    ),
-  );
-
-  return {
-    risksAndOpenQuestions: [...new Set(normalized)],
   };
 };
 
@@ -1286,15 +1221,6 @@ const renderMilestoneDesignMarkdown = (draft: ParsedMilestoneDesignDraft) => {
     lines.push("");
   }
 
-  lines.push("## Risks and Open Questions");
-  if (draft.risksAndOpenQuestions.length === 0) {
-    lines.push("- None identified.");
-  } else {
-    for (const item of draft.risksAndOpenQuestions) {
-      lines.push(`- ${item}`);
-    }
-  }
-  lines.push("");
   lines.push("## Exit Criteria");
   for (const criterion of draft.exitCriteria) {
     lines.push(`- ${criterion.criterion} [owner: ${criterion.deliveryGroupKey}; screens: ${criterion.screens.join(", ")}]`);
@@ -1359,13 +1285,28 @@ const parseDecisionSelectionRepairPlan = (
 
 const parseMilestonesResult = (
   value: string,
-):
-  | Array<{
+  templateId: string,
+): Array<{
+  title?: string;
+  summary?: string;
+  useCaseIds?: string[];
+}> => {
+  const parsed = parseJson<
+    Array<{
       title?: string;
       summary?: string;
       useCaseIds?: string[];
     }>
-  | null => parseJson(value);
+  >(value);
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected a JSON array of milestones.`,
+    );
+  }
+
+  return parsed;
+};
 
 const validateGeneratedMilestones = (
   milestones: Array<{
@@ -3497,33 +3438,13 @@ export const createJobRunnerService = (input: {
           })),
           hint: generateMilestonesInput?.hint,
         });
-        const generated = await generateWithJobFailure(prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const milestones = await runStructuredJsonGeneration({
           templateId: rawJob.type,
           parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parse: (content, templateId) =>
+            validateGeneratedMilestones(parseMilestonesResult(content, templateId)),
         });
-        const parsed = parseMilestonesResult(generated.content);
-
-        if (!parsed) {
-          throw new Error(
-            "GenerateMilestones returned invalid content. Expected a JSON array of milestones.",
-          );
-        }
-
-        const milestones = validateGeneratedMilestones(parsed);
         await input.milestoneService.replaceDraftMilestoneMap({
           ownerUserId,
           projectId: rawJob.projectId,
@@ -3630,33 +3551,13 @@ export const createJobRunnerService = (input: {
           })),
           hint: hint.length > 0 ? hint : undefined,
         });
-        const generated = await generateWithJobFailure(prompt, {
-          responseFormat: "json",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
+        const milestones = await runStructuredJsonGeneration({
           templateId: rawJob.type,
           parameters: { hint },
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
+          prompt,
+          parse: (content, templateId) =>
+            validateGeneratedMilestones(parseMilestonesResult(content, templateId)),
         });
-        const parsed = parseMilestonesResult(generated.content);
-
-        if (!parsed) {
-          throw new Error(
-            "RewriteMilestoneMap returned invalid content. Expected a JSON array of milestones.",
-          );
-        }
-
-        const milestones = validateGeneratedMilestones(parsed);
         await input.milestoneService.replaceDraftMilestoneMap({
           ownerUserId,
           projectId: rawJob.projectId,
@@ -3871,130 +3772,6 @@ export const createJobRunnerService = (input: {
           });
         };
 
-        const parseMilestoneDesignRisksWithRepair = async (inputArgs: {
-          generated: Awaited<ReturnType<LlmProviderService["generate"]>>;
-          hint?: string;
-          parameters: Record<string, unknown>;
-          templateId: string;
-          validatedDesignJson: string;
-        }) => {
-          try {
-            return parseMilestoneDesignRisksDraft(inputArgs.generated.content, inputArgs.templateId);
-          } catch (error) {
-            const validationMessage =
-              error instanceof Error
-                ? error.message
-                : `${inputArgs.templateId} returned invalid content.`;
-
-            if (inputArgs.generated.doneReason === "length") {
-              throw createStructuredOutputFailure({
-                message: validationMessage,
-                templateId: inputArgs.templateId,
-                doneReason: inputArgs.generated.doneReason,
-              });
-            }
-
-            const jsonRepairTemplateId = `${inputArgs.templateId}Repair`;
-            const jsonRepairPrompt = buildJsonRepairPrompt({
-              templateId: inputArgs.templateId,
-              validationMessage,
-              invalidResponse: inputArgs.generated.content,
-            });
-            const jsonRepaired = await generateWithJobFailure(jsonRepairPrompt, {
-              responseFormat: "json",
-            });
-            await storeLlmRun({
-              templateId: jsonRepairTemplateId,
-              parameters: {
-                ...inputArgs.parameters,
-                repairOf: inputArgs.templateId,
-              },
-              prompt: jsonRepairPrompt,
-              generated: jsonRepaired,
-            });
-
-            try {
-              return parseMilestoneDesignRisksDraft(jsonRepaired.content, inputArgs.templateId);
-            } catch (jsonRepairError) {
-              const shapeRepairMessage =
-                jsonRepairError instanceof Error ? jsonRepairError.message : validationMessage;
-              const shapeRepairTemplateId = `${inputArgs.templateId}ShapeRetry`;
-              const shapeRepairPrompt = buildMilestoneDesignRisksRepairPrompt({
-                projectName: project.name,
-                milestoneTitle: milestoneRecord.title,
-                milestoneSummary: milestoneRecord.summary,
-                linkedUserFlows: linkedFlows,
-                validatedDesignJson: inputArgs.validatedDesignJson,
-                issues: [shapeRepairMessage],
-                draftJson: jsonRepaired.content,
-                hint: inputArgs.hint?.trim() || shapeRepairMessage,
-              });
-              const shapeRepaired = await generateWithJobFailure(shapeRepairPrompt, {
-                responseFormat: "json",
-              });
-              await storeLlmRun({
-                templateId: shapeRepairTemplateId,
-                parameters: {
-                  ...inputArgs.parameters,
-                  repairOf: inputArgs.templateId,
-                  repairKind: "shape",
-                },
-                prompt: shapeRepairPrompt,
-                generated: shapeRepaired,
-              });
-
-              try {
-                return parseMilestoneDesignRisksDraft(shapeRepaired.content, inputArgs.templateId);
-              } catch (shapeRepairError) {
-                throw createStructuredOutputFailure({
-                  message:
-                    shapeRepairError instanceof Error
-                      ? shapeRepairError.message
-                      : shapeRepairMessage,
-                  templateId: inputArgs.templateId,
-                  doneReason:
-                    shapeRepaired.doneReason ??
-                    jsonRepaired.doneReason ??
-                    inputArgs.generated.doneReason ??
-                    null,
-                });
-              }
-            }
-          }
-        };
-
-        const generateMilestoneDesignRisksDraft = async (inputArgs: {
-          hint?: string;
-          templateId: string;
-          validatedDesignJson: string;
-        }) => {
-          const prompt = buildMilestoneDesignRisksPrompt({
-            projectName: project.name,
-            milestoneTitle: milestoneRecord.title,
-            milestoneSummary: milestoneRecord.summary,
-            linkedUserFlows: linkedFlows,
-            validatedDesignJson: inputArgs.validatedDesignJson,
-            hint: inputArgs.hint,
-          });
-
-          const generated = await generateWithJobFailure(prompt, {
-            responseFormat: "json",
-          });
-          await storeLlmRun({
-            templateId: inputArgs.templateId,
-            parameters: { milestoneId },
-            prompt,
-            generated,
-          });
-          return parseMilestoneDesignRisksWithRepair({
-            generated,
-            hint: inputArgs.hint,
-            parameters: { milestoneId },
-            templateId: inputArgs.templateId,
-            validatedDesignJson: inputArgs.validatedDesignJson,
-          });
-        };
-
         let designDraft = await generateMilestoneDesignCoreDraft({
           hint: jobInput?.hint,
           templateId: rawJob.type,
@@ -4022,43 +3799,6 @@ export const createJobRunnerService = (input: {
             retryable: true,
           });
         }
-
-        const validatedDesignJson = JSON.stringify(
-          {
-            title: designDraft.title,
-            objective: designDraft.objective,
-            includedUserFlows: designDraft.includedUserFlows,
-            scopeBoundaries: designDraft.scopeBoundaries,
-            deliveryGroups: designDraft.deliveryGroups.map((group) => ({
-              ...group,
-              mustStayTogether: group.mustStayTogether.wholeGroup
-                ? true
-                : group.mustStayTogether.items,
-              mustNotSplit: group.mustNotSplit.wholeGroup ? true : group.mustNotSplit.items,
-            })),
-            dependenciesAndSequencing: designDraft.dependenciesAndSequencing,
-            exitCriteria: designDraft.exitCriteria,
-          },
-          null,
-          2,
-        );
-
-        let risksDraft: { risksAndOpenQuestions: string[] } = { risksAndOpenQuestions: [] };
-        try {
-          risksDraft = await generateMilestoneDesignRisksDraft({
-            hint: jobInput?.hint,
-            templateId: `${rawJob.type}Risks`,
-            validatedDesignJson,
-          });
-        } catch (error) {
-          if (!isStructuredOutputFailure(error)) {
-            throw error;
-          }
-        }
-        designDraft = {
-          ...designDraft,
-          risksAndOpenQuestions: risksDraft.risksAndOpenQuestions,
-        };
 
         const designDoc = {
           title: designDraft.title,
