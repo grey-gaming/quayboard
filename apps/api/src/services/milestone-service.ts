@@ -23,10 +23,14 @@ import {
   milestoneUseCasesTable,
   milestonesTable,
   projectsTable,
+  reposTable,
   useCasesTable,
 } from "../db/schema.js";
+import type { GithubService } from "./github-service.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import { buildMilestoneDeliveryBranchName } from "./milestone-delivery-branch.js";
+import type { SecretService } from "./secret-service.js";
 
 const toMilestoneDesignDoc = (
   record: typeof milestoneDesignDocsTable.$inferSelect,
@@ -92,7 +96,11 @@ const buildMilestoneRecord = (input: {
     updatedAt: input.milestone.updatedAt.toISOString(),
   });
 
-export const createMilestoneService = (db: AppDatabase) => ({
+export const createMilestoneService = (
+  db: AppDatabase,
+  githubService?: GithubService,
+  secretService?: SecretService,
+) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
@@ -660,6 +668,96 @@ export const createMilestoneService = (db: AppDatabase) => ({
     });
   },
 
+  async mergeMilestoneDeliveryBranchIfNeeded(
+    ownerUserId: string,
+    projectId: string,
+    milestone: typeof milestonesTable.$inferSelect,
+  ) {
+    if (!githubService || !secretService) {
+      throw new Error("Milestone completion requires GitHub integration services.");
+    }
+
+    const repo = await db.query.reposTable.findFirst({
+      where: eq(reposTable.projectId, projectId),
+    });
+
+    if (!repo?.owner || !repo.name) {
+      throw new HttpError(
+        409,
+        "project_repo_required",
+        "A verified GitHub repository is required before completing the milestone.",
+      );
+    }
+
+    const env = await secretService.buildSecretEnvMap(ownerUserId, projectId);
+    if (!env.GITHUB_PAT) {
+      throw new HttpError(
+        409,
+        "github_pat_required",
+        "A configured GitHub PAT is required before completing the milestone.",
+      );
+    }
+
+    const branchName = buildMilestoneDeliveryBranchName(milestone);
+    const pullRequest = await githubService.findOpenPullRequestForHead({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      head: branchName,
+    });
+
+    if (!pullRequest) {
+      const branchExists = await githubService.branchExists({
+        owner: repo.owner,
+        repo: repo.name,
+        token: env.GITHUB_PAT,
+        branch: branchName,
+      });
+
+      if (branchExists) {
+        throw new HttpError(
+          409,
+          "milestone_pull_request_required",
+          "Open milestone pull request could not be found for the active delivery branch.",
+        );
+      }
+
+      return;
+    }
+
+    try {
+      await githubService.mergePullRequest({
+        owner: repo.owner,
+        repo: repo.name,
+        token: env.GITHUB_PAT,
+        pullNumber: pullRequest.number,
+        method: "merge",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "GitHub pull request merge failed.";
+      throw new HttpError(409, "milestone_pull_request_merge_failed", message);
+    }
+
+    try {
+      await githubService.deleteBranch({
+        owner: repo.owner,
+        repo: repo.name,
+        token: env.GITHUB_PAT,
+        branch: branchName,
+      });
+    } catch (error) {
+      console.error("[milestone-service] Failed to delete merged milestone branch.", {
+        projectId,
+        milestoneId: milestone.id,
+        branchName,
+        error,
+      });
+    }
+  },
+
   async transition(ownerUserId: string, milestoneId: string, input: unknown) {
     const context = await this.getContext(ownerUserId, milestoneId);
     await this.assertActiveMilestone(ownerUserId, context.projectId, milestoneId);
@@ -733,6 +831,14 @@ export const createMilestoneService = (db: AppDatabase) => ({
           409,
           "milestone_delivery_review_required",
           "Run the milestone delivery review and resolve all gaps before completing the milestone.",
+        );
+      }
+
+      if (milestone) {
+        await this.mergeMilestoneDeliveryBranchIfNeeded(
+          ownerUserId,
+          context.projectId,
+          milestone,
         );
       }
 

@@ -19,9 +19,10 @@ The policy needs to support two constraints at once:
 
 Quayboard will use the following workflow rules:
 
-- Use one dedicated branch per active milestone.
+- Use one dedicated delivery branch per active milestone while that milestone is in progress.
 - Do not work directly on `main`.
-- Keep bug fixes for a milestone on that milestone branch unless explicitly directed otherwise.
+- Merge the milestone delivery branch through its PR, then delete that remote branch.
+- After a milestone branch has been merged and deleted, start follow-up fixes from the current default branch on a fresh fix branch.
 - Commit work incrementally to the milestone branch as progress is made.
 - Push the milestone branch to `origin` so the remote stays current.
 - Before pushing, run the required verification for the change that exists in the repo.
@@ -31,9 +32,9 @@ Quayboard will use the following workflow rules:
 
 ## Consequences
 
-This keeps milestone work cohesive, makes bug-fix routing straightforward, and reduces ambiguity for agents and human contributors. It also creates a clear separation between local push gates and merge gates, which should scale better once the repo has slower integration and end-to-end suites.
+This keeps active milestone work cohesive while preventing old delivery branches from becoming long-lived sources of truth after merge. It also creates a clear separation between local push gates and merge gates, which should scale better once the repo has slower integration and end-to-end suites.
 
-The tradeoff is that milestone branches may stay open longer and accumulate more commits than short-lived task branches. That is acceptable for this repository because the primary control boundary is the milestone, not the individual prompt or coding session.
+The tradeoff is that active milestone branches may stay open longer and accumulate more commits than short-lived task branches, while post-merge fixes now require a fresh branch even when they relate to the same milestone. That is acceptable for this repository because the primary control boundary is the active milestone, not the individual prompt or coding session.
 
 This ADR should be updated or superseded if the team later adopts a different branching model, such as feature branches under each milestone or direct trunk-based development with stricter automation.
 

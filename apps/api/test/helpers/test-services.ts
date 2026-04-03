@@ -34,6 +34,22 @@ export const createStubServices = (): AppServices => ({
       approval: null,
     }),
   },
+  artifactStorageService: {
+    copyRunArtifact: async () => ({
+      contentType: "application/octet-stream",
+      path: "/tmp/artifact",
+      sizeBytes: 0,
+    }),
+    ensureRunDir: async () => "/tmp",
+    readArtifact: async () => Buffer.from(""),
+    restoreWorkspaceSnapshot: async () => undefined,
+    snapshotWorkspace: async () => "/tmp/workspace",
+    writeRunArtifact: async () => ({
+      contentType: "text/plain",
+      path: "/tmp/artifact",
+      sizeBytes: 0,
+    }),
+  },
   authService: {
     authenticate: async () => null,
     createSession: async () => {
@@ -78,10 +94,74 @@ export const createStubServices = (): AppServices => ({
     },
     updateDecisionCards: async () => ({ cards: [] }),
   },
+  contextPackService: {
+    buildContextPack: async () => ({
+      id: "00000000-0000-4000-8000-000000000010",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      featureId: null,
+      type: "coding",
+      version: 1,
+      content: "# Context",
+      summary: "Context",
+      stale: false,
+      omissionList: [],
+      sourceCoverage: [],
+      createdByJobId: null,
+      createdAt: new Date().toISOString(),
+    }),
+    buildRepoFingerprint: async () => ({
+      id: "00000000-0000-4000-8000-000000000011",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      key: "repo-fingerprint",
+      content: "repo",
+      sourceType: "repo",
+      sourceId: null,
+      createdByJobId: null,
+      createdAt: new Date().toISOString(),
+    }),
+    assertOwnedProject: async () => ({
+      id: "00000000-0000-4000-8000-000000000000",
+      ownerUserId: "00000000-0000-4000-8000-000000000001",
+      name: "Stub Project",
+      description: null,
+      state: "READY",
+      onePagerApprovedAt: null,
+      userFlowsApprovedAt: null,
+      userFlowsApprovalSnapshot: null,
+      milestoneMapGeneratedAt: null,
+      milestoneMapReviewStatus: "not_started",
+      milestoneMapReviewIssues: [],
+      milestoneMapReviewedAt: null,
+      milestoneMapReviewLastJobId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    listContextPacks: async () => [],
+    listMemoryChunks: async () => [],
+  },
   db: {} as AppServices["db"],
   dockerService: {
     checkAvailability: async () => ({ ok: false, message: "Unavailable." }),
+    createManagedContainer: async () => "container-id",
+    ensureImage: async () => undefined,
+    listManagedContainers: async () => [],
+    readLogs: async () => "",
+    removeContainer: async () => undefined,
+    startContainer: async () => undefined,
+    stopContainer: async () => undefined,
+    waitForContainer: async () => 0,
     verifySandboxImage: async () => ({ ok: false, message: "Unavailable." }),
+  },
+  executionSettingsService: {
+    get: async () => ({
+      defaultImage: "quayboard-agent-sandbox:latest",
+      dockerHost: null,
+      maxConcurrentRuns: 2,
+      defaultTimeoutSeconds: 900,
+      defaultCpuLimit: 1,
+      defaultMemoryMb: 2048,
+    }),
+    update: async (value) => value,
   },
   featureService: {
     addDependency: async () => {
@@ -202,6 +282,11 @@ export const createStubServices = (): AppServices => ({
     listRevisions: async () => ({ revisions: [] }),
   },
   githubService: {
+    branchExists: async () => false,
+    createPullRequest: async () => ({ url: "https://github.com/acme/repo/pull/1" }),
+    deleteBranch: async () => ({ deleted: true, notFound: false }),
+    findOpenPullRequestForHead: async () => null,
+    mergePullRequest: async () => ({ merged: true, sha: "abc123" }),
     validatePat: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -312,6 +397,7 @@ export const createStubServices = (): AppServices => ({
     invalidateMapReview: async () => undefined,
     recordMapReviewResult: async () => undefined,
     markMapGenerated: async () => undefined,
+    mergeMilestoneDeliveryBranchIfNeeded: async () => undefined,
     invalidateScopeReview: async () => undefined,
     recordScopeReviewResult: async () => undefined,
     invalidateDeliveryReview: async () => undefined,
@@ -523,6 +609,109 @@ export const createStubServices = (): AppServices => ({
       updatedAt: new Date().toISOString(),
     }),
   },
+  sandboxService: {
+    appendEvent: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    assertOwnedProject: async () => ({
+      id: "00000000-0000-4000-8000-000000000000",
+      ownerUserId: "00000000-0000-4000-8000-000000000001",
+      name: "Stub Project",
+      description: null,
+      state: "READY",
+      onePagerApprovedAt: null,
+      userFlowsApprovedAt: null,
+      userFlowsApprovalSnapshot: null,
+      milestoneMapGeneratedAt: null,
+      milestoneMapReviewStatus: "not_started",
+      milestoneMapReviewIssues: [],
+      milestoneMapReviewedAt: null,
+      milestoneMapReviewLastJobId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    assertOwnedRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    attachArtifact: async () => undefined,
+    cancelRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    captureArtifactsFromDir: async () => undefined,
+    captureGitArtifacts: async () => undefined,
+    cloneRepository: async () => undefined,
+    createMilestoneSession: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    disposeManagedContainer: async () => undefined,
+    executeRun: async () => undefined,
+    formatMilestoneSession: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    formatRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getEffectiveSandboxConfig: async () => ({
+      allowlist: [],
+      cpuLimit: 1,
+      egressPolicy: "locked" as const,
+      memoryMb: 1024,
+      timeoutSeconds: 300,
+    }),
+    getEffectiveLlmDefinition: async () => ({
+      provider: "openai" as const,
+      model: "gpt-4.1-mini",
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: null,
+    }),
+    getOptions: async () => ({
+      executionSettings: {
+        defaultImage: "quayboard-agent-sandbox:latest",
+        dockerHost: null,
+        maxConcurrentRuns: 2,
+        defaultTimeoutSeconds: 900,
+        defaultCpuLimit: 1,
+        defaultMemoryMb: 2048,
+      },
+      projectRepo: null,
+      runnableFeatures: [],
+      codingPacks: [],
+    }),
+    getMilestoneSession: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getRunArtifact: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    git: async () => "",
+    hasWorkingTreeChanges: async () => false,
+    listManagedContainers: async () => ({ containers: [] }),
+    listMilestoneSessions: async () => ({ sessions: [] }),
+    listRuns: async () => ({ runs: [] }),
+    resolveDeliveryBranchPlan: async () => ({
+      baseBranchName: "main",
+      cloneBranchName: "main",
+      targetBranchName: "quayboard/fix/f-001/test-run",
+      pullRequestTitle: "Fix F-001: Stub Feature",
+      pullRequestBody: "Stub branch plan.",
+    }),
+    publishPullRequestIfNeeded: async () => ({
+      bootstrappedDefaultBranch: false,
+      branchName: null,
+      commitSha: null,
+      pullRequestUrl: null,
+    }),
+    runMilestoneSession: async () => undefined,
+    updateRunState: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
   secretService: {
     buildSecretEnvMap: async () => ({}),
     createSecret: async () => {
@@ -547,8 +736,16 @@ export const createStubServices = (): AppServices => ({
     },
   },
   settingsService: {
+    getScopedSetting: async () => null,
+    getSystemSetting: async () => null,
     getProjectSetting: async () => null,
+    upsertScopedSetting: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     upsertProjectSetting: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    upsertSystemSetting: async () => {
       throw new Error("Not implemented in test stub.");
     },
   },

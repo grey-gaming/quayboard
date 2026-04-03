@@ -4,6 +4,10 @@ import { createPostgresDatabase, type AppDatabase } from "./db/client.js";
 import { readAppConfig } from "./config.js";
 import { projectsTable } from "./db/schema.js";
 import {
+  createArtifactStorageService,
+  type ArtifactStorageService,
+} from "./services/artifact-storage-service.js";
+import {
   createArtifactApprovalService,
   type ArtifactApprovalService,
 } from "./services/artifact-approval-service.js";
@@ -12,7 +16,15 @@ import {
   createBlueprintService,
   type BlueprintService,
 } from "./services/blueprint-service.js";
+import {
+  createContextPackService,
+  type ContextPackService,
+} from "./services/context-pack-service.js";
 import { createDockerService, type DockerService } from "./services/docker-service.js";
+import {
+  createExecutionSettingsService,
+  type ExecutionSettingsService,
+} from "./services/execution-settings-service.js";
 import {
   createFeatureService,
   type FeatureService,
@@ -83,6 +95,10 @@ import {
   createSettingsService,
   type SettingsService,
 } from "./services/settings-service.js";
+import {
+  createSandboxService,
+  type SandboxService,
+} from "./services/sandbox-service.js";
 import { createSseHub, type SseHub } from "./services/sse.js";
 import {
   createSystemReadinessService,
@@ -106,10 +122,13 @@ import {
 export type AppServices = {
   autoAdvanceService: AutoAdvanceService;
   artifactApprovalService: ArtifactApprovalService;
+  artifactStorageService: ArtifactStorageService;
   authService: AuthService;
   blueprintService: BlueprintService;
+  contextPackService: ContextPackService;
   db: AppDatabase;
   dockerService: DockerService;
+  executionSettingsService: ExecutionSettingsService;
   featureService: FeatureService;
   featureWorkstreamService: FeatureWorkstreamService;
   githubService: GithubService;
@@ -125,6 +144,7 @@ export type AppServices = {
   projectService: ProjectService;
   projectSetupService: ProjectSetupService;
   questionnaireService: QuestionnaireService;
+  sandboxService: SandboxService;
   secretService: SecretService;
   secretsCrypto: SecretsCrypto;
   settingsService: SettingsService;
@@ -158,6 +178,15 @@ export const createAppServices = async (
   const secretService = createSecretService(db, secretsCrypto, projectService);
   const sseHub = createSseHub();
   const settingsService = createSettingsService(db);
+  const artifactStorageService = createArtifactStorageService(appConfig.artifactStoragePath);
+  const executionSettingsService = createExecutionSettingsService(settingsService, {
+    defaultImage: "quayboard-agent-sandbox:latest",
+    dockerHost: appConfig.dockerHost,
+    maxConcurrentRuns: 2,
+    defaultTimeoutSeconds: 900,
+    defaultCpuLimit: 1,
+    defaultMemoryMb: 2048,
+  });
   const jobService = createJobService(db);
   const llmProviderService = createLlmProviderService({
     maxOutputTokens: appConfig.llmMaxOutputTokens,
@@ -170,7 +199,7 @@ export const createAppServices = async (
   const productSpecService = createProductSpecService(db);
   const userFlowService = createUserFlowService(db);
   const blueprintService = createBlueprintService(db);
-  const milestoneService = createMilestoneService(db);
+  const milestoneService = createMilestoneService(db, githubService, secretService);
   const featureService = createFeatureService(db, milestoneService);
   const featureWorkstreamService = createFeatureWorkstreamService(db, milestoneService);
   const taskPlanningService = createTaskPlanningService(
@@ -178,6 +207,7 @@ export const createAppServices = async (
     milestoneService,
     featureWorkstreamService,
   );
+  const contextPackService = createContextPackService(db);
   const artifactApprovalService = createArtifactApprovalService(
     db,
     blueprintService,
@@ -192,6 +222,7 @@ export const createAppServices = async (
     llmProviderService,
     githubService,
     dockerService,
+    executionSettingsService,
     {
       ollamaHost: appConfig.ollamaHost,
       openAiBaseUrl: appConfig.openAiBaseUrl,
@@ -235,6 +266,23 @@ export const createAppServices = async (
     userFlowService,
     taskPlanningService,
   );
+  const sandboxService = createSandboxService({
+    artifactStorageService,
+    contextPackService,
+    db,
+    dockerService,
+    executionSettingsService,
+    featureService,
+    featureWorkstreamService,
+    githubService,
+    llmRuntimeDefaults: {
+      ollamaHost: appConfig.ollamaHost,
+      openAiBaseUrl: appConfig.openAiBaseUrl,
+    },
+    secretService,
+    sseHub,
+    taskPlanningService,
+  });
   const autoAdvanceService = createAutoAdvanceService(
     db,
     nextActionsService,
@@ -248,9 +296,11 @@ export const createAppServices = async (
     featureWorkstreamService,
     userFlowService,
     taskPlanningService,
+    sandboxService,
   );
   const jobRunnerService = createJobRunnerService({
     artifactApprovalService,
+    contextPackService,
     db,
     blueprintService,
     featureService,
@@ -263,6 +313,7 @@ export const createAppServices = async (
     projectService,
     projectSetupService,
     questionnaireService,
+    sandboxService,
     userFlowService,
   });
   const jobScheduler = createJobScheduler({
@@ -333,10 +384,13 @@ export const createAppServices = async (
     services: {
     autoAdvanceService,
     artifactApprovalService,
+    artifactStorageService,
     authService,
     blueprintService,
+    contextPackService,
     db,
     dockerService,
+    executionSettingsService,
     featureService,
     featureWorkstreamService,
     githubService,
@@ -352,6 +406,7 @@ export const createAppServices = async (
       projectService,
       projectSetupService,
       questionnaireService,
+      sandboxService,
       secretService,
       secretsCrypto,
       settingsService,

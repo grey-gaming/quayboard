@@ -44,5 +44,28 @@ export const SettingsPage = () => (
         </Link>
       </div>
     </Card>
+    <Card className="mt-4 max-w-4xl" surface="panel">
+      <p className="qb-meta-label">Execution</p>
+      <p className="mt-2 text-xl font-semibold tracking-[-0.02em]">Sandbox Runner Defaults</p>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-secondary">
+        Review and update the instance defaults for the sandbox image, Docker host override,
+        concurrency, and default runtime limits used by implementation runs.
+      </p>
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <div className="qb-kv">
+          <p className="qb-meta-label">Controls</p>
+          <p className="text-sm text-foreground">Image, Docker host, concurrency, CPU, memory, timeout</p>
+        </div>
+        <div className="qb-kv">
+          <p className="qb-meta-label">Audience</p>
+          <p className="text-sm text-foreground">Operators managing local execution capacity</p>
+        </div>
+      </div>
+      <div className="mt-5">
+        <Link className={primaryLinkClassName} to="/settings/execution">
+          Open Execution Settings
+        </Link>
+      </div>
+    </Card>
   </AppFrame>
 );

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import {
   artifactApprovalSchema,
@@ -27,9 +27,11 @@ import {
   featureTechSpecsTable,
   featureUserDocRevisionsTable,
   featureUserDocSpecsTable,
+  implementationRecordsTable,
   featureUxRevisionsTable,
   featureUxSpecsTable,
   projectsTable,
+  sandboxRunsTable,
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
@@ -513,6 +515,19 @@ export const createFeatureWorkstreamService = (db: AppDatabase, milestoneService
       this.getHeadRevision(ownerUserId, featureId, "user_docs"),
       this.getHeadRevision(ownerUserId, featureId, "arch_docs"),
     ]);
+    const [latestImplementation, activeRun] = await Promise.all([
+      db.query.implementationRecordsTable.findFirst({
+        where: eq(implementationRecordsTable.featureId, featureId),
+        orderBy: [desc(implementationRecordsTable.implementedAt)],
+      }),
+      db.query.sandboxRunsTable.findFirst({
+        where: and(
+          eq(sandboxRunsTable.featureId, featureId),
+          inArray(sandboxRunsTable.status, ["queued", "running"]),
+        ),
+        orderBy: [desc(sandboxRunsTable.createdAt)],
+      }),
+    ]);
 
     const requirements = product?.requirements ?? hiddenRequirements;
     const toSummary = (
@@ -522,15 +537,40 @@ export const createFeatureWorkstreamService = (db: AppDatabase, milestoneService
         | Awaited<ReturnType<typeof this.getHeadRevision>>
         | null,
     ): FeatureTrackSummary =>
-      featureTrackSummarySchema.parse({
-        kind,
-        required,
-        status: headRevision?.approval ? "approved" : "draft",
-        headRevision,
-        approvedRevisionId: headRevision?.approval ? headRevision.id : null,
-        implementationStatus: "not_implemented",
-        isOutOfDate: false,
-      });
+      {
+        const approvedRevisionId = headRevision?.approval ? headRevision.id : null;
+        const isOutOfDate =
+          kind === "tech" &&
+          Boolean(
+            approvedRevisionId &&
+              latestImplementation &&
+              latestImplementation.techRevisionId !== approvedRevisionId,
+          );
+        const implementationStatus =
+          kind === "tech"
+            ? activeRun
+              ? "running"
+              : approvedRevisionId
+                ? latestImplementation
+                  ? isOutOfDate
+                    ? "out_of_date"
+                    : "implemented"
+                  : "not_implemented"
+                : "not_implemented"
+            : activeRun
+              ? "running"
+              : "not_implemented";
+
+        return featureTrackSummarySchema.parse({
+          kind,
+          required,
+          status: headRevision?.approval ? "approved" : "draft",
+          headRevision,
+          approvedRevisionId,
+          implementationStatus,
+          isOutOfDate,
+        });
+      };
 
     return featureTracksResponseSchema.parse({
       featureId,

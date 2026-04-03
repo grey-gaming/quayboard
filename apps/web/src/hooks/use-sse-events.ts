@@ -14,6 +14,11 @@ type ProjectUpdatedEventPayload = {
   resource?: "feature" | "milestone" | "phase_gates";
 };
 
+type SandboxUpdatedEventPayload = {
+  projectId?: string;
+  sandboxRunId?: string;
+};
+
 const isJobUpdatedEventPayload = (value: unknown): value is JobUpdatedEventPayload => {
   if (!value || typeof value !== "object") {
     return false;
@@ -42,6 +47,18 @@ const isProjectUpdatedEventPayload = (value: unknown): value is ProjectUpdatedEv
         candidate.resource === "milestone" ||
         candidate.resource === "phase_gates"
       : true)
+  );
+};
+
+const isSandboxUpdatedEventPayload = (value: unknown): value is SandboxUpdatedEventPayload => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    ("projectId" in candidate ? typeof candidate.projectId === "string" : true) &&
+    ("sandboxRunId" in candidate ? typeof candidate.sandboxRunId === "string" : true)
   );
 };
 
@@ -100,6 +117,31 @@ export const useSseEvents = (projectId?: string) => {
         queryClient.invalidateQueries({
           queryKey: ["project", activeProjectId, "artifact-approval"],
         }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "sandbox-options"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "sandbox-runs"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "sandbox-containers"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "context-packs"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "memory-chunks"],
+        }),
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const [scope, keyProjectId, resource] = query.queryKey;
+            return (
+              scope === "milestone" &&
+              typeof keyProjectId === "string" &&
+              resource === "sandbox-sessions"
+            );
+          },
+        }),
       ]);
     };
 
@@ -112,6 +154,8 @@ export const useSseEvents = (projectId?: string) => {
           if (isJobUpdatedEventPayload(parsed)) {
             eventProjectId = parsed.projectId;
           } else if (isProjectUpdatedEventPayload(parsed)) {
+            eventProjectId = parsed.projectId;
+          } else if (isSandboxUpdatedEventPayload(parsed)) {
             eventProjectId = parsed.projectId;
           }
         } catch {
@@ -138,11 +182,13 @@ export const useSseEvents = (projectId?: string) => {
     source.addEventListener("job:updated", handleProjectEvent);
     source.addEventListener("project:updated", handleProjectEvent);
     source.addEventListener("auto-advance:updated", handleProjectEvent);
+    source.addEventListener("sandbox:updated", handleProjectEvent);
 
     return () => {
       source.removeEventListener("job:updated", handleProjectEvent);
       source.removeEventListener("project:updated", handleProjectEvent);
       source.removeEventListener("auto-advance:updated", handleProjectEvent);
+      source.removeEventListener("sandbox:updated", handleProjectEvent);
       source.close();
     };
   }, [projectId, queryClient]);

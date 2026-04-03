@@ -169,6 +169,25 @@ export const buildFeatureBuilderTertiaryItems = (
   },
 ];
 
+export const buildImplementationTertiaryItems = (
+  project: Project,
+): ProjectTertiaryNavItem[] => [
+  {
+    kind: "link",
+    key: "develop",
+    label: "Develop",
+    to: `/projects/${project.id}/develop`,
+    end: true,
+  },
+  {
+    kind: "link",
+    key: "develop-debug",
+    label: "Context Debug",
+    to: `/projects/${project.id}/develop/debug`,
+    end: true,
+  },
+];
+
 export const getFeatureTabUrl = (
   projectId: string,
   featureId: string,

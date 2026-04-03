@@ -537,7 +537,7 @@ export const ProjectSetupPage = () => {
         <Card surface="panel">
           <SectionHeader
             title="Sandbox Defaults"
-            summary="Define the limits Quayboard should use when testing sandbox startup. The first verification can pull the base image if it is missing locally."
+            summary="Define the project-level runtime limits Quayboard should use during execution. Sandbox verification checks that Docker can start a minimal container; the execution runner image itself is configured separately in instance settings."
             docs={[
               { label: "First install", to: "/docs/first-install" },
               { label: "Planning workflow", to: "/docs/planning-workflow" },
@@ -580,6 +580,14 @@ export const ProjectSetupPage = () => {
                 {...register("sandboxAllowlist")}
               />
             </div>
+            <Alert tone="info">
+              This check confirms Docker can launch a minimal sandbox container. The managed
+              execution image used by Develop runs is configured from{" "}
+              <Link className="font-medium text-accent hover:text-foreground" to="/settings/execution">
+                Execution Settings
+              </Link>
+              .
+            </Alert>
             <div className="flex flex-wrap gap-2">
               <Button
                 disabled={updateProjectMutation.isPending}

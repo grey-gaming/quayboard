@@ -17,8 +17,7 @@ import {
   buildDeliveryReviewPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
-  buildMilestoneDesignRisksPrompt,
-  buildMilestoneDesignRisksRepairPrompt,
+  buildMilestoneCoverageReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
 const sampleAnswers = {
@@ -145,6 +144,10 @@ describe("job prompts", () => {
     expect(prompt).not.toContain('"risksAndOpenQuestions"');
     expect(prompt).toContain("Each includedUserFlows title must exactly match one linked user-flow title");
     expect(prompt).toContain("Use stable kebab-case delivery group keys");
+    expect(prompt).toContain("include that screen's owning delivery group");
+    expect(prompt).toContain("Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned");
+    expect(prompt).toContain("Do not list a trigger, mechanic, ordering rule, or dependency as required");
+    expect(prompt).toContain("Mention GAME_OVER transitions only when the triggering mechanism is explicitly in scope");
     expect(prompt).toContain("Repair guidance:");
   });
 
@@ -171,55 +174,10 @@ describe("job prompts", () => {
     expect(prompt).toContain("Repair the structured milestone design draft");
     expect(prompt).toContain("Validator issues:");
     expect(prompt).toContain("Previous structured milestone design draft:");
+    expect(prompt).toContain("include that screen's owning delivery group");
+    expect(prompt).toContain("Do not leave an exit criterion, transition, ordering rule, or acceptance expectation");
+    expect(prompt).toContain("If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger");
     expect(prompt).toContain("Repair guidance:");
-  });
-
-  it("asks for milestone risks separately with an explicit flexible shape", () => {
-    const prompt = buildMilestoneDesignRisksPrompt({
-      projectName: "Quayboard",
-      milestoneTitle: "Foundations",
-      milestoneSummary: "First releasable slice.",
-      linkedUserFlows: [
-        {
-          title: "Onboard user",
-          userStory: "As a new user, I want a coherent first-use journey.",
-          entryPoint: "Landing page",
-          endState: "Dashboard",
-        },
-      ],
-      validatedDesignJson: '{"title":"Milestone Design"}',
-      hint: "Keep risks concise and milestone-specific.",
-    });
-
-    expect(prompt).toContain('exactly one top-level key: "risksAndOpenQuestions"');
-    expect(prompt).toContain('Allowed object fields: "risk", "question", "description", "mitigation", and "type"');
-    expect(prompt).toContain("Validated milestone design draft:");
-    expect(prompt).toContain("Repair guidance:");
-  });
-
-  it("repairs milestone risks without reopening the core design shape", () => {
-    const prompt = buildMilestoneDesignRisksRepairPrompt({
-      projectName: "Quayboard",
-      milestoneTitle: "Foundations",
-      milestoneSummary: "First releasable slice.",
-      linkedUserFlows: [
-        {
-          title: "Onboard user",
-          userStory: "As a new user, I want a coherent first-use journey.",
-          entryPoint: "Landing page",
-          endState: "Dashboard",
-        },
-      ],
-      validatedDesignJson: '{"title":"Milestone Design"}',
-      issues: ["Expected risksAndOpenQuestions array."],
-      draftJson: '{"risksAndOpenQuestions":{}}',
-      hint: "Return the risks list only.",
-    });
-
-    expect(prompt).toContain("Repair the risks and open questions");
-    expect(prompt).toContain('exactly one top-level key: "risksAndOpenQuestions"');
-    expect(prompt).toContain("Previous risks/open-questions draft:");
-    expect(prompt).toContain("Validator issues:");
   });
 
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
@@ -254,6 +212,10 @@ describe("job prompts", () => {
     expect(prompt).toContain("User flows linked to the selected milestone:");
     expect(prompt).toContain("keep it in one shared feature");
     expect(prompt).toContain("Included User Flows and Delivery Shape groupings as hard boundary constraints");
+    expect(prompt).toContain("Cover every delivery group named in the milestone design document");
+    expect(prompt).toContain("Every exit criterion in the milestone design document must map to at least one feature acceptance criterion.");
+    expect(prompt).toContain("Rendering groups must cover the full named rendering scope");
+    expect(prompt).toContain("Do not include acceptance criteria that depend on mechanics, collision checks, ordering rules, or behaviors");
   });
 
   it("asks the feature-set review pass to merge task-sized fragmentation", () => {
@@ -281,6 +243,10 @@ describe("job prompts", () => {
     expect(prompt).toContain("Merge task-sized or overlapping features");
     expect(prompt).toContain("Prefer fewer, feature-sized items");
     expect(prompt).toContain("named flow steps, screens, and Delivery Shape groups");
+    expect(prompt).toContain("Ensure every delivery group named in the milestone design document is covered");
+    expect(prompt).toContain("Ensure the reviewed set collectively satisfies every exit criterion");
+    expect(prompt).toContain("Treat partial coverage as incomplete.");
+    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope mechanics");
     expect(prompt).toContain(
       "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     );
@@ -325,6 +291,10 @@ describe("job prompts", () => {
     expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
     expect(prompt).toContain("Coverage issues to close in this rewrite:");
     expect(prompt).toContain("Resolve the named issues into one consistent ownership model");
+    expect(prompt).toContain("Cover every delivery group named in the milestone design document");
+    expect(prompt).toContain("Every exit criterion in the milestone design document must map to at least one rewritten feature acceptance criterion.");
+    expect(prompt).toContain("Treat partial coverage as incomplete.");
+    expect(prompt).toContain("Do not include rewritten acceptance criteria that depend on mechanics, collision checks, ordering rules");
   });
 
   it("keeps rewrite feature review constrained to the shared feature enums", () => {
@@ -364,6 +334,41 @@ describe("job prompts", () => {
       "priority must be one of: must_have, should_have, could_have, wont_have.",
     );
     expect(prompt).toContain("acceptanceCriteria must be a non-empty array of concrete strings.");
+    expect(prompt).toContain("Ensure the final rewrite covers every delivery group named in the milestone design document");
+    expect(prompt).toContain("Ensure the final rewrite collectively satisfies every milestone exit criterion");
+    expect(prompt).toContain("Treat partial coverage as incomplete.");
+    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope mechanics");
+  });
+
+  it("keeps milestone coverage review focused on rewriteable gaps before escalating to human review", () => {
+    const prompt = buildMilestoneCoverageReviewPrompt({
+      milestone: {
+        title: "Foundations",
+        summary: "First releasable slice.",
+      },
+      milestoneDesignDoc: "# Milestone Design",
+      features: [
+        {
+          acceptanceCriteria: ["Feature works."],
+          featureKey: "F-001",
+          workstreams: {
+            product: "approved",
+            ux: "approved",
+            tech: "approved",
+            userDocs: "missing",
+            archDocs: "approved",
+          },
+          title: "Routing core",
+          summary: "Implements the routing backbone.",
+          taskCount: 1,
+          taskTitles: ["Implement route"],
+        },
+      ],
+    });
+
+    expect(prompt).toContain('Use "rewrite_feature_set" when the current milestone feature boundaries need to be rewritten to resolve the gap cleanly.');
+    expect(prompt).toContain('If the milestone design doc itself is coherent and the gap can be fixed by rewriting or expanding features, prefer "rewrite_feature_set".');
+    expect(prompt).toContain('Use "needs_human_review" only when the milestone design doc still contains an unresolved contradiction or missing decision');
   });
 
   it("adds milestone and product context to task-list generation", () => {

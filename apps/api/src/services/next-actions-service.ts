@@ -9,6 +9,7 @@ import type { ProjectSetupService } from "./project-setup-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import { orderMilestoneFeatures } from "./milestone-delivery-branch.js";
 import { isTaskPlanningReady } from "./task-planning-support.js";
 
 export const createNextActionsService = (
@@ -236,9 +237,9 @@ export const createNextActionsService = (
               });
             }
           } else if (activeMilestone.status === "approved") {
-            const milestoneFeatures = features.features
-              .filter((feature) => feature.milestoneId === activeMilestone.id)
-              .sort((left, right) => left.featureKey.localeCompare(right.featureKey));
+            const milestoneFeatures = orderMilestoneFeatures(
+              features.features.filter((feature) => feature.milestoneId === activeMilestone.id),
+            );
 
             if (milestoneFeatures.length === 0) {
               actions.push({
@@ -412,23 +413,38 @@ export const createNextActionsService = (
                 if (!actions.length && taskPlanningService) {
                   for (let i = 0; i < milestoneFeatures.length; i++) {
                     const feature = milestoneFeatures[i]!;
-                    const headTechRevisionId = allTracks[i]!.tracks.tech.headRevision?.id ?? null;
+                    const featureTracks = allTracks[i]!.tracks;
+                    const session = await taskPlanningService.getSession(ownerUserId, feature.id);
 
-                    if (!headTechRevisionId) {
+                    if (!session || session.status !== "tasks_generated") {
                       continue;
                     }
 
-                    const records = await taskPlanningService.getImplementationRecords(
-                      ownerUserId,
-                      feature.id,
-                    );
-                    const latestRecord = records[0] ?? null;
+                    if (featureTracks.tech.implementationStatus === "running") {
+                      continue;
+                    }
 
-                    if (latestRecord && latestRecord.techRevisionId !== headTechRevisionId) {
+                    if (featureTracks.tech.implementationStatus === "not_implemented") {
+                      actions.push({
+                        key: "feature_implement",
+                        label: `Implement feature: ${feature.headRevision.title}`,
+                        href: `/projects/${projectId}/develop?featureId=${feature.id}`,
+                      });
+                      break;
+                    }
+                  }
+                }
+
+                if (!actions.length && taskPlanningService) {
+                  for (let i = 0; i < milestoneFeatures.length; i++) {
+                    const feature = milestoneFeatures[i]!;
+                    const techTrack = allTracks[i]!.tracks.tech;
+
+                    if (techTrack.implementationStatus === "out_of_date") {
                       actions.push({
                         key: "feature_stale_implementation",
                         label: `Re-implement stale feature: ${feature.headRevision.title}`,
-                        href: `/projects/${projectId}/features/${feature.id}`,
+                        href: `/projects/${projectId}/develop?featureId=${feature.id}`,
                       });
                       break;
                     }
@@ -509,10 +525,10 @@ export const createNextActionsService = (
     const milestones = await milestoneService.list(ownerUserId, projectId);
     const activeMilestone = milestones.milestones.find((milestone) => milestone.isActive) ?? null;
     const features = await featureService.list(ownerUserId, projectId);
-    const orderedFeatures = features.features
-      .filter((feature) => !activeMilestone || feature.milestoneId === activeMilestone.id)
-      .sort((left, right) =>
-      left.featureKey.localeCompare(right.featureKey),
+    const orderedFeatures = orderMilestoneFeatures(
+      features.features.filter(
+        (feature) => !activeMilestone || feature.milestoneId === activeMilestone.id,
+      ),
     );
     const allTracks = await Promise.all(
       orderedFeatures.map((f) => featureWorkstreamService.getTracks(ownerUserId, f.id)),

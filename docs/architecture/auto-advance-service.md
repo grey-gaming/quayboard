@@ -148,9 +148,12 @@ The mapping table connects next-action keys to the job types and input factories
 | `feature_arch_docs_create` | `GenerateFeatureArchDocs` | `{ featureId }` |
 | `feature_task_clarifications_generate` | `GenerateTaskClarifications` | `{ featureId, sessionId }` |
 | `feature_task_list_generate` | `GenerateFeatureTaskList` | `{ featureId, sessionId }` |
-| `feature_stale_implementation` | `GenerateImplementation` | `{ featureId }` |
+| `feature_implement` | `ImplementChange` via sandbox run creation | `{ featureId }` (from Develop href query) |
+| `feature_stale_implementation` | `ImplementChange` via sandbox run creation | `{ featureId }` (from Develop href query) |
 
 Any key not in this map causes the session to pause with `needs_human`, prompting the user to take the manual action and then Resume.
+
+Feature implementation runs share one temporary delivery branch and one open PR per active milestone. Auto-advance keeps pushing later milestone features onto that branch until the milestone is completed. Completing the milestone merges the PR, deletes the remote milestone branch, and only then marks the milestone complete. Any later stale-implementation or follow-up fix run starts again from the latest remote default branch on a fresh fix branch and PR.
 
 ## Milestone Reconciliation
 

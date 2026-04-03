@@ -179,13 +179,22 @@ export const ProjectNavigationStack = ({
             Feature Design
           </span>
         )}
-        <span
-          aria-disabled="true"
-          className={["qb-project-nav-cell", disabledClassName].join(" ")}
-          title="Implementation is not available yet."
-        >
-          Implementation
-        </span>
+        {setupCompleted ? (
+          <Link
+            className={secondaryLinkClassName(activeSection === "implementation")}
+            to={`/projects/${project.id}/develop`}
+          >
+            Implementation
+          </Link>
+        ) : (
+          <span
+            aria-disabled="true"
+            className={["qb-project-nav-cell", disabledClassName].join(" ")}
+            title="Complete setup to unlock this section."
+          >
+            Implementation
+          </span>
+        )}
         {(activeJobCount > 0 || pendingJobCount > 0 || recentFailedCount > 0) && (
           <div className="ml-auto flex items-center gap-1.5">
             {activeJobCount > 0 && (
