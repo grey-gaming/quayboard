@@ -150,6 +150,7 @@ describe("auto-advance service", () => {
     getCanonicalByKind: ReturnType<typeof vi.fn>;
   };
   let milestoneService: {
+    getMilestoneMapMutationState: ReturnType<typeof vi.fn>;
     getActiveMilestone: ReturnType<typeof vi.fn>;
     incrementAutoCatchUpCount: ReturnType<typeof vi.fn>;
     invalidateDeliveryReview: ReturnType<typeof vi.fn>;
@@ -221,6 +222,7 @@ describe("auto-advance service", () => {
     };
     milestoneService = {
       list: vi.fn().mockResolvedValue({ milestones: [] }),
+      getMilestoneMapMutationState: vi.fn().mockResolvedValue({ replacementLocked: false }),
       getActiveMilestone: vi.fn().mockResolvedValue(null),
       invalidateDeliveryReview: vi.fn().mockResolvedValue(undefined),
       invalidateMapReview: vi.fn().mockResolvedValue(undefined),
@@ -1444,6 +1446,38 @@ describe("auto-advance service", () => {
         expect.objectContaining({
           type: "GenerateUseCases",
           inputs: expect.objectContaining({ hint: "Missing onboarding flow" }),
+        }),
+      );
+    });
+
+    it("enqueues append-only milestone repair when ReviewDelivery reports append work", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "ReviewDelivery",
+        outputs: {
+          complete: false,
+          issues: [{ jobType: "AppendMilestones", hint: "Add follow-up milestone coverage" }],
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow()]) }),
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "AppendMilestones",
+          inputs: expect.objectContaining({ hint: "Add follow-up milestone coverage" }),
         }),
       );
     });

@@ -4698,4 +4698,246 @@ describe("job runner service", () => {
       }),
     );
   });
+
+  it("routes final delivery review uncovered flows to AppendMilestones when replacement is locked", async () => {
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({ complete: true, issues: [] }),
+      promptTokens: 10,
+      completionTokens: 10,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {} as never,
+      db: createDbStub() as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-review-delivery",
+          projectId,
+          createdByUserId: userId,
+          type: "ReviewDelivery",
+          inputs: {},
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        getMilestoneMapMutationState: vi.fn(async () => ({ replacementLocked: true })),
+        list: vi.fn(async () => ({
+          milestones: [],
+          coverage: {
+            approvedUserFlowCount: 2,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: ["flow-2"],
+          },
+          mapReview: {
+            generatedAt: "2026-03-18T00:00:00.000Z",
+            reviewStatus: "passed",
+            reviewIssues: [],
+            reviewedAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-1",
+              projectId,
+              title: "Covered flow",
+              userStory: "Covered",
+              entryPoint: "A",
+              endState: "B",
+              flowSteps: [],
+              coverageTags: [],
+              acceptanceCriteria: [],
+              doneCriteriaRefs: [],
+              source: "GenerateUseCases",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+            {
+              id: "flow-2",
+              projectId,
+              title: "Browser Fullscreen Entry",
+              userStory: "As a host I want fullscreen mode.",
+              entryPoint: "Settings",
+              endState: "Fullscreen active",
+              flowSteps: [],
+              coverageTags: [],
+              acceptanceCriteria: [],
+              doneCriteriaRefs: [],
+              source: "GenerateUseCases",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-review-delivery");
+
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-review-delivery",
+      expect.objectContaining({
+        complete: false,
+        issues: [expect.objectContaining({ jobType: "AppendMilestones" })],
+      }),
+    );
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("routes milestone-map uncovered flows to append_milestones when replacement is locked", async () => {
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({ complete: true, issues: [] }),
+      promptTokens: 10,
+      completionTokens: 10,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: createDbStub() as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-review-map",
+          projectId,
+          createdByUserId: userId,
+          type: "ReviewMilestoneMap",
+          inputs: {},
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        getMilestoneMapMutationState: vi.fn(async () => ({ replacementLocked: true })),
+        list: vi.fn(async () => ({
+          milestones: [],
+          coverage: {
+            approvedUserFlowCount: 2,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: ["flow-2"],
+          },
+          mapReview: {
+            generatedAt: "2026-03-18T00:00:00.000Z",
+            reviewStatus: "passed",
+            reviewIssues: [],
+            reviewedAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-2",
+              projectId,
+              title: "Browser Fullscreen Entry",
+              userStory: "As a host I want fullscreen mode.",
+              entryPoint: "Settings",
+              endState: "Fullscreen active",
+              flowSteps: [],
+              coverageTags: [],
+              acceptanceCriteria: [],
+              doneCriteriaRefs: [],
+              source: "GenerateUseCases",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-review-map");
+
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-review-map",
+      expect.objectContaining({
+        complete: false,
+        issues: [expect.objectContaining({ action: "append_milestones" })],
+      }),
+    );
+    expect(generate).not.toHaveBeenCalled();
+  });
 });

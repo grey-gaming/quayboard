@@ -759,6 +759,59 @@ export const buildMilestonePlanPrompt = (input: {
     JSON.stringify(input.userFlows, null, 2),
   ].join("\n");
 
+export const buildAppendMilestonePlanPrompt = (input: {
+  projectName: string;
+  uxSpec: string;
+  technicalSpec: string;
+  existingMilestones: Array<{
+    title: string;
+    summary: string;
+    featureCount: number;
+  }>;
+  uncoveredUserFlows: Array<{
+    id: string;
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  hint?: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Append follow-up milestones for the uncovered user flows in "${input.projectName}".`,
+    "Return valid JSON as a non-empty array.",
+    "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
+    "title must be short and specific.",
+    "summary must explain the release intent and scope for the appended milestone.",
+    "useCaseIds must be a non-empty array of uncovered approved user-flow IDs covered by the appended milestone.",
+    "Generate only new follow-up milestones. Do not rewrite, rename, or reorder the existing milestones.",
+    "Every uncovered user flow must appear exactly once across the appended milestones.",
+    "Keep the appended milestones coherent and appendable after the existing implemented milestones.",
+    "Do not wrap the JSON in code fences.",
+    ...(input.hint
+      ? [
+          "",
+          "## Guidance",
+          input.hint,
+        ]
+      : []),
+    "",
+    "Existing milestones (read-only context):",
+    JSON.stringify(input.existingMilestones, null, 2),
+    "",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+    "",
+    "Uncovered approved user flows to place in new milestones:",
+    JSON.stringify(input.uncoveredUserFlows, null, 2),
+  ].join("\n");
+
 export const buildMilestoneDesignPrompt = (input: {
   projectName: string;
   milestoneTitle: string;
@@ -1955,6 +2008,11 @@ export const buildDeliveryReviewPrompt = (input: {
   productSpec: string;
   userFlows: Array<{ title: string; userStory: string }>;
   milestones: Array<{ title: string; summary: string; featureCount: number }>;
+  coverage: {
+    approvedUserFlowCount: number;
+    coveredUserFlowCount: number;
+    uncoveredUserFlowTitles: string[];
+  };
 }) =>
   [
     qualityCharter,
@@ -1968,6 +2026,8 @@ export const buildDeliveryReviewPrompt = (input: {
     '"jobType" must be exactly one of: "GenerateUseCases" or "GenerateMilestones".',
     '"hint" must clearly describe what is missing and why, so the generation job can produce only the missing content.',
     "Issues must be ordered by priority: milestone issues first, user flow issues second.",
+    "Milestone-to-user-flow coverage is provided as authoritative structured data below.",
+    "Do not infer missing milestone coverage from milestone prose when the coverage summary shows all approved user flows are already covered.",
     "Do not wrap the JSON in code fences.",
     "",
     "Checks to perform (evaluate in this order — stop at the first failing check):",
@@ -1990,6 +2050,9 @@ export const buildDeliveryReviewPrompt = (input: {
     "",
     "Approved User Flows:",
     JSON.stringify(input.userFlows, null, 2),
+    "",
+    "Authoritative milestone coverage summary:",
+    JSON.stringify(input.coverage, null, 2),
     "",
     "Approved Milestones (featureCount = number of features already created for that milestone):",
     JSON.stringify(input.milestones, null, 2),

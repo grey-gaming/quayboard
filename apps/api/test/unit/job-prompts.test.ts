@@ -439,6 +439,11 @@ describe("job prompts", () => {
         { title: "Onboarding", userStory: "As a new user I want to set up my project." },
         { title: "Create Milestone", userStory: "As a PM I want to create a milestone." },
       ],
+      coverage: {
+        approvedUserFlowCount: 2,
+        coveredUserFlowCount: 2,
+        uncoveredUserFlowTitles: [],
+      },
       milestones: [
         { title: "M1: Foundation", summary: "Core infrastructure", featureCount: 3 },
         { title: "M2: Planning", summary: "Planning features", featureCount: 0 },
@@ -460,6 +465,12 @@ describe("job prompts", () => {
     it("restricts jobType to GenerateUseCases or GenerateMilestones", () => {
       const prompt = buildDeliveryReviewPrompt(baseInput);
       expect(prompt).toContain('"GenerateUseCases" or "GenerateMilestones"');
+    });
+
+    it("treats the structured coverage summary as authoritative", () => {
+      const prompt = buildDeliveryReviewPrompt(baseInput);
+      expect(prompt).toContain("authoritative structured data");
+      expect(prompt).toContain("Authoritative milestone coverage summary");
     });
 
     it("includes milestone featureCount in the serialised milestone data", () => {

@@ -16,7 +16,7 @@ export const planningReviewStatusSchema = z.enum([
 export type PlanningReviewStatus = z.infer<typeof planningReviewStatusSchema>;
 
 export const milestoneMapReviewIssueSchema = z.object({
-  action: z.enum(["rewrite_milestone_map", "needs_human_review"]),
+  action: z.enum(["rewrite_milestone_map", "append_milestones", "needs_human_review"]),
   hint: z.string().min(1),
 });
 

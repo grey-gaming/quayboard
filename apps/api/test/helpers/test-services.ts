@@ -398,6 +398,12 @@ export const createStubServices = (): AppServices => ({
     }),
     invalidateReconciliation: async () => undefined,
     invalidateMapReview: async () => undefined,
+    getMilestoneMapMutationState: async () => ({
+      existingMilestones: [],
+      hasFeatures: false,
+      hasLockedMilestones: false,
+      replacementLocked: false,
+    }),
     recordMapReviewResult: async () => undefined,
     markMapGenerated: async () => undefined,
     mergeMilestoneDeliveryBranchIfNeeded: async () => undefined,
@@ -406,6 +412,20 @@ export const createStubServices = (): AppServices => ({
     invalidateDeliveryReview: async () => undefined,
     recordDeliveryReviewResult: async () => undefined,
     replaceDraftMilestoneMap: async () => ({
+      milestones: [],
+      coverage: {
+        approvedUserFlowCount: 0,
+        coveredUserFlowCount: 0,
+        uncoveredUserFlowIds: [],
+      },
+      mapReview: {
+        generatedAt: new Date().toISOString(),
+        reviewStatus: "not_started" as const,
+        reviewIssues: [],
+        reviewedAt: null,
+      },
+    }),
+    appendDraftMilestones: async () => ({
       milestones: [],
       coverage: {
         approvedUserFlowCount: 0,
