@@ -372,6 +372,9 @@ export const createAppServices = async (
     maxConcurrent: 4,
   });
   await jobService.cancelRunningJobs(staleJobCancellation);
+  await sandboxService.reconcileRuntimeState().catch((error) => {
+    console.error("sandbox runtime reconciliation on startup failed:", error);
+  });
 
   // Recover any running auto-advance sessions left behind by an API restart.
   // Fully-settled successful batches should continue automatically; only
@@ -418,6 +421,13 @@ export const createAppServices = async (
     async close() {
       jobScheduler.stop();
       await jobService.cancelRunningJobs(shutdownJobCancellation);
+      await sandboxService
+        .reconcileRuntimeState(
+          "The API shut down before this sandbox run finished, so the run was cancelled.",
+        )
+        .catch((error) => {
+          console.error("sandbox runtime reconciliation on shutdown failed:", error);
+        });
       sseHub.closeAll();
       await client.end();
     },

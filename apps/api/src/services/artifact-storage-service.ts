@@ -1,8 +1,14 @@
-import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const createArtifactStorageService = (artifactStoragePath: string) => ({
+  async ensureStorageRoot() {
+    await mkdir(artifactStoragePath, { recursive: true });
+    return artifactStoragePath;
+  },
+
   async ensureRunDir(runId: string) {
+    await this.ensureStorageRoot();
     const runDir = path.join(artifactStoragePath, runId);
     await mkdir(runDir, { recursive: true });
     return runDir;
@@ -52,6 +58,10 @@ export const createArtifactStorageService = (artifactStoragePath: string) => ({
 
   async readArtifact(storagePath: string) {
     return readFile(storagePath);
+  },
+
+  async deletePath(targetPath: string) {
+    await rm(targetPath, { force: true, recursive: true });
   },
 });
 

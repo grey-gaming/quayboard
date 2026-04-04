@@ -18,12 +18,18 @@ const makeExecError = (message: string, stderr = "") => {
 };
 
 const makeService = (overrides: {
+  artifactStorageService?: Record<string, unknown>;
   db?: Record<string, unknown>;
+  dockerService?: Record<string, unknown>;
+  executionSettingsService?: Record<string, unknown>;
   featureService?: Record<string, unknown>;
   githubService?: Record<string, unknown>;
+  taskPlanningService?: Record<string, unknown>;
 } = {}) =>
   createSandboxService({
-    artifactStorageService: {} as never,
+    artifactStorageService: (overrides.artifactStorageService ?? {
+      deletePath: vi.fn().mockResolvedValue(undefined),
+    }) as never,
     contextPackService: {} as never,
     db: (overrides.db ?? {
       query: {
@@ -32,8 +38,21 @@ const makeService = (overrides: {
         milestonesTable: { findFirst: vi.fn().mockResolvedValue(null) },
       },
     }) as never,
-    dockerService: {} as never,
-    executionSettingsService: {} as never,
+    dockerService: (overrides.dockerService ?? {
+      listManagedContainers: vi.fn().mockResolvedValue([]),
+      pruneManagedResources: vi.fn().mockResolvedValue(undefined),
+      removeContainer: vi.fn().mockResolvedValue(undefined),
+    }) as never,
+    executionSettingsService: (overrides.executionSettingsService ?? {
+      get: vi.fn().mockResolvedValue({
+        defaultImage: "quayboard-agent-sandbox:latest",
+        dockerHost: null,
+        maxConcurrentRuns: 2,
+        defaultTimeoutSeconds: 900,
+        defaultCpuLimit: 1,
+        defaultMemoryMb: 2048,
+      }),
+    }) as never,
     featureService: (overrides.featureService ?? {
       get: vi.fn(),
     }) as never,
@@ -49,7 +68,7 @@ const makeService = (overrides: {
     },
     secretService: {} as never,
     sseHub: {} as never,
-    taskPlanningService: {} as never,
+    taskPlanningService: (overrides.taskPlanningService ?? {}) as never,
   });
 
 describe("sandbox service", () => {
@@ -304,4 +323,120 @@ describe("sandbox service", () => {
     expect(branchPlan.targetBranchName).toBe("quayboard/fix/f-001/sandbox-");
     expect(branchPlan.pullRequestTitle).toBe("Fix F-001: Counter UI");
   });
+
+  it("prunes older and non-succeeded workspace snapshots for a feature", async () => {
+    const deletePath = vi.fn().mockResolvedValue(undefined);
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: "run-newest",
+        featureId: "feature-1",
+        status: "succeeded",
+        workspaceArchivePath: "/tmp/quayboard-artifacts/run-newest/workspace",
+        completedAt: new Date("2026-04-04T00:00:00.000Z"),
+        createdAt: new Date("2026-04-04T00:00:00.000Z"),
+      },
+      {
+        id: "run-older",
+        featureId: "feature-1",
+        status: "succeeded",
+        workspaceArchivePath: "/tmp/quayboard-artifacts/run-older/workspace",
+        completedAt: new Date("2026-04-03T00:00:00.000Z"),
+        createdAt: new Date("2026-04-03T00:00:00.000Z"),
+      },
+      {
+        id: "run-failed",
+        featureId: "feature-1",
+        status: "failed",
+        workspaceArchivePath: "/tmp/quayboard-artifacts/run-failed/workspace",
+        completedAt: new Date("2026-04-02T00:00:00.000Z"),
+        createdAt: new Date("2026-04-02T00:00:00.000Z"),
+      },
+    ]);
+    const service = makeService({
+      artifactStorageService: {
+        deletePath,
+      },
+      db: {
+        query: {
+          sandboxRunsTable: {
+            findMany,
+          },
+        },
+      },
+    });
+    service.updateRunState = vi.fn().mockResolvedValue(undefined);
+
+    await service.pruneWorkspaceSnapshots("feature-1");
+
+    expect(deletePath).toHaveBeenCalledTimes(2);
+    expect(service.updateRunState).toHaveBeenCalledWith("run-older", {
+      workspaceArchivePath: null,
+    });
+    expect(service.updateRunState).toHaveBeenCalledWith("run-failed", {
+      workspaceArchivePath: null,
+    });
+  });
+
+  it("reconciles stale running runs and removes managed containers on startup", async () => {
+    const removeContainer = vi.fn().mockResolvedValue(undefined);
+    const pruneManagedResources = vi.fn().mockResolvedValue(undefined);
+    const service = makeService({
+      db: {
+        query: {
+          sandboxRunsTable: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: "run-1",
+                status: "running",
+                createdAt: new Date("2026-04-04T00:00:00.000Z"),
+              },
+            ]),
+          },
+        },
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue(undefined),
+          })),
+        })),
+      },
+      dockerService: {
+        listManagedContainers: vi.fn().mockResolvedValue([
+          {
+            ID: "container-1",
+            Labels:
+              "quayboard.managed=true,quayboard.workspace=/tmp/quayboard-run-stale/workspace",
+          },
+        ]),
+        pruneManagedResources,
+        removeContainer,
+      },
+    });
+    service.appendEvent = vi.fn().mockResolvedValue(undefined);
+    service.cleanupTempWorkspaces = vi.fn().mockResolvedValue(undefined);
+    service.pruneWorkspaceSnapshots = vi.fn().mockResolvedValue(undefined);
+    service.updateRunState = vi.fn().mockResolvedValue(undefined);
+
+    await service.reconcileRuntimeState();
+
+    expect(removeContainer).toHaveBeenCalledWith("container-1", {
+      dockerHost: null,
+      force: true,
+    });
+    expect(service.updateRunState).toHaveBeenCalledWith("run-1", {
+      status: "cancelled",
+      outcome: "cancelled",
+      cancellationReason:
+        "The API restarted before this sandbox run finished, so the run was cancelled.",
+      completedAt: expect.any(Date),
+      containerId: null,
+    });
+    expect(service.cleanupTempWorkspaces).toHaveBeenCalledWith([
+      "/tmp/quayboard-run-stale/workspace",
+    ]);
+    expect(service.pruneWorkspaceSnapshots).toHaveBeenCalled();
+    expect(pruneManagedResources).toHaveBeenCalledWith({
+      dockerHost: null,
+    });
+  });
+
 });

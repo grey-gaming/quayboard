@@ -276,4 +276,34 @@ describe("docker service", () => {
       timeoutMs: 10 * 60_000,
     });
   });
+
+  it("prunes managed containers, dangling images, and build cache using bounded thresholds", async () => {
+    execFileMock.mockImplementation(
+      (
+        _file: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+      ) => {
+        callback(null, { stdout: "", stderr: "" });
+      },
+    );
+
+    const service = createDockerService(null);
+    await service.pruneManagedResources();
+
+    expect(execFileMock.mock.calls.map((call) => call[1])).toEqual([
+      ["container", "prune", "--force", "--filter", "label=quayboard.managed=true"],
+      ["image", "prune", "--force"],
+      [
+        "builder",
+        "prune",
+        "--force",
+        "--max-used-space",
+        "6gb",
+        "--min-free-space",
+        "4gb",
+      ],
+    ]);
+  });
 });

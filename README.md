@@ -126,7 +126,7 @@ Runtime variables currently used by the app:
 Notes:
 
 - `SECRETS_ENCRYPTION_KEY` must decode to 32 bytes for secret-backed setup actions to work.
-- `ARTIFACT_STORAGE_PATH` must point to a writable directory.
+- `ARTIFACT_STORAGE_PATH` must point to a writable directory. The API recreates the directory if it is missing.
 - At least one provider path must be reachable for meaningful LLM-backed generation.
 - The first sandbox execution that uses `quayboard-agent-sandbox:latest` builds the local image from `docker/agent-sandbox/Dockerfile` if it is not already present.
 
@@ -137,7 +137,6 @@ pnpm install
 cp .env.example .env
 docker compose up -d
 pnpm db:migrate
-mkdir -p /tmp/quayboard-artifacts
 pnpm dev
 ```
 
