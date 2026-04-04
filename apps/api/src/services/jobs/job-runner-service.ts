@@ -74,6 +74,7 @@ import {
   buildUserFlowPrompt,
   buildTaskClarificationsPrompt,
   buildAutoAnswerClarificationsPrompt,
+  buildAppendMilestonePlanPrompt,
   buildFeatureTaskListPrompt,
 } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
@@ -1341,6 +1342,18 @@ const validateGeneratedMilestones = (
   });
 };
 
+const buildUncoveredMilestoneFlowHint = (
+  uncoveredFlows: Array<{
+    title: string;
+    userStory: string;
+  }>,
+) =>
+  uncoveredFlows.length === 1
+    ? `The approved user flow "${uncoveredFlows[0]!.title}" is not linked to any milestone. Add milestone coverage for it without losing the current delivery sequence.`
+    : `The following approved user flows are not linked to any milestone: ${uncoveredFlows
+        .map((flow) => `"${flow.title}"`)
+        .join(", ")}. Add milestone coverage for all of them without changing the existing covered flows.`;
+
 const parseGeneratedFeaturesResult = (
   value: string,
 ):
@@ -1496,7 +1509,11 @@ const parseMilestoneMapReviewResult = (value: string) => {
 
   const issues = (parsed.issues ?? [])
     .flatMap((issue) => {
-      if (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") {
+      if (
+        issue.action === "rewrite_milestone_map" ||
+        issue.action === "append_milestones" ||
+        issue.action === "needs_human_review"
+      ) {
         return [{ action: issue.action, hint: issue.hint }];
       }
 
@@ -1504,11 +1521,22 @@ const parseMilestoneMapReviewResult = (value: string) => {
         return [{ action: "rewrite_milestone_map" as const, hint: issue.hint }];
       }
 
+      if (issue.jobType === "AppendMilestones" && typeof issue.hint === "string") {
+        return [{ action: "append_milestones" as const, hint: issue.hint }];
+      }
+
       return [];
     })
     .filter(
-      (issue): issue is { action: "rewrite_milestone_map" | "needs_human_review"; hint: string } =>
-        (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") &&
+      (
+        issue,
+      ): issue is {
+        action: "rewrite_milestone_map" | "append_milestones" | "needs_human_review";
+        hint: string;
+      } =>
+        (issue.action === "rewrite_milestone_map" ||
+          issue.action === "append_milestones" ||
+          issue.action === "needs_human_review") &&
         typeof issue.hint === "string" &&
         issue.hint.trim().length > 0,
     )
@@ -3455,6 +3483,85 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, { createdCount: milestones.length });
       }
 
+      case "AppendMilestones": {
+        if (!input.milestoneService) {
+          throw new Error("AppendMilestones requires milestone service support.");
+        }
+
+        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
+        const blueprints = await input.blueprintService.getCanonical(ownerUserId, rawJob.projectId);
+        const milestones = await input.milestoneService.list(ownerUserId, rawJob.projectId);
+
+        if (!userFlows.approvedAt) {
+          throw new Error("AppendMilestones requires approved user flows.");
+        }
+
+        if (!blueprints.uxBlueprint || !blueprints.techBlueprint) {
+          throw new Error("AppendMilestones requires approved UX and Technical Specs.");
+        }
+
+        const [uxApproval, techApproval] = await Promise.all([
+          input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_ux",
+            blueprints.uxBlueprint.id,
+          ),
+          input.artifactApprovalService.getApproval(
+            rawJob.projectId,
+            "blueprint_tech",
+            blueprints.techBlueprint.id,
+          ),
+        ]);
+
+        if (!uxApproval || !techApproval) {
+          throw new Error("AppendMilestones requires approved UX and Technical Specs.");
+        }
+
+        const uncoveredFlowSet = new Set(milestones.coverage.uncoveredUserFlowIds);
+        const uncoveredFlows = userFlows.userFlows.filter((flow) => uncoveredFlowSet.has(flow.id));
+
+        if (uncoveredFlows.length === 0) {
+          return input.jobService.markSucceeded(rawJob.id, { createdCount: 0 });
+        }
+
+        const appendMilestonesInput = parseJobInputs<{ hint?: string }>(rawJob.inputs);
+        const prompt = buildAppendMilestonePlanPrompt({
+          projectName: project.name,
+          uxSpec: blueprints.uxBlueprint.markdown,
+          technicalSpec: blueprints.techBlueprint.markdown,
+          existingMilestones: milestones.milestones.map((milestone) => ({
+            title: milestone.title,
+            summary: milestone.summary,
+            featureCount: milestone.featureCount,
+          })),
+          uncoveredUserFlows: uncoveredFlows.map((flow) => ({
+            id: flow.id,
+            title: flow.title,
+            userStory: flow.userStory,
+            entryPoint: flow.entryPoint,
+            endState: flow.endState,
+          })),
+          hint: appendMilestonesInput?.hint,
+        });
+        const appendedMilestones = await runStructuredJsonGeneration({
+          templateId: rawJob.type,
+          parameters: {},
+          prompt,
+          parse: (content, templateId) =>
+            validateGeneratedMilestones(parseMilestonesResult(content, templateId)),
+        });
+        await input.milestoneService.appendDraftMilestones({
+          ownerUserId,
+          projectId: rawJob.projectId,
+          items: appendedMilestones,
+          createdByJobId: rawJob.id,
+        });
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          createdCount: appendedMilestones.length,
+        });
+      }
+
       case "ReviewMilestoneMap": {
         if (!input.milestoneService) {
           throw new Error("ReviewMilestoneMap requires milestone service support.");
@@ -3465,6 +3572,23 @@ export const createJobRunnerService = (input: {
           input.userFlowService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
         ]);
+        const uncoveredFlowSet = new Set(milestones.coverage.uncoveredUserFlowIds);
+        const uncoveredFlows = userFlows.userFlows.filter((flow) => uncoveredFlowSet.has(flow.id));
+
+        if (uncoveredFlows.length > 0) {
+          const state = await input.milestoneService.getMilestoneMapMutationState(rawJob.projectId);
+          const repairAction = state.replacementLocked ? "append_milestones" : "rewrite_milestone_map";
+
+          return input.jobService.markSucceeded(rawJob.id, {
+            complete: false,
+            issues: [
+              {
+                action: repairAction,
+                hint: buildUncoveredMilestoneFlowHint(uncoveredFlows),
+              },
+            ],
+          });
+        }
 
         const prompt = buildDeliveryReviewPrompt({
           projectName: project.name,
@@ -3473,6 +3597,11 @@ export const createJobRunnerService = (input: {
             title: flow.title,
             userStory: flow.userStory,
           })),
+          coverage: {
+            approvedUserFlowCount: milestones.coverage.approvedUserFlowCount,
+            coveredUserFlowCount: milestones.coverage.coveredUserFlowCount,
+            uncoveredUserFlowTitles: [],
+          },
           milestones: milestones.milestones.map((milestone) => ({
             title: milestone.title,
             summary: milestone.summary,
@@ -4972,6 +5101,22 @@ export const createJobRunnerService = (input: {
           input.userFlowService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
         ]);
+        const uncoveredFlowSet = new Set(milestones.coverage.uncoveredUserFlowIds);
+        const uncoveredFlows = userFlows.userFlows.filter((flow) => uncoveredFlowSet.has(flow.id));
+
+        if (uncoveredFlows.length > 0) {
+          const state = await input.milestoneService.getMilestoneMapMutationState(rawJob.projectId);
+
+          return input.jobService.markSucceeded(rawJob.id, {
+            complete: false,
+            issues: [
+              {
+                jobType: state.replacementLocked ? "AppendMilestones" : "GenerateMilestones",
+                hint: buildUncoveredMilestoneFlowHint(uncoveredFlows),
+              },
+            ],
+          });
+        }
 
         const prompt = buildDeliveryReviewPrompt({
           projectName: project.name,
@@ -4980,6 +5125,11 @@ export const createJobRunnerService = (input: {
             title: flow.title,
             userStory: flow.userStory,
           })),
+          coverage: {
+            approvedUserFlowCount: milestones.coverage.approvedUserFlowCount,
+            coveredUserFlowCount: milestones.coverage.coveredUserFlowCount,
+            uncoveredUserFlowTitles: [],
+          },
           milestones: milestones.milestones.map((milestone) => ({
             title: milestone.title,
             summary: milestone.summary,

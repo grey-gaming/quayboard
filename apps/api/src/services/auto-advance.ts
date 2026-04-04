@@ -52,7 +52,7 @@ type ReconciliationIssue = {
 };
 
 type MilestoneMapIssue = {
-  action: "rewrite_milestone_map" | "needs_human_review";
+  action: "rewrite_milestone_map" | "append_milestones" | "needs_human_review";
   hint: string;
 };
 
@@ -155,7 +155,9 @@ const parseStoredMapIssues = (value: unknown): MilestoneMapIssue[] => {
     (issue): issue is MilestoneMapIssue =>
       !!issue &&
       typeof issue === "object" &&
-      (issue.action === "rewrite_milestone_map" || issue.action === "needs_human_review") &&
+      (issue.action === "rewrite_milestone_map" ||
+        issue.action === "append_milestones" ||
+        issue.action === "needs_human_review") &&
       typeof issue.hint === "string" &&
       issue.hint.trim().length > 0,
   );
@@ -621,9 +623,27 @@ export const createAutoAdvanceService = (
       return false;
     }
 
+    if (storedIssues.some((issue) => issue.action === "needs_human_review")) {
+      return false;
+    }
+
     const nextRepairCount = (session.milestoneRepairCount ?? 0) + 1;
     if (nextRepairCount > MAX_MILESTONE_REPAIR_ATTEMPTS) {
       return false;
+    }
+
+    const hasRewriteIssue = storedIssues.some((issue) => issue.action === "rewrite_milestone_map");
+    const hasAppendIssue = storedIssues.some((issue) => issue.action === "append_milestones");
+
+    if (hasRewriteIssue && hasAppendIssue) {
+      return false;
+    }
+
+    if (hasRewriteIssue) {
+      const state = await milestoneService.getMilestoneMapMutationState(projectId);
+      if (state.replacementLocked) {
+        return false;
+      }
     }
 
     await queueRepairJob({
@@ -632,7 +652,7 @@ export const createAutoAdvanceService = (
       sessionId,
       repairCount: nextRepairCount,
       currentStep,
-      jobType: "RewriteMilestoneMap",
+      jobType: hasAppendIssue ? "AppendMilestones" : "RewriteMilestoneMap",
       jobInputs: {
         issues: storedIssues,
       },
@@ -1843,22 +1863,34 @@ export const createAutoAdvanceService = (
 
         const nextRepairCount = (session.milestoneRepairCount ?? 0) + 1;
         const hasRewriteIssue = output.issues.some((issue) => issue.action === "rewrite_milestone_map");
+        const hasAppendIssue = output.issues.some((issue) => issue.action === "append_milestones");
+        const hasRepairIssue = hasRewriteIssue || hasAppendIssue;
+        const hasHumanIssue = output.issues.some((issue) => issue.action === "needs_human_review");
+        const replacementState = hasRewriteIssue
+          ? await milestoneService.getMilestoneMapMutationState(job.projectId)
+          : null;
 
         await milestoneService.recordMapReviewResult({
           projectId: job.projectId,
           issues: output.issues,
           jobId: job.id,
-          status: hasRewriteIssue ? "failed_first_pass" : "failed_needs_human",
+          status: hasRepairIssue ? "failed_first_pass" : "failed_needs_human",
         });
 
-        if (session.autoRepairMilestoneCoverage && hasRewriteIssue && nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS) {
+        if (
+          session.autoRepairMilestoneCoverage &&
+          hasRepairIssue &&
+          !hasHumanIssue &&
+          !(hasRewriteIssue && replacementState?.replacementLocked) &&
+          nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
+        ) {
           await queueRepairJob({
             ownerUserId: project.ownerUserId,
             projectId: job.projectId,
             sessionId: session.id,
             repairCount: nextRepairCount,
             currentStep: "milestone_map_resolve",
-            jobType: "RewriteMilestoneMap",
+            jobType: hasAppendIssue ? "AppendMilestones" : "RewriteMilestoneMap",
             jobInputs: { issues: output.issues },
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
@@ -1883,7 +1915,7 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({
             status: "paused",
-            pausedReason: session.autoRepairMilestoneCoverage && hasRewriteIssue
+            pausedReason: session.autoRepairMilestoneCoverage && hasRepairIssue && !hasHumanIssue
               ? "milestone_map_repair_limit_reached"
               : "needs_human",
             pausedAt: new Date(),
@@ -2357,9 +2389,14 @@ export const createAutoAdvanceService = (
         }
 
         // Enqueue the first (most critical) fix job with a hint.
-        // Only GenerateUseCases and GenerateMilestones are valid fix job types.
+        // Only GenerateUseCases, GenerateMilestones, and AppendMilestones are valid fix job types.
         const firstIssue = output.issues[0];
-        if (firstIssue && (firstIssue.jobType === "GenerateUseCases" || firstIssue.jobType === "GenerateMilestones")) {
+        if (
+          firstIssue &&
+          (firstIssue.jobType === "GenerateUseCases" ||
+            firstIssue.jobType === "GenerateMilestones" ||
+            firstIssue.jobType === "AppendMilestones")
+        ) {
           const batchToken = generateId();
           await db
             .update(autoAdvanceSessionsTable)

@@ -96,6 +96,34 @@ const buildMilestoneRecord = (input: {
     updatedAt: input.milestone.updatedAt.toISOString(),
   });
 
+const loadMilestoneMapMutationState = async (
+  executor: Pick<AppDatabase, "query">,
+  projectId: string,
+) => {
+  const [existingMilestones, existingFeatures] = await Promise.all([
+    executor.query.milestonesTable.findMany({
+      where: eq(milestonesTable.projectId, projectId),
+      orderBy: [asc(milestonesTable.position)],
+    }),
+    executor.query.featureCasesTable.findMany({
+      where: and(
+        eq(featureCasesTable.projectId, projectId),
+        isNull(featureCasesTable.archivedAt),
+      ),
+    }),
+  ]);
+
+  const hasFeatures = existingFeatures.length > 0;
+  const hasLockedMilestones = existingMilestones.some((milestone) => milestone.status !== "draft");
+
+  return {
+    existingMilestones,
+    hasFeatures,
+    hasLockedMilestones,
+    replacementLocked: hasFeatures || hasLockedMilestones,
+  };
+};
+
 export const createMilestoneService = (
   db: AppDatabase,
   githubService?: GithubService,
@@ -203,7 +231,7 @@ export const createMilestoneService = (
   async recordMapReviewResult(input: {
     projectId: string;
     issues: Array<{
-      action: "rewrite_milestone_map" | "needs_human_review";
+      action: "rewrite_milestone_map" | "append_milestones" | "needs_human_review";
       hint: string;
     }>;
     jobId: string;
@@ -502,6 +530,144 @@ export const createMilestoneService = (
     });
   },
 
+  async getMilestoneMapMutationState(projectId: string) {
+    return loadMilestoneMapMutationState(db, projectId);
+  },
+
+  async appendDraftMilestones(input: {
+    ownerUserId: string;
+    projectId: string;
+    items: Array<{
+      summary: string;
+      title: string;
+      useCaseIds: string[];
+    }>;
+    createdByJobId?: string;
+  }) {
+    await this.assertApprovedUserFlows(input.ownerUserId, input.projectId);
+
+    for (const milestone of input.items) {
+      await this.validateLinkedUseCases(input.projectId, milestone.useCaseIds);
+    }
+
+    await db.transaction(async (tx) => {
+      const [state, activeFlows, existingLinks] = await Promise.all([
+        loadMilestoneMapMutationState(tx, input.projectId),
+        tx.query.useCasesTable.findMany({
+          where: and(
+            eq(useCasesTable.projectId, input.projectId),
+            isNull(useCasesTable.archivedAt),
+          ),
+        }),
+        tx
+          .select({
+            useCaseId: milestoneUseCasesTable.useCaseId,
+          })
+          .from(milestoneUseCasesTable)
+          .innerJoin(milestonesTable, eq(milestonesTable.id, milestoneUseCasesTable.milestoneId))
+          .where(eq(milestonesTable.projectId, input.projectId)),
+      ]);
+
+      const coveredUseCaseIds = new Set(existingLinks.map((link) => link.useCaseId));
+      const uncoveredUseCaseIds = activeFlows
+        .map((flow) => flow.id)
+        .filter((flowId) => !coveredUseCaseIds.has(flowId));
+      const uncoveredUseCaseIdSet = new Set(uncoveredUseCaseIds);
+      const appendedUseCaseIds = input.items.flatMap((milestone) => milestone.useCaseIds);
+      const uniqueAppendedUseCaseIds = new Set(appendedUseCaseIds);
+
+      if (input.items.length === 0) {
+        throw new HttpError(
+          400,
+          "milestone_append_invalid",
+          "Appending milestones requires at least one new milestone.",
+        );
+      }
+
+      if (!state.replacementLocked) {
+        throw new HttpError(
+          409,
+          "milestone_map_unlocked",
+          "Append-only milestone repair is only used after milestone replacement becomes locked.",
+        );
+      }
+
+      if (uniqueAppendedUseCaseIds.size !== appendedUseCaseIds.length) {
+        throw new HttpError(
+          400,
+          "milestone_append_invalid",
+          "Each uncovered user flow can only be assigned to one appended milestone.",
+        );
+      }
+
+      if (
+        appendedUseCaseIds.some((useCaseId) => !uncoveredUseCaseIdSet.has(useCaseId)) ||
+        uniqueAppendedUseCaseIds.size !== uncoveredUseCaseIds.length
+      ) {
+        throw new HttpError(
+          400,
+          "milestone_append_invalid",
+          "Appended milestones must cover every uncovered user flow exactly once.",
+        );
+      }
+
+      const now = new Date();
+      let nextPosition = (state.existingMilestones.at(-1)?.position ?? 0) + 1;
+
+      for (const milestone of input.items) {
+        const milestoneId = generateId();
+        await tx.insert(milestonesTable).values({
+          id: milestoneId,
+          projectId: input.projectId,
+          position: nextPosition,
+          title: milestone.title,
+          summary: milestone.summary,
+          status: "draft",
+          approvedAt: null,
+          completedAt: null,
+          scopeReviewStatus: "not_started",
+          scopeReviewIssues: [],
+          scopeReviewedAt: null,
+          scopeReviewLastJobId: null,
+          deliveryReviewStatus: "not_started",
+          deliveryReviewIssues: [],
+          deliveryReviewedAt: null,
+          deliveryReviewLastJobId: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          reconciliationLastJobId: null,
+          autoCatchUpCount: 0,
+          createdByJobId: input.createdByJobId ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await tx.insert(milestoneUseCasesTable).values(
+          milestone.useCaseIds.map((useCaseId) => ({
+            milestoneId,
+            useCaseId,
+            createdAt: now,
+          })),
+        );
+        nextPosition += 1;
+      }
+
+      await tx
+        .update(projectsTable)
+        .set({
+          milestoneMapGeneratedAt: now,
+          milestoneMapReviewStatus: "not_started",
+          milestoneMapReviewIssues: [],
+          milestoneMapReviewedAt: null,
+          milestoneMapReviewLastJobId: null,
+          updatedAt: now,
+        })
+        .where(eq(projectsTable.id, input.projectId));
+    });
+
+    return this.list(input.ownerUserId, input.projectId);
+  },
+
   async replaceDraftMilestoneMap(input: {
     ownerUserId: string;
     projectId: string;
@@ -519,20 +685,9 @@ export const createMilestoneService = (
     }
 
     await db.transaction(async (tx) => {
-      const [existingMilestones, existingFeatures] = await Promise.all([
-        tx.query.milestonesTable.findMany({
-          where: eq(milestonesTable.projectId, input.projectId),
-          orderBy: [asc(milestonesTable.position)],
-        }),
-        tx.query.featureCasesTable.findMany({
-          where: and(
-            eq(featureCasesTable.projectId, input.projectId),
-            isNull(featureCasesTable.archivedAt),
-          ),
-        }),
-      ]);
+      const state = await loadMilestoneMapMutationState(tx, input.projectId);
 
-      if (existingFeatures.length > 0) {
+      if (state.hasFeatures) {
         throw new HttpError(
           409,
           "milestone_map_locked",
@@ -540,7 +695,7 @@ export const createMilestoneService = (
         );
       }
 
-      if (existingMilestones.some((milestone) => milestone.status !== "draft")) {
+      if (state.hasLockedMilestones) {
         throw new HttpError(
           409,
           "milestone_map_locked",
@@ -548,7 +703,7 @@ export const createMilestoneService = (
         );
       }
 
-      const milestoneIds = existingMilestones.map((milestone) => milestone.id);
+      const milestoneIds = state.existingMilestones.map((milestone) => milestone.id);
       if (milestoneIds.length > 0) {
         await tx
           .delete(milestoneUseCasesTable)
