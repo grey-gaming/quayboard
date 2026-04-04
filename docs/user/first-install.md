@@ -11,8 +11,7 @@ Use this guide when the readiness checks on `/login` or `/register` are not all 
 2. Copy `.env.example` to `.env`.
 3. Start Postgres with `docker compose up -d`.
 4. Run `pnpm db:migrate`.
-5. Create the artifact storage directory, for example `mkdir -p /tmp/quayboard-artifacts`.
-6. Start the app with `pnpm dev`.
+5. Start the app with `pnpm dev`.
 
 ## Fixing Failed Readiness Checks
 
@@ -38,7 +37,7 @@ Use this guide when the readiness checks on `/login` or `/register` are not all 
 ### Artifact Storage
 
 - Check `ARTIFACT_STORAGE_PATH` in `.env`.
-- Make sure the directory exists and is writable by the API process.
+- Make sure the directory is writable by the API process. The API recreates it if `/tmp` cleanup removes it.
 
 ### Provider Adapters
 

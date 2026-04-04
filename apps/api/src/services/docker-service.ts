@@ -41,6 +41,12 @@ type ListManagedContainersInput = {
   projectId?: string;
 };
 
+type PruneDockerResourcesInput = {
+  dockerHost?: string | null;
+  maxBuildCacheSpace?: string;
+  minFreeSpace?: string;
+};
+
 const createDockerWaitTimeoutError = (containerId: string) =>
   Object.assign(
     new Error(
@@ -335,6 +341,37 @@ export const createDockerService = (dockerHost: string | null) => {
         .map((line) => line.trim())
         .filter(Boolean)
         .map((line) => JSON.parse(line) as Record<string, string>);
+    },
+
+    async pruneManagedResources(input: PruneDockerResourcesInput = {}) {
+      await runDockerCommand(
+        ["container", "prune", "--force", "--filter", "label=quayboard.managed=true"],
+        {
+          dockerHost: input.dockerHost,
+          timeoutMs: containerCommandTimeoutMs,
+        },
+      ).catch(() => undefined);
+
+      await runDockerCommand(["image", "prune", "--force"], {
+        dockerHost: input.dockerHost,
+        timeoutMs: containerCommandTimeoutMs,
+      }).catch(() => undefined);
+
+      await runDockerCommand(
+        [
+          "builder",
+          "prune",
+          "--force",
+          "--max-used-space",
+          input.maxBuildCacheSpace ?? "6gb",
+          "--min-free-space",
+          input.minFreeSpace ?? "4gb",
+        ],
+        {
+          dockerHost: input.dockerHost,
+          timeoutMs: imageBuildTimeoutMs,
+        },
+      ).catch(() => undefined);
     },
   };
 };

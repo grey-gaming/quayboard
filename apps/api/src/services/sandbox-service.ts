@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   createSandboxRunRequestSchema,
   disposeManagedContainerRequestSchema,
@@ -73,6 +73,12 @@ const gitUserEnv = {
   GIT_COMMITTER_NAME: "Quayboard",
   GIT_TERMINAL_PROMPT: "0",
 };
+
+const sandboxWorkspacePrefix = "quayboard-run-";
+const interruptedSandboxRunReason =
+  "The API restarted before this sandbox run finished, so the run was cancelled.";
+const shutdownSandboxRunReason =
+  "The API shut down before this sandbox run finished, so the run was cancelled.";
 
 const isIsoString = (value: string) => !Number.isNaN(new Date(value).getTime());
 
@@ -757,6 +763,124 @@ export const createSandboxService = (input: {
     return updated;
   },
 
+  async cleanupTempWorkspaces(activeWorkspacePaths: string[] = []) {
+    const protectedPaths = new Set(activeWorkspacePaths);
+    const entries = await readdir(tmpdir(), { withFileTypes: true }).catch(() => []);
+
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && entry.name.startsWith(sandboxWorkspacePrefix))
+        .map(async (entry) => {
+          const workspacePath = path.join(tmpdir(), entry.name);
+          if (protectedPaths.has(workspacePath)) {
+            return;
+          }
+
+          await rm(workspacePath, { force: true, recursive: true }).catch(() => undefined);
+        }),
+    );
+  },
+
+  async pruneWorkspaceSnapshots(featureId?: string | null) {
+    const runs = await input.db.query.sandboxRunsTable.findMany({
+      where:
+        featureId
+          ? and(
+              eq(sandboxRunsTable.kind, "implement"),
+              eq(sandboxRunsTable.featureId, featureId),
+            )
+          : eq(sandboxRunsTable.kind, "implement"),
+      orderBy: [desc(sandboxRunsTable.completedAt), desc(sandboxRunsTable.createdAt)],
+    });
+
+    const newestSuccessfulSnapshotByFeature = new Set<string>();
+
+    for (const run of runs) {
+      if (!run.workspaceArchivePath || !run.featureId) {
+        continue;
+      }
+
+      const keepSnapshot =
+        run.status === "succeeded" && !newestSuccessfulSnapshotByFeature.has(run.featureId);
+
+      if (keepSnapshot) {
+        newestSuccessfulSnapshotByFeature.add(run.featureId);
+        continue;
+      }
+
+      await input.artifactStorageService.deletePath(run.workspaceArchivePath).catch(() => undefined);
+      await this.updateRunState(run.id, {
+        workspaceArchivePath: null,
+      }).catch(() => undefined);
+    }
+  },
+
+  async reconcileRuntimeState(reason = interruptedSandboxRunReason) {
+    const executionSettings = executionSettingsSchema.parse(
+      await input.executionSettingsService.get(),
+    );
+    const managedContainers = await input.dockerService
+      .listManagedContainers({
+        dockerHost: executionSettings.dockerHost,
+      })
+      .catch(() => [] as Record<string, string>[]);
+    const activeWorkspacePaths = managedContainers
+      .map((container) =>
+        container.Labels
+          ?.split(",")
+          .find((entry) => entry.startsWith("quayboard.workspace="))
+          ?.slice("quayboard.workspace=".length) ?? null,
+      )
+      .filter((value): value is string => Boolean(value));
+
+    await Promise.all(
+      managedContainers.map((container) =>
+        input.dockerService
+          .removeContainer(container.ID, {
+            dockerHost: executionSettings.dockerHost,
+            force: true,
+          })
+          .catch(() => undefined),
+      ),
+    );
+
+    const runningRuns = await input.db.query.sandboxRunsTable.findMany({
+      where: eq(sandboxRunsTable.status, "running"),
+      orderBy: [asc(sandboxRunsTable.createdAt)],
+    });
+
+    await Promise.all(
+      runningRuns.map(async (run) => {
+        await this.updateRunState(run.id, {
+          status: "cancelled",
+          outcome: "cancelled",
+          cancellationReason: reason,
+          completedAt: new Date(),
+          containerId: null,
+        });
+        await this.appendEvent(run.id, "warning", "cancelled", reason).catch(() => undefined);
+      }),
+    );
+
+    await input.db
+      .update(sandboxRunsTable)
+      .set({
+        containerId: null,
+      })
+      .where(
+        and(
+          inArray(sandboxRunsTable.status, ["failed", "succeeded", "cancelled"]),
+          sql`${sandboxRunsTable.containerId} is not null`,
+        ),
+      );
+
+    await this.cleanupTempWorkspaces(activeWorkspacePaths);
+    await this.pruneWorkspaceSnapshots();
+    await input.dockerService.pruneManagedResources({
+      dockerHost: executionSettings.dockerHost,
+    });
+  },
+
   async cancelRun(ownerUserId: string, runId: string, reason: string | null = null) {
     const run = await this.assertOwnedRun(ownerUserId, runId);
     if (run.status === "cancelled" || run.status === "failed" || run.status === "succeeded") {
@@ -1021,7 +1145,15 @@ export const createSandboxService = (input: {
       .where(eq(sandboxMilestoneSessionsTable.id, sandboxMilestoneSessionId));
   },
 
-  async executeRun(jobId: string, sandboxRunId: string) {
+  async executeRun(
+    jobId: string,
+    sandboxRunId: string,
+    options: {
+      cleanupWorkspaceRootOnExit?: boolean;
+      workspaceDir?: string;
+      workspaceRoot?: string;
+    } = {},
+  ) {
     const run = await input.db.query.sandboxRunsTable.findFirst({
       where: eq(sandboxRunsTable.id, sandboxRunId),
     });
@@ -1057,11 +1189,14 @@ export const createSandboxService = (input: {
       throw new Error("Sandbox execution requires a GitHub PAT.");
     }
 
-    const workspaceRoot = await mkdtemp(path.join(tmpdir(), "quayboard-run-"));
-    const workspaceDir = path.join(workspaceRoot, "workspace");
-    const artifactDir = path.join(workspaceRoot, "artifacts");
+    const workspaceRoot =
+      options.workspaceRoot ?? await mkdtemp(path.join(tmpdir(), sandboxWorkspacePrefix));
+    const workspaceDir = options.workspaceDir ?? path.join(workspaceRoot, "workspace");
+    const artifactDir = path.join(workspaceRoot, `artifacts-${sandboxRunId}`);
     await mkdir(workspaceDir, { recursive: true });
     await mkdir(artifactDir, { recursive: true });
+    let cleanupWorkspaceRootOnExit = options.cleanupWorkspaceRootOnExit ?? true;
+    let runFinalized = false;
     const defaultBranchName = repo.defaultBranch ?? "main";
     const deliveryBranchPlan = run.featureId
       ? await this.resolveDeliveryBranchPlan(
@@ -1074,6 +1209,10 @@ export const createSandboxService = (input: {
       : null;
 
     const cleanup = async () => {
+      if (!cleanupWorkspaceRootOnExit) {
+        return;
+      }
+
       await rm(workspaceRoot, { force: true, recursive: true }).catch(() => undefined);
     };
 
@@ -1120,7 +1259,14 @@ export const createSandboxService = (input: {
         jobId,
       );
 
-      if (run.kind === "verify") {
+      if (run.kind === "verify" && options.workspaceDir) {
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "workspace_reuse",
+          "Reused the implementation workspace for verification.",
+        );
+      } else if (run.kind === "verify") {
         const warmStart = run.featureId
           ? await input.db.query.sandboxRunsTable.findFirst({
               where: and(
@@ -1287,6 +1433,7 @@ export const createSandboxService = (input: {
             outcome: run.kind === "verify" ? "verification_failed" : "error",
             completedAt: new Date(),
           });
+          runFinalized = true;
           await this.appendEvent(
             sandboxRunId,
             "error",
@@ -1319,6 +1466,7 @@ export const createSandboxService = (input: {
             : "no_op",
           completedAt: new Date(),
         });
+        runFinalized = true;
         await this.appendEvent(
           sandboxRunId,
           "info",
@@ -1335,7 +1483,12 @@ export const createSandboxService = (input: {
           },
           jobId,
         );
-        await this.executeRun(jobId, verifyRun.id);
+        cleanupWorkspaceRootOnExit = false;
+        await this.executeRun(jobId, verifyRun.id, {
+          cleanupWorkspaceRootOnExit: true,
+          workspaceDir,
+          workspaceRoot,
+        });
         return;
       }
 
@@ -1385,6 +1538,7 @@ export const createSandboxService = (input: {
           pullRequestUrl: publishResult.pullRequestUrl,
           completedAt: new Date(),
         });
+        runFinalized = true;
         await this.appendEvent(
           sandboxRunId,
           "info",
@@ -1403,6 +1557,7 @@ export const createSandboxService = (input: {
         outcome: run.kind === "verify" ? "verification_failed" : "error",
         completedAt: new Date(),
       });
+      runFinalized = true;
       await this.appendEvent(
         sandboxRunId,
         "error",
@@ -1411,7 +1566,7 @@ export const createSandboxService = (input: {
       );
       throw createHandledRunFailure(`${run.kind} run exited with code ${exitCode}.`);
     } catch (error) {
-      if (isHandledRunFailure(error)) {
+      if (isHandledRunFailure(error) || runFinalized) {
         throw error;
       }
       const current = await input.db.query.sandboxRunsTable.findFirst({
@@ -1451,6 +1606,7 @@ export const createSandboxService = (input: {
         outcome: run.kind === "verify" ? "verification_failed" : "error",
         completedAt: new Date(),
       }).catch(() => undefined);
+      runFinalized = true;
       await this.appendEvent(
         sandboxRunId,
         "error",
@@ -1477,6 +1633,12 @@ export const createSandboxService = (input: {
         }).catch(() => undefined);
       }
       await cleanup();
+      if (run.featureId) {
+        await this.pruneWorkspaceSnapshots(run.featureId).catch(() => undefined);
+      }
+      await input.dockerService.pruneManagedResources({
+        dockerHost: executionSettings.dockerHost,
+      });
     }
   },
 

@@ -40,6 +40,8 @@ export const createStubServices = (): AppServices => ({
       path: "/tmp/artifact",
       sizeBytes: 0,
     }),
+    deletePath: async () => undefined,
+    ensureStorageRoot: async () => "/tmp",
     ensureRunDir: async () => "/tmp",
     readArtifact: async () => Buffer.from(""),
     restoreWorkspaceSnapshot: async () => undefined,
@@ -145,6 +147,7 @@ export const createStubServices = (): AppServices => ({
     createManagedContainer: async () => "container-id",
     ensureImage: async () => undefined,
     listManagedContainers: async () => [],
+    pruneManagedResources: async () => undefined,
     readLogs: async () => "",
     removeContainer: async () => undefined,
     startContainer: async () => undefined,
@@ -637,6 +640,7 @@ export const createStubServices = (): AppServices => ({
     cancelRun: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    cleanupTempWorkspaces: async () => undefined,
     captureArtifactsFromDir: async () => undefined,
     captureGitArtifacts: async () => undefined,
     cloneRepository: async () => undefined,
@@ -707,6 +711,8 @@ export const createStubServices = (): AppServices => ({
       commitSha: null,
       pullRequestUrl: null,
     }),
+    pruneWorkspaceSnapshots: async () => undefined,
+    reconcileRuntimeState: async () => undefined,
     runMilestoneSession: async () => undefined,
     updateRunState: async () => {
       throw new Error("Not implemented in test stub.");
