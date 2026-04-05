@@ -34,6 +34,7 @@ import { OnePagerOverviewPage } from "./pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "./pages/OnePagerQuestionsPage.js";
 import { ProductSpecPage } from "./pages/ProductSpecPage.js";
 import { ProjectSetupPage } from "./pages/ProjectSetupPage.js";
+import { ProjectReviewPage } from "./pages/ProjectReviewPage.js";
 import { ProtectedHomePage } from "./pages/ProtectedHomePage.js";
 import { RegisterPage } from "./pages/RegisterPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
@@ -217,6 +218,10 @@ export const appRouter = createBrowserRouter([
                               {
                                 path: "/projects/:id/develop",
                                 element: <DevelopPage />,
+                              },
+                              {
+                                path: "/projects/:id/develop/review",
+                                element: <ProjectReviewPage />,
                               },
                               {
                                 path: "/projects/:id/develop/debug",

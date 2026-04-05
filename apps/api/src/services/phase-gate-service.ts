@@ -5,6 +5,7 @@ import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
+import type { ProjectReviewService } from "./project-review-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 
@@ -16,6 +17,7 @@ export const createPhaseGateService = (
   onePagerService: OnePagerService,
   productSpecService: ProductSpecService,
   projectSetupService: ProjectSetupService,
+  projectReviewService: ProjectReviewService,
   questionnaireService: QuestionnaireService,
   userFlowService: UserFlowService,
 ) => ({
@@ -118,6 +120,14 @@ export const createPhaseGateService = (
     const featuresWithTasksCount = features.features.filter((feature) => feature.taskPlanning.hasTasks).length;
     const userFlowCount = userFlows.userFlows.length;
     const userFlowCoverageGapCount = userFlows.coverage.warnings.length;
+    const projectReviewPhase = userFlowsPassed
+      ? await projectReviewService.getPhase(ownerUserId, projectId)
+      : {
+          finalized: false,
+          latestStatus: null,
+          latestSessionId: null,
+          openFindingsCount: 0,
+        };
 
     return {
       phases: [
@@ -329,6 +339,30 @@ export const createPhaseGateService = (
               key: "feature_task_count",
               label: `${featuresWithTasksCount} feature${featuresWithTasksCount === 1 ? "" : "s"} with tasks`,
               passed: featureCount > 0 && featuresWithTasksCount === featureCount,
+            },
+          ],
+        },
+        {
+          phase: "Project Review",
+          passed: projectReviewPhase.finalized && projectReviewPhase.latestStatus === "clear",
+          items: [
+            {
+              key: "milestone_plan_finalized",
+              label: "Milestone planning finalized",
+              passed: projectReviewPhase.finalized,
+            },
+            {
+              key: "project_review_clear",
+              label:
+                projectReviewPhase.latestStatus === null
+                  ? "No project review has run yet"
+                  : `Latest review status: ${projectReviewPhase.latestStatus.replaceAll("_", " ")}`,
+              passed: projectReviewPhase.latestStatus === "clear",
+            },
+            {
+              key: "project_review_open_findings",
+              label: `${projectReviewPhase.openFindingsCount} open finding${projectReviewPhase.openFindingsCount === 1 ? "" : "s"}`,
+              passed: projectReviewPhase.openFindingsCount === 0,
             },
           ],
         },

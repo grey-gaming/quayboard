@@ -44,6 +44,7 @@ const makeSessionRow = (
   creativityMode: "balanced",
   retryCount: 0,
   reviewCount: 0,
+  projectReviewCount: 0,
   milestoneRepairCount: 0,
   ciFixCount: 0,
   ciWaitWindowCount: 0,
@@ -64,6 +65,8 @@ const makeProject = () => ({
   name: "Test Project",
   description: null,
   state: "READY" as const,
+  milestonePlanStatus: "open" as const,
+  milestonePlanFinalizedAt: null,
   onePagerApprovedAt: null,
   userFlowsApprovedAt: null,
   userFlowsApprovalSnapshot: null,
@@ -168,6 +171,7 @@ describe("auto-advance service", () => {
     transition: ReturnType<typeof vi.fn>;
   };
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
+  let projectReviewService: { startReview: ReturnType<typeof vi.fn> };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
   let featureWorkstreamService: { getTracks: ReturnType<typeof vi.fn>; approveRevision: ReturnType<typeof vi.fn> };
   let userFlowService: { list: ReturnType<typeof vi.fn>; approve: ReturnType<typeof vi.fn> };
@@ -184,6 +188,7 @@ describe("auto-advance service", () => {
       blueprintService as never,
       milestoneService as never,
       onePagerService as never,
+      projectReviewService as never,
       productSpecService as never,
       featureWorkstreamService as never,
       userFlowService as never,
@@ -239,6 +244,7 @@ describe("auto-advance service", () => {
       transition: vi.fn().mockResolvedValue(undefined),
     };
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
+    projectReviewService = { startReview: vi.fn().mockResolvedValue({ session: null }) };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
     featureWorkstreamService = {
       getTracks: vi.fn().mockResolvedValue({ tracks: { product: { status: "draft", headRevision: null } } }),

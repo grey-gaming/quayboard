@@ -22,6 +22,7 @@ export const autoAdvancePausedReasonSchema = z.enum([
   "review_limit_reached",
   "ci_fix_budget_exceeded",
   "ci_wait_limit_reached",
+  "project_review_limit_reached",
 ]);
 
 export type AutoAdvancePausedReason = z.infer<
@@ -49,6 +50,7 @@ export const autoAdvanceSessionSchema = z.object({
   creativityMode: creativityModeSchema,
   retryCount: z.number().int(),
   reviewCount: z.number().int(),
+  projectReviewCount: z.number().int(),
   milestoneRepairCount: z.number().int(),
   ciFixCount: z.number().int(),
   ciWaitWindowCount: z.number().int(),

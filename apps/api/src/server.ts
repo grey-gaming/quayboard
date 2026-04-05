@@ -18,6 +18,7 @@ import { milestoneRoutes } from "./routes/api/milestones.js";
 import { jobRoutes } from "./routes/api/jobs.js";
 import { onePagerRoutes } from "./routes/api/one-pager.js";
 import { productSpecRoutes } from "./routes/api/product-spec.js";
+import { projectReviewRoutes } from "./routes/api/project-reviews.js";
 import { projectsRoutes } from "./routes/api/projects.js";
 import { sandboxRoutes } from "./routes/api/sandbox.js";
 import { secretRoutes } from "./routes/api/secrets.js";
@@ -50,6 +51,7 @@ export const buildServer = async ({ corsOrigin, services }: ServerOptions) => {
     apiApp.addHook("preHandler", requireAuthenticatedUser(services));
     await apiApp.register(eventsRoutes(services));
     await apiApp.register(projectsRoutes(services));
+    await apiApp.register(projectReviewRoutes(services));
     await apiApp.register(jobRoutes(services));
     await apiApp.register(secretRoutes(services));
     await apiApp.register(onePagerRoutes(services));

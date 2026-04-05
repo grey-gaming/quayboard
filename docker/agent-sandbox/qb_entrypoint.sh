@@ -75,6 +75,30 @@ Verification mode:
 EOF
 fi
 
+if [[ "${RUN_KIND}" == "project_review" ]]; then
+  cat >> "${PROMPT_PATH}" <<'EOF'
+
+Project review mode:
+- Treat this as a repository-wide engineering due diligence review.
+- Inspect the real repository contents before making claims.
+- Do not edit repository files.
+- Write the full report to /run/artifacts/project-review.md.
+- Write a strict JSON summary to /run/artifacts/project-review.json.
+- The JSON must include: executiveSummary, maturityLevel, usabilityVerdict, biggestStrengths, biggestRisks, engineeringQualityVerdict, finalVerdict, findings.
+EOF
+fi
+
+if [[ "${RUN_KIND}" == "project_fix" ]]; then
+  cat >> "${PROMPT_PATH}" <<'EOF'
+
+Project fix mode:
+- Read /workspace/.quayboard-project-review.md and /workspace/.quayboard-project-review-findings.json.
+- Fix only the batched findings described there.
+- Re-run the closest relevant verification before exiting.
+- Write a concise remediation summary to /run/artifacts/project-fix-summary.md.
+EOF
+fi
+
 if [[ "${RUN_KIND}" == "ci_repair" ]]; then
   cat >> "${PROMPT_PATH}" <<'EOF'
 

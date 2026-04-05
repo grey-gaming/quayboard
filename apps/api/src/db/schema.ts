@@ -71,7 +71,13 @@ const featureKindValues = [
 const priorityValues = ["must_have", "should_have", "could_have", "wont_have"] as const;
 const featureEdgeTypeValues = ["depends_on", "leads_to", "contains"] as const;
 const contextPackTypeValues = ["planning", "coding"] as const;
-const sandboxRunKindValues = ["implement", "verify", "ci_repair"] as const;
+const sandboxRunKindValues = [
+  "implement",
+  "verify",
+  "ci_repair",
+  "project_review",
+  "project_fix",
+] as const;
 const sandboxRunStatusValues = [
   "queued",
   "running",
@@ -111,6 +117,34 @@ const autoAdvancePausedReasonValues = [
   "review_limit_reached",
   "ci_fix_budget_exceeded",
   "ci_wait_limit_reached",
+  "project_review_limit_reached",
+] as const;
+
+const milestonePlanStatusValues = ["open", "finalized"] as const;
+const projectReviewSessionStatusValues = [
+  "queued_review",
+  "running_review",
+  "queued_fix",
+  "running_fix",
+  "needs_fixes",
+  "clear",
+  "failed",
+] as const;
+const projectReviewAttemptKindValues = ["review", "fix"] as const;
+const projectReviewAttemptStatusValues = ["queued", "running", "succeeded", "failed"] as const;
+const projectReviewCategoryValues = [
+  "documentation",
+  "tests",
+  "completeness",
+  "architecture",
+] as const;
+const projectReviewSeverityValues = ["critical", "high", "medium", "low"] as const;
+const projectReviewFindingStatusValues = [
+  "open",
+  "resolved",
+  "accepted",
+  "ignored",
+  "superseded",
 ] as const;
 
 export const usersTable = pgTable(
@@ -188,6 +222,13 @@ export const projectsTable = pgTable(
       (): AnyPgColumn => jobsTable.id,
       { onDelete: "set null" },
     ),
+    milestonePlanStatus: text("milestone_plan_status")
+      .notNull()
+      .$type<(typeof milestonePlanStatusValues)[number]>()
+      .default("open"),
+    milestonePlanFinalizedAt: timestamp("milestone_plan_finalized_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(now()),
@@ -204,6 +245,10 @@ export const projectsTable = pgTable(
     milestoneMapReviewStatusCheck: check(
       "projects_milestone_map_review_status_check",
       sql`${table.milestoneMapReviewStatus} in (${sql.join(milestoneReconciliationStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    milestonePlanStatusCheck: check(
+      "projects_milestone_plan_status_check",
+      sql`${table.milestonePlanStatus} in (${sql.join(milestonePlanStatusValues.map((value) => sql`${value}`), sql`, `)})`,
     ),
   }),
 );
@@ -1447,6 +1492,127 @@ export const sandboxMilestoneSessionTasksTable = pgTable(
   }),
 );
 
+export const projectReviewSessionsTable = pgTable(
+  "project_review_sessions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    triggeredByUserId: text("triggered_by_user_id").references(() => usersTable.id, {
+      onDelete: "set null",
+    }),
+    status: text("status")
+      .notNull()
+      .$type<(typeof projectReviewSessionStatusValues)[number]>(),
+    loopCount: integer("loop_count").notNull().default(0),
+    maxLoops: integer("max_loops").notNull().default(3),
+    autoApplyFixes: boolean("auto_apply_fixes").notNull().default(true),
+    branchName: text("branch_name"),
+    pullRequestUrl: text("pull_request_url"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("project_review_sessions_project_id_idx").on(table.projectId),
+    statusCheck: check(
+      "project_review_sessions_status_check",
+      sql`${table.status} in (${sql.join(projectReviewSessionStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const projectReviewAttemptsTable = pgTable(
+  "project_review_attempts",
+  {
+    id: text("id").primaryKey(),
+    projectReviewSessionId: text("project_review_session_id")
+      .notNull()
+      .references(() => projectReviewSessionsTable.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().$type<(typeof projectReviewAttemptKindValues)[number]>(),
+    status: text("status").notNull().$type<(typeof projectReviewAttemptStatusValues)[number]>(),
+    sequence: integer("sequence").notNull(),
+    sandboxRunId: text("sandbox_run_id").references(() => sandboxRunsTable.id, {
+      onDelete: "set null",
+    }),
+    jobId: text("job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    reportMarkdown: text("report_markdown"),
+    summary: jsonb("summary"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => ({
+    sessionIndex: index("project_review_attempts_session_id_idx").on(table.projectReviewSessionId),
+    projectIndex: index("project_review_attempts_project_id_idx").on(table.projectId),
+    sessionSequenceUnique: uniqueIndex("project_review_attempts_session_id_sequence_key").on(
+      table.projectReviewSessionId,
+      table.sequence,
+    ),
+    kindCheck: check(
+      "project_review_attempts_kind_check",
+      sql`${table.kind} in (${sql.join(projectReviewAttemptKindValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    statusCheck: check(
+      "project_review_attempts_status_check",
+      sql`${table.status} in (${sql.join(projectReviewAttemptStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
+export const projectReviewFindingsTable = pgTable(
+  "project_review_findings",
+  {
+    id: text("id").primaryKey(),
+    projectReviewAttemptId: text("project_review_attempt_id")
+      .notNull()
+      .references(() => projectReviewAttemptsTable.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    category: text("category").notNull().$type<(typeof projectReviewCategoryValues)[number]>(),
+    severity: text("severity").notNull().$type<(typeof projectReviewSeverityValues)[number]>(),
+    finding: text("finding").notNull(),
+    evidence: jsonb("evidence").notNull().default(sql`'[]'::jsonb`),
+    whyItMatters: text("why_it_matters").notNull(),
+    recommendedImprovement: text("recommended_improvement").notNull(),
+    status: text("status").notNull().$type<(typeof projectReviewFindingStatusValues)[number]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => ({
+    attemptIndex: index("project_review_findings_attempt_id_idx").on(table.projectReviewAttemptId),
+    projectIndex: index("project_review_findings_project_id_idx").on(table.projectId),
+    categoryCheck: check(
+      "project_review_findings_category_check",
+      sql`${table.category} in (${sql.join(projectReviewCategoryValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    severityCheck: check(
+      "project_review_findings_severity_check",
+      sql`${table.severity} in (${sql.join(projectReviewSeverityValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+    statusCheck: check(
+      "project_review_findings_status_check",
+      sql`${table.status} in (${sql.join(projectReviewFindingStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
 export const autoAdvanceSessionsTable = pgTable(
   "auto_advance_sessions",
   {
@@ -1472,6 +1638,7 @@ export const autoAdvanceSessionsTable = pgTable(
     creativityMode: text("creativity_mode").notNull().default("balanced"),
     retryCount: integer("retry_count").notNull().default(0),
     reviewCount: integer("review_count").notNull().default(0),
+    projectReviewCount: integer("project_review_count").notNull().default(0),
     milestoneRepairCount: integer("milestone_repair_count")
       .notNull()
       .default(0),
@@ -1657,6 +1824,9 @@ export type DatabaseSchema = {
   milestonesTable: typeof milestonesTable;
   onePagersTable: typeof onePagersTable;
   projectCountersTable: typeof projectCountersTable;
+  projectReviewAttemptsTable: typeof projectReviewAttemptsTable;
+  projectReviewFindingsTable: typeof projectReviewFindingsTable;
+  projectReviewSessionsTable: typeof projectReviewSessionsTable;
   projectsTable: typeof projectsTable;
   questionnaireAnswersTable: typeof questionnaireAnswersTable;
   questionsTable: typeof questionsTable;

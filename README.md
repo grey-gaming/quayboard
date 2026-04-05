@@ -19,6 +19,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
   - recent job activity
   - auto-advance session controls
   - workflow status banners and stats
+  - project-review status once milestone planning is finalized
 - Planning editors for:
   - Questions
   - Overview
@@ -31,6 +32,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
   - Feature Editor workstreams: Product, UX, Tech, User Docs, Arch Docs, Tasks
 - Implementation surfaces for:
   - project-level Develop runs and managed container inspection
+  - project-level review runs, persisted findings, and auto-remediation tracking
   - milestone sandbox sessions
   - context pack and memory debugging
   - instance execution settings
@@ -87,6 +89,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 - `/projects/:id/features/:featureId`
 - `/projects/:id/features/:featureId/:tab`
 - `/projects/:id/develop`
+- `/projects/:id/develop/review`
 - `/projects/:id/develop/debug`
 
 The web route map lives in [`apps/web/src/app.tsx`](/home/mirdinj/quayboard/apps/web/src/app.tsx). The API route registration lives in [`apps/api/src/server.ts`](/home/mirdinj/quayboard/apps/api/src/server.ts).

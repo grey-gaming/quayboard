@@ -17,6 +17,7 @@ import {
   llmRunsTable,
   milestoneUseCasesTable,
   milestonesTable,
+  projectReviewSessionsTable,
   useCasesTable,
 } from "../../db/schema.js";
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
@@ -30,6 +31,7 @@ import type { MilestoneService } from "../milestone-service.js";
 import type { OnePagerService } from "../one-pager-service.js";
 import type { ProductSpecService } from "../product-spec-service.js";
 import type { ProjectService } from "../project-service.js";
+import type { ProjectReviewService } from "../project-review-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { SandboxService } from "../sandbox-service.js";
@@ -1889,6 +1891,7 @@ export const createJobRunnerService = (input: {
   onePagerService: OnePagerService;
   productSpecService: ProductSpecService;
   projectService: ProjectService;
+  projectReviewService?: ProjectReviewService;
   projectSetupService: ProjectSetupService;
   questionnaireService: QuestionnaireService;
   sandboxService?: SandboxService;
@@ -5054,6 +5057,92 @@ export const createJobRunnerService = (input: {
           contextPackId: pack.id,
           featureId: pack.featureId,
           type: pack.type,
+        });
+      }
+
+      case "RunProjectReview": {
+        if (!input.sandboxService || !input.projectReviewService) {
+          throw new Error("RunProjectReview requires sandbox and project review support.");
+        }
+
+        const jobInput = rawJob.inputs as { attemptId?: string; sessionId?: string };
+        if (!jobInput.attemptId || !jobInput.sessionId) {
+          throw new Error("RunProjectReview requires attemptId and sessionId.");
+        }
+
+        const session = await input.db.query.projectReviewSessionsTable.findFirst({
+          where: eq(projectReviewSessionsTable.id, jobInput.sessionId),
+        });
+        const run = await input.sandboxService.createProjectReviewRun(
+          ownerUserId,
+          projectId,
+          rawJob.id,
+          session?.branchName ?? null,
+        );
+        await input.projectReviewService.markAttemptRunning(jobInput.attemptId, run.id);
+        await input.sandboxService.executeRun(rawJob.id, run.id);
+        const [reportMarkdown, reportJson, finalRun] = await Promise.all([
+          input.sandboxService
+            .getRunArtifact(ownerUserId, run.id, "project-review.md")
+            .then((artifact) => artifact.content.toString())
+            .catch(() => {
+              throw new Error("Project review run did not produce project-review.md.");
+            }),
+          input.sandboxService
+            .getRunArtifact(ownerUserId, run.id, "project-review.json")
+            .then((artifact) => artifact.content.toString())
+            .catch(() => {
+              throw new Error("Project review run did not produce project-review.json.");
+            }),
+          input.sandboxService.getRun(ownerUserId, run.id),
+        ]);
+        const result = await input.projectReviewService.completeReviewAttempt(
+          jobInput.attemptId,
+          reportMarkdown,
+          reportJson,
+          {
+            id: run.id,
+            branchName: finalRun.run.branchName,
+            pullRequestUrl: finalRun.run.pullRequestUrl,
+          },
+        );
+        return input.jobService.markSucceeded(rawJob.id, {
+          sandboxRunId: run.id,
+          sessionId: result.sessionId,
+          clear: result.clear,
+          findingCount: result.findingCount,
+        });
+      }
+
+      case "RunProjectFix": {
+        if (!input.sandboxService || !input.projectReviewService) {
+          throw new Error("RunProjectFix requires sandbox and project review support.");
+        }
+
+        const jobInput = rawJob.inputs as { attemptId?: string; sessionId?: string };
+        if (!jobInput.attemptId || !jobInput.sessionId) {
+          throw new Error("RunProjectFix requires attemptId and sessionId.");
+        }
+
+        const session = await input.db.query.projectReviewSessionsTable.findFirst({
+          where: eq(projectReviewSessionsTable.id, jobInput.sessionId),
+        });
+        const run = await input.sandboxService.createProjectFixRun(
+          ownerUserId,
+          projectId,
+          rawJob.id,
+          session?.branchName ?? null,
+        );
+        await input.projectReviewService.markAttemptRunning(jobInput.attemptId, run.id);
+        await input.sandboxService.executeRun(rawJob.id, run.id);
+        const finalRun = await input.sandboxService.getRun(ownerUserId, run.id);
+        const result = await input.projectReviewService.completeFixAttempt(jobInput.attemptId, {
+          branchName: finalRun.run.branchName,
+          pullRequestUrl: finalRun.run.pullRequestUrl,
+        });
+        return input.jobService.markSucceeded(rawJob.id, {
+          sandboxRunId: run.id,
+          sessionId: result.sessionId,
         });
       }
 

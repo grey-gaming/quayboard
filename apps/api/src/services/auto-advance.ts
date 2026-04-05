@@ -24,6 +24,7 @@ import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
+import type { ProjectReviewService } from "./project-review-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
 import type { SandboxService } from "./sandbox-service.js";
@@ -76,6 +77,7 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   creativityMode: (row.creativityMode ?? "balanced") as AutoAdvanceSession["creativityMode"],
   retryCount: row.retryCount ?? 0,
   reviewCount: row.reviewCount ?? 0,
+  projectReviewCount: row.projectReviewCount ?? 0,
   milestoneRepairCount: row.milestoneRepairCount ?? 0,
   ciFixCount: row.ciFixCount ?? 0,
   ciWaitWindowCount: row.ciWaitWindowCount ?? 0,
@@ -346,6 +348,7 @@ export const createAutoAdvanceService = (
   blueprintService: BlueprintService,
   milestoneService: MilestoneService,
   onePagerService: OnePagerService,
+  projectReviewService: ProjectReviewService,
   productSpecService: ProductSpecService,
   featureWorkstreamService: FeatureWorkstreamService,
   userFlowService: UserFlowService,
@@ -1225,6 +1228,24 @@ export const createAutoAdvanceService = (
           href: nextAction.href,
         });
         if (queuedImplementationRun) {
+          return;
+        }
+
+        if (nextAction.key === "project_review_run") {
+          await projectReviewService.startReview(ownerUserId, projectId, "auto_advance");
+          return;
+        }
+
+        if (nextAction.key === "project_review_retry") {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "paused",
+              pausedReason: "project_review_limit_reached",
+              pausedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, sessionId));
           return;
         }
 

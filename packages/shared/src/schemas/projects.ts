@@ -36,6 +36,8 @@ export const projectSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable(),
   state: projectStateSchema,
+  milestonePlanStatus: z.enum(["open", "finalized"]),
+  milestonePlanFinalizedAt: z.string().datetime().nullable(),
   ownerUserId: z.string().uuid(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

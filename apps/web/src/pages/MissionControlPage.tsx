@@ -24,6 +24,7 @@ const phaseDisplayOrder = [
   "User Flows",
   "Milestones",
   "Features",
+  "Project Review",
 ] as const;
 
 const phaseOrderIndex = new Map<string, number>(
