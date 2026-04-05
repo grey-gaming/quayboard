@@ -53,6 +53,8 @@ describe("server routes", () => {
         retryCount: 0,
         reviewCount: 0,
         milestoneRepairCount: 0,
+        ciFixCount: 0,
+        ciWaitWindowCount: 0,
         maxConcurrentJobs: 1,
         startedAt: "2026-04-02T00:00:00.000Z",
         pausedAt: null,

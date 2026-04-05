@@ -77,6 +77,8 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   retryCount: row.retryCount ?? 0,
   reviewCount: row.reviewCount ?? 0,
   milestoneRepairCount: row.milestoneRepairCount ?? 0,
+  ciFixCount: row.ciFixCount ?? 0,
+  ciWaitWindowCount: row.ciWaitWindowCount ?? 0,
   maxConcurrentJobs: row.maxConcurrentJobs ?? 1,
   startedAt: row.startedAt?.toISOString() ?? null,
   pausedAt: row.pausedAt?.toISOString() ?? null,
@@ -237,6 +239,13 @@ const AUTOMATABLE_STEPS: Record<
   milestone_scope_resolve: null,
   milestone_delivery_review: {
     type: "ReviewMilestoneDelivery",
+    buildInputs: (href) => {
+      const match = href.match(/\/milestones\/([^/?]+)/);
+      return { milestoneId: match?.[1] ?? "" };
+    },
+  },
+  milestone_ci_gate: {
+    type: "WaitForMilestoneCi",
     buildInputs: (href) => {
       const match = href.match(/\/milestones\/([^/?]+)/);
       return { milestoneId: match?.[1] ?? "" };
@@ -2420,6 +2429,140 @@ export const createAutoAdvanceService = (
         // The fix job will be picked up by the scheduler; onJobComplete will advance naturally after it runs.
         await publishSessionUpdate(project.ownerUserId, job.projectId);
         return;
+      }
+
+      if (job.type === "WaitForMilestoneCi") {
+        const output = job.outputs as
+          | {
+              state?: "passing" | "failing" | "pending" | "no_ci" | "pending_window_exhausted";
+              milestoneId?: string;
+            }
+          | null;
+        const milestoneId = output?.milestoneId;
+
+        if (!milestoneId) {
+          await safelyAdvanceStep(project.ownerUserId, job.projectId, session.id);
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (output?.state === "passing" || output?.state === "no_ci") {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              activeBatchToken: null,
+              ciWaitWindowCount: 0,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await safelyAdvanceStep(project.ownerUserId, job.projectId, session.id);
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (output?.state === "pending_window_exhausted") {
+          const nextWindowCount = (session.ciWaitWindowCount ?? 0) + 1;
+          if (nextWindowCount >= 12) {
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({
+                status: "paused",
+                pausedReason: "ci_wait_limit_reached",
+                ciWaitWindowCount: nextWindowCount,
+                pausedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(autoAdvanceSessionsTable.id, session.id));
+            await publishSessionUpdate(project.ownerUserId, job.projectId);
+            return;
+          }
+
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              ciWaitWindowCount: nextWindowCount,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: "WaitForMilestoneCi",
+            inputs: buildAutoAdvanceInputs({ milestoneId }, session.id, batchToken),
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        if (output?.state === "failing") {
+          const nextFixCount = (session.ciFixCount ?? 0) + 1;
+          if (nextFixCount > 3) {
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({
+                status: "paused",
+                pausedReason: "ci_fix_budget_exceeded",
+                pausedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(autoAdvanceSessionsTable.id, session.id));
+            await publishSessionUpdate(project.ownerUserId, job.projectId);
+            return;
+          }
+
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              ciFixCount: nextFixCount,
+              ciWaitWindowCount: 0,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: "RepairMilestoneCi",
+            inputs: buildAutoAdvanceInputs({ milestoneId }, session.id, batchToken),
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+      }
+
+      if (job.type === "RepairMilestoneCi") {
+        const repairInputs = stripAutoAdvanceInputs(
+          job.inputs as Record<string, unknown> | null | undefined,
+        ) as { milestoneId?: string };
+        if (repairInputs.milestoneId) {
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              ciWaitWindowCount: 0,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await jobService.createJob({
+            createdByUserId: project.ownerUserId,
+            projectId: job.projectId,
+            type: "WaitForMilestoneCi",
+            inputs: buildAutoAdvanceInputs(
+              { milestoneId: repairInputs.milestoneId },
+              session.id,
+              batchToken,
+            ),
+          });
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
       }
 
       await safelyAdvanceStep(project.ownerUserId, job.projectId, session.id);

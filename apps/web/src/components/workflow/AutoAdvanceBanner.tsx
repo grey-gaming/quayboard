@@ -13,6 +13,8 @@ const pausedReasonLabel: Record<string, string> = {
   milestone_map_repair_limit_reached: "milestone map repair limit reached",
   milestone_repair_limit_reached: "milestone repair limit reached",
   review_limit_reached: "delivery review limit reached",
+  ci_fix_budget_exceeded: "CI repair budget exceeded",
+  ci_wait_limit_reached: "CI wait limit reached",
 };
 
 const statusTone = (
@@ -75,6 +77,14 @@ export const AutoAdvanceBanner = ({
               Milestone repair attempts used: {session.milestoneRepairCount}/3
             </p>
           ) : null}
+          {session && session.ciFixCount > 0 ? (
+            <p className="text-xs text-secondary">CI repair attempts used: {session.ciFixCount}/3</p>
+          ) : null}
+          {session && session.ciWaitWindowCount > 0 ? (
+            <p className="text-xs text-secondary">
+              CI wait windows used: {session.ciWaitWindowCount}/12
+            </p>
+          ) : null}
           {nextStep && (
             <p className="text-xs text-secondary">
               Next action required: <span className="font-medium text-foreground">{formatStepKey(nextStep)}</span>
@@ -110,6 +120,16 @@ export const AutoAdvanceBanner = ({
             <p className="text-xs text-warning">
               Auto-advance exhausted milestone design retries. Review the milestone inputs or change
               the configured model before rerunning this step.
+            </p>
+          ) : null}
+          {session?.pausedReason === "ci_fix_budget_exceeded" ? (
+            <p className="text-xs text-warning">
+              Auto-advance tried repairing milestone CI three times and paused for manual follow-up.
+            </p>
+          ) : null}
+          {session?.pausedReason === "ci_wait_limit_reached" ? (
+            <p className="text-xs text-warning">
+              Auto-advance waited for milestone CI repeatedly and paused because the checks did not settle.
             </p>
           ) : null}
         </div>

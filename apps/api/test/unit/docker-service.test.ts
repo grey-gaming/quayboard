@@ -273,7 +273,7 @@ describe("docker service", () => {
     await expect(service.waitForContainer("container-123")).rejects.toMatchObject({
       code: "docker_wait_timeout",
       containerId: "container-123",
-      timeoutMs: 10 * 60_000,
+      timeoutMs: 15 * 60_000,
     });
   });
 

@@ -31,7 +31,7 @@ export const sandboxRunStatusSchema = z.enum([
 
 export type SandboxRunStatus = z.infer<typeof sandboxRunStatusSchema>;
 
-export const sandboxRunKindSchema = z.enum(["implement", "verify"]);
+export const sandboxRunKindSchema = z.enum(["implement", "verify", "ci_repair"]);
 
 export type SandboxRunKind = z.infer<typeof sandboxRunKindSchema>;
 
@@ -109,7 +109,7 @@ export type SandboxRunDetailResponse = z.infer<typeof sandboxRunDetailResponseSc
 
 export const createSandboxRunRequestSchema = z.object({
   featureId: z.string().uuid(),
-  kind: sandboxRunKindSchema.default("implement"),
+  kind: z.enum(["implement", "verify"]).default("implement"),
 });
 
 export type CreateSandboxRunRequest = z.infer<typeof createSandboxRunRequestSchema>;

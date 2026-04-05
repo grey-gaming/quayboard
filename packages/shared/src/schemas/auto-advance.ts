@@ -20,6 +20,8 @@ export const autoAdvancePausedReasonSchema = z.enum([
   "milestone_map_repair_limit_reached",
   "milestone_repair_limit_reached",
   "review_limit_reached",
+  "ci_fix_budget_exceeded",
+  "ci_wait_limit_reached",
 ]);
 
 export type AutoAdvancePausedReason = z.infer<
@@ -48,6 +50,8 @@ export const autoAdvanceSessionSchema = z.object({
   retryCount: z.number().int(),
   reviewCount: z.number().int(),
   milestoneRepairCount: z.number().int(),
+  ciFixCount: z.number().int(),
+  ciWaitWindowCount: z.number().int(),
   maxConcurrentJobs: z.number().int(),
   startedAt: z.string().datetime().nullable(),
   pausedAt: z.string().datetime().nullable(),

@@ -5072,6 +5072,77 @@ export const createJobRunnerService = (input: {
         return input.jobService.markSucceeded(rawJob.id, { sandboxRunId });
       }
 
+      case "WaitForMilestoneCi": {
+        if (!input.milestoneService) {
+          throw new Error("WaitForMilestoneCi requires milestone service support.");
+        }
+
+        const milestoneId = (rawJob.inputs as { milestoneId?: string }).milestoneId;
+        if (!milestoneId) {
+          throw new Error("WaitForMilestoneCi requires milestoneId.");
+        }
+
+        const milestone = await input.db.query.milestonesTable.findFirst({
+          where: eq(milestonesTable.id, milestoneId),
+        });
+        if (!milestone) {
+          throw new Error("Milestone not found.");
+        }
+
+        const startedAt = rawJob.startedAt ?? new Date();
+        let state: "passing" | "failing" | "pending" | "no_ci" | "pending_window_exhausted" =
+          "pending";
+        let lastStatus:
+          | Awaited<ReturnType<typeof input.milestoneService.getMilestoneCiStatus>>
+          | null = null;
+
+        while (Date.now() - startedAt.getTime() < 5 * 60_000) {
+          lastStatus = await input.milestoneService.getMilestoneCiStatus(
+            ownerUserId,
+            projectId,
+            milestone,
+          );
+          state = lastStatus?.state ?? "no_ci";
+          if (state !== "pending") {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 30_000));
+        }
+
+        if (state === "pending") {
+          state = "pending_window_exhausted";
+        }
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          milestoneId,
+          state,
+          ciStatus: lastStatus,
+        });
+      }
+
+      case "RepairMilestoneCi": {
+        if (!input.sandboxService) {
+          throw new Error("RepairMilestoneCi requires sandbox service support.");
+        }
+
+        const milestoneId = (rawJob.inputs as { milestoneId?: string }).milestoneId;
+        if (!milestoneId) {
+          throw new Error("RepairMilestoneCi requires milestoneId.");
+        }
+
+        const run = await input.sandboxService.createMilestoneCiRepairRun(
+          ownerUserId,
+          projectId,
+          milestoneId,
+          rawJob.id,
+        );
+        await input.sandboxService.executeRun(rawJob.id, run.id);
+        return input.jobService.markSucceeded(rawJob.id, {
+          milestoneId,
+          sandboxRunId: run.id,
+        });
+      }
+
       case "ExecuteMilestoneSession": {
         if (!input.sandboxService) {
           throw new Error("ExecuteMilestoneSession requires sandbox service support.");

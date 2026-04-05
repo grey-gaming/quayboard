@@ -71,7 +71,7 @@ const featureKindValues = [
 const priorityValues = ["must_have", "should_have", "could_have", "wont_have"] as const;
 const featureEdgeTypeValues = ["depends_on", "leads_to", "contains"] as const;
 const contextPackTypeValues = ["planning", "coding"] as const;
-const sandboxRunKindValues = ["implement", "verify"] as const;
+const sandboxRunKindValues = ["implement", "verify", "ci_repair"] as const;
 const sandboxRunStatusValues = [
   "queued",
   "running",
@@ -109,6 +109,8 @@ const autoAdvancePausedReasonValues = [
   "milestone_map_repair_limit_reached",
   "milestone_repair_limit_reached",
   "review_limit_reached",
+  "ci_fix_budget_exceeded",
+  "ci_wait_limit_reached",
 ] as const;
 
 export const usersTable = pgTable(
@@ -1473,6 +1475,8 @@ export const autoAdvanceSessionsTable = pgTable(
     milestoneRepairCount: integer("milestone_repair_count")
       .notNull()
       .default(0),
+    ciFixCount: integer("ci_fix_count").notNull().default(0),
+    ciWaitWindowCount: integer("ci_wait_window_count").notNull().default(0),
     maxConcurrentJobs: integer("max_concurrent_jobs").notNull().default(1),
     pendingJobCount: integer("pending_job_count").notNull().default(0),
     batchFailureCount: integer("batch_failure_count").notNull().default(0),

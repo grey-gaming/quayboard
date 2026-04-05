@@ -58,6 +58,28 @@ export const milestoneLinkedUseCaseSchema = z.object({
 
 export type MilestoneLinkedUseCase = z.infer<typeof milestoneLinkedUseCaseSchema>;
 
+export const milestoneCiFailureSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  source: z.enum(["check_run", "commit_status"]),
+  summary: z.string().nullable(),
+  detailsUrl: z.string().nullable(),
+});
+
+export type MilestoneCiFailure = z.infer<typeof milestoneCiFailureSchema>;
+
+export const milestoneCiStatusSchema = z.object({
+  state: z.enum(["no_ci", "pending", "passing", "failing"]),
+  ref: z.string().min(1).nullable(),
+  total: z.number().int().nonnegative(),
+  pending: z.number().int().nonnegative(),
+  passing: z.number().int().nonnegative(),
+  failing: z.number().int().nonnegative(),
+  failures: z.array(milestoneCiFailureSchema),
+});
+
+export type MilestoneCiStatus = z.infer<typeof milestoneCiStatusSchema>;
+
 export const milestoneSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
@@ -76,6 +98,7 @@ export const milestoneSchema = z.object({
   deliveryReviewStatus: planningReviewStatusSchema,
   deliveryReviewIssues: z.array(milestoneDeliveryReviewIssueSchema),
   deliveryReviewedAt: z.string().datetime().nullable(),
+  ciStatus: milestoneCiStatusSchema.nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

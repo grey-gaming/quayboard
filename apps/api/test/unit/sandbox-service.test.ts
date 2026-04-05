@@ -229,6 +229,7 @@ describe("sandbox service", () => {
     };
     const service = makeService({ db, githubService });
     service.hasWorkingTreeChanges = vi.fn().mockResolvedValue(true);
+    service.hasStagedChanges = vi.fn().mockResolvedValue(true);
     service.updateRunState = vi.fn().mockResolvedValue(undefined);
     service.git = vi.fn().mockImplementation(async (args: string[]) => {
       if (args[0] === "branch") {
@@ -248,7 +249,7 @@ describe("sandbox service", () => {
         repoUrl: "https://github.com/acme/repo",
       } as never,
       "github_pat_secret",
-      "feature-1",
+      "Implement F-001: Counter UI",
       "run-1",
       {
         baseBranchName: "main",
