@@ -2434,7 +2434,13 @@ export const createAutoAdvanceService = (
       if (job.type === "WaitForMilestoneCi") {
         const output = job.outputs as
           | {
-              state?: "passing" | "failing" | "pending" | "no_ci" | "pending_window_exhausted";
+              state?:
+                | "passing"
+                | "failing"
+                | "pending"
+                | "no_ci"
+                | "pending_window_exhausted"
+                | "stale_pending";
               milestoneId?: string;
             }
           | null;
@@ -2497,7 +2503,7 @@ export const createAutoAdvanceService = (
           return;
         }
 
-        if (output?.state === "failing") {
+        if (output?.state === "failing" || output?.state === "stale_pending") {
           const nextFixCount = (session.ciFixCount ?? 0) + 1;
           if (nextFixCount > 3) {
             await db
@@ -2528,7 +2534,17 @@ export const createAutoAdvanceService = (
             createdByUserId: project.ownerUserId,
             projectId: job.projectId,
             type: "RepairMilestoneCi",
-            inputs: buildAutoAdvanceInputs({ milestoneId }, session.id, batchToken),
+            inputs: buildAutoAdvanceInputs(
+              {
+                milestoneId,
+                diagnosis:
+                  output.state === "stale_pending"
+                    ? "pending_checks_stale"
+                    : "failing_checks_detected",
+              },
+              session.id,
+              batchToken,
+            ),
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
           return;

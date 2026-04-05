@@ -80,7 +80,7 @@ if [[ "${RUN_KIND}" == "ci_repair" ]]; then
 
 CI repair mode:
 - Read /workspace/.quayboard-ci-failure.md before making changes.
-- Repair only the failing CI conditions described there.
+- Repair only the CI conditions described there, including failing checks or stale pending checks.
 - Re-run the failing or closest equivalent local checks before exiting.
 - Avoid unrelated refactors or new feature work.
 EOF

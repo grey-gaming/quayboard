@@ -479,9 +479,12 @@ export const createNextActionsService = (
                   actions.push({
                     key: "milestone_ci_gate",
                     label:
-                      activeMilestone.ciStatus.state === "failing"
+                      activeMilestone.ciStatus.state === "failing" || activeMilestone.ciStatus.isStale
                         ? "Repair milestone CI failures"
                         : "Wait for milestone CI",
+                    description: activeMilestone.ciStatus.isStale
+                      ? "The same CI checks have remained pending long enough to look stuck. Diagnose and repair the branch-level CI behavior."
+                      : undefined,
                     href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
                   });
                 } else {

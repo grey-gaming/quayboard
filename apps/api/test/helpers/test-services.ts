@@ -296,6 +296,8 @@ export const createStubServices = (): AppServices => ({
       passing: 0,
       failing: 0,
       state: "no_ci" as const,
+      isStale: false,
+      checks: [],
       failures: [],
     }),
     mergePullRequest: async () => ({ merged: true, sha: "abc123" }),

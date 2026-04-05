@@ -2086,15 +2086,42 @@ export const createSandboxService = (input: {
           )
         : ["No explicit failing checks were returned by GitHub."];
 
+    const pendingLines =
+      ciStatus.checks
+        .filter((check) => check.status !== "completed" && check.status !== "success")
+        .map(
+          (check, index) =>
+            `${index + 1}. ${check.name}\nSource: ${check.source}\nStatus: ${check.status}\nWorkflow: ${check.workflowName ?? "n/a"}\nStarted: ${check.startedAt ?? "n/a"}\nLast Updated: ${check.lastUpdatedAt ?? "n/a"}\nDetails: ${check.detailsUrl ?? "n/a"}`,
+        ) ?? [];
+
+    const guidanceLines = ciStatus.isStale
+      ? [
+          "Pending checks have remained unchanged long enough to look stuck.",
+          "Read the workflow file to identify the exact CI command.",
+          "Reproduce the command locally with a timeout.",
+          "If tests appear to finish but the process does not exit, treat it as an open-handle or teardown problem.",
+          "Prefer the smallest fix that makes the CI command exit cleanly.",
+        ]
+      : [
+          "Repair only the CI issue described here and re-run the closest equivalent local checks before exiting.",
+        ];
+
     return [
       "# CI Failure Context",
       "",
       `Milestone: ${milestone.title}`,
       `Branch: ${buildMilestoneDeliveryBranchName(milestone)}`,
       `State: ${ciStatus.state}`,
+      `Stale Pending Detected: ${ciStatus.isStale ? "yes" : "no"}`,
+      "",
+      "Pending Checks:",
+      ...(pendingLines.length > 0 ? pendingLines : ["No pending checks were returned by GitHub."]),
       "",
       "Failures:",
       ...failureLines,
+      "",
+      "Repair Guidance:",
+      ...guidanceLines,
     ].join("\n");
   },
 

@@ -5090,7 +5090,13 @@ export const createJobRunnerService = (input: {
         }
 
         const startedAt = rawJob.startedAt ?? new Date();
-        let state: "passing" | "failing" | "pending" | "no_ci" | "pending_window_exhausted" =
+        let state:
+          | "passing"
+          | "failing"
+          | "pending"
+          | "no_ci"
+          | "pending_window_exhausted"
+          | "stale_pending" =
           "pending";
         let lastStatus:
           | Awaited<ReturnType<typeof input.milestoneService.getMilestoneCiStatus>>
@@ -5103,6 +5109,10 @@ export const createJobRunnerService = (input: {
             milestone,
           );
           state = lastStatus?.state ?? "no_ci";
+          if (state === "pending" && lastStatus?.isStale) {
+            state = "stale_pending";
+            break;
+          }
           if (state !== "pending") {
             break;
           }

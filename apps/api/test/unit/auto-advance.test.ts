@@ -2518,6 +2518,77 @@ describe("auto-advance service", () => {
       );
     });
 
+    it("starts a CI repair attempt when milestone CI is stale-pending", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        ciFixCount: 1,
+      });
+      const ciGateJob = {
+        ...makeJob(),
+        type: "WaitForMilestoneCi",
+        outputs: {
+          state: "stale_pending",
+          milestoneId: "milestone-1",
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: ciGateJob });
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount:
+                    updateCall === 1
+                      ? 0
+                      : typeof data.pendingJobCount === "number"
+                        ? data.pendingJobCount
+                        : 1,
+                  activeBatchToken:
+                    typeof data.activeBatchToken === "string" ? data.activeBatchToken : "batch-2",
+                  ciFixCount:
+                    typeof data.ciFixCount === "number" ? data.ciFixCount : 2,
+                  ciWaitWindowCount:
+                    typeof data.ciWaitWindowCount === "number" ? data.ciWaitWindowCount : 0,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "RepairMilestoneCi",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-1",
+            diagnosis: "pending_checks_stale",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+            }),
+          }),
+        }),
+      );
+      expect(
+        updates.some(
+          (update) =>
+            update.ciFixCount === 2 &&
+            update.ciWaitWindowCount === 0 &&
+            update.pendingJobCount === 1,
+        ),
+      ).toBe(true);
+    });
+
     it("does nothing when no running session exists for the job's project", async () => {
       const db = makeDb({ session: null, job: makeJob() });
       const service = makeService(db);

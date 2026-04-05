@@ -68,6 +68,21 @@ export const milestoneCiFailureSchema = z.object({
 
 export type MilestoneCiFailure = z.infer<typeof milestoneCiFailureSchema>;
 
+export const milestoneCiCheckSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  source: z.enum(["check_run", "commit_status"]),
+  status: z.string().min(1),
+  conclusion: z.string().nullable(),
+  detailsUrl: z.string().nullable(),
+  workflowName: z.string().nullable(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+  lastUpdatedAt: z.string().datetime().nullable(),
+});
+
+export type MilestoneCiCheck = z.infer<typeof milestoneCiCheckSchema>;
+
 export const milestoneCiStatusSchema = z.object({
   state: z.enum(["no_ci", "pending", "passing", "failing"]),
   ref: z.string().min(1).nullable(),
@@ -75,6 +90,8 @@ export const milestoneCiStatusSchema = z.object({
   pending: z.number().int().nonnegative(),
   passing: z.number().int().nonnegative(),
   failing: z.number().int().nonnegative(),
+  isStale: z.boolean(),
+  checks: z.array(milestoneCiCheckSchema),
   failures: z.array(milestoneCiFailureSchema),
 });
 
