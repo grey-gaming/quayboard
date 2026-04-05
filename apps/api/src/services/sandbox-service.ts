@@ -122,6 +122,7 @@ const interruptedSandboxRunReason =
   "The API restarted before this sandbox run finished, so the run was cancelled.";
 const shutdownSandboxRunReason =
   "The API shut down before this sandbox run finished, so the run was cancelled.";
+const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] as const;
 
 const isIsoString = (value: string) => !Number.isNaN(new Date(value).getTime());
 
@@ -1979,6 +1980,14 @@ export const createSandboxService = (input: {
     }
   },
 
+  async cleanupTransientGitMessageFiles(workspaceDir: string) {
+    await Promise.all(
+      transientGitMessageFiles.map((fileName) =>
+        rm(path.join(workspaceDir, ".git", fileName), { force: true }).catch(() => undefined),
+      ),
+    );
+  },
+
   async writeQuayboardDocs(projectId: string, workspaceDir: string) {
     const [project, onePager, milestoneDocs] = await Promise.all([
       input.db.query.projectsTable.findFirst({
@@ -2200,6 +2209,7 @@ export const createSandboxService = (input: {
         pullRequestUrl: null,
       };
     }
+    await this.cleanupTransientGitMessageFiles(workspaceDir);
     await this.git(["commit", "-m", commitMessage], workspaceDir);
     await this.git(["push", "origin", `HEAD:${targetBranch}`], workspaceDir, [token]);
     const commitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);

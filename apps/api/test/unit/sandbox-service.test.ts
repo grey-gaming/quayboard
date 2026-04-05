@@ -272,6 +272,65 @@ describe("sandbox service", () => {
     expect(result.pullRequestUrl).toBe("https://github.com/acme/repo/pull/7");
   });
 
+  it("removes transient git message files before committing publish changes", async () => {
+    const service = makeService({
+      db: {
+        query: {
+          featureCasesTable: { findFirst: vi.fn().mockResolvedValue(null) },
+          featureRevisionsTable: { findFirst: vi.fn().mockResolvedValue(null) },
+          milestonesTable: { findFirst: vi.fn().mockResolvedValue(null) },
+        },
+      },
+    });
+    const cleanupTransientGitMessageFiles = vi.fn().mockResolvedValue(undefined);
+    const git = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === "branch") {
+        return "quayboard/m-001/abcd1234";
+      }
+      if (args[0] === "rev-parse") {
+        return "commit-sha";
+      }
+      return "";
+    });
+
+    service.hasWorkingTreeChanges = vi.fn().mockResolvedValue(true);
+    service.hasStagedChanges = vi.fn().mockResolvedValue(true);
+    service.cleanupTransientGitMessageFiles = cleanupTransientGitMessageFiles;
+    service.git = git;
+    service.updateRunState = vi.fn().mockResolvedValue(undefined);
+
+    await service.publishPullRequestIfNeeded(
+      "/tmp/workspace",
+      {
+        owner: "acme",
+        name: "repo",
+        repoUrl: "https://github.com/acme/repo",
+      } as never,
+      "github_pat_secret",
+      "Implement F-001: Counter UI",
+      "run-1",
+      {
+        baseBranchName: "main",
+        cloneBranchName: "quayboard/m-001/abcd1234",
+        targetBranchName: "quayboard/m-001/abcd1234",
+        pullRequestTitle: "Deliver milestone",
+        pullRequestBody: "body",
+      },
+      "base-sha",
+    );
+
+    expect(cleanupTransientGitMessageFiles).toHaveBeenCalledWith("/tmp/workspace");
+    expect(git).toHaveBeenCalledWith(
+      ["commit", "-m", "Implement F-001: Counter UI"],
+      "/tmp/workspace",
+    );
+    const commitCallIndex = git.mock.calls.findIndex((call) => call[0][0] === "commit");
+    expect(commitCallIndex).toBeGreaterThanOrEqual(0);
+    expect(cleanupTransientGitMessageFiles.mock.invocationCallOrder[0]).toBeLessThan(
+      git.mock.invocationCallOrder[commitCallIndex],
+    );
+  });
+
   it("creates a fresh fix branch from the default branch after a milestone has been merged", async () => {
     const githubService = {
       branchExists: vi.fn().mockResolvedValue(false),

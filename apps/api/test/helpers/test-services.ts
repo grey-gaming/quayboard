@@ -734,6 +734,7 @@ export const createStubServices = (): AppServices => ({
     listRuns: async () => ({ runs: [] }),
     buildMilestoneCiFailureDocument: async () => "# CI Failure Context\n",
     ensureManagedGitignore: async () => undefined,
+    cleanupTransientGitMessageFiles: async () => undefined,
     resolveDeliveryBranchPlan: async () => ({
       baseBranchName: "main",
       cloneBranchName: "main",
