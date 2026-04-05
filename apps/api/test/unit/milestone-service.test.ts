@@ -81,6 +81,15 @@ describe("milestone service", () => {
         number: 17,
         url: "https://github.com/acme/repo/pull/17",
       }),
+      getCommitCiStatus: vi.fn().mockResolvedValue({
+        state: "passing",
+        ref: "quayboard/m-001/33333333",
+        total: 1,
+        pending: 0,
+        passing: 1,
+        failing: 0,
+        failures: [],
+      }),
       mergePullRequest: vi.fn().mockResolvedValue({ merged: true, sha: "abc123" }),
     };
     const secretService = {
@@ -119,6 +128,15 @@ describe("milestone service", () => {
       findOpenPullRequestForHead: vi.fn().mockResolvedValue({
         number: 17,
         url: "https://github.com/acme/repo/pull/17",
+      }),
+      getCommitCiStatus: vi.fn().mockResolvedValue({
+        state: "passing",
+        ref: "quayboard/m-001/33333333",
+        total: 1,
+        pending: 0,
+        passing: 1,
+        failing: 0,
+        failures: [],
       }),
       mergePullRequest: vi.fn().mockRejectedValue(new Error("Pull request is not mergeable.")),
     };

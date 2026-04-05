@@ -289,6 +289,15 @@ export const createStubServices = (): AppServices => ({
     createPullRequest: async () => ({ url: "https://github.com/acme/repo/pull/1" }),
     deleteBranch: async () => ({ deleted: true, notFound: false }),
     findOpenPullRequestForHead: async () => null,
+    getCommitCiStatus: async () => ({
+      ref: "main",
+      total: 0,
+      pending: 0,
+      passing: 0,
+      failing: 0,
+      state: "no_ci" as const,
+      failures: [],
+    }),
     mergePullRequest: async () => ({ merged: true, sha: "abc123" }),
     validatePat: async () => {
       throw new Error("Not implemented in test stub.");
@@ -365,6 +374,7 @@ export const createStubServices = (): AppServices => ({
     formatDesignDocList: async () => ({ designDocs: [] }),
     getActiveMilestone: async () => undefined,
     getCanonicalDesignDoc: async () => undefined,
+    getMilestoneCiStatus: async () => null,
     getContext: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -667,6 +677,9 @@ export const createStubServices = (): AppServices => ({
     createMilestoneSession: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    createMilestoneCiRepairRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     createRun: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -714,10 +727,13 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
     git: async () => "",
+    hasStagedChanges: async () => false,
     hasWorkingTreeChanges: async () => false,
     listManagedContainers: async () => ({ containers: [] }),
     listMilestoneSessions: async () => ({ sessions: [] }),
     listRuns: async () => ({ runs: [] }),
+    buildMilestoneCiFailureDocument: async () => "# CI Failure Context\n",
+    ensureManagedGitignore: async () => undefined,
     resolveDeliveryBranchPlan: async () => ({
       baseBranchName: "main",
       cloneBranchName: "main",
@@ -725,6 +741,15 @@ export const createStubServices = (): AppServices => ({
       pullRequestTitle: "Fix F-001: Stub Feature",
       pullRequestBody: "Stub branch plan.",
     }),
+    resolveMilestoneRepairBranchPlan: async () => ({
+      baseBranchName: "main",
+      cloneBranchName: "main",
+      targetBranchName: "quayboard/m-001/test-run",
+      pullRequestTitle: "Repair milestone CI",
+      pullRequestBody: "Stub milestone CI repair branch plan.",
+    }),
+    removeExcludedPublishPaths: async () => undefined,
+    revertProtectedDeletionsIfNeeded: async () => undefined,
     publishPullRequestIfNeeded: async () => ({
       bootstrappedDefaultBranch: false,
       branchName: null,
@@ -737,6 +762,7 @@ export const createStubServices = (): AppServices => ({
     updateRunState: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    writeQuayboardDocs: async () => undefined,
   },
   secretService: {
     buildSecretEnvMap: async () => ({}),

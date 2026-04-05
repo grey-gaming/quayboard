@@ -41,6 +41,8 @@ const buildSession = (overrides: Partial<AutoAdvanceSession> = {}): AutoAdvanceS
   retryCount: 0,
   reviewCount: 0,
   milestoneRepairCount: 0,
+  ciFixCount: 0,
+  ciWaitWindowCount: 0,
   maxConcurrentJobs: 1,
   startedAt: "2026-03-30T12:00:00.000Z",
   pausedAt: "2026-03-30T12:00:01.000Z",

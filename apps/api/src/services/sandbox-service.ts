@@ -1,5 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -35,7 +42,9 @@ import {
   featureTechRevisionsTable,
   implementationRecordsTable,
   jobsTable,
+  milestoneDesignDocsTable,
   milestonesTable,
+  onePagersTable,
   projectsTable,
   reposTable,
   sandboxMilestoneSessionsTable,
@@ -75,6 +84,40 @@ const gitUserEnv = {
 };
 
 const sandboxWorkspacePrefix = "quayboard-run-";
+const managedGitignoreStart = "# --- Quayboard managed ignore entries ---";
+const managedGitignoreEnd = "# --- End Quayboard managed ignore entries ---";
+const managedGitignoreEntries = [
+  ".quayboard-context.md",
+  ".quayboard-tasks.md",
+  ".quayboard-ci-failure.md",
+  "node_modules/",
+  "dist/",
+  "build/",
+  "coverage/",
+  ".nyc_output/",
+  "*.log",
+  ".env",
+  ".env.local",
+] as const;
+const protectedPublishPaths = [
+  "docs/",
+  "README.md",
+  "CHANGELOG.md",
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+  ".github/",
+  ".gitignore",
+] as const;
+const excludedPublishPaths = [
+  ".quayboard-context.md",
+  ".quayboard-tasks.md",
+  ".quayboard-ci-failure.md",
+  "node_modules/",
+  "dist/",
+  "build/",
+  "coverage/",
+  ".nyc_output/",
+] as const;
 const interruptedSandboxRunReason =
   "The API restarted before this sandbox run finished, so the run was cancelled.";
 const shutdownSandboxRunReason =
@@ -163,6 +206,24 @@ const sanitizeGitError = (error: unknown, secrets: string[]) => {
     }
 
   return sanitized;
+};
+
+const replaceManagedBlock = (existing: string, entries: readonly string[]) => {
+  const managedBlock = [managedGitignoreStart, ...entries, managedGitignoreEnd].join("\n");
+  const blockPattern = new RegExp(
+    `${escapeRegExp(managedGitignoreStart)}[\\s\\S]*?${escapeRegExp(managedGitignoreEnd)}\\n?`,
+    "m",
+  );
+
+  if (blockPattern.test(existing)) {
+    return existing.replace(blockPattern, `${managedBlock}\n`);
+  }
+
+  if (existing.trim().length === 0) {
+    return `${managedBlock}\n`;
+  }
+
+  return `${existing.replace(/\s*$/, "\n\n")}${managedBlock}\n`;
 };
 
 const getErrorText = (error: unknown) => {
@@ -676,22 +737,67 @@ export const createSandboxService = (input: {
     };
   },
 
+  async resolveMilestoneRepairBranchPlan(
+    repo: typeof reposTable.$inferSelect,
+    milestoneId: string,
+    token: string,
+  ): Promise<DeliveryBranchPlan> {
+    if (!repo.owner || !repo.name) {
+      throw new Error("Sandbox execution requires a verified GitHub repository.");
+    }
+
+    const milestone = await input.db.query.milestonesTable.findFirst({
+      where: eq(milestonesTable.id, milestoneId),
+    });
+    if (!milestone) {
+      throw new Error("Milestone not found.");
+    }
+
+    const defaultBranchName = repo.defaultBranch ?? "main";
+    const targetBranchName = buildMilestoneDeliveryBranchName(milestone);
+    const branchExists = await input.githubService.branchExists({
+      owner: repo.owner,
+      repo: repo.name,
+      token,
+      branch: targetBranchName,
+    });
+
+    return {
+      baseBranchName: defaultBranchName,
+      cloneBranchName: branchExists ? targetBranchName : defaultBranchName,
+      targetBranchName,
+      pullRequestTitle: `Deliver Milestone ${milestone.position}: ${milestone.title}`,
+      pullRequestBody: `Automated milestone delivery branch for ${milestone.title}.`,
+    };
+  },
+
   async createRun(
     ownerUserId: string,
     projectId: string,
-    request: { featureId: string; kind: "implement" | "verify" },
+    request:
+      | { featureId: string; kind: "implement" | "verify" }
+      | { milestoneId: string; kind: "ci_repair" },
     triggeredByJobId: string | null = null,
     jobInputs: Record<string, unknown> | null = null,
   ) {
     await this.assertOwnedProject(ownerUserId, projectId);
-    const payload = createSandboxRunRequestSchema.parse(request);
-    const feature = await input.featureService.get(ownerUserId, payload.featureId);
-    if (feature.projectId !== projectId) {
+    const payload =
+      request.kind === "ci_repair"
+        ? request
+        : createSandboxRunRequestSchema.parse(request);
+    const feature =
+      "featureId" in payload
+        ? await input.featureService.get(ownerUserId, payload.featureId)
+        : null;
+    if (feature && feature.projectId !== projectId) {
       throw new HttpError(404, "feature_not_found", "Feature not found.");
     }
 
-    const session = await input.taskPlanningService.getSession(ownerUserId, payload.featureId);
-    if (!session) {
+    const session =
+      "featureId" in payload
+        ? await input.taskPlanningService.getSession(ownerUserId, payload.featureId)
+        : null;
+    if ("featureId" in payload && !session) {
       throw new HttpError(
         409,
         "task_planning_session_required",
@@ -700,7 +806,7 @@ export const createSandboxService = (input: {
     }
 
     const pack = await input.contextPackService.buildContextPack(ownerUserId, projectId, {
-      featureId: payload.featureId,
+      featureId: "featureId" in payload ? payload.featureId : undefined,
       type: "coding",
       createdByJobId: triggeredByJobId,
     });
@@ -710,9 +816,9 @@ export const createSandboxService = (input: {
       .values({
         id: generateId(),
         projectId,
-        featureId: payload.featureId,
-        milestoneId: feature.milestoneId,
-        taskPlanningSessionId: session.id,
+        featureId: "featureId" in payload ? payload.featureId : null,
+        milestoneId: feature?.milestoneId ?? ("milestoneId" in payload ? payload.milestoneId : null),
+        taskPlanningSessionId: session?.id ?? null,
         contextPackId: pack.id,
         triggeredByJobId,
         kind: payload.kind,
@@ -729,7 +835,12 @@ export const createSandboxService = (input: {
         createdByUserId: ownerUserId,
         parentJobId: null,
         dependencyJobId: null,
-        type: payload.kind === "implement" ? "ImplementChange" : "TestAndVerify",
+        type:
+          payload.kind === "implement"
+            ? "ImplementChange"
+            : payload.kind === "verify"
+              ? "TestAndVerify"
+              : "RepairMilestoneCi",
         status: "queued",
         inputs: { ...(jobInputs ?? {}), sandboxRunId: created.id },
         outputs: null,
@@ -748,6 +859,23 @@ export const createSandboxService = (input: {
     );
 
     return this.formatRun(created);
+  },
+
+  async createMilestoneCiRepairRun(
+    ownerUserId: string,
+    projectId: string,
+    milestoneId: string,
+    triggeredByJobId: string | null = null,
+  ) {
+    return this.createRun(
+      ownerUserId,
+      projectId,
+      {
+        milestoneId,
+        kind: "ci_repair",
+      },
+      triggeredByJobId,
+    );
   },
 
   async updateRunState(
@@ -1206,7 +1334,13 @@ export const createSandboxService = (input: {
           run.featureId,
           secretEnv.GITHUB_PAT,
         )
-      : null;
+      : run.kind === "ci_repair" && run.milestoneId
+        ? await this.resolveMilestoneRepairBranchPlan(
+            repo,
+            run.milestoneId,
+            secretEnv.GITHUB_PAT,
+          )
+        : null;
 
     const cleanup = async () => {
       if (!cleanupWorkspaceRootOnExit) {
@@ -1310,6 +1444,8 @@ export const createSandboxService = (input: {
         (await this.git(["branch", "--show-current"], workspaceDir).catch(() => "")) ||
         deliveryBranchPlan?.cloneBranchName ||
         defaultBranchName;
+      await this.ensureManagedGitignore(workspaceDir);
+      await this.writeQuayboardDocs(run.projectId, workspaceDir);
       const baseCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
       await this.updateRunState(sandboxRunId, { baseCommitSha });
 
@@ -1337,6 +1473,16 @@ export const createSandboxService = (input: {
           )
           .join("\n\n"),
       );
+      if (run.kind === "ci_repair" && run.milestoneId) {
+        await writeFile(
+          path.join(workspaceDir, ".quayboard-ci-failure.md"),
+          await this.buildMilestoneCiFailureDocument(
+            project.ownerUserId,
+            run.projectId,
+            run.milestoneId,
+          ),
+        );
+      }
 
       await input.dockerService.ensureImage(
         executionSettings.defaultImage,
@@ -1414,6 +1560,7 @@ export const createSandboxService = (input: {
         exitCode = await input.dockerService.waitForContainer(
           containerId,
           executionSettings.dockerHost,
+          sandboxConfig.timeoutSeconds * 1000,
         );
       } catch (error) {
         if (isDockerWaitTimeoutError(error)) {
@@ -1492,12 +1639,59 @@ export const createSandboxService = (input: {
         return;
       }
 
-      if (run.kind === "verify" && exitCode === 0) {
+      if (run.kind === "ci_repair" && exitCode === 0) {
         const publishResult = await this.publishPullRequestIfNeeded(
           workspaceDir,
           repo,
           secretEnv.GITHUB_PAT,
-          run.featureId!,
+          `Repair milestone CI failures`,
+          sandboxRunId,
+          deliveryBranchPlan ??
+            ({
+              baseBranchName: defaultBranchName,
+              cloneBranchName: currentBranchName,
+              targetBranchName: currentBranchName,
+              pullRequestTitle: `Repair milestone CI`,
+              pullRequestBody: `Automated CI repair run ${sandboxRunId}.`,
+            } satisfies DeliveryBranchPlan),
+          baseCommitSha,
+        );
+        await this.updateRunState(sandboxRunId, {
+          status: "succeeded",
+          outcome: publishResult.commitSha ? "changes_applied" : "no_op",
+          headCommitSha: publishResult.commitSha ?? headCommitSha,
+          pullRequestUrl: publishResult.pullRequestUrl,
+          completedAt: new Date(),
+        });
+        runFinalized = true;
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "ci_repaired",
+          publishResult.pullRequestUrl
+            ? "CI repair completed and updated the milestone pull request."
+            : "CI repair completed with no new pull request update required.",
+        );
+        return;
+      }
+
+      if (run.kind === "verify" && exitCode === 0) {
+        const [feature, headRevision] = await Promise.all([
+          input.db.query.featureCasesTable.findFirst({
+            where: eq(featureCasesTable.id, run.featureId!),
+          }),
+          input.db.query.featureRevisionsTable.findFirst({
+            where: eq(featureRevisionsTable.featureId, run.featureId!),
+            orderBy: [desc(featureRevisionsTable.version)],
+          }),
+        ]);
+        const publishResult = await this.publishPullRequestIfNeeded(
+          workspaceDir,
+          repo,
+          secretEnv.GITHUB_PAT,
+          feature && headRevision
+            ? `Implement ${feature.featureKey}: ${headRevision.title}`
+            : `Implement ${run.featureId!}`,
           sandboxRunId,
           deliveryBranchPlan ??
             ({
@@ -1714,6 +1908,15 @@ export const createSandboxService = (input: {
     return status.length > 0;
   },
 
+  async hasStagedChanges(workspaceDir: string) {
+    try {
+      await this.git(["diff", "--cached", "--quiet"], workspaceDir);
+      return false;
+    } catch {
+      return true;
+    }
+  },
+
   async captureArtifactsFromDir(sandboxRunId: string, artifactDir: string) {
     const entries = await readdir(artifactDir, { withFileTypes: true }).catch(() => []);
 
@@ -1766,11 +1969,184 @@ export const createSandboxService = (input: {
     }
   },
 
+  async ensureManagedGitignore(workspaceDir: string) {
+    const gitignorePath = path.join(workspaceDir, ".gitignore");
+    const existing = await readFile(gitignorePath, "utf8").catch(() => "");
+    const next = replaceManagedBlock(existing, managedGitignoreEntries);
+
+    if (next !== existing) {
+      await writeFile(gitignorePath, next, "utf8");
+    }
+  },
+
+  async writeQuayboardDocs(projectId: string, workspaceDir: string) {
+    const [project, onePager, milestoneDocs] = await Promise.all([
+      input.db.query.projectsTable.findFirst({
+        where: eq(projectsTable.id, projectId),
+      }),
+      input.db.query.onePagersTable.findFirst({
+        where: and(eq(onePagersTable.projectId, projectId), eq(onePagersTable.isCanonical, true)),
+        orderBy: [desc(onePagersTable.version)],
+      }),
+      input.db
+        .select({
+          milestoneId: milestonesTable.id,
+          position: milestonesTable.position,
+          title: milestonesTable.title,
+          markdown: milestoneDesignDocsTable.markdown,
+        })
+        .from(milestoneDesignDocsTable)
+        .innerJoin(milestonesTable, eq(milestonesTable.id, milestoneDesignDocsTable.milestoneId))
+        .where(
+          and(
+            eq(milestonesTable.projectId, projectId),
+            eq(milestoneDesignDocsTable.isCanonical, true),
+          ),
+        )
+        .orderBy(asc(milestonesTable.position)),
+    ]);
+
+    const docsRoot = path.join(workspaceDir, "docs", "quayboard");
+    const milestonesRoot = path.join(docsRoot, "milestones");
+    await mkdir(milestonesRoot, { recursive: true });
+
+    const overviewPath = "overview.md";
+    const milestoneLines = milestoneDocs.map(
+      (doc) => `- [Milestone ${doc.position}: ${doc.title}](milestones/milestone-${doc.position}.md)`,
+    );
+    const indexContent = [
+      `# Quayboard Planning Docs`,
+      "",
+      `Project: ${project?.name ?? projectId}`,
+      "",
+      "- [Overview](overview.md)",
+      ...milestoneLines,
+      "",
+      "These files are generated from Quayboard's canonical planning artifacts.",
+      "They are intended to keep milestone delivery branches explainable inside the target repository.",
+    ].join("\n");
+    const overviewContent = [
+      `# Project Overview`,
+      "",
+      onePager?.markdown ?? "No canonical project overview was available when this run executed.",
+    ].join("\n");
+
+    await writeFile(path.join(docsRoot, "README.md"), `${indexContent}\n`, "utf8");
+    await writeFile(path.join(docsRoot, overviewPath), `${overviewContent}\n`, "utf8");
+
+    await Promise.all(
+      milestoneDocs.map((doc) =>
+        writeFile(
+          path.join(milestonesRoot, `milestone-${doc.position}.md`),
+          `${doc.markdown}\n`,
+          "utf8",
+        ),
+      ),
+    );
+  },
+
+  async buildMilestoneCiFailureDocument(
+    ownerUserId: string,
+    projectId: string,
+    milestoneId: string,
+  ) {
+    const milestone = await input.db.query.milestonesTable.findFirst({
+      where: eq(milestonesTable.id, milestoneId),
+    });
+    const repo = await input.db.query.reposTable.findFirst({
+      where: eq(reposTable.projectId, projectId),
+    });
+    const env = await input.secretService.buildSecretEnvMap(ownerUserId, projectId);
+
+    if (!milestone || !repo?.owner || !repo.name || !env.GITHUB_PAT) {
+      return "# CI Failure Context\n\nUnable to load milestone CI failure details.\n";
+    }
+
+    const ciStatus = await input.githubService.getCommitCiStatus({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      ref: buildMilestoneDeliveryBranchName(milestone),
+    });
+
+    const failureLines =
+      ciStatus.failures.length > 0
+        ? ciStatus.failures.map(
+            (failure, index) =>
+              `${index + 1}. ${failure.name}\nSource: ${failure.source}\nSummary: ${failure.summary ?? "n/a"}\nDetails: ${failure.detailsUrl ?? "n/a"}`,
+          )
+        : ["No explicit failing checks were returned by GitHub."];
+
+    return [
+      "# CI Failure Context",
+      "",
+      `Milestone: ${milestone.title}`,
+      `Branch: ${buildMilestoneDeliveryBranchName(milestone)}`,
+      `State: ${ciStatus.state}`,
+      "",
+      "Failures:",
+      ...failureLines,
+    ].join("\n");
+  },
+
+  async removeExcludedPublishPaths(workspaceDir: string, baseCommitSha: string | null) {
+    if (baseCommitSha) {
+      await this.git(["reset", "HEAD", "--", ...excludedPublishPaths], workspaceDir).catch(
+        () => undefined,
+      );
+      return;
+    }
+
+    await this.git(
+      ["rm", "-r", "--cached", "--ignore-unmatch", "--", ...excludedPublishPaths],
+      workspaceDir,
+    ).catch(() => undefined);
+  },
+
+  async revertProtectedDeletionsIfNeeded(
+    workspaceDir: string,
+    sandboxRunId: string,
+    baseCommitSha: string | null,
+  ) {
+    if (!baseCommitSha) {
+      return;
+    }
+
+    const deleted = await this.git(
+      ["diff", "--cached", "--diff-filter=D", "--name-only"],
+      workspaceDir,
+    ).catch(() => "");
+    const protectedDeletions = deleted
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .filter((entry) =>
+        protectedPublishPaths.some(
+          (prefix) => entry === prefix.replace(/\/$/, "") || entry.startsWith(prefix),
+        ),
+      );
+
+    if (protectedDeletions.length === 0) {
+      return;
+    }
+
+    await this.git(["reset", "HEAD", "--", ...protectedDeletions], workspaceDir).catch(
+      () => undefined,
+    );
+    await this.git(["checkout", "--", ...protectedDeletions], workspaceDir).catch(() => undefined);
+    await this.appendEvent(
+      sandboxRunId,
+      "warning",
+      "protected_deletion_reverted",
+      `Reverted deletion of protected files: ${protectedDeletions.join(", ")}`,
+    );
+  },
+
   async publishPullRequestIfNeeded(
     workspaceDir: string,
     repo: typeof reposTable.$inferSelect,
     token: string,
-    featureId: string,
+    commitMessage: string,
     sandboxRunId: string,
     branchPlan: DeliveryBranchPlan,
     baseCommitSha: string | null,
@@ -1782,23 +2158,6 @@ export const createSandboxService = (input: {
   }> {
     const dirty = await this.hasWorkingTreeChanges(workspaceDir);
     if (!dirty || !repo.owner || !repo.name || !repo.repoUrl) {
-      return {
-        bootstrappedDefaultBranch: false,
-        branchName: null,
-        commitSha: await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null),
-        pullRequestUrl: null,
-      };
-    }
-
-    const feature = await input.db.query.featureCasesTable.findFirst({
-      where: eq(featureCasesTable.id, featureId),
-    });
-    const headRevision = await input.db.query.featureRevisionsTable.findFirst({
-      where: eq(featureRevisionsTable.featureId, featureId),
-      orderBy: [desc(featureRevisionsTable.version)],
-    });
-
-    if (!feature || !headRevision) {
       return {
         bootstrappedDefaultBranch: false,
         branchName: null,
@@ -1831,10 +2190,17 @@ export const createSandboxService = (input: {
     }
 
     await this.git(["add", "-A"], workspaceDir);
-    await this.git(
-      ["commit", "-m", `Implement ${feature.featureKey}: ${headRevision.title}`],
-      workspaceDir,
-    );
+    await this.removeExcludedPublishPaths(workspaceDir, baseCommitSha);
+    await this.revertProtectedDeletionsIfNeeded(workspaceDir, sandboxRunId, baseCommitSha);
+    if (!(await this.hasStagedChanges(workspaceDir))) {
+      return {
+        bootstrappedDefaultBranch: false,
+        branchName: targetBranch,
+        commitSha: await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null),
+        pullRequestUrl: null,
+      };
+    }
+    await this.git(["commit", "-m", commitMessage], workspaceDir);
     await this.git(["push", "origin", `HEAD:${targetBranch}`], workspaceDir, [token]);
     const commitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
 

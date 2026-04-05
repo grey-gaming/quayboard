@@ -27,6 +27,7 @@ const STEP_KEY_LABELS: Record<string, string> = {
   milestone_scope_resolve: "Resolve Milestone Scope Issues",
   milestone_delivery_review: "Run Milestone Delivery Review",
   milestone_delivery_resolve: "Resolve Milestone Delivery Issues",
+  milestone_ci_gate: "Gate On Milestone CI",
   milestone_complete: "Complete Milestone",
   features_create: "Generate Milestone Feature Set",
   feature_product_create: "Generate Feature Spec",

@@ -176,6 +176,13 @@
       "when": 1760000024000,
       "tag": "0024_m8_sandbox_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1760000025000,
+      "tag": "0025_m8_ci_gate_counters",
+      "breakpoints": true
     }
   ]
 }

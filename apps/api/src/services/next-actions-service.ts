@@ -471,6 +471,19 @@ export const createNextActionsService = (
                     label: "Run milestone delivery review",
                     href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
                   });
+                } else if (
+                  activeMilestone.ciStatus &&
+                  activeMilestone.ciStatus.state !== "passing" &&
+                  activeMilestone.ciStatus.state !== "no_ci"
+                ) {
+                  actions.push({
+                    key: "milestone_ci_gate",
+                    label:
+                      activeMilestone.ciStatus.state === "failing"
+                        ? "Repair milestone CI failures"
+                        : "Wait for milestone CI",
+                    href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
+                  });
                 } else {
                   actions.push({
                     key: "milestone_complete",

@@ -538,6 +538,9 @@ export const MilestonesPage = () => {
             const scopeReviewIssues = milestone.scopeReviewIssues ?? [];
             const deliveryReviewStatus = milestone.deliveryReviewStatus ?? "not_started";
             const deliveryReviewIssues = milestone.deliveryReviewIssues ?? [];
+            const ciStatus = milestone.ciStatus;
+            const ciAllowsCompletion =
+              !ciStatus || ciStatus.state === "passing" || ciStatus.state === "no_ci";
 
             return (
             <Card key={milestone.id} surface="panel">
@@ -579,6 +582,19 @@ export const MilestonesPage = () => {
                     >
                       delivery review: {deliveryReviewStatus.replaceAll("_", " ")}
                     </Badge>
+                    {ciStatus ? (
+                      <Badge
+                        tone={
+                          ciStatus.state === "passing" || ciStatus.state === "no_ci"
+                            ? "success"
+                            : ciStatus.state === "failing"
+                              ? "warning"
+                              : "info"
+                        }
+                      >
+                        ci: {ciStatus.state.replaceAll("_", " ")}
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="mt-3 text-lg font-semibold tracking-[-0.02em]">
                     {milestone.title}
@@ -631,7 +647,9 @@ export const MilestonesPage = () => {
                       Approve
                     </Button>
                   ) : null}
-                  {milestone.status === "approved" && deliveryReviewStatus === "passed" ? (
+                  {milestone.status === "approved" &&
+                  deliveryReviewStatus === "passed" &&
+                  ciAllowsCompletion ? (
                     <Button
                       onClick={() => {
                         void transitionMilestoneMutation.mutateAsync({
@@ -676,6 +694,24 @@ export const MilestonesPage = () => {
                       <li key={`${milestone.id}-delivery-${index}`}>{issue.hint}</li>
                     ))}
                   </ul>
+                </Alert>
+              ) : null}
+              {ciStatus && ciStatus.state === "failing" && ciStatus.failures.length > 0 ? (
+                <Alert tone="error">
+                  <p className="font-medium">Milestone CI is failing.</p>
+                  <ul className="mt-2 list-disc pl-5 text-sm">
+                    {ciStatus.failures.slice(0, 5).map((failure) => (
+                      <li key={`${milestone.id}-ci-${failure.id}`}>
+                        {failure.name}
+                        {failure.summary ? `: ${failure.summary}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </Alert>
+              ) : null}
+              {ciStatus && ciStatus.state === "pending" ? (
+                <Alert tone="info">
+                  Milestone CI checks are still running. Completion stays blocked until they pass.
                 </Alert>
               ) : null}
               <MilestoneDesignCard

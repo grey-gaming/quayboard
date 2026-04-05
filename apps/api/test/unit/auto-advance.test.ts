@@ -22,6 +22,8 @@ const makeSessionRow = (
     retryCount: number;
     reviewCount: number;
     milestoneRepairCount: number;
+    ciFixCount: number;
+    ciWaitWindowCount: number;
     maxConcurrentJobs: number;
     pendingJobCount: number;
     activeBatchToken: string | null;
@@ -43,6 +45,8 @@ const makeSessionRow = (
   retryCount: 0,
   reviewCount: 0,
   milestoneRepairCount: 0,
+  ciFixCount: 0,
+  ciWaitWindowCount: 0,
   maxConcurrentJobs: 1,
   pendingJobCount: 0,
   activeBatchToken: null,

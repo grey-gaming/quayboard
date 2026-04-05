@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   type ArtifactApproval,
+  type MilestoneCiStatus,
   type PlanningReviewStatus,
   createMilestoneRequestSchema,
   milestoneActionRequestSchema,
@@ -70,6 +71,7 @@ const parseDeliveryReviewIssues = (value: unknown) => {
 
 const buildMilestoneRecord = (input: {
   activeMilestoneId: string | null;
+  ciStatusByMilestone: Map<string, MilestoneCiStatus | null>;
   featureCountByMilestone: Map<string, number>;
   linksByMilestone: Map<string, Array<{ id: string; title: string }>>;
   milestone: typeof milestonesTable.$inferSelect;
@@ -92,6 +94,7 @@ const buildMilestoneRecord = (input: {
     deliveryReviewStatus: input.milestone.deliveryReviewStatus,
     deliveryReviewIssues: parseDeliveryReviewIssues(input.milestone.deliveryReviewIssues),
     deliveryReviewedAt: input.milestone.deliveryReviewedAt?.toISOString() ?? null,
+    ciStatus: input.ciStatusByMilestone.get(input.milestone.id) ?? null,
     createdAt: input.milestone.createdAt.toISOString(),
     updatedAt: input.milestone.updatedAt.toISOString(),
   });
@@ -129,6 +132,47 @@ export const createMilestoneService = (
   githubService?: GithubService,
   secretService?: SecretService,
 ) => ({
+  async getMilestoneCiStatus(
+    ownerUserId: string,
+    projectId: string,
+    milestone: typeof milestonesTable.$inferSelect,
+  ): Promise<MilestoneCiStatus | null> {
+    if (!githubService || !secretService || milestone.status !== "approved") {
+      return null;
+    }
+
+    const repo = await db.query.reposTable.findFirst({
+      where: eq(reposTable.projectId, projectId),
+    });
+    if (!repo?.owner || !repo.name) {
+      return null;
+    }
+
+    const env = await secretService.buildSecretEnvMap(ownerUserId, projectId);
+    if (!env.GITHUB_PAT) {
+      return null;
+    }
+
+    const branchName = buildMilestoneDeliveryBranchName(milestone);
+    const branchExists = await githubService.branchExists({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      branch: branchName,
+    });
+
+    if (!branchExists) {
+      return null;
+    }
+
+    return githubService.getCommitCiStatus({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      ref: branchName,
+    });
+  },
+
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(
@@ -416,11 +460,22 @@ export const createMilestoneService = (
     const coveredUserFlowIds = new Set(links.map((link) => link.useCaseId));
     const activeMilestoneId =
       milestones.find((milestone) => milestone.status !== "completed")?.id ?? null;
+    const ciStatusByMilestone = new Map<string, MilestoneCiStatus | null>();
+    const activeMilestone =
+      milestones.find((milestone) => milestone.id === activeMilestoneId) ?? null;
+
+    if (activeMilestone && activeMilestone.deliveryReviewStatus === "passed") {
+      ciStatusByMilestone.set(
+        activeMilestone.id,
+        await this.getMilestoneCiStatus(ownerUserId, projectId, activeMilestone),
+      );
+    }
 
     return milestoneListResponseSchema.parse({
       milestones: milestones.map((milestone) =>
         buildMilestoneRecord({
           activeMilestoneId,
+          ciStatusByMilestone,
           featureCountByMilestone,
           linksByMilestone,
           milestone,
@@ -854,6 +909,32 @@ export const createMilestoneService = (
     }
 
     const branchName = buildMilestoneDeliveryBranchName(milestone);
+    const ciStatus = await githubService.getCommitCiStatus({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      ref: branchName,
+    });
+    if (ciStatus.state === "pending") {
+      throw new HttpError(
+        409,
+        "milestone_ci_pending",
+        "CI checks are still running for the milestone delivery branch.",
+      );
+    }
+    if (ciStatus.state === "failing") {
+      const summary = ciStatus.failures
+        .slice(0, 3)
+        .map((failure) => failure.name)
+        .join(", ");
+      throw new HttpError(
+        409,
+        "milestone_ci_failed",
+        summary.length > 0
+          ? `CI checks failed for the milestone delivery branch: ${summary}.`
+          : "CI checks failed for the milestone delivery branch.",
+      );
+    }
     const pullRequest = await githubService.findOpenPullRequestForHead({
       owner: repo.owner,
       repo: repo.name,

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 const dockerCommandTimeoutMs = 5_000;
 const containerCommandTimeoutMs = 60_000;
-const containerWaitTimeoutMs = 10 * 60_000;
+const containerWaitTimeoutMs = 15 * 60_000;
 const imageBuildTimeoutMs = 30 * 60_000;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
 const localSandboxImage = {
@@ -47,15 +47,15 @@ type PruneDockerResourcesInput = {
   minFreeSpace?: string;
 };
 
-const createDockerWaitTimeoutError = (containerId: string) =>
+const createDockerWaitTimeoutError = (containerId: string, timeoutMs: number) =>
   Object.assign(
     new Error(
-      `Sandbox container ${containerId} did not exit within ${Math.round(containerWaitTimeoutMs / 60_000)} minutes.`,
+      `Sandbox container ${containerId} did not exit within ${Math.round(timeoutMs / 60_000)} minutes.`,
     ),
     {
       code: "docker_wait_timeout" as const,
       containerId,
-      timeoutMs: containerWaitTimeoutMs,
+      timeoutMs,
     },
   );
 
@@ -269,12 +269,16 @@ export const createDockerService = (dockerHost: string | null) => {
       });
     },
 
-    async waitForContainer(containerId: string, overrideDockerHost?: string | null) {
+    async waitForContainer(
+      containerId: string,
+      overrideDockerHost?: string | null,
+      timeoutMs = containerWaitTimeoutMs,
+    ) {
       let result;
       try {
         result = await runDockerCommand(["wait", containerId], {
           dockerHost: overrideDockerHost,
-          timeoutMs: containerWaitTimeoutMs,
+          timeoutMs,
         });
       } catch (error) {
         const record = error as { code?: string; killed?: boolean; signal?: string } | undefined;
@@ -284,7 +288,7 @@ export const createDockerService = (dockerHost: string | null) => {
           record?.signal === "SIGTERM";
 
         if (timedOut) {
-          throw createDockerWaitTimeoutError(containerId);
+          throw createDockerWaitTimeoutError(containerId, timeoutMs);
         }
 
         throw error;

@@ -84,4 +84,66 @@ describe("github service", () => {
 
     expect(result).toEqual({ deleted: false, notFound: true });
   });
+
+  it("aggregates check runs and commit statuses into a CI summary", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            check_runs: [
+              {
+                id: 10,
+                name: "build",
+                status: "completed",
+                conclusion: "success",
+              },
+              {
+                id: 11,
+                name: "test",
+                status: "completed",
+                conclusion: "failure",
+                output: { summary: "Unit tests failed" },
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            statuses: [{ id: 21, context: "deploy", state: "pending", target_url: "https://ci.example/deploy" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    const service = createGithubService();
+
+    const result = await service.getCommitCiStatus({
+      owner: "acme",
+      repo: "repo",
+      token: "github_pat_secret",
+      ref: "feature-branch",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({
+      ref: "feature-branch",
+      total: 3,
+      pending: 1,
+      passing: 1,
+      failing: 1,
+      state: "failing",
+      failures: [
+        {
+          id: "11",
+          name: "test",
+          source: "check_run",
+          summary: "Unit tests failed",
+          detailsUrl: null,
+        },
+      ],
+    });
+  });
 });

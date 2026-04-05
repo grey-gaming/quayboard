@@ -50,6 +50,21 @@ type BranchExistsInput = {
   token: string;
 };
 
+type GetCommitCiStatusInput = {
+  owner: string;
+  repo: string;
+  token: string;
+  ref: string;
+};
+
+type CommitCiFailure = {
+  id: string;
+  name: string;
+  source: "check_run" | "commit_status";
+  summary: string | null;
+  detailsUrl: string | null;
+};
+
 const buildHeaders = (token: string) => ({
   Accept: "application/vnd.github+json",
   Authorization: `Bearer ${token}`,
@@ -89,6 +104,11 @@ const parseRepository = (payload: {
     repo,
     repoUrl: payload.html_url ?? `https://github.com/${fullName}`,
   } satisfies GitHubRepoOption;
+};
+
+const trimToNull = (value: string | null | undefined) => {
+  const trimmed = value?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
 };
 
 export const createGithubService = () => ({
@@ -297,6 +317,157 @@ export const createGithubService = () => ({
     }
 
     return true;
+  },
+
+  async getCommitCiStatus(input: GetCommitCiStatusInput) {
+    const [checksResponse, statusesResponse] = await Promise.all([
+      fetch(
+        `https://api.github.com/repos/${input.owner}/${input.repo}/commits/${input.ref}/check-runs`,
+        {
+          headers: buildHeaders(input.token),
+        },
+      ),
+      fetch(
+        `https://api.github.com/repos/${input.owner}/${input.repo}/commits/${input.ref}/status`,
+        {
+          headers: buildHeaders(input.token),
+        },
+      ),
+    ]);
+
+    if (!checksResponse.ok) {
+      throw await buildGithubError(checksResponse, "GitHub check run lookup failed.");
+    }
+
+    if (!statusesResponse.ok) {
+      throw await buildGithubError(statusesResponse, "GitHub commit status lookup failed.");
+    }
+
+    const checksPayload = (await checksResponse.json()) as {
+      check_runs?: Array<{
+        id?: number;
+        name?: string;
+        html_url?: string;
+        status?: string;
+        conclusion?: string | null;
+        details_url?: string;
+        output?: {
+          title?: string;
+          summary?: string;
+          text?: string;
+        };
+      }>;
+    };
+    const statusesPayload = (await statusesResponse.json()) as {
+      statuses?: Array<{
+        id?: number;
+        context?: string;
+        description?: string;
+        state?: string;
+        target_url?: string | null;
+      }>;
+    };
+
+    const checkRuns = checksPayload.check_runs ?? [];
+    const commitStatuses = statusesPayload.statuses ?? [];
+    const failures: CommitCiFailure[] = [];
+    let pending = 0;
+    let passing = 0;
+    let failing = 0;
+
+    for (const run of checkRuns) {
+      const status = run.status ?? "";
+      const conclusion = run.conclusion ?? null;
+      if (status !== "completed") {
+        pending += 1;
+        continue;
+      }
+
+      if (conclusion === "success" || conclusion === "neutral" || conclusion === "skipped") {
+        passing += 1;
+        continue;
+      }
+
+      const runId = typeof run.id === "number" ? run.id : null;
+      let summary =
+        trimToNull(run.output?.summary) ??
+        trimToNull(run.output?.text) ??
+        trimToNull(run.output?.title);
+
+      if (!summary && runId) {
+        const detailResponse = await fetch(
+          `https://api.github.com/repos/${input.owner}/${input.repo}/check-runs/${runId}`,
+          {
+            headers: buildHeaders(input.token),
+          },
+        );
+        if (detailResponse.ok) {
+          const detailPayload = (await detailResponse.json()) as {
+            output?: { title?: string; summary?: string; text?: string };
+            html_url?: string;
+            details_url?: string;
+          };
+          summary =
+            trimToNull(detailPayload.output?.summary) ??
+            trimToNull(detailPayload.output?.text) ??
+            trimToNull(detailPayload.output?.title);
+          run.html_url = run.html_url ?? detailPayload.html_url;
+          run.details_url = run.details_url ?? detailPayload.details_url;
+        }
+      }
+
+      failing += 1;
+      failures.push({
+        id: runId ? String(runId) : run.name ?? `check-${failures.length + 1}`,
+        name: run.name ?? "Unnamed check run",
+        source: "check_run",
+        summary,
+        detailsUrl: run.details_url ?? run.html_url ?? null,
+      });
+    }
+
+    for (const status of commitStatuses) {
+      if (status.state === "pending") {
+        pending += 1;
+        continue;
+      }
+
+      if (status.state === "success") {
+        passing += 1;
+        continue;
+      }
+
+      if (status.state === "error" || status.state === "failure") {
+        failing += 1;
+        failures.push({
+          id: typeof status.id === "number" ? String(status.id) : status.context ?? `status-${failures.length + 1}`,
+          name: status.context ?? "Unnamed commit status",
+          source: "commit_status",
+          summary: trimToNull(status.description),
+          detailsUrl: status.target_url ?? null,
+        });
+      }
+    }
+
+    const total = pending + passing + failing;
+    const state: "no_ci" | "failing" | "pending" | "passing" =
+      total === 0
+        ? "no_ci"
+        : failing > 0
+          ? "failing"
+          : pending > 0
+            ? "pending"
+            : "passing";
+
+    return {
+      ref: input.ref,
+      total,
+      pending,
+      passing,
+      failing,
+      state,
+      failures,
+    };
   },
 });
 
