@@ -74,7 +74,7 @@ const defaultEvidencePolicy: EvidencePolicy = {
 const sandboxReadinessImage = "alpine:3.20";
 
 const isSetupCompletedProjectState = (state: string) =>
-  state === "READY_PARTIAL" || state === "READY";
+  state === "READY_PARTIAL" || state === "READY" || state === "COMPLETED";
 
 const hasPassingSetupChecks = (status: {
   llmVerified: boolean;

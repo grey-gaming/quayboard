@@ -63,6 +63,7 @@ type MilestoneDeliveryIssue = {
 };
 
 const MAX_MILESTONE_REPAIR_ATTEMPTS = 3;
+const AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT = 5;
 
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
@@ -1238,20 +1239,59 @@ export const createAutoAdvanceService = (
         }
 
         if (nextAction.key === "project_review_run") {
-          await projectReviewService.startReview(ownerUserId, projectId, "auto_advance");
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              currentStep: nextAction.key,
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              projectReviewCount: (session?.projectReviewCount ?? 0) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, sessionId));
+          await projectReviewService.startReview(
+            ownerUserId,
+            projectId,
+            "auto_advance",
+            undefined,
+            {
+              sessionId,
+              batchToken,
+            },
+          );
           return;
         }
 
         if (nextAction.key === "project_review_retry") {
+          const latestReview = await projectReviewService.getLatestSessionDetail(ownerUserId, projectId);
+          if (!latestReview.session) {
+            throw new Error("Auto-advance expected a latest project review session for retry.");
+          }
+          const batchToken = generateId();
+          const maxLoops =
+            latestReview.session.maxLoops <= latestReview.session.loopCount
+              ? latestReview.session.loopCount + AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT
+              : undefined;
           await db
             .update(autoAdvanceSessionsTable)
             .set({
-              status: "paused",
-              pausedReason: "project_review_limit_reached",
-              pausedAt: new Date(),
+              currentStep: nextAction.key,
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              projectReviewCount: (session?.projectReviewCount ?? 0) + 1,
               updatedAt: new Date(),
             })
             .where(eq(autoAdvanceSessionsTable.id, sessionId));
+          await projectReviewService.retryFixes(
+            ownerUserId,
+            latestReview.session.id,
+            maxLoops,
+            {
+              sessionId,
+              batchToken,
+            },
+          );
           return;
         }
 
@@ -1863,6 +1903,84 @@ export const createAutoAdvanceService = (
           .update(autoAdvanceSessionsTable)
           .set({ retryCount: 0, updatedAt: new Date() })
           .where(eq(autoAdvanceSessionsTable.id, session.id));
+      }
+
+      if (job.type === "RunProjectReview" || job.type === "RunProjectFix") {
+        const projectReviewSessionId =
+          (
+            job.outputs as { sessionId?: string } | null | undefined
+          )?.sessionId ??
+          ((job.inputs as { sessionId?: string } | null | undefined)?.sessionId ?? null);
+
+        if (!projectReviewSessionId) {
+          throw new Error(`${job.type} did not include a project review sessionId.`);
+        }
+
+        const nextProjectReviewJob = await findActiveAutoAdvanceJob(
+          job.projectId,
+          session.id,
+          autoAdvanceMeta.batchToken,
+        );
+
+        if (nextProjectReviewJob) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              currentStep:
+                nextProjectReviewJob.type === "RunProjectFix"
+                  ? "project_review_retry"
+                  : "project_review_run",
+              pendingJobCount: 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        const reviewDetail = await projectReviewService.getSessionById(
+          project.ownerUserId,
+          projectReviewSessionId,
+        );
+        const reviewSession = reviewDetail.session;
+
+        if (!reviewSession) {
+          throw new Error(`Project review session ${projectReviewSessionId} not found.`);
+        }
+
+        if (reviewSession.status === "clear") {
+          await projectReviewService.mergeFixPullRequest(project.ownerUserId, reviewSession.id);
+          await projectReviewService.markProjectCompleted(project.ownerUserId, job.projectId);
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "completed",
+              currentStep: null,
+              activeBatchToken: null,
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({
+            status: "paused",
+            currentStep: reviewSession.status === "needs_fixes" ? "project_review_retry" : session.currentStep,
+            pausedReason:
+              reviewSession.status === "needs_fixes"
+                ? "project_review_limit_reached"
+                : "job_failed",
+            pausedAt: new Date(),
+            activeBatchToken: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(autoAdvanceSessionsTable.id, session.id));
+        await publishSessionUpdate(project.ownerUserId, job.projectId);
+        return;
       }
 
       // Success path — if other parallel jobs are still pending, wait for them.

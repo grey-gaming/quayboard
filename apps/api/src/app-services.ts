@@ -247,7 +247,13 @@ export const createAppServices = async (
     providers: ["ollama", "openai"],
     secretsKeyPresent: Boolean(secretsEncryptionKey),
   });
-  const projectReviewService = createProjectReviewService(db, jobService);
+  const projectReviewService = createProjectReviewService(
+    db,
+    jobService,
+    projectService,
+    secretService,
+    githubService,
+  );
   const phaseGateService = createPhaseGateService(
     artifactApprovalService,
     blueprintService,

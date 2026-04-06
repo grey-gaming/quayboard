@@ -40,7 +40,7 @@ describe("server routes", () => {
     });
     services.autoAdvanceService.getStatus = async () => ({
       session: {
-        id: "session-1",
+        id: "11111111-1111-4111-8111-111111111111",
         projectId: "91a28b19-825c-496f-bc99-205d02664a2e",
         status: "running",
         currentStep: "feature_product_create",

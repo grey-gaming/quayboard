@@ -27,6 +27,7 @@ export const projectStateSchema = z.enum([
   "IMPORTING_B",
   "READY_PARTIAL",
   "READY",
+  "COMPLETED",
 ]);
 
 export type ProjectState = z.infer<typeof projectStateSchema>;

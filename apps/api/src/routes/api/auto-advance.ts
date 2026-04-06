@@ -75,7 +75,9 @@ const autoAdvanceStatusResponseJsonSchema = {
   type: "object",
   properties: {
     session: {
-      anyOf: [{ type: "null" }, autoAdvanceSessionJsonSchema],
+      type: ["object", "null"],
+      properties: autoAdvanceSessionJsonSchema.properties,
+      additionalProperties: true,
     },
     nextStep: { type: ["string", "null"] },
   },

@@ -19,6 +19,7 @@ const projectStateValues = [
   "IMPORTING_B",
   "READY_PARTIAL",
   "READY",
+  "COMPLETED",
 ] as const;
 
 const jobStatusValues = [

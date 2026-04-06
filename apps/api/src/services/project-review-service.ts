@@ -17,14 +17,19 @@ import {
 
 import type { AppDatabase } from "../db/client.js";
 import {
+  jobsTable,
   projectReviewAttemptsTable,
   projectReviewFindingsTable,
   projectReviewSessionsTable,
   projectsTable,
+  reposTable,
 } from "../db/schema.js";
+import type { GithubService } from "./github-service.js";
 import type { JobService } from "./jobs/job-service.js";
 import { generateId } from "./ids.js";
 import { HttpError } from "./http-error.js";
+import type { ProjectService } from "./project-service.js";
+import type { SecretService } from "./secret-service.js";
 
 const ACTIVE_SESSION_STATUSES = [
   "queued_review",
@@ -37,6 +42,12 @@ const PROJECT_REVIEW_FIX_BRANCH = "quayboard/project-review-fixes";
 const DEFAULT_PROJECT_REVIEW_MAX_LOOPS = 5;
 const HIGH_ONLY_REMAINING_FIX_PASSES = 2;
 const blockingSeverities = new Set<ProjectReviewFinding["severity"]>(["critical", "high"]);
+const PROJECT_REVIEW_RETRY_LOOP_INCREMENT = 5;
+
+type AutoAdvanceMeta = {
+  batchToken: string;
+  sessionId: string;
+};
 
 type ParsedReviewPayload = {
   biggestRisks: string[];
@@ -246,7 +257,27 @@ const toSummary = (value: unknown): ProjectReviewAttemptSummary | null => {
   }
 };
 
-export const createProjectReviewService = (db: AppDatabase, jobService: JobService) => ({
+const parseAutoAdvanceMeta = (value: unknown): AutoAdvanceMeta | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as { batchToken?: unknown; sessionId?: unknown };
+  return typeof candidate.batchToken === "string" && typeof candidate.sessionId === "string"
+    ? {
+        batchToken: candidate.batchToken,
+        sessionId: candidate.sessionId,
+      }
+    : null;
+};
+
+export const createProjectReviewService = (
+  db: AppDatabase,
+  jobService: JobService,
+  projectService: ProjectService,
+  secretService: SecretService,
+  githubService: GithubService,
+) => ({
   async assertOwnedProject(ownerUserId: string, projectId: string) {
     const project = await db.query.projectsTable.findFirst({
       where: and(eq(projectsTable.id, projectId), eq(projectsTable.ownerUserId, ownerUserId)),
@@ -418,6 +449,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     kind: "review" | "fix",
     createdByUserId: string,
     sequence: number,
+    autoAdvanceMeta?: AutoAdvanceMeta | null,
   ) {
     const [attempt] = await db
       .insert(projectReviewAttemptsTable)
@@ -436,7 +468,11 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
       createdByUserId,
       projectId,
       type: kind === "review" ? "RunProjectReview" : "RunProjectFix",
-      inputs: { sessionId, attemptId: attempt.id },
+      inputs: {
+        sessionId,
+        attemptId: attempt.id,
+        ...(autoAdvanceMeta ? { _autoAdvance: autoAdvanceMeta } : {}),
+      },
     });
 
     const [updatedAttempt] = await db
@@ -453,6 +489,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     projectId: string,
     _trigger: "manual" | "auto_advance" = "manual",
     maxLoops = DEFAULT_PROJECT_REVIEW_MAX_LOOPS,
+    autoAdvanceMeta?: AutoAdvanceMeta | null,
   ) {
     const project = await this.assertOwnedProject(ownerUserId, projectId);
     if (project.milestonePlanStatus !== "finalized") {
@@ -488,11 +525,16 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
       })
       .returning();
 
-    await this.createAttempt(session.id, projectId, "review", ownerUserId, 1);
+    await this.createAttempt(session.id, projectId, "review", ownerUserId, 1, autoAdvanceMeta);
     return this.getSessionById(ownerUserId, session.id);
   },
 
-  async retryFixes(ownerUserId: string, sessionId: string, maxLoops?: number) {
+  async retryFixes(
+    ownerUserId: string,
+    sessionId: string,
+    maxLoops?: number,
+    autoAdvanceMeta?: AutoAdvanceMeta | null,
+  ) {
     const detail = await this.getSessionById(ownerUserId, sessionId);
     const session = detail.session;
     if (!session) {
@@ -518,8 +560,27 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
         updatedAt: new Date(),
       })
       .where(eq(projectReviewSessionsTable.id, session.id));
-    await this.createAttempt(session.id, session.projectId, "fix", ownerUserId, nextSequence);
+    await this.createAttempt(
+      session.id,
+      session.projectId,
+      "fix",
+      ownerUserId,
+      nextSequence,
+      autoAdvanceMeta,
+    );
     return this.getSessionById(ownerUserId, session.id);
+  },
+
+  async getRetryMaxLoopsForAutoAdvance(ownerUserId: string, sessionId: string) {
+    const detail = await this.getSessionById(ownerUserId, sessionId);
+    const session = detail.session;
+    if (!session) {
+      throw new HttpError(404, "project_review_not_found", "Project review session not found.");
+    }
+
+    return session.maxLoops <= session.loopCount
+      ? session.loopCount + PROJECT_REVIEW_RETRY_LOOP_INCREMENT
+      : undefined;
   },
 
   async markAttemptRunning(attemptId: string, sandboxRunId: string) {
@@ -602,6 +663,15 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
       throw new Error(`Project review session ${attempt.projectReviewSessionId} not found.`);
     }
 
+    const job = attempt.jobId
+      ? await db.query.jobsTable.findFirst({
+          where: eq(jobsTable.id, attempt.jobId),
+        })
+      : null;
+    const autoAdvanceMeta = parseAutoAdvanceMeta(
+      (job?.inputs as { _autoAdvance?: unknown } | null | undefined)?._autoAdvance,
+    );
+
     const highOnlyPhase = isProjectReviewHighOnlyPhase(session.loopCount, session.maxLoops);
     const { blocking, ignored } = partitionProjectReviewFindings(parsed.findings, highOnlyPhase);
 
@@ -664,7 +734,14 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     if (!project) {
       throw new Error(`Project ${attempt.projectId} not found.`);
     }
-    await this.createAttempt(session.id, attempt.projectId, "fix", project.ownerUserId, nextSequence);
+    await this.createAttempt(
+      session.id,
+      attempt.projectId,
+      "fix",
+      project.ownerUserId,
+      nextSequence,
+      autoAdvanceMeta,
+    );
     return { clear: false, findingCount: blocking.length, sessionId: session.id };
   },
 
@@ -682,6 +759,15 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     if (!session) {
       throw new Error(`Project review session ${attempt.projectReviewSessionId} not found.`);
     }
+
+    const job = attempt.jobId
+      ? await db.query.jobsTable.findFirst({
+          where: eq(jobsTable.id, attempt.jobId),
+        })
+      : null;
+    const autoAdvanceMeta = parseAutoAdvanceMeta(
+      (job?.inputs as { _autoAdvance?: unknown } | null | undefined)?._autoAdvance,
+    );
 
     await db
       .update(projectReviewAttemptsTable)
@@ -728,8 +814,73 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     if (!project) {
       throw new Error(`Project ${attempt.projectId} not found.`);
     }
-    await this.createAttempt(session.id, attempt.projectId, "review", project.ownerUserId, nextSequence);
+    await this.createAttempt(
+      session.id,
+      attempt.projectId,
+      "review",
+      project.ownerUserId,
+      nextSequence,
+      autoAdvanceMeta,
+    );
     return { sessionId: session.id };
+  },
+
+  async mergeFixPullRequest(ownerUserId: string, sessionId: string) {
+    const detail = await this.getSessionById(ownerUserId, sessionId);
+    const session = detail.session;
+
+    if (!session) {
+      throw new HttpError(404, "project_review_not_found", "Project review session not found.");
+    }
+    if (!session.pullRequestUrl || !session.branchName) {
+      return { merged: false };
+    }
+
+    const repo = await db.query.reposTable.findFirst({
+      where: eq(reposTable.projectId, session.projectId),
+    });
+    if (!repo?.owner || !repo.name) {
+      throw new HttpError(409, "project_review_repo_missing", "Project review merge requires a configured repository.");
+    }
+
+    const env = await secretService.buildSecretEnvMap(ownerUserId, session.projectId);
+    if (!env.GITHUB_PAT) {
+      throw new HttpError(409, "github_pat_required", "A GitHub PAT is required to merge the review pull request.");
+    }
+
+    const pullRequest = await githubService.findOpenPullRequestForHead({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      head: session.branchName,
+    });
+
+    if (!pullRequest) {
+      return { merged: false };
+    }
+
+    await githubService.mergePullRequest({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      pullNumber: pullRequest.number,
+      method: "merge",
+    });
+
+    await githubService.deleteBranch({
+      owner: repo.owner,
+      repo: repo.name,
+      token: env.GITHUB_PAT,
+      branch: session.branchName,
+    }).catch(() => undefined);
+
+    return { merged: true, pullRequestUrl: pullRequest.url };
+  },
+
+  async markProjectCompleted(ownerUserId: string, projectId: string) {
+    return projectService.updateOwnedProject(ownerUserId, projectId, {
+      state: "COMPLETED",
+    });
   },
 
   async failAttemptByJobId(jobId: string, message: string) {

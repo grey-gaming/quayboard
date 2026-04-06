@@ -748,6 +748,10 @@ describe("auto-advance service", () => {
         USER_ID,
         PROJECT_ID,
         "auto_advance",
+        undefined,
+        expect.objectContaining({
+          sessionId: session.id,
+        }),
       );
     });
 

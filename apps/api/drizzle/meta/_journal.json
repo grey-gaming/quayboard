@@ -197,6 +197,13 @@
       "when": 1760000027000,
       "tag": "0027_m9_project_review_max_loops_default",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1760000028000,
+      "tag": "0028_m9_project_completed_state",
+      "breakpoints": true
     }
   ]
 }
