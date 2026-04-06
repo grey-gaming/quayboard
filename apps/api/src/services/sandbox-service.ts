@@ -1580,8 +1580,8 @@ export const createSandboxService = (input: {
           ? [
               "Produce a project-wide engineering due diligence review for this repository.",
               "Inspect the actual repository contents before making claims.",
-              "Write the human-readable report to /run/artifacts/project-review.md.",
-              "Write the structured output to /run/artifacts/project-review.json.",
+              "Write the human-readable report to /root/.local/share/opencode/tool-output/project-review.md.",
+              "Write the structured output to /root/.local/share/opencode/tool-output/project-review.json.",
               "Do not make repository changes during the review run.",
             ].join("\n")
           : run.kind === "project_fix"
@@ -1590,7 +1590,7 @@ export const createSandboxService = (input: {
                 "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
                 "Address only the cited findings in one batched remediation pass.",
                 "Re-run relevant checks before exiting.",
-                "Write a remediation summary to /run/artifacts/project-fix-summary.md.",
+                "Write a remediation summary to /root/.local/share/opencode/tool-output/project-fix-summary.md.",
               ].join("\n")
             : tasks
                 .map(

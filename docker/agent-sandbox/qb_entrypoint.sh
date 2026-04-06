@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ARTIFACT_DIR="${QB_ARTIFACT_DIR:-/run/artifacts}"
+ARTIFACT_DIR="${QB_ARTIFACT_DIR:-/root/.local/share/opencode/tool-output}"
 CONTEXT_PATH="${QB_CONTEXT_PATH:-/workspace/.quayboard-context.md}"
 TASKS_PATH="${QB_TASKS_PATH:-/workspace/.quayboard-tasks.md}"
 WORKSPACE_DIR="${QB_WORKSPACE_DIR:-/workspace}"
@@ -62,7 +62,7 @@ Security:
 - Do not commit, push, or expose secrets in output.
 
 Artifacts:
-- Leave useful machine-readable or human-readable evidence under /run/artifacts.
+- Leave useful machine-readable or human-readable evidence under ${ARTIFACT_DIR}.
 EOF
 
 if [[ "${RUN_KIND}" == "verify" ]]; then
@@ -82,8 +82,8 @@ Project review mode:
 - Treat this as a repository-wide engineering due diligence review.
 - Inspect the real repository contents before making claims.
 - Do not edit repository files.
-- Write the full report to /run/artifacts/project-review.md.
-- Write a strict JSON summary to /run/artifacts/project-review.json.
+- Write the full report to ${ARTIFACT_DIR}/project-review.md.
+- Write a strict JSON summary to ${ARTIFACT_DIR}/project-review.json.
 - The JSON must include: executiveSummary, maturityLevel, usabilityVerdict, biggestStrengths, biggestRisks, engineeringQualityVerdict, finalVerdict, findings.
 EOF
 fi
@@ -95,7 +95,7 @@ Project fix mode:
 - Read /workspace/.quayboard-project-review.md and /workspace/.quayboard-project-review-findings.json.
 - Fix only the batched findings described there.
 - Re-run the closest relevant verification before exiting.
-- Write a concise remediation summary to /run/artifacts/project-fix-summary.md.
+- Write a concise remediation summary to ${ARTIFACT_DIR}/project-fix-summary.md.
 EOF
 fi
 
