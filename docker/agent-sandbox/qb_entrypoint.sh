@@ -15,6 +15,9 @@ PROMPT_PATH="${ARTIFACT_DIR}/opencode-prompt.md"
 EVENTS_PATH="${ARTIFACT_DIR}/opencode-events.jsonl"
 SUMMARY_PATH="${ARTIFACT_DIR}/opencode-summary.txt"
 CONFIG_PATH="/tmp/quayboard-opencode.json"
+PROJECT_REVIEW_MARKDOWN_PATH="${ARTIFACT_DIR}/project-review.md"
+PROJECT_REVIEW_JSON_PATH="${ARTIFACT_DIR}/project-review.json"
+PROJECT_FIX_SUMMARY_PATH="${ARTIFACT_DIR}/project-fix-summary.md"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -76,26 +79,34 @@ EOF
 fi
 
 if [[ "${RUN_KIND}" == "project_review" ]]; then
-  cat >> "${PROMPT_PATH}" <<'EOF'
+  cat >> "${PROMPT_PATH}" <<EOF
 
 Project review mode:
 - Treat this as a repository-wide engineering due diligence review.
 - Inspect the real repository contents before making claims.
 - Do not edit repository files.
-- Write the full report to ${ARTIFACT_DIR}/project-review.md.
-- Write a strict JSON summary to ${ARTIFACT_DIR}/project-review.json.
-- The JSON must include: executiveSummary, maturityLevel, usabilityVerdict, biggestStrengths, biggestRisks, engineeringQualityVerdict, finalVerdict, findings.
+- Write the full report to ${PROJECT_REVIEW_MARKDOWN_PATH}.
+- Write a strict JSON summary to ${PROJECT_REVIEW_JSON_PATH}.
+- The JSON must be a single object with exactly these top-level keys: executiveSummary, maturityLevel, usabilityVerdict, biggestStrengths, biggestRisks, engineeringQualityVerdict, finalVerdict, findings.
+- finalVerdict must be an object with boolean fields documentationGoodEnough, testsGoodEnough, projectCompleteEnough, codeHasMajorIssues, plus confidence set to high, medium, or low.
+- findings must be an array. Each finding must be an object with: category, severity, finding, evidence, whyItMatters, recommendedImprovement.
+- category must be one of: documentation, tests, completeness, architecture.
+- severity must be one of: critical, high, medium, low.
+- evidence must be an array of objects shaped like { "path": "relative/or/absolute/path" }.
+- whyItMatters and recommendedImprovement must be non-empty strings.
+- Do not replace findings with scorecards, rating maps, blockingIssues, recommendations, or any other alternate structure.
+- If there are no findings, write "findings": [].
 EOF
 fi
 
 if [[ "${RUN_KIND}" == "project_fix" ]]; then
-  cat >> "${PROMPT_PATH}" <<'EOF'
+  cat >> "${PROMPT_PATH}" <<EOF
 
 Project fix mode:
 - Read /workspace/.quayboard-project-review.md and /workspace/.quayboard-project-review-findings.json.
 - Fix only the batched findings described there.
 - Re-run the closest relevant verification before exiting.
-- Write a concise remediation summary to ${ARTIFACT_DIR}/project-fix-summary.md.
+- Write a concise remediation summary to ${PROJECT_FIX_SUMMARY_PATH}.
 EOF
 fi
 
@@ -161,5 +172,91 @@ opencode --print-logs run \
   --format json \
   --model "${OPENCODE_PROVIDER_ID}/${LLM_MODEL}" \
   -- "$(cat "${PROMPT_PATH}")" | tee "${EVENTS_PATH}"
+
+if [[ "${RUN_KIND}" == "project_review" ]]; then
+  python - <<'PY' "${PROJECT_REVIEW_MARKDOWN_PATH}" "${PROJECT_REVIEW_JSON_PATH}"
+import json
+import os
+import sys
+
+markdown_path, json_path = sys.argv[1], sys.argv[2]
+
+if not os.path.exists(markdown_path):
+    raise SystemExit(f"Missing project review markdown artifact: {markdown_path}")
+if not os.path.exists(json_path):
+    raise SystemExit(f"Missing project review JSON artifact: {json_path}")
+
+with open(markdown_path, "r", encoding="utf-8") as handle:
+    markdown = handle.read().strip()
+if not markdown:
+    raise SystemExit("project-review.md must not be empty.")
+
+with open(json_path, "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+if not isinstance(payload, dict):
+    raise SystemExit("project-review.json must be a JSON object.")
+
+required_string_fields = [
+    "executiveSummary",
+    "maturityLevel",
+    "usabilityVerdict",
+    "engineeringQualityVerdict",
+]
+for field in required_string_fields:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"project-review.json field '{field}' must be a non-empty string.")
+
+for field in ["biggestStrengths", "biggestRisks"]:
+    value = payload.get(field)
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise SystemExit(f"project-review.json field '{field}' must be an array of non-empty strings.")
+
+final_verdict = payload.get("finalVerdict")
+if not isinstance(final_verdict, dict):
+    raise SystemExit("project-review.json field 'finalVerdict' must be an object.")
+for field in [
+    "documentationGoodEnough",
+    "testsGoodEnough",
+    "projectCompleteEnough",
+    "codeHasMajorIssues",
+]:
+    if not isinstance(final_verdict.get(field), bool):
+        raise SystemExit(f"project-review.json finalVerdict.{field} must be a boolean.")
+if final_verdict.get("confidence") not in {"high", "medium", "low"}:
+    raise SystemExit("project-review.json finalVerdict.confidence must be one of: high, medium, low.")
+
+findings = payload.get("findings")
+if not isinstance(findings, list):
+    raise SystemExit("project-review.json field 'findings' must be an array.")
+
+valid_categories = {"documentation", "tests", "completeness", "architecture"}
+valid_severities = {"critical", "high", "medium", "low"}
+for index, finding in enumerate(findings):
+    if not isinstance(finding, dict):
+        raise SystemExit(f"project-review.json findings[{index}] must be an object.")
+    if finding.get("category") not in valid_categories:
+        raise SystemExit(f"project-review.json findings[{index}].category is invalid.")
+    if finding.get("severity") not in valid_severities:
+        raise SystemExit(f"project-review.json findings[{index}].severity is invalid.")
+    for field in ["finding", "whyItMatters", "recommendedImprovement"]:
+        value = finding.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise SystemExit(f"project-review.json findings[{index}].{field} must be a non-empty string.")
+    evidence = finding.get("evidence")
+    if not isinstance(evidence, list):
+        raise SystemExit(f"project-review.json findings[{index}].evidence must be an array.")
+    for evidence_index, evidence_item in enumerate(evidence):
+        if (
+            not isinstance(evidence_item, dict)
+            or not isinstance(evidence_item.get("path"), str)
+            or not evidence_item["path"].strip()
+        ):
+            raise SystemExit(
+                f"project-review.json findings[{index}].evidence[{evidence_index}] must contain a non-empty path string."
+            )
+PY
+fi
 
 echo "OpenCode completed ${RUN_KIND} run with provider ${LLM_PROVIDER:-unknown} and model ${LLM_MODEL}." > "${SUMMARY_PATH}"
