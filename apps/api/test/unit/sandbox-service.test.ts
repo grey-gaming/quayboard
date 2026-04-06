@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { execFileMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(),
@@ -26,6 +30,7 @@ const makeService = (overrides: {
   dockerService?: Record<string, unknown>;
   executionSettingsService?: Record<string, unknown>;
   featureService?: Record<string, unknown>;
+  featureWorkstreamService?: Record<string, unknown>;
   githubService?: Record<string, unknown>;
   taskPlanningService?: Record<string, unknown>;
 } = {}) =>
@@ -59,7 +64,7 @@ const makeService = (overrides: {
     featureService: (overrides.featureService ?? {
       get: vi.fn(),
     }) as never,
-    featureWorkstreamService: {} as never,
+    featureWorkstreamService: (overrides.featureWorkstreamService ?? {}) as never,
     githubService: (overrides.githubService ?? {
       branchExists: vi.fn().mockResolvedValue(false),
       createPullRequest: vi.fn().mockResolvedValue({ url: "https://github.com/acme/repo/pull/1" }),
@@ -75,8 +80,14 @@ const makeService = (overrides: {
   });
 
 describe("sandbox service", () => {
+  const tempDirs: string[] = [];
+
   beforeEach(() => {
     execFileMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
   });
 
   it("serializes only still-open findings for project fix runs", () => {
@@ -540,6 +551,177 @@ describe("sandbox service", () => {
     expect(pruneManagedResources).toHaveBeenCalledWith({
       dockerHost: null,
     });
+  });
+
+  it("exports approved feature user and architecture docs into the target repository", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "qb-doc-export-"));
+    tempDirs.push(tempDir);
+
+    const service = makeService({
+      db: {
+        query: {
+          projectsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: "project-1",
+              name: "Demo Project",
+              ownerUserId: "user-1",
+            }),
+          },
+          onePagersTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              markdown: "# Overview\n\nProject summary.",
+            }),
+          },
+          milestonesTable: {
+            findMany: vi.fn().mockResolvedValue([
+              { id: "milestone-2", position: 2, title: "Polish" },
+              { id: "milestone-1", position: 1, title: "Foundations" },
+            ]),
+          },
+          milestoneDesignDocsTable: {
+            findMany: vi.fn().mockResolvedValue([
+              { milestoneId: "milestone-2", markdown: "# Milestone 2\n\nPolish work." },
+              { milestoneId: "milestone-1", markdown: "# Milestone 1\n\nFoundations work." },
+            ]),
+          },
+        },
+      },
+      featureService: {
+        list: vi.fn().mockResolvedValue({
+          features: [
+            {
+              id: "feature-2",
+              featureKey: "F-002",
+              milestoneId: "milestone-2",
+              milestoneTitle: "Polish",
+              headRevision: { title: "Checkout Polish" },
+            },
+            {
+              id: "feature-1",
+              featureKey: "F-001",
+              milestoneId: "milestone-1",
+              milestoneTitle: "Foundations",
+              headRevision: { title: "Auth Setup" },
+            },
+            {
+              id: "feature-3",
+              featureKey: "F-003",
+              milestoneId: "milestone-1",
+              milestoneTitle: "Foundations",
+              headRevision: { title: "Draft Docs" },
+            },
+          ],
+        }),
+      },
+      featureWorkstreamService: {
+        getTracks: vi.fn().mockImplementation(async (_ownerUserId: string, featureId: string) => {
+          if (featureId === "feature-1") {
+            return {
+              tracks: {
+                userDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Auth Setup User Documentation",
+                    markdown: "# Auth Docs\n\nHow to use auth.",
+                  },
+                },
+                archDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Auth Setup Architecture Documentation",
+                    markdown: "# Auth Architecture\n\nHow auth is wired.",
+                  },
+                },
+              },
+            };
+          }
+
+          if (featureId === "feature-2") {
+            return {
+              tracks: {
+                userDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Checkout Polish User Documentation",
+                    markdown: "# Checkout Docs\n\nCheckout flow.",
+                  },
+                },
+                archDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Checkout Polish Architecture Documentation",
+                    markdown: "# Checkout Architecture\n\nCheckout boundaries.",
+                  },
+                },
+              },
+            };
+          }
+
+          return {
+            tracks: {
+              userDocs: {
+                status: "draft",
+                headRevision: {
+                  title: "Draft User Docs",
+                  markdown: "# Draft",
+                },
+              },
+              archDocs: {
+                status: "draft",
+                headRevision: {
+                  title: "Draft Architecture Docs",
+                  markdown: "# Draft",
+                },
+              },
+            },
+          };
+        }),
+      },
+    });
+
+    await service.writeQuayboardDocs("project-1", tempDir);
+
+    const rootIndex = await readFile(path.join(tempDir, "docs/quayboard/README.md"), "utf8");
+    const userIndex = await readFile(path.join(tempDir, "docs/quayboard/user/README.md"), "utf8");
+    const archIndex = await readFile(
+      path.join(tempDir, "docs/quayboard/architecture/README.md"),
+      "utf8",
+    );
+    const userFiles = await readdir(path.join(tempDir, "docs/quayboard/user"));
+    const archFiles = await readdir(path.join(tempDir, "docs/quayboard/architecture"));
+
+    expect(rootIndex).toContain("- [User Docs](user/README.md)");
+    expect(rootIndex).toContain("- [Architecture Docs](architecture/README.md)");
+    expect(rootIndex).toContain("- [Milestone 1: Foundations](milestones/milestone-1.md)");
+    expect(rootIndex).toContain("- [Milestone 2: Polish](milestones/milestone-2.md)");
+
+    expect(userIndex).toContain("milestone-1-f-001-user-docs.md");
+    expect(userIndex).toContain("milestone-2-f-002-user-docs.md");
+    expect(userIndex).not.toContain("F-003");
+    expect(archIndex).toContain("milestone-1-f-001-architecture.md");
+    expect(archIndex).toContain("milestone-2-f-002-architecture.md");
+    expect(archIndex).not.toContain("F-003");
+
+    expect(userFiles.sort()).toEqual([
+      "README.md",
+      "milestone-1-f-001-user-docs.md",
+      "milestone-2-f-002-user-docs.md",
+    ]);
+    expect(archFiles.sort()).toEqual([
+      "README.md",
+      "milestone-1-f-001-architecture.md",
+      "milestone-2-f-002-architecture.md",
+    ]);
+
+    await expect(
+      readFile(path.join(tempDir, "docs/quayboard/user/milestone-1-f-001-user-docs.md"), "utf8"),
+    ).resolves.toContain("# Auth Docs");
+    await expect(
+      readFile(
+        path.join(tempDir, "docs/quayboard/architecture/milestone-2-f-002-architecture.md"),
+        "utf8",
+      ),
+    ).resolves.toContain("# Checkout Architecture");
   });
 
 });

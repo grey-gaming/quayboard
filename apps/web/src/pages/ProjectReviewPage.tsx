@@ -92,7 +92,7 @@ export const ProjectReviewPage = () => {
       <PageIntro
         eyebrow="Implementation"
         title="Project Review"
-        summary="Finalize milestone planning, run the repository-wide review, inspect persisted findings, and track automatic remediation loops."
+        summary="This page is used at the end of development, after all milestones and their tasks have been implemented. Quayboard runs a project-wide review loop across documentation, code quality, and missing or incomplete user flows, fixes the findings, and repeats that loop several times as needed."
         meta={
           <>
             <Badge tone="neutral">{reviewsQuery.data?.sessions.length ?? 0} sessions</Badge>

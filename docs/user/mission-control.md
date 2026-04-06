@@ -112,7 +112,7 @@ Generates user flows (use cases and journeys), an overall milestone plan, and a 
 Creates individual feature records from the milestone plan, then generates five documents per feature. Features can be processed in parallel (controlled by *Max concurrent jobs*), so this phase scales with the size of your project.
 
 **Phase 7 — Delivery Review**
-Runs a final quality pass over everything that was generated. If gaps are found — missing use cases, incomplete milestones — Auto-Advance fixes them and reviews again. This cycle repeats up to three times. Once clean, the session completes.
+Runs a final project-wide review loop over the delivered work. It checks documentation, code quality, and missing or incomplete user flows, fixes the findings, and reviews again. In Auto-Advance this loop repeats up to three times before pausing for manual intervention. Once clean, the session completes.
 
 ---
 
@@ -208,7 +208,7 @@ Each feature's workstream is independent — if one feature pauses for an approv
 
 ### The delivery review cycle
 
-After all feature documentation is complete, Auto-Advance runs a delivery review — a quality-check job that inspects the whole project for gaps or inconsistencies:
+After all feature documentation is complete, Auto-Advance runs a delivery review — a project-wide quality-check loop that inspects documentation, code quality, and user-flow completeness across the whole project:
 
 ```
   All feature docs complete
@@ -219,11 +219,11 @@ After all feature documentation is complete, Auto-Advance runs a delivery review
          ├─── No gaps ────────────────────────────► COMPLETED ✓
          │
          └─── Gaps found
-              (e.g. missing use cases, milestone inconsistencies)
+              (e.g. documentation gaps, code quality issues, missing user flows)
                        │
                        ▼
                 Fix job runs
-                (regenerates affected artefacts)
+                (updates the affected code or docs)
                        │
                        ▼
                 Review again ── up to 3 cycles total

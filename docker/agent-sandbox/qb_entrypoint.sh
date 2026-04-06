@@ -74,7 +74,20 @@ if [[ "${RUN_KIND}" == "verify" ]]; then
 Verification mode:
 - Verify the existing implementation rather than building new features from scratch.
 - Run the project's relevant tests, type checks, and build commands.
-- Fix failures that block verification, but do not expand scope beyond the requested implementation.
+- Keep any fixes narrow and tied to the requested implementation.
+- If the requested implementation depends on small adjacent code or documentation touch-ups to be coherent and verifiable, make them.
+- Do not expand product scope, add unrelated features, or start broader cleanup work.
+EOF
+fi
+
+if [[ "${RUN_KIND}" == "implement" ]]; then
+  cat >> "${PROMPT_PATH}" <<'EOF'
+
+Implementation mode:
+- Follow the assigned implementation closely, but do not stop at an artificially narrow file boundary when a small adjacent integration update is required to complete the change cleanly.
+- You may add or update relevant user-facing documentation or architecture documentation when the implemented behavior, wiring, or boundary changes would otherwise leave the repository misleading or incomplete.
+- Keep documentation updates grounded in behavior that is actually implemented or touched in this run.
+- Do not invent new features, speculative behavior, or unrelated refactors.
 EOF
 fi
 

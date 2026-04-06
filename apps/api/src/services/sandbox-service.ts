@@ -127,6 +127,21 @@ const shutdownSandboxRunReason =
 const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] as const;
 const projectReviewFixBranchName = "quayboard/project-review-fixes";
 
+type ExportedFeatureDoc = {
+  featureKey: string;
+  milestonePosition: number;
+  milestoneTitle: string;
+  title: string;
+  markdown: string;
+};
+
+const sanitizeExportPathSegment = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "document";
+
 type ProjectReviewFixFindingRecord = Pick<
   typeof projectReviewFindingsTable.$inferSelect,
   | "id"
@@ -2189,7 +2204,7 @@ export const createSandboxService = (input: {
   },
 
   async writeQuayboardDocs(projectId: string, workspaceDir: string) {
-    const [project, onePager, milestoneDocs] = await Promise.all([
+    const [project, onePager, milestones] = await Promise.all([
       input.db.query.projectsTable.findFirst({
         where: eq(projectsTable.id, projectId),
       }),
@@ -2197,38 +2212,124 @@ export const createSandboxService = (input: {
         where: and(eq(onePagersTable.projectId, projectId), eq(onePagersTable.isCanonical, true)),
         orderBy: [desc(onePagersTable.version)],
       }),
-      input.db
-        .select({
-          milestoneId: milestonesTable.id,
-          position: milestonesTable.position,
-          title: milestonesTable.title,
-          markdown: milestoneDesignDocsTable.markdown,
-        })
-        .from(milestoneDesignDocsTable)
-        .innerJoin(milestonesTable, eq(milestonesTable.id, milestoneDesignDocsTable.milestoneId))
-        .where(
-          and(
-            eq(milestonesTable.projectId, projectId),
-            eq(milestoneDesignDocsTable.isCanonical, true),
-          ),
-        )
-        .orderBy(asc(milestonesTable.position)),
+      input.db.query.milestonesTable.findMany({
+        where: eq(milestonesTable.projectId, projectId),
+        orderBy: [asc(milestonesTable.position)],
+      }),
     ]);
+    const features = project
+      ? await input.featureService.list(project.ownerUserId, projectId)
+      : { features: [] };
+    const milestoneDocs =
+      milestones.length === 0
+        ? []
+        : await input.db.query.milestoneDesignDocsTable.findMany({
+            where: and(
+              eq(milestoneDesignDocsTable.isCanonical, true),
+              inArray(
+                milestoneDesignDocsTable.milestoneId,
+                milestones.map((milestone) => milestone.id),
+              ),
+            ),
+          });
 
     const docsRoot = path.join(workspaceDir, "docs", "quayboard");
     const milestonesRoot = path.join(docsRoot, "milestones");
-    await mkdir(milestonesRoot, { recursive: true });
+    const userDocsRoot = path.join(docsRoot, "user");
+    const archDocsRoot = path.join(docsRoot, "architecture");
+    await Promise.all([
+      mkdir(milestonesRoot, { recursive: true }),
+      mkdir(userDocsRoot, { recursive: true }),
+      mkdir(archDocsRoot, { recursive: true }),
+    ]);
 
     const overviewPath = "overview.md";
-    const milestoneLines = milestoneDocs.map(
+    const milestoneById = new Map(milestones.map((milestone) => [milestone.id, milestone]));
+    const canonicalMilestoneDocs = milestoneDocs
+      .map((doc) => {
+        const milestone = milestoneById.get(doc.milestoneId);
+        if (!milestone) {
+          return null;
+        }
+        return {
+          milestoneId: milestone.id,
+          position: milestone.position,
+          title: milestone.title,
+          markdown: doc.markdown,
+        };
+      })
+      .filter((doc): doc is NonNullable<typeof doc> => doc !== null)
+      .sort((left, right) => left.position - right.position);
+    const milestoneLines = canonicalMilestoneDocs.map(
       (doc) => `- [Milestone ${doc.position}: ${doc.title}](milestones/milestone-${doc.position}.md)`,
     );
+    const docExports = project
+      ? await Promise.all(
+          features.features.map(async (feature) => {
+            const tracks = await input.featureWorkstreamService.getTracks(
+              project.ownerUserId,
+              feature.id,
+            );
+            const milestone = milestoneById.get(feature.milestoneId);
+            const milestonePosition = milestone?.position ?? Number.MAX_SAFE_INTEGER;
+            const milestoneTitle = milestone?.title ?? feature.milestoneTitle;
+
+            return {
+              arch:
+                tracks.tracks.archDocs.status === "approved" &&
+                tracks.tracks.archDocs.headRevision
+                  ? {
+                      featureKey: feature.featureKey,
+                      milestonePosition,
+                      milestoneTitle,
+                      title: tracks.tracks.archDocs.headRevision.title,
+                      markdown: tracks.tracks.archDocs.headRevision.markdown,
+                    }
+                  : null,
+              user:
+                tracks.tracks.userDocs.status === "approved" &&
+                tracks.tracks.userDocs.headRevision
+                  ? {
+                      featureKey: feature.featureKey,
+                      milestonePosition,
+                      milestoneTitle,
+                      title: tracks.tracks.userDocs.headRevision.title,
+                      markdown: tracks.tracks.userDocs.headRevision.markdown,
+                    }
+                  : null,
+            };
+          }),
+        )
+      : [];
+    const compareFeatureDocs = (left: ExportedFeatureDoc, right: ExportedFeatureDoc) =>
+      left.milestonePosition - right.milestonePosition ||
+      left.featureKey.localeCompare(right.featureKey);
+    const exportedUserDocs = docExports
+      .map((doc) => doc.user)
+      .filter((doc): doc is ExportedFeatureDoc => doc !== null)
+      .sort(compareFeatureDocs);
+    const exportedArchDocs = docExports
+      .map((doc) => doc.arch)
+      .filter((doc): doc is ExportedFeatureDoc => doc !== null)
+      .sort(compareFeatureDocs);
+    const formatFeatureDocFileName = (doc: ExportedFeatureDoc, suffix: string) =>
+      `milestone-${doc.milestonePosition}-${sanitizeExportPathSegment(doc.featureKey)}-${suffix}.md`;
+    const userDocLines = exportedUserDocs.map((doc) => {
+      const fileName = formatFeatureDocFileName(doc, "user-docs");
+      return `- [Milestone ${doc.milestonePosition} · ${doc.featureKey} · ${doc.title}](${fileName})`;
+    });
+    const archDocLines = exportedArchDocs.map((doc) => {
+      const fileName = formatFeatureDocFileName(doc, "architecture");
+      return `- [Milestone ${doc.milestonePosition} · ${doc.featureKey} · ${doc.title}](${fileName})`;
+    });
     const indexContent = [
       `# Quayboard Planning Docs`,
       "",
       `Project: ${project?.name ?? projectId}`,
       "",
       "- [Overview](overview.md)",
+      "- [User Docs](user/README.md)",
+      "- [Architecture Docs](architecture/README.md)",
       ...milestoneLines,
       "",
       "These files are generated from Quayboard's canonical planning artifacts.",
@@ -2239,14 +2340,48 @@ export const createSandboxService = (input: {
       "",
       onePager?.markdown ?? "No canonical project overview was available when this run executed.",
     ].join("\n");
+    const userDocsIndexContent = [
+      "# Quayboard User Docs",
+      "",
+      exportedUserDocs.length > 0
+        ? userDocLines.join("\n")
+        : "No approved feature user documentation was available when this run executed.",
+    ].join("\n");
+    const archDocsIndexContent = [
+      "# Quayboard Architecture Docs",
+      "",
+      exportedArchDocs.length > 0
+        ? archDocLines.join("\n")
+        : "No approved feature architecture documentation was available when this run executed.",
+    ].join("\n");
 
     await writeFile(path.join(docsRoot, "README.md"), `${indexContent}\n`, "utf8");
     await writeFile(path.join(docsRoot, overviewPath), `${overviewContent}\n`, "utf8");
+    await writeFile(path.join(userDocsRoot, "README.md"), `${userDocsIndexContent}\n`, "utf8");
+    await writeFile(path.join(archDocsRoot, "README.md"), `${archDocsIndexContent}\n`, "utf8");
 
     await Promise.all(
-      milestoneDocs.map((doc) =>
+      canonicalMilestoneDocs.map((doc) =>
         writeFile(
           path.join(milestonesRoot, `milestone-${doc.position}.md`),
+          `${doc.markdown}\n`,
+          "utf8",
+        ),
+      ),
+    );
+    await Promise.all(
+      exportedUserDocs.map((doc) =>
+        writeFile(
+          path.join(userDocsRoot, formatFeatureDocFileName(doc, "user-docs")),
+          `${doc.markdown}\n`,
+          "utf8",
+        ),
+      ),
+    );
+    await Promise.all(
+      exportedArchDocs.map((doc) =>
+        writeFile(
+          path.join(archDocsRoot, formatFeatureDocFileName(doc, "architecture")),
           `${doc.markdown}\n`,
           "utf8",
         ),

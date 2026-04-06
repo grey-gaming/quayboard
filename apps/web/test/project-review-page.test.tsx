@@ -202,6 +202,9 @@ describe("ProjectReviewPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "Project Review" })).toBeTruthy();
+    expect(
+      screen.getByText(/This page is used at the end of development/i),
+    ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Overview" })).toBeTruthy();
     expect(screen.queryByText("## Overview")).toBeNull();
 
