@@ -132,7 +132,7 @@ Notes:
 - `ARTIFACT_STORAGE_PATH` must point to a writable directory. The API recreates the directory if it is missing.
 - At least one provider path must be reachable for meaningful LLM-backed generation.
 - The first sandbox execution that uses `quayboard-agent-sandbox:latest` builds the local image from `docker/agent-sandbox/Dockerfile` if it is not already present.
-- Develop implementation and verification runs currently use internet access for dependency lookup and installation; project sandbox egress settings are still stored in setup, but they are not enforced for those delivery runs.
+- Develop implementation, verification, and project-review remediation runs currently use internet access for dependency lookup and installation; project sandbox egress settings are still stored in setup, but they are not enforced for those delivery runs.
 
 ### Start The Product Locally
 

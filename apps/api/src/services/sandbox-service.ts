@@ -304,7 +304,7 @@ const isLocalHostName = (hostname: string) =>
 
 const isDeliveryRunKind = (
   runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix",
-) => runKind === "implement" || runKind === "verify";
+) => runKind === "implement" || runKind === "verify" || runKind === "project_fix";
 
 export const determineNetworkModeForRun = (input: {
   baseUrl: string | null;

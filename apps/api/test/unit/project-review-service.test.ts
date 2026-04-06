@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  countOpenProjectReviewFindings,
+  createProjectReviewService,
   isProjectReviewHighOnlyPhase,
   partitionProjectReviewFindings,
 } from "../../src/services/project-review-service.js";
@@ -35,6 +37,243 @@ describe("project review service helpers", () => {
         { severity: "medium", finding: "medium issue" },
         { severity: "low", finding: "low issue" },
       ],
+    });
+  });
+});
+
+describe("project review service", () => {
+  const USER_ID = "00000000-0000-4000-8000-000000000001";
+  const PROJECT_ID = "00000000-0000-4000-8000-000000000002";
+  const SESSION_ID = "00000000-0000-4000-8000-000000000003";
+  const REVIEW_ATTEMPT_ID = "00000000-0000-4000-8000-000000000004";
+  const FIX_ATTEMPT_ID = "00000000-0000-4000-8000-000000000005";
+  const FINDING_ID = "00000000-0000-4000-8000-000000000006";
+
+  const makeService = () =>
+    createProjectReviewService(
+      {
+        query: {
+          projectReviewSessionsTable: { findFirst: vi.fn() },
+        },
+        update: vi.fn(),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+  it("counts only still-open findings from the latest review session", () => {
+    expect(
+      countOpenProjectReviewFindings([
+        {
+          findings: [
+            { status: "open" as const },
+            { status: "superseded" as const },
+          ],
+        },
+        {
+          findings: [
+            { status: "ignored" as const },
+            { status: "open" as const },
+          ],
+        },
+      ]),
+    ).toBe(2);
+  });
+
+  it("requeues a review instead of fixes when a failed session never produced review output", async () => {
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const service = createProjectReviewService(
+      {
+        query: {
+          projectReviewSessionsTable: { findFirst: vi.fn() },
+        },
+        update: vi.fn().mockReturnValue({
+          set: updateSet,
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    service.getSessionById = vi.fn().mockResolvedValue({
+      session: {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        status: "failed",
+        loopCount: 0,
+        maxLoops: 5,
+        autoApplyFixes: true,
+        branchName: null,
+        pullRequestUrl: null,
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        attempts: [
+          {
+            id: REVIEW_ATTEMPT_ID,
+            projectReviewSessionId: SESSION_ID,
+            projectId: PROJECT_ID,
+            kind: "review",
+            status: "failed",
+            sequence: 1,
+            sandboxRunId: null,
+            jobId: null,
+            reportMarkdown: null,
+            summary: null,
+            findings: [],
+            errorMessage: "sandbox crashed",
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    service.createAttempt = vi.fn().mockResolvedValue(undefined as never);
+
+    await service.retryFixes(USER_ID, SESSION_ID);
+
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "queued_review",
+      }),
+    );
+    expect(service.createAttempt).toHaveBeenCalledWith(
+      SESSION_ID,
+      PROJECT_ID,
+      "review",
+      USER_ID,
+      2,
+      undefined,
+    );
+  });
+
+  it("still requeues fixes when the failed session already has successful review findings", async () => {
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const service = createProjectReviewService(
+      {
+        query: {
+          projectReviewSessionsTable: { findFirst: vi.fn() },
+        },
+        update: vi.fn().mockReturnValue({
+          set: updateSet,
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    service.getSessionById = vi.fn().mockResolvedValue({
+      session: {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        status: "failed",
+        loopCount: 1,
+        maxLoops: 5,
+        autoApplyFixes: true,
+        branchName: "quayboard/project-review-fixes",
+        pullRequestUrl: null,
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        attempts: [
+          {
+            id: REVIEW_ATTEMPT_ID,
+            projectReviewSessionId: SESSION_ID,
+            projectId: PROJECT_ID,
+            kind: "review",
+            status: "succeeded",
+            sequence: 1,
+            sandboxRunId: null,
+            jobId: null,
+            reportMarkdown: "report",
+            summary: null,
+            findings: [
+              {
+                id: FINDING_ID,
+                projectReviewAttemptId: REVIEW_ATTEMPT_ID,
+                category: "tests",
+                severity: "high",
+                finding: "Still open",
+                evidence: [],
+                whyItMatters: "Breaks the release.",
+                recommendedImprovement: "Fix it.",
+                status: "open",
+                createdAt: new Date().toISOString(),
+                resolvedAt: null,
+              },
+            ],
+            errorMessage: null,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+          {
+            id: FIX_ATTEMPT_ID,
+            projectReviewSessionId: SESSION_ID,
+            projectId: PROJECT_ID,
+            kind: "fix",
+            status: "failed",
+            sequence: 2,
+            sandboxRunId: null,
+            jobId: null,
+            reportMarkdown: null,
+            summary: null,
+            findings: [],
+            errorMessage: "npm install failed",
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    service.createAttempt = vi.fn().mockResolvedValue(undefined as never);
+
+    await service.retryFixes(USER_ID, SESSION_ID);
+
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "queued_fix",
+      }),
+    );
+    expect(service.createAttempt).toHaveBeenCalledWith(
+      SESSION_ID,
+      PROJECT_ID,
+      "fix",
+      USER_ID,
+      3,
+      undefined,
+    );
+  });
+
+  it("rejects retries when maxLoops does not advance the session", async () => {
+    const service = makeService();
+    service.getSessionById = vi.fn().mockResolvedValue({
+      session: {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        status: "needs_fixes",
+        loopCount: 3,
+        maxLoops: 5,
+        autoApplyFixes: true,
+        branchName: null,
+        pullRequestUrl: null,
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        attempts: [],
+      },
+    });
+
+    await expect(service.retryFixes(USER_ID, SESSION_ID, 3)).rejects.toMatchObject({
+      code: "project_review_invalid_max_loops",
+      statusCode: 409,
     });
   });
 });

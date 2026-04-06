@@ -113,6 +113,17 @@ describe("sandbox service", () => {
     ).toBe("bridge");
   });
 
+  it("uses internet-capable networking for project fix runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "project_fix",
+      }),
+    ).toBe("bridge");
+  });
+
   it("preserves host networking for delivery runs that use a local model endpoint", () => {
     expect(
       determineNetworkModeForRun({

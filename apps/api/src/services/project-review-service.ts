@@ -228,6 +228,16 @@ export const partitionProjectReviewFindings = <
   return { blocking, ignored };
 };
 
+export const countOpenProjectReviewFindings = <
+  Attempt extends { findings: Array<Pick<ProjectReviewFinding, "status">> },
+>(
+  attempts: Attempt[],
+) =>
+  attempts.reduce(
+    (count, attempt) => count + attempt.findings.filter((finding) => finding.status === "open").length,
+    0,
+  );
+
 const toSummary = (value: unknown): ProjectReviewAttemptSummary | null => {
   if (!value || typeof value !== "object") {
     return null;
@@ -424,15 +434,9 @@ export const createProjectReviewService = (
   async getPhase(ownerUserId: string, projectId: string): Promise<ProjectReviewPhase> {
     const project = await this.assertOwnedProject(ownerUserId, projectId);
     const latest = await this.getLatestSession(projectId);
-    const openFindingsCount = latest
-      ? (
-          await db.query.projectReviewFindingsTable.findMany({
-            where: and(
-              eq(projectReviewFindingsTable.status, "open"),
-              eq(projectReviewFindingsTable.projectId, projectId),
-            ),
-          })
-        ).length
+    const latestDetail = latest ? await this.getSessionById(ownerUserId, latest.id) : null;
+    const openFindingsCount = latestDetail?.session
+      ? countOpenProjectReviewFindings(latestDetail.session.attempts)
       : 0;
 
     return projectReviewPhaseSchema.parse({
@@ -552,10 +556,14 @@ export const createProjectReviewService = (
     }
 
     const nextSequence = (session.attempts.at(-1)?.sequence ?? 0) + 1;
+    const hasSuccessfulReviewAttempt = session.attempts.some(
+      (attempt) => attempt.kind === "review" && attempt.status === "succeeded",
+    );
+    const nextAttemptKind = hasSuccessfulReviewAttempt ? "fix" : "review";
     await db
       .update(projectReviewSessionsTable)
       .set({
-        status: "queued_fix",
+        status: nextAttemptKind === "fix" ? "queued_fix" : "queued_review",
         maxLoops: maxLoops ?? session.maxLoops,
         updatedAt: new Date(),
       })
@@ -563,7 +571,7 @@ export const createProjectReviewService = (
     await this.createAttempt(
       session.id,
       session.projectId,
-      "fix",
+      nextAttemptKind,
       ownerUserId,
       nextSequence,
       autoAdvanceMeta,
