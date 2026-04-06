@@ -1231,6 +1231,12 @@ export const createAutoAdvanceService = (
           return;
         }
 
+        if (nextAction.key === "milestone_plan_finalize") {
+          await projectReviewService.finalizeMilestonePlan(ownerUserId, projectId);
+          await advanceStep(ownerUserId, projectId, sessionId);
+          return;
+        }
+
         if (nextAction.key === "project_review_run") {
           await projectReviewService.startReview(ownerUserId, projectId, "auto_advance");
           return;

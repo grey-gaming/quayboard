@@ -6,7 +6,7 @@ const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const MILESTONE_ID = "33333333-3333-4333-8333-333333333333";
 
-const makeDb = () => {
+const makeDb = (overrides: { remainingActiveMilestone?: Record<string, unknown> | null } = {}) => {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
   const selectLimit = vi.fn().mockResolvedValue([
@@ -36,7 +36,8 @@ const makeDb = () => {
             title: "Milestone 1",
             status: "approved",
             deliveryReviewStatus: "passed",
-          }),
+          })
+          .mockResolvedValueOnce(overrides.remainingActiveMilestone ?? null),
       },
       projectsTable: {
         findFirst: vi.fn().mockResolvedValue({
@@ -119,6 +120,57 @@ describe("milestone service", () => {
     );
     expect(db.updateSet).toHaveBeenCalledWith(
       expect.objectContaining({ status: "completed" }),
+    );
+    expect(db.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ milestoneMapReviewStatus: "not_started" }),
+    );
+  });
+
+  it("does not invalidate project milestone review when another milestone remains active", async () => {
+    const db = makeDb({
+      remainingActiveMilestone: {
+        id: "44444444-4444-4444-8444-444444444444",
+        projectId: PROJECT_ID,
+        position: 2,
+        status: "approved",
+      },
+    });
+    const githubService = {
+      branchExists: vi.fn().mockResolvedValue(false),
+      deleteBranch: vi.fn(),
+      findOpenPullRequestForHead: vi.fn().mockResolvedValue(null),
+      getCommitCiStatus: vi.fn().mockResolvedValue({
+        state: "passing",
+        ref: "quayboard/m-001/33333333",
+        total: 1,
+        pending: 0,
+        passing: 1,
+        failing: 0,
+        isStale: false,
+        checks: [],
+        failures: [],
+      }),
+      mergePullRequest: vi.fn(),
+    };
+    const secretService = {
+      buildSecretEnvMap: vi.fn().mockResolvedValue({ GITHUB_PAT: "github_pat_secret" }),
+    };
+    const service = createMilestoneService(
+      db as never,
+      githubService as never,
+      secretService as never,
+    );
+    service.list = vi.fn().mockResolvedValue({
+      milestones: [{ id: MILESTONE_ID }],
+    });
+
+    await service.transition(USER_ID, MILESTONE_ID, { action: "complete" });
+
+    expect(db.updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "completed" }),
+    );
+    expect(db.updateSet).not.toHaveBeenCalledWith(
+      expect.objectContaining({ milestoneMapReviewStatus: "not_started" }),
     );
   });
 

@@ -171,7 +171,10 @@ describe("auto-advance service", () => {
     transition: ReturnType<typeof vi.fn>;
   };
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
-  let projectReviewService: { startReview: ReturnType<typeof vi.fn> };
+  let projectReviewService: {
+    finalizeMilestonePlan: ReturnType<typeof vi.fn>;
+    startReview: ReturnType<typeof vi.fn>;
+  };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
   let featureWorkstreamService: { getTracks: ReturnType<typeof vi.fn>; approveRevision: ReturnType<typeof vi.fn> };
   let userFlowService: { list: ReturnType<typeof vi.fn>; approve: ReturnType<typeof vi.fn> };
@@ -244,7 +247,10 @@ describe("auto-advance service", () => {
       transition: vi.fn().mockResolvedValue(undefined),
     };
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
-    projectReviewService = { startReview: vi.fn().mockResolvedValue({ session: null }) };
+    projectReviewService = {
+      finalizeMilestonePlan: vi.fn().mockResolvedValue({}),
+      startReview: vi.fn().mockResolvedValue({ session: null }),
+    };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
     featureWorkstreamService = {
       getTracks: vi.fn().mockResolvedValue({ tracks: { product: { status: "draft", headRevision: null } } }),
@@ -694,6 +700,54 @@ describe("auto-advance service", () => {
       );
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({ type: "ReviewDelivery", projectId: PROJECT_ID }),
+      );
+    });
+
+    it("auto-finalizes milestone planning and starts the project review", async () => {
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [
+              {
+                key: "milestone_plan_finalize",
+                label: "Finalize milestone planning",
+                href: `/projects/${PROJECT_ID}/develop/review`,
+              },
+            ],
+          };
+        }
+
+        return {
+          actions: [
+            {
+              key: "project_review_run",
+              label: "Run project review",
+              href: `/projects/${PROJECT_ID}/develop/review`,
+            },
+          ],
+        };
+      });
+
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(projectReviewService.finalizeMilestonePlan).toHaveBeenCalledWith(USER_ID, PROJECT_ID);
+      expect(projectReviewService.startReview).toHaveBeenCalledWith(
+        USER_ID,
+        PROJECT_ID,
+        "auto_advance",
       );
     });
 
