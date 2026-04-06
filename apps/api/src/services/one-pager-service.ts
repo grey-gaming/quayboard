@@ -47,11 +47,20 @@ export const createOnePagerService = (db: AppDatabase) => ({
   },
 
   async syncProjectFromCanonical(projectId: string, canonical: typeof onePagersTable.$inferSelect) {
+    const project = await db.query.projectsTable.findFirst({
+      where: eq(projectsTable.id, projectId),
+    });
+
     await db
       .update(projectsTable)
       .set({
         onePagerApprovedAt: canonical.approvedAt,
-        state: canonical.approvedAt ? "READY" : "READY_PARTIAL",
+        state:
+          project?.state === "COMPLETED"
+            ? "COMPLETED"
+            : canonical.approvedAt
+              ? "READY"
+              : "READY_PARTIAL",
         updatedAt: new Date(),
       })
       .where(eq(projectsTable.id, projectId));

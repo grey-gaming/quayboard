@@ -65,6 +65,21 @@ type CommitCiFailure = {
   detailsUrl: string | null;
 };
 
+type CommitCiCheck = {
+  id: string;
+  name: string;
+  source: "check_run" | "commit_status";
+  status: string;
+  conclusion: string | null;
+  detailsUrl: string | null;
+  workflowName: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  lastUpdatedAt: string | null;
+};
+
+const STALE_PENDING_CHECK_THRESHOLD_MS = 20 * 60_000;
+
 const buildHeaders = (token: string) => ({
   Accept: "application/vnd.github+json",
   Authorization: `Bearer ${token}`,
@@ -109,6 +124,15 @@ const parseRepository = (payload: {
 const trimToNull = (value: string | null | undefined) => {
   const trimmed = value?.trim() ?? "";
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const toIsoDateOrNull = (value: string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
 export const createGithubService = () => ({
@@ -348,9 +372,13 @@ export const createGithubService = () => ({
         id?: number;
         name?: string;
         html_url?: string;
+        started_at?: string;
+        completed_at?: string;
+        updated_at?: string;
         status?: string;
         conclusion?: string | null;
         details_url?: string;
+        workflow_name?: string;
         output?: {
           title?: string;
           summary?: string;
@@ -365,11 +393,14 @@ export const createGithubService = () => ({
         description?: string;
         state?: string;
         target_url?: string | null;
+        created_at?: string;
+        updated_at?: string;
       }>;
     };
 
     const checkRuns = checksPayload.check_runs ?? [];
     const commitStatuses = statusesPayload.statuses ?? [];
+    const checks: CommitCiCheck[] = [];
     const failures: CommitCiFailure[] = [];
     let pending = 0;
     let passing = 0;
@@ -378,6 +409,21 @@ export const createGithubService = () => ({
     for (const run of checkRuns) {
       const status = run.status ?? "";
       const conclusion = run.conclusion ?? null;
+      const checkId = typeof run.id === "number" ? String(run.id) : run.name ?? `check-${checks.length + 1}`;
+      const detailsUrl = run.details_url ?? run.html_url ?? null;
+      checks.push({
+        id: checkId,
+        name: run.name ?? "Unnamed check run",
+        source: "check_run",
+        status,
+        conclusion,
+        detailsUrl,
+        workflowName: trimToNull(run.workflow_name),
+        startedAt: toIsoDateOrNull(run.started_at),
+        completedAt: toIsoDateOrNull(run.completed_at),
+        lastUpdatedAt: toIsoDateOrNull(run.updated_at) ?? toIsoDateOrNull(run.started_at),
+      });
+
       if (status !== "completed") {
         pending += 1;
         continue;
@@ -418,15 +464,36 @@ export const createGithubService = () => ({
 
       failing += 1;
       failures.push({
-        id: runId ? String(runId) : run.name ?? `check-${failures.length + 1}`,
+        id: checkId,
         name: run.name ?? "Unnamed check run",
         source: "check_run",
         summary,
-        detailsUrl: run.details_url ?? run.html_url ?? null,
+        detailsUrl,
       });
     }
 
     for (const status of commitStatuses) {
+      const state = status.state ?? "";
+      checks.push({
+        id: typeof status.id === "number" ? String(status.id) : status.context ?? `status-${checks.length + 1}`,
+        name: status.context ?? "Unnamed commit status",
+        source: "commit_status",
+        status: state,
+        conclusion:
+          state === "success"
+            ? "success"
+            : state === "pending"
+              ? null
+              : state.length > 0
+                ? state
+                : null,
+        detailsUrl: status.target_url ?? null,
+        workflowName: null,
+        startedAt: toIsoDateOrNull(status.created_at),
+        completedAt: state === "pending" ? null : toIsoDateOrNull(status.updated_at ?? status.created_at),
+        lastUpdatedAt: toIsoDateOrNull(status.updated_at ?? status.created_at),
+      });
+
       if (status.state === "pending") {
         pending += 1;
         continue;
@@ -459,6 +526,20 @@ export const createGithubService = () => ({
             ? "pending"
             : "passing";
 
+    const now = Date.now();
+    const pendingChecks = checks.filter((check) => check.status !== "completed" && check.status !== "success");
+    const isStale =
+      state === "pending" &&
+      pendingChecks.length > 0 &&
+      pendingChecks.every((check) => {
+        const updatedAtValue = check.lastUpdatedAt ?? check.startedAt;
+        if (!updatedAtValue) {
+          return false;
+        }
+
+        return now - new Date(updatedAtValue).getTime() >= STALE_PENDING_CHECK_THRESHOLD_MS;
+      });
+
     return {
       ref: input.ref,
       total,
@@ -466,6 +547,8 @@ export const createGithubService = () => ({
       passing,
       failing,
       state,
+      isStale,
+      checks,
       failures,
     };
   },

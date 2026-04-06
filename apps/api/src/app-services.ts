@@ -75,6 +75,10 @@ import {
   type ProjectService,
 } from "./services/project-service.js";
 import {
+  createProjectReviewService,
+  type ProjectReviewService,
+} from "./services/project-review-service.js";
+import {
   createProjectSetupService,
   type ProjectSetupService,
 } from "./services/project-setup-service.js";
@@ -142,6 +146,7 @@ export type AppServices = {
   productSpecService: ProductSpecService;
   phaseGateService: PhaseGateService;
   projectService: ProjectService;
+  projectReviewService: ProjectReviewService;
   projectSetupService: ProjectSetupService;
   questionnaireService: QuestionnaireService;
   sandboxService: SandboxService;
@@ -242,6 +247,13 @@ export const createAppServices = async (
     providers: ["ollama", "openai"],
     secretsKeyPresent: Boolean(secretsEncryptionKey),
   });
+  const projectReviewService = createProjectReviewService(
+    db,
+    jobService,
+    projectService,
+    secretService,
+    githubService,
+  );
   const phaseGateService = createPhaseGateService(
     artifactApprovalService,
     blueprintService,
@@ -250,6 +262,7 @@ export const createAppServices = async (
     onePagerService,
     productSpecService,
     projectSetupService,
+    projectReviewService,
     questionnaireService,
     userFlowService,
   );
@@ -265,6 +278,7 @@ export const createAppServices = async (
     productSpecService,
     userFlowService,
     taskPlanningService,
+    projectReviewService,
   );
   const sandboxService = createSandboxService({
     artifactStorageService,
@@ -292,6 +306,7 @@ export const createAppServices = async (
     blueprintService,
     milestoneService,
     onePagerService,
+    projectReviewService,
     productSpecService,
     featureWorkstreamService,
     userFlowService,
@@ -311,6 +326,7 @@ export const createAppServices = async (
     onePagerService,
     productSpecService,
     projectService,
+    projectReviewService,
     projectSetupService,
     questionnaireService,
     sandboxService,
@@ -368,6 +384,13 @@ export const createAppServices = async (
       await autoAdvanceService.onJobComplete(jobId, "failure").catch((err) => {
         console.error("auto-advance onJobComplete (failure) failed:", err);
       });
+      const message =
+        error && typeof error === "object" && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Project review job failed.";
+      await projectReviewService.failAttemptByJobId(jobId, message).catch((err) => {
+        console.error("project review onFailure hook failed:", err);
+      });
     },
     maxConcurrent: 4,
   });
@@ -405,8 +428,9 @@ export const createAppServices = async (
     nextActionsService,
       onePagerService,
       productSpecService,
-      phaseGateService,
-      projectService,
+    phaseGateService,
+    projectService,
+    projectReviewService,
       projectSetupService,
       questionnaireService,
       sandboxService,

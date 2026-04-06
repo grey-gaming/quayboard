@@ -6,9 +6,11 @@ import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { ProjectSetupService } from "./project-setup-service.js";
+import type { ProjectReviewService } from "./project-review-service.js";
 import type { QuestionnaireService } from "./questionnaire-service.js";
 import type { UserFlowService } from "./user-flow-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import type { NextActionsResponse } from "@quayboard/shared";
 import { orderMilestoneFeatures } from "./milestone-delivery-branch.js";
 import { isTaskPlanningReady } from "./task-planning-support.js";
 
@@ -24,6 +26,7 @@ export const createNextActionsService = (
   productSpecService: ProductSpecService,
   userFlowService: UserFlowService,
   taskPlanningService?: TaskPlanningService,
+  projectReviewService?: ProjectReviewService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
     const [
@@ -47,7 +50,7 @@ export const createNextActionsService = (
       blueprintService.listDecisionCards(ownerUserId, projectId, "tech"),
       blueprintService.getCanonical(ownerUserId, projectId),
     ]);
-    const actions = [];
+    const actions: NextActionsResponse["actions"] = [];
 
     if (!setupCompleted) {
       const setupChecksPassed =
@@ -217,7 +220,32 @@ export const createNextActionsService = (
               href: `/projects/${projectId}/milestones`,
             });
           } else if (!activeMilestone) {
-            // All milestones completed.
+            if (!projectReviewService) {
+              return { actions };
+            }
+            const projectReviewPhase = await projectReviewService.getPhase(ownerUserId, projectId);
+            if (!projectReviewPhase.finalized) {
+              actions.push({
+                key: "milestone_plan_finalize",
+                label: "Finalize milestone planning",
+                href: `/projects/${projectId}/develop/review`,
+              });
+            } else if (projectReviewPhase.latestStatus === null) {
+              actions.push({
+                key: "project_review_run",
+                label: "Run project review",
+                href: `/projects/${projectId}/develop/review`,
+              });
+            } else if (
+              projectReviewPhase.latestStatus === "needs_fixes" ||
+              projectReviewPhase.latestStatus === "failed"
+            ) {
+              actions.push({
+                key: "project_review_retry",
+                label: "Retry project review fixes",
+                href: `/projects/${projectId}/develop/review`,
+              });
+            }
           } else if (activeMilestone.status === "draft") {
             const designDoc = await milestoneService.getCanonicalDesignDoc(
               ownerUserId,
@@ -479,9 +507,12 @@ export const createNextActionsService = (
                   actions.push({
                     key: "milestone_ci_gate",
                     label:
-                      activeMilestone.ciStatus.state === "failing"
+                      activeMilestone.ciStatus.state === "failing" || activeMilestone.ciStatus.isStale
                         ? "Repair milestone CI failures"
                         : "Wait for milestone CI",
+                    description: activeMilestone.ciStatus.isStale
+                      ? "The same CI checks have remained pending long enough to look stuck. Diagnose and repair the branch-level CI behavior."
+                      : undefined,
                     href: `/projects/${projectId}/milestones/${activeMilestone.id}`,
                   });
                 } else {

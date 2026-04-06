@@ -40,6 +40,7 @@ const buildSession = (overrides: Partial<AutoAdvanceSession> = {}): AutoAdvanceS
   creativityMode: "balanced",
   retryCount: 0,
   reviewCount: 0,
+  projectReviewCount: 0,
   milestoneRepairCount: 0,
   ciFixCount: 0,
   ciWaitWindowCount: 0,

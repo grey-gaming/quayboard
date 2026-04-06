@@ -44,6 +44,7 @@ const makeSessionRow = (
   creativityMode: "balanced",
   retryCount: 0,
   reviewCount: 0,
+  projectReviewCount: 0,
   milestoneRepairCount: 0,
   ciFixCount: 0,
   ciWaitWindowCount: 0,
@@ -64,6 +65,8 @@ const makeProject = () => ({
   name: "Test Project",
   description: null,
   state: "READY" as const,
+  milestonePlanStatus: "open" as const,
+  milestonePlanFinalizedAt: null,
   onePagerApprovedAt: null,
   userFlowsApprovedAt: null,
   userFlowsApprovalSnapshot: null,
@@ -168,6 +171,10 @@ describe("auto-advance service", () => {
     transition: ReturnType<typeof vi.fn>;
   };
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
+  let projectReviewService: {
+    finalizeMilestonePlan: ReturnType<typeof vi.fn>;
+    startReview: ReturnType<typeof vi.fn>;
+  };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
   let featureWorkstreamService: { getTracks: ReturnType<typeof vi.fn>; approveRevision: ReturnType<typeof vi.fn> };
   let userFlowService: { list: ReturnType<typeof vi.fn>; approve: ReturnType<typeof vi.fn> };
@@ -184,6 +191,7 @@ describe("auto-advance service", () => {
       blueprintService as never,
       milestoneService as never,
       onePagerService as never,
+      projectReviewService as never,
       productSpecService as never,
       featureWorkstreamService as never,
       userFlowService as never,
@@ -239,6 +247,10 @@ describe("auto-advance service", () => {
       transition: vi.fn().mockResolvedValue(undefined),
     };
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
+    projectReviewService = {
+      finalizeMilestonePlan: vi.fn().mockResolvedValue({}),
+      startReview: vi.fn().mockResolvedValue({ session: null }),
+    };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
     featureWorkstreamService = {
       getTracks: vi.fn().mockResolvedValue({ tracks: { product: { status: "draft", headRevision: null } } }),
@@ -688,6 +700,58 @@ describe("auto-advance service", () => {
       );
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({ type: "ReviewDelivery", projectId: PROJECT_ID }),
+      );
+    });
+
+    it("auto-finalizes milestone planning and starts the project review", async () => {
+      let buildCallCount = 0;
+      nextActionsService.buildBatch.mockImplementation(async () => {
+        buildCallCount++;
+        if (buildCallCount === 1) {
+          return {
+            actions: [
+              {
+                key: "milestone_plan_finalize",
+                label: "Finalize milestone planning",
+                href: `/projects/${PROJECT_ID}/develop/review`,
+              },
+            ],
+          };
+        }
+
+        return {
+          actions: [
+            {
+              key: "project_review_run",
+              label: "Run project review",
+              href: `/projects/${PROJECT_ID}/develop/review`,
+            },
+          ],
+        };
+      });
+
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(projectReviewService.finalizeMilestonePlan).toHaveBeenCalledWith(USER_ID, PROJECT_ID);
+      expect(projectReviewService.startReview).toHaveBeenCalledWith(
+        USER_ID,
+        PROJECT_ID,
+        "auto_advance",
+        undefined,
+        expect.objectContaining({
+          sessionId: session.id,
+        }),
       );
     });
 
@@ -2516,6 +2580,77 @@ describe("auto-advance service", () => {
           }),
         }),
       );
+    });
+
+    it("starts a CI repair attempt when milestone CI is stale-pending", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        ciFixCount: 1,
+      });
+      const ciGateJob = {
+        ...makeJob(),
+        type: "WaitForMilestoneCi",
+        outputs: {
+          state: "stale_pending",
+          milestoneId: "milestone-1",
+        } as never,
+      };
+      const db = makeDb({ session: runningSession, job: ciGateJob });
+      const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          updateCall += 1;
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: "running" as const,
+                  pendingJobCount:
+                    updateCall === 1
+                      ? 0
+                      : typeof data.pendingJobCount === "number"
+                        ? data.pendingJobCount
+                        : 1,
+                  activeBatchToken:
+                    typeof data.activeBatchToken === "string" ? data.activeBatchToken : "batch-2",
+                  ciFixCount:
+                    typeof data.ciFixCount === "number" ? data.ciFixCount : 2,
+                  ciWaitWindowCount:
+                    typeof data.ciWaitWindowCount === "number" ? data.ciWaitWindowCount : 0,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "RepairMilestoneCi",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-1",
+            diagnosis: "pending_checks_stale",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+            }),
+          }),
+        }),
+      );
+      expect(
+        updates.some(
+          (update) =>
+            update.ciFixCount === 2 &&
+            update.ciWaitWindowCount === 0 &&
+            update.pendingJobCount === 1,
+        ),
+      ).toBe(true);
     });
 
     it("does nothing when no running session exists for the job's project", async () => {

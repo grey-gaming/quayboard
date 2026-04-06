@@ -25,6 +25,8 @@ import type {
   ProjectBlueprint,
   ProjectBlueprintListResponse,
   ProductSpec,
+  ProjectReviewDetailResponse,
+  ProjectReviewListResponse,
   Project,
   ProjectListResponse,
   ProjectSetupState,
@@ -986,5 +988,40 @@ export const api = {
     return apiRequest<MemoryChunkListResponse>(
       `/api/debug/memory?projectId=${encodeURIComponent(projectId)}`,
     );
+  },
+  finalizeMilestonePlan(projectId: string) {
+    return apiRequest<Project>(`/api/projects/${projectId}/milestone-plan/finalize`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  reopenMilestonePlan(projectId: string) {
+    return apiRequest<Project>(`/api/projects/${projectId}/milestone-plan/reopen`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+  listProjectReviews(projectId: string) {
+    return apiRequest<ProjectReviewListResponse>(`/api/projects/${projectId}/project-reviews`);
+  },
+  getLatestProjectReview(projectId: string) {
+    return apiRequest<ProjectReviewDetailResponse>(
+      `/api/projects/${projectId}/project-reviews/latest`,
+    );
+  },
+  startProjectReview(
+    projectId: string,
+    payload?: { trigger?: "manual" | "auto_advance"; maxLoops?: number },
+  ) {
+    return apiRequest<ProjectReviewDetailResponse>(`/api/projects/${projectId}/project-reviews`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    });
+  },
+  retryProjectReviewFixes(reviewId: string, payload?: { maxLoops?: number }) {
+    return apiRequest<ProjectReviewDetailResponse>(`/api/project-reviews/${reviewId}/retry-fixes`, {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    });
   },
 };

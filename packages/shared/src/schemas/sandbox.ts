@@ -31,7 +31,13 @@ export const sandboxRunStatusSchema = z.enum([
 
 export type SandboxRunStatus = z.infer<typeof sandboxRunStatusSchema>;
 
-export const sandboxRunKindSchema = z.enum(["implement", "verify", "ci_repair"]);
+export const sandboxRunKindSchema = z.enum([
+  "implement",
+  "verify",
+  "ci_repair",
+  "project_review",
+  "project_fix",
+]);
 
 export type SandboxRunKind = z.infer<typeof sandboxRunKindSchema>;
 

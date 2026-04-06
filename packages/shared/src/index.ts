@@ -23,4 +23,5 @@ export * from "./schemas/feature-workstreams.js";
 export * from "./schemas/task-planning.js";
 export * from "./schemas/auto-advance.js";
 export * from "./schemas/sandbox.js";
+export * from "./schemas/project-reviews.js";
 export * from "./questionnaire-definition.js";

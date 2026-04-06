@@ -24,6 +24,7 @@ import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
 import type { MilestoneService } from "./milestone-service.js";
 import type { OnePagerService } from "./one-pager-service.js";
+import type { ProjectReviewService } from "./project-review-service.js";
 import type { ProductSpecService } from "./product-spec-service.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
 import type { SandboxService } from "./sandbox-service.js";
@@ -62,6 +63,7 @@ type MilestoneDeliveryIssue = {
 };
 
 const MAX_MILESTONE_REPAIR_ATTEMPTS = 3;
+const AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT = 5;
 
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
@@ -76,6 +78,7 @@ const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   creativityMode: (row.creativityMode ?? "balanced") as AutoAdvanceSession["creativityMode"],
   retryCount: row.retryCount ?? 0,
   reviewCount: row.reviewCount ?? 0,
+  projectReviewCount: row.projectReviewCount ?? 0,
   milestoneRepairCount: row.milestoneRepairCount ?? 0,
   ciFixCount: row.ciFixCount ?? 0,
   ciWaitWindowCount: row.ciWaitWindowCount ?? 0,
@@ -346,6 +349,7 @@ export const createAutoAdvanceService = (
   blueprintService: BlueprintService,
   milestoneService: MilestoneService,
   onePagerService: OnePagerService,
+  projectReviewService: ProjectReviewService,
   productSpecService: ProductSpecService,
   featureWorkstreamService: FeatureWorkstreamService,
   userFlowService: UserFlowService,
@@ -1228,6 +1232,69 @@ export const createAutoAdvanceService = (
           return;
         }
 
+        if (nextAction.key === "milestone_plan_finalize") {
+          await projectReviewService.finalizeMilestonePlan(ownerUserId, projectId);
+          await advanceStep(ownerUserId, projectId, sessionId);
+          return;
+        }
+
+        if (nextAction.key === "project_review_run") {
+          const batchToken = generateId();
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              currentStep: nextAction.key,
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              projectReviewCount: (session?.projectReviewCount ?? 0) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, sessionId));
+          await projectReviewService.startReview(
+            ownerUserId,
+            projectId,
+            "auto_advance",
+            undefined,
+            {
+              sessionId,
+              batchToken,
+            },
+          );
+          return;
+        }
+
+        if (nextAction.key === "project_review_retry") {
+          const latestReview = await projectReviewService.getLatestSessionDetail(ownerUserId, projectId);
+          if (!latestReview.session) {
+            throw new Error("Auto-advance expected a latest project review session for retry.");
+          }
+          const batchToken = generateId();
+          const maxLoops =
+            latestReview.session.maxLoops <= latestReview.session.loopCount
+              ? latestReview.session.loopCount + AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT
+              : undefined;
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              currentStep: nextAction.key,
+              pendingJobCount: 1,
+              activeBatchToken: batchToken,
+              projectReviewCount: (session?.projectReviewCount ?? 0) + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, sessionId));
+          await projectReviewService.retryFixes(
+            ownerUserId,
+            latestReview.session.id,
+            maxLoops,
+            {
+              sessionId,
+              batchToken,
+            },
+          );
+          return;
+        }
+
         if (session) {
           if (
             nextAction.key === "milestone_reconciliation_resolve" ||
@@ -1838,6 +1905,84 @@ export const createAutoAdvanceService = (
           .where(eq(autoAdvanceSessionsTable.id, session.id));
       }
 
+      if (job.type === "RunProjectReview" || job.type === "RunProjectFix") {
+        const projectReviewSessionId =
+          (
+            job.outputs as { sessionId?: string } | null | undefined
+          )?.sessionId ??
+          ((job.inputs as { sessionId?: string } | null | undefined)?.sessionId ?? null);
+
+        if (!projectReviewSessionId) {
+          throw new Error(`${job.type} did not include a project review sessionId.`);
+        }
+
+        const nextProjectReviewJob = await findActiveAutoAdvanceJob(
+          job.projectId,
+          session.id,
+          autoAdvanceMeta.batchToken,
+        );
+
+        if (nextProjectReviewJob) {
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              currentStep:
+                nextProjectReviewJob.type === "RunProjectFix"
+                  ? "project_review_retry"
+                  : "project_review_run",
+              pendingJobCount: 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        const reviewDetail = await projectReviewService.getSessionById(
+          project.ownerUserId,
+          projectReviewSessionId,
+        );
+        const reviewSession = reviewDetail.session;
+
+        if (!reviewSession) {
+          throw new Error(`Project review session ${projectReviewSessionId} not found.`);
+        }
+
+        if (reviewSession.status === "clear") {
+          await projectReviewService.mergeFixPullRequest(project.ownerUserId, reviewSession.id);
+          await projectReviewService.markProjectCompleted(project.ownerUserId, job.projectId);
+          await db
+            .update(autoAdvanceSessionsTable)
+            .set({
+              status: "completed",
+              currentStep: null,
+              activeBatchToken: null,
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(autoAdvanceSessionsTable.id, session.id));
+          await publishSessionUpdate(project.ownerUserId, job.projectId);
+          return;
+        }
+
+        await db
+          .update(autoAdvanceSessionsTable)
+          .set({
+            status: "paused",
+            currentStep: reviewSession.status === "needs_fixes" ? "project_review_retry" : session.currentStep,
+            pausedReason:
+              reviewSession.status === "needs_fixes"
+                ? "project_review_limit_reached"
+                : "job_failed",
+            pausedAt: new Date(),
+            activeBatchToken: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(autoAdvanceSessionsTable.id, session.id));
+        await publishSessionUpdate(project.ownerUserId, job.projectId);
+        return;
+      }
+
       // Success path — if other parallel jobs are still pending, wait for them.
       if (remaining > 0) {
         return;
@@ -2434,7 +2579,13 @@ export const createAutoAdvanceService = (
       if (job.type === "WaitForMilestoneCi") {
         const output = job.outputs as
           | {
-              state?: "passing" | "failing" | "pending" | "no_ci" | "pending_window_exhausted";
+              state?:
+                | "passing"
+                | "failing"
+                | "pending"
+                | "no_ci"
+                | "pending_window_exhausted"
+                | "stale_pending";
               milestoneId?: string;
             }
           | null;
@@ -2497,7 +2648,7 @@ export const createAutoAdvanceService = (
           return;
         }
 
-        if (output?.state === "failing") {
+        if (output?.state === "failing" || output?.state === "stale_pending") {
           const nextFixCount = (session.ciFixCount ?? 0) + 1;
           if (nextFixCount > 3) {
             await db
@@ -2528,7 +2679,17 @@ export const createAutoAdvanceService = (
             createdByUserId: project.ownerUserId,
             projectId: job.projectId,
             type: "RepairMilestoneCi",
-            inputs: buildAutoAdvanceInputs({ milestoneId }, session.id, batchToken),
+            inputs: buildAutoAdvanceInputs(
+              {
+                milestoneId,
+                diagnosis:
+                  output.state === "stale_pending"
+                    ? "pending_checks_stale"
+                    : "failing_checks_detected",
+              },
+              session.id,
+              batchToken,
+            ),
           });
           await publishSessionUpdate(project.ownerUserId, job.projectId);
           return;

@@ -1086,6 +1086,18 @@ export const createMilestoneService = (
           updatedAt: now,
         })
         .where(eq(milestonesTable.id, milestoneId));
+
+      const remainingActiveMilestone = await db.query.milestonesTable.findFirst({
+        where: and(
+          eq(milestonesTable.projectId, context.projectId),
+          inArray(milestonesTable.status, ["draft", "approved"]),
+        ),
+        orderBy: [asc(milestonesTable.position)],
+      });
+
+      if (!remainingActiveMilestone) {
+        await this.invalidateMapReview(context.projectId);
+      }
     }
 
     return this.list(ownerUserId, context.projectId).then((response) => {

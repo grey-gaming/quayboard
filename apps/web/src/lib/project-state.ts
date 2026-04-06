@@ -1,4 +1,11 @@
-type ProjectState = "EMPTY" | "BOOTSTRAPPING" | "IMPORTING_A" | "IMPORTING_B" | "READY_PARTIAL" | "READY";
+type ProjectState =
+  | "EMPTY"
+  | "BOOTSTRAPPING"
+  | "IMPORTING_A"
+  | "IMPORTING_B"
+  | "READY_PARTIAL"
+  | "READY"
+  | "COMPLETED";
 
 export const isSetupCompletedProjectState = (state: ProjectState) =>
-  state === "READY_PARTIAL" || state === "READY";
+  state === "READY_PARTIAL" || state === "READY" || state === "COMPLETED";

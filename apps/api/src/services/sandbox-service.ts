@@ -45,6 +45,8 @@ import {
   milestoneDesignDocsTable,
   milestonesTable,
   onePagersTable,
+  projectReviewAttemptsTable,
+  projectReviewFindingsTable,
   projectsTable,
   reposTable,
   sandboxMilestoneSessionsTable,
@@ -122,6 +124,35 @@ const interruptedSandboxRunReason =
   "The API restarted before this sandbox run finished, so the run was cancelled.";
 const shutdownSandboxRunReason =
   "The API shut down before this sandbox run finished, so the run was cancelled.";
+const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] as const;
+const projectReviewFixBranchName = "quayboard/project-review-fixes";
+
+type ExportedFeatureDoc = {
+  featureKey: string;
+  milestonePosition: number;
+  milestoneTitle: string;
+  title: string;
+  markdown: string;
+};
+
+const sanitizeExportPathSegment = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "document";
+
+type ProjectReviewFixFindingRecord = Pick<
+  typeof projectReviewFindingsTable.$inferSelect,
+  | "id"
+  | "category"
+  | "severity"
+  | "finding"
+  | "evidence"
+  | "whyItMatters"
+  | "recommendedImprovement"
+  | "status"
+>;
 
 const isIsoString = (value: string) => !Number.isNaN(new Date(value).getTime());
 
@@ -237,6 +268,26 @@ const getErrorText = (error: unknown) => {
     .join("\n");
 };
 
+export const serializeProjectReviewFixFindings = (
+  findings: ProjectReviewFixFindingRecord[],
+) =>
+  JSON.stringify(
+    findings
+      .filter((finding) => finding.status === "open")
+      .map((finding) => ({
+        id: finding.id,
+        category: finding.category,
+        severity: finding.severity,
+        finding: finding.finding,
+        evidence: Array.isArray(finding.evidence) ? finding.evidence : [],
+        whyItMatters: finding.whyItMatters,
+        recommendedImprovement: finding.recommendedImprovement,
+        status: finding.status,
+      })),
+    null,
+    2,
+  );
+
 const isMissingRemoteBranchError = (error: unknown, branch: string) => {
   const text = getErrorText(error);
   return (
@@ -251,26 +302,39 @@ const isLocalHostName = (hostname: string) =>
   hostname === "::1" ||
   hostname === "host.docker.internal";
 
-const determineNetworkModeForModel = (
+const isDeliveryRunKind = (
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix",
+) => runKind === "implement" || runKind === "verify" || runKind === "project_fix";
+
+export const determineNetworkModeForRun = (input: {
+  baseUrl: string | null;
+  egressPolicy: "allowlisted" | "locked";
   provider: ProviderDefinition["provider"],
-  baseUrl: string | null,
-  egressPolicy: "allowlisted" | "locked",
-) => {
-  if (!baseUrl) {
-    return "none" as const;
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix";
+}) => {
+  if (!input.baseUrl) {
+    return isDeliveryRunKind(input.runKind) ? ("bridge" as const) : ("none" as const);
   }
 
   try {
-    const url = new URL(baseUrl);
+    const url = new URL(input.baseUrl);
     const isLocal = isLocalHostName(url.hostname);
 
     if (isLocal) {
       return "host" as const;
     }
 
-    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+    if (isDeliveryRunKind(input.runKind)) {
+      return "bridge" as const;
+    }
+
+    return input.egressPolicy === "locked" ? ("none" as const) : ("bridge" as const);
   } catch {
-    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+    if (isDeliveryRunKind(input.runKind)) {
+      return "bridge" as const;
+    }
+
+    return input.egressPolicy === "locked" ? ("none" as const) : ("bridge" as const);
   }
 };
 
@@ -594,6 +658,31 @@ export const createSandboxService = (input: {
     };
   },
 
+  async getLatestProjectReviewArtifacts(projectId: string) {
+    const latestReviewAttempt = await input.db.query.projectReviewAttemptsTable.findFirst({
+      where: and(
+        eq(projectReviewAttemptsTable.projectId, projectId),
+        eq(projectReviewAttemptsTable.kind, "review"),
+        eq(projectReviewAttemptsTable.status, "succeeded"),
+      ),
+      orderBy: [desc(projectReviewAttemptsTable.createdAt)],
+    });
+
+    if (!latestReviewAttempt?.reportMarkdown) {
+      throw new Error("Project review remediation requires a completed project review.");
+    }
+
+    const findings = await input.db.query.projectReviewFindingsTable.findMany({
+      where: eq(projectReviewFindingsTable.projectReviewAttemptId, latestReviewAttempt.id),
+      orderBy: [asc(projectReviewFindingsTable.createdAt)],
+    });
+
+    return {
+      markdown: latestReviewAttempt.reportMarkdown,
+      findingsJson: serializeProjectReviewFixFindings(findings),
+    };
+  },
+
   async getOptions(ownerUserId: string, projectId: string) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const [executionSettings, repo, features, codingPacks] = await Promise.all([
@@ -771,18 +860,46 @@ export const createSandboxService = (input: {
     };
   },
 
+  async resolveProjectReviewBranchPlan(
+    repo: typeof reposTable.$inferSelect,
+    token: string,
+    targetBranchName = projectReviewFixBranchName,
+  ): Promise<DeliveryBranchPlan> {
+    if (!repo.owner || !repo.name) {
+      throw new Error("Sandbox execution requires a verified GitHub repository.");
+    }
+
+    const defaultBranchName = repo.defaultBranch ?? "main";
+    const branchExists = await input.githubService.branchExists({
+      owner: repo.owner,
+      repo: repo.name,
+      token,
+      branch: targetBranchName,
+    });
+
+    return {
+      baseBranchName: defaultBranchName,
+      cloneBranchName: branchExists ? targetBranchName : defaultBranchName,
+      targetBranchName,
+      pullRequestTitle: "Project review remediation",
+      pullRequestBody: "Automated project review remediation branch.",
+    };
+  },
+
   async createRun(
     ownerUserId: string,
     projectId: string,
     request:
       | { featureId: string; kind: "implement" | "verify" }
-      | { milestoneId: string; kind: "ci_repair" },
+      | { milestoneId: string; kind: "ci_repair" }
+      | { kind: "project_review"; branchName?: string }
+      | { kind: "project_fix"; branchName?: string },
     triggeredByJobId: string | null = null,
     jobInputs: Record<string, unknown> | null = null,
   ) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const payload =
-      request.kind === "ci_repair"
+      request.kind === "ci_repair" || request.kind === "project_review" || request.kind === "project_fix"
         ? request
         : createSandboxRunRequestSchema.parse(request);
     const feature =
@@ -824,6 +941,7 @@ export const createSandboxService = (input: {
         kind: payload.kind,
         status: "queued",
         outcome: null,
+        branchName: "branchName" in payload ? payload.branchName ?? null : null,
         createdAt: new Date(),
       })
       .returning();
@@ -859,6 +977,40 @@ export const createSandboxService = (input: {
     );
 
     return this.formatRun(created);
+  },
+
+  async createProjectReviewRun(
+    ownerUserId: string,
+    projectId: string,
+    triggeredByJobId: string | null = null,
+    branchName: string | null = null,
+  ) {
+    return this.createRun(
+      ownerUserId,
+      projectId,
+      {
+        kind: "project_review",
+        branchName: branchName ?? undefined,
+      },
+      triggeredByJobId,
+    );
+  },
+
+  async createProjectFixRun(
+    ownerUserId: string,
+    projectId: string,
+    triggeredByJobId: string | null = null,
+    branchName: string | null = projectReviewFixBranchName,
+  ) {
+    return this.createRun(
+      ownerUserId,
+      projectId,
+      {
+        kind: "project_fix",
+        branchName: branchName ?? undefined,
+      },
+      triggeredByJobId,
+    );
   },
 
   async createMilestoneCiRepairRun(
@@ -1340,6 +1492,12 @@ export const createSandboxService = (input: {
             run.milestoneId,
             secretEnv.GITHUB_PAT,
           )
+        : run.kind === "project_fix"
+          ? await this.resolveProjectReviewBranchPlan(
+              repo,
+              secretEnv.GITHUB_PAT,
+              run.branchName ?? projectReviewFixBranchName,
+            )
         : null;
 
     const cleanup = async () => {
@@ -1434,7 +1592,7 @@ export const createSandboxService = (input: {
       } else {
         await this.cloneRepository(
           repo.repoUrl,
-          deliveryBranchPlan?.cloneBranchName ?? defaultBranchName,
+          run.branchName ?? deliveryBranchPlan?.cloneBranchName ?? defaultBranchName,
           secretEnv.GITHUB_PAT,
           workspaceDir,
         );
@@ -1453,26 +1611,53 @@ export const createSandboxService = (input: {
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
       const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
-      const networkMode = determineNetworkModeForModel(
-        llmDefinition.provider,
-        llmDefinition.baseUrl,
-        sandboxConfig.egressPolicy,
-      );
+      const networkMode = determineNetworkModeForRun({
+        baseUrl: llmDefinition.baseUrl,
+        egressPolicy: sandboxConfig.egressPolicy,
+        provider: llmDefinition.provider,
+        runKind: run.kind,
+      });
       const sandboxModelBaseUrl = normalizeModelBaseUrl(
         llmDefinition.provider,
         llmDefinition.baseUrl,
         networkMode,
       );
       await writeFile(path.join(workspaceDir, ".quayboard-context.md"), pack.content);
-      await writeFile(
-        path.join(workspaceDir, ".quayboard-tasks.md"),
-        tasks
-          .map(
-            (task, index) =>
-              `${index + 1}. ${task.title}\n${task.description}\n${task.acceptanceCriteria.join("\n")}`,
-          )
-          .join("\n\n"),
-      );
+      const taskFileContent =
+        run.kind === "project_review"
+          ? [
+              "Produce a project-wide engineering due diligence review for this repository.",
+              "Inspect the actual repository contents before making claims.",
+              "Write the human-readable report to /root/.local/share/opencode/tool-output/project-review.md.",
+              "Write the structured output to /root/.local/share/opencode/tool-output/project-review.json.",
+              "Do not make repository changes during the review run.",
+            ].join("\n")
+          : run.kind === "project_fix"
+            ? [
+                "Read /workspace/.quayboard-project-review.md for the latest project review.",
+                "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
+                "Address only the cited findings in one batched remediation pass.",
+                "Re-run relevant checks before exiting.",
+                "Write a remediation summary to /root/.local/share/opencode/tool-output/project-fix-summary.md.",
+              ].join("\n")
+            : tasks
+                .map(
+                  (task, index) =>
+                    `${index + 1}. ${task.title}\n${task.description}\n${task.acceptanceCriteria.join("\n")}`,
+                )
+                .join("\n\n");
+      await writeFile(path.join(workspaceDir, ".quayboard-tasks.md"), taskFileContent);
+      if (run.kind === "project_fix") {
+        const latestReviewArtifact = await this.getLatestProjectReviewArtifacts(run.projectId);
+        await writeFile(
+          path.join(workspaceDir, ".quayboard-project-review.md"),
+          latestReviewArtifact.markdown,
+        );
+        await writeFile(
+          path.join(workspaceDir, ".quayboard-project-review-findings.json"),
+          latestReviewArtifact.findingsJson,
+        );
+      }
       if (run.kind === "ci_repair" && run.milestoneId) {
         await writeFile(
           path.join(workspaceDir, ".quayboard-ci-failure.md"),
@@ -1675,17 +1860,58 @@ export const createSandboxService = (input: {
         return;
       }
 
-      if (run.kind === "verify" && exitCode === 0) {
-        const [feature, headRevision] = await Promise.all([
-          input.db.query.featureCasesTable.findFirst({
-            where: eq(featureCasesTable.id, run.featureId!),
-          }),
-          input.db.query.featureRevisionsTable.findFirst({
-            where: eq(featureRevisionsTable.featureId, run.featureId!),
-            orderBy: [desc(featureRevisionsTable.version)],
-          }),
-        ]);
+      if (run.kind === "project_fix" && exitCode === 0) {
         const publishResult = await this.publishPullRequestIfNeeded(
+          workspaceDir,
+          repo,
+          secretEnv.GITHUB_PAT,
+          "Project review remediation",
+          sandboxRunId,
+          deliveryBranchPlan ??
+            ({
+              baseBranchName: defaultBranchName,
+              cloneBranchName: currentBranchName,
+              targetBranchName: run.branchName ?? projectReviewFixBranchName,
+              pullRequestTitle: "Project review remediation",
+              pullRequestBody: `Automated project review remediation run ${sandboxRunId}.`,
+            } satisfies DeliveryBranchPlan),
+          baseCommitSha,
+        );
+        await this.updateRunState(sandboxRunId, {
+          status: "succeeded",
+          outcome: publishResult.commitSha ? "changes_applied" : "no_op",
+          headCommitSha: publishResult.commitSha ?? headCommitSha,
+          pullRequestUrl: publishResult.pullRequestUrl,
+          branchName: run.branchName ?? projectReviewFixBranchName,
+          completedAt: new Date(),
+        });
+        runFinalized = true;
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "project_fix_completed",
+          publishResult.pullRequestUrl
+            ? "Project review remediation completed and updated the pull request."
+            : "Project review remediation completed.",
+        );
+        return;
+      }
+
+      if ((run.kind === "verify" || run.kind === "project_review") && exitCode === 0) {
+        const [feature, headRevision] =
+          run.kind === "verify"
+            ? await Promise.all([
+                input.db.query.featureCasesTable.findFirst({
+                  where: eq(featureCasesTable.id, run.featureId!),
+                }),
+                input.db.query.featureRevisionsTable.findFirst({
+                  where: eq(featureRevisionsTable.featureId, run.featureId!),
+                  orderBy: [desc(featureRevisionsTable.version)],
+                }),
+              ])
+            : [null, null];
+        const publishResult = run.kind === "verify"
+          ? await this.publishPullRequestIfNeeded(
           workspaceDir,
           repo,
           secretEnv.GITHUB_PAT,
@@ -1702,12 +1928,13 @@ export const createSandboxService = (input: {
               pullRequestBody: `Automated sandbox verification run ${sandboxRunId}.`,
             } satisfies DeliveryBranchPlan),
           baseCommitSha,
-        );
-        const approvedTechRevision = await input.db.query.featureTechRevisionsTable.findFirst({
+        )
+          : { bootstrappedDefaultBranch: false, commitSha: headCommitSha, pullRequestUrl: null };
+        const approvedTechRevision = run.kind === "verify" ? await input.db.query.featureTechRevisionsTable.findFirst({
           where: eq(featureTechRevisionsTable.featureId, run.featureId!),
           orderBy: [desc(featureTechRevisionsTable.version)],
-        });
-        if (approvedTechRevision) {
+        }) : null;
+        if (run.kind === "verify" && approvedTechRevision) {
           await input.taskPlanningService.createImplementationRecord(
             project.ownerUserId,
             run.featureId!,
@@ -1716,7 +1943,7 @@ export const createSandboxService = (input: {
             sandboxRunId,
           );
         }
-        if (run.taskPlanningSessionId) {
+        if (run.kind === "verify" && run.taskPlanningSessionId) {
           await input.db
             .update(featureDeliveryTasksTable)
             .set({
@@ -1727,21 +1954,24 @@ export const createSandboxService = (input: {
         }
         await this.updateRunState(sandboxRunId, {
           status: "succeeded",
-          outcome: "verification_passed",
+          outcome: run.kind === "verify" ? "verification_passed" : "no_op",
           headCommitSha: publishResult.commitSha ?? headCommitSha,
           pullRequestUrl: publishResult.pullRequestUrl,
+          branchName: run.branchName ?? null,
           completedAt: new Date(),
         });
         runFinalized = true;
         await this.appendEvent(
           sandboxRunId,
           "info",
-          "verified",
-          publishResult.pullRequestUrl
-            ? "Verification completed and pull request created."
-            : publishResult.bootstrappedDefaultBranch
-              ? "Verification completed and pushed the initial commit to the default branch."
-            : "Verification completed with no pull request because the workspace was unchanged.",
+          run.kind === "verify" ? "verified" : "project_review_completed",
+          run.kind === "verify"
+            ? publishResult.pullRequestUrl
+              ? "Verification completed and pull request created."
+              : publishResult.bootstrappedDefaultBranch
+                ? "Verification completed and pushed the initial commit to the default branch."
+                : "Verification completed with no pull request because the workspace was unchanged."
+            : "Project review completed successfully.",
         );
         return;
       }
@@ -1979,8 +2209,16 @@ export const createSandboxService = (input: {
     }
   },
 
+  async cleanupTransientGitMessageFiles(workspaceDir: string) {
+    await Promise.all(
+      transientGitMessageFiles.map((fileName) =>
+        rm(path.join(workspaceDir, ".git", fileName), { force: true }).catch(() => undefined),
+      ),
+    );
+  },
+
   async writeQuayboardDocs(projectId: string, workspaceDir: string) {
-    const [project, onePager, milestoneDocs] = await Promise.all([
+    const [project, onePager, milestones] = await Promise.all([
       input.db.query.projectsTable.findFirst({
         where: eq(projectsTable.id, projectId),
       }),
@@ -1988,38 +2226,124 @@ export const createSandboxService = (input: {
         where: and(eq(onePagersTable.projectId, projectId), eq(onePagersTable.isCanonical, true)),
         orderBy: [desc(onePagersTable.version)],
       }),
-      input.db
-        .select({
-          milestoneId: milestonesTable.id,
-          position: milestonesTable.position,
-          title: milestonesTable.title,
-          markdown: milestoneDesignDocsTable.markdown,
-        })
-        .from(milestoneDesignDocsTable)
-        .innerJoin(milestonesTable, eq(milestonesTable.id, milestoneDesignDocsTable.milestoneId))
-        .where(
-          and(
-            eq(milestonesTable.projectId, projectId),
-            eq(milestoneDesignDocsTable.isCanonical, true),
-          ),
-        )
-        .orderBy(asc(milestonesTable.position)),
+      input.db.query.milestonesTable.findMany({
+        where: eq(milestonesTable.projectId, projectId),
+        orderBy: [asc(milestonesTable.position)],
+      }),
     ]);
+    const features = project
+      ? await input.featureService.list(project.ownerUserId, projectId)
+      : { features: [] };
+    const milestoneDocs =
+      milestones.length === 0
+        ? []
+        : await input.db.query.milestoneDesignDocsTable.findMany({
+            where: and(
+              eq(milestoneDesignDocsTable.isCanonical, true),
+              inArray(
+                milestoneDesignDocsTable.milestoneId,
+                milestones.map((milestone) => milestone.id),
+              ),
+            ),
+          });
 
     const docsRoot = path.join(workspaceDir, "docs", "quayboard");
     const milestonesRoot = path.join(docsRoot, "milestones");
-    await mkdir(milestonesRoot, { recursive: true });
+    const userDocsRoot = path.join(docsRoot, "user");
+    const archDocsRoot = path.join(docsRoot, "architecture");
+    await Promise.all([
+      mkdir(milestonesRoot, { recursive: true }),
+      mkdir(userDocsRoot, { recursive: true }),
+      mkdir(archDocsRoot, { recursive: true }),
+    ]);
 
     const overviewPath = "overview.md";
-    const milestoneLines = milestoneDocs.map(
+    const milestoneById = new Map(milestones.map((milestone) => [milestone.id, milestone]));
+    const canonicalMilestoneDocs = milestoneDocs
+      .map((doc) => {
+        const milestone = milestoneById.get(doc.milestoneId);
+        if (!milestone) {
+          return null;
+        }
+        return {
+          milestoneId: milestone.id,
+          position: milestone.position,
+          title: milestone.title,
+          markdown: doc.markdown,
+        };
+      })
+      .filter((doc): doc is NonNullable<typeof doc> => doc !== null)
+      .sort((left, right) => left.position - right.position);
+    const milestoneLines = canonicalMilestoneDocs.map(
       (doc) => `- [Milestone ${doc.position}: ${doc.title}](milestones/milestone-${doc.position}.md)`,
     );
+    const docExports = project
+      ? await Promise.all(
+          features.features.map(async (feature) => {
+            const tracks = await input.featureWorkstreamService.getTracks(
+              project.ownerUserId,
+              feature.id,
+            );
+            const milestone = milestoneById.get(feature.milestoneId);
+            const milestonePosition = milestone?.position ?? Number.MAX_SAFE_INTEGER;
+            const milestoneTitle = milestone?.title ?? feature.milestoneTitle;
+
+            return {
+              arch:
+                tracks.tracks.archDocs.status === "approved" &&
+                tracks.tracks.archDocs.headRevision
+                  ? {
+                      featureKey: feature.featureKey,
+                      milestonePosition,
+                      milestoneTitle,
+                      title: tracks.tracks.archDocs.headRevision.title,
+                      markdown: tracks.tracks.archDocs.headRevision.markdown,
+                    }
+                  : null,
+              user:
+                tracks.tracks.userDocs.status === "approved" &&
+                tracks.tracks.userDocs.headRevision
+                  ? {
+                      featureKey: feature.featureKey,
+                      milestonePosition,
+                      milestoneTitle,
+                      title: tracks.tracks.userDocs.headRevision.title,
+                      markdown: tracks.tracks.userDocs.headRevision.markdown,
+                    }
+                  : null,
+            };
+          }),
+        )
+      : [];
+    const compareFeatureDocs = (left: ExportedFeatureDoc, right: ExportedFeatureDoc) =>
+      left.milestonePosition - right.milestonePosition ||
+      left.featureKey.localeCompare(right.featureKey);
+    const exportedUserDocs = docExports
+      .map((doc) => doc.user)
+      .filter((doc): doc is ExportedFeatureDoc => doc !== null)
+      .sort(compareFeatureDocs);
+    const exportedArchDocs = docExports
+      .map((doc) => doc.arch)
+      .filter((doc): doc is ExportedFeatureDoc => doc !== null)
+      .sort(compareFeatureDocs);
+    const formatFeatureDocFileName = (doc: ExportedFeatureDoc, suffix: string) =>
+      `milestone-${doc.milestonePosition}-${sanitizeExportPathSegment(doc.featureKey)}-${suffix}.md`;
+    const userDocLines = exportedUserDocs.map((doc) => {
+      const fileName = formatFeatureDocFileName(doc, "user-docs");
+      return `- [Milestone ${doc.milestonePosition} · ${doc.featureKey} · ${doc.title}](${fileName})`;
+    });
+    const archDocLines = exportedArchDocs.map((doc) => {
+      const fileName = formatFeatureDocFileName(doc, "architecture");
+      return `- [Milestone ${doc.milestonePosition} · ${doc.featureKey} · ${doc.title}](${fileName})`;
+    });
     const indexContent = [
       `# Quayboard Planning Docs`,
       "",
       `Project: ${project?.name ?? projectId}`,
       "",
       "- [Overview](overview.md)",
+      "- [User Docs](user/README.md)",
+      "- [Architecture Docs](architecture/README.md)",
       ...milestoneLines,
       "",
       "These files are generated from Quayboard's canonical planning artifacts.",
@@ -2030,14 +2354,48 @@ export const createSandboxService = (input: {
       "",
       onePager?.markdown ?? "No canonical project overview was available when this run executed.",
     ].join("\n");
+    const userDocsIndexContent = [
+      "# Quayboard User Docs",
+      "",
+      exportedUserDocs.length > 0
+        ? userDocLines.join("\n")
+        : "No approved feature user documentation was available when this run executed.",
+    ].join("\n");
+    const archDocsIndexContent = [
+      "# Quayboard Architecture Docs",
+      "",
+      exportedArchDocs.length > 0
+        ? archDocLines.join("\n")
+        : "No approved feature architecture documentation was available when this run executed.",
+    ].join("\n");
 
     await writeFile(path.join(docsRoot, "README.md"), `${indexContent}\n`, "utf8");
     await writeFile(path.join(docsRoot, overviewPath), `${overviewContent}\n`, "utf8");
+    await writeFile(path.join(userDocsRoot, "README.md"), `${userDocsIndexContent}\n`, "utf8");
+    await writeFile(path.join(archDocsRoot, "README.md"), `${archDocsIndexContent}\n`, "utf8");
 
     await Promise.all(
-      milestoneDocs.map((doc) =>
+      canonicalMilestoneDocs.map((doc) =>
         writeFile(
           path.join(milestonesRoot, `milestone-${doc.position}.md`),
+          `${doc.markdown}\n`,
+          "utf8",
+        ),
+      ),
+    );
+    await Promise.all(
+      exportedUserDocs.map((doc) =>
+        writeFile(
+          path.join(userDocsRoot, formatFeatureDocFileName(doc, "user-docs")),
+          `${doc.markdown}\n`,
+          "utf8",
+        ),
+      ),
+    );
+    await Promise.all(
+      exportedArchDocs.map((doc) =>
+        writeFile(
+          path.join(archDocsRoot, formatFeatureDocFileName(doc, "architecture")),
           `${doc.markdown}\n`,
           "utf8",
         ),
@@ -2077,15 +2435,42 @@ export const createSandboxService = (input: {
           )
         : ["No explicit failing checks were returned by GitHub."];
 
+    const pendingLines =
+      ciStatus.checks
+        .filter((check) => check.status !== "completed" && check.status !== "success")
+        .map(
+          (check, index) =>
+            `${index + 1}. ${check.name}\nSource: ${check.source}\nStatus: ${check.status}\nWorkflow: ${check.workflowName ?? "n/a"}\nStarted: ${check.startedAt ?? "n/a"}\nLast Updated: ${check.lastUpdatedAt ?? "n/a"}\nDetails: ${check.detailsUrl ?? "n/a"}`,
+        ) ?? [];
+
+    const guidanceLines = ciStatus.isStale
+      ? [
+          "Pending checks have remained unchanged long enough to look stuck.",
+          "Read the workflow file to identify the exact CI command.",
+          "Reproduce the command locally with a timeout.",
+          "If tests appear to finish but the process does not exit, treat it as an open-handle or teardown problem.",
+          "Prefer the smallest fix that makes the CI command exit cleanly.",
+        ]
+      : [
+          "Repair only the CI issue described here and re-run the closest equivalent local checks before exiting.",
+        ];
+
     return [
       "# CI Failure Context",
       "",
       `Milestone: ${milestone.title}`,
       `Branch: ${buildMilestoneDeliveryBranchName(milestone)}`,
       `State: ${ciStatus.state}`,
+      `Stale Pending Detected: ${ciStatus.isStale ? "yes" : "no"}`,
+      "",
+      "Pending Checks:",
+      ...(pendingLines.length > 0 ? pendingLines : ["No pending checks were returned by GitHub."]),
       "",
       "Failures:",
       ...failureLines,
+      "",
+      "Repair Guidance:",
+      ...guidanceLines,
     ].join("\n");
   },
 
@@ -2200,6 +2585,7 @@ export const createSandboxService = (input: {
         pullRequestUrl: null,
       };
     }
+    await this.cleanupTransientGitMessageFiles(workspaceDir);
     await this.git(["commit", "-m", commitMessage], workspaceDir);
     await this.git(["push", "origin", `HEAD:${targetBranch}`], workspaceDir, [token]);
     const commitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);

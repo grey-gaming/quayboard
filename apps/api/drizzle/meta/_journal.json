@@ -183,6 +183,27 @@
       "when": 1760000025000,
       "tag": "0025_m8_ci_gate_counters",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1760000026000,
+      "tag": "0026_m9_project_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1760000027000,
+      "tag": "0027_m9_project_review_max_loops_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1760000028000,
+      "tag": "0028_m9_project_completed_state",
+      "breakpoints": true
     }
   ]
 }

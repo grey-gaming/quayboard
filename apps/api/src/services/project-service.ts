@@ -12,6 +12,8 @@ const toProject = (record: typeof projectsTable.$inferSelect): Project => ({
   name: record.name,
   description: record.description,
   state: record.state,
+  milestonePlanStatus: record.milestonePlanStatus,
+  milestonePlanFinalizedAt: record.milestonePlanFinalizedAt?.toISOString() ?? null,
   ownerUserId: record.ownerUserId,
   createdAt: record.createdAt.toISOString(),
   updatedAt: record.updatedAt.toISOString(),
@@ -19,6 +21,8 @@ const toProject = (record: typeof projectsTable.$inferSelect): Project => ({
 
 type ProjectPatch = {
   description?: string | null;
+  milestonePlanFinalizedAt?: Date | null;
+  milestonePlanStatus?: "open" | "finalized";
   name?: string;
   onePagerApprovedAt?: Date | null;
   state?: ProjectState;

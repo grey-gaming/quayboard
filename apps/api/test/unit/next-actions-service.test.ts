@@ -84,6 +84,12 @@ const makeServices = (overrides: {
   milestones?: ReturnType<typeof makeMilestone>[];
   features?: ReturnType<typeof makeFeature>[];
   designDoc?: object | null;
+  mapReview?: {
+    generatedAt: string | null;
+    reviewStatus: "not_started" | "passed" | "failed_first_pass" | "failed_needs_human";
+    reviewIssues: Array<{ action: string; hint: string }>;
+    reviewedAt: string | null;
+  };
 }) => {
   const card = { id: "card-1", selectedOptionId: "opt-1", customSelection: null, acceptedAt: "2026-01-01T00:00:00.000Z", recommendation: { id: "opt-1" } };
   const blueprint = { id: "bp-1", markdown: "# UX Spec" };
@@ -91,6 +97,7 @@ const makeServices = (overrides: {
   const milestones = overrides.milestones ?? [];
   const features = overrides.features ?? [];
   const designDoc = "designDoc" in overrides ? overrides.designDoc : null;
+  const mapReview = overrides.mapReview;
 
   return {
     artifactApprovalService: {
@@ -117,7 +124,7 @@ const makeServices = (overrides: {
       }),
     },
     milestoneService: {
-      list: vi.fn().mockResolvedValue({ milestones }),
+      list: vi.fn().mockResolvedValue({ milestones, ...(mapReview ? { mapReview } : {}) }),
       getCanonicalDesignDoc: vi.fn().mockResolvedValue(designDoc),
     },
     projectSetupService: {
@@ -530,6 +537,83 @@ describe("nextActionsService — milestone/feature routing", () => {
       expect(actions[0]?.href).toBe(
         `/projects/${PROJECT_ID}/develop?featureId=f-parent`,
       );
+    });
+  });
+
+  describe("post-milestone planning review", () => {
+    it("reruns milestone map review before finalizing the plan when all milestones are completed", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "completed", featureCount: 2, isActive: false, position: 1 }),
+        makeMilestone({ id: "m2", status: "completed", featureCount: 3, isActive: false, position: 2 }),
+      ];
+      const s = makeServices({
+        milestones,
+        features: [makeFeature("f1", "m1"), makeFeature("f2", "m2")],
+        mapReview: {
+          generatedAt: "2026-01-03T00:00:00.000Z",
+          reviewStatus: "not_started",
+          reviewIssues: [],
+          reviewedAt: null,
+        },
+      });
+      const projectReviewService = {
+        getPhase: vi.fn().mockResolvedValue({ finalized: false, latestStatus: null, latestSessionId: null, openFindingsCount: 0 }),
+      };
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+        projectReviewService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_map_review");
+    });
+
+    it("moves to plan finalization once the rerun milestone map review has passed", async () => {
+      const milestones = [
+        makeMilestone({ id: "m1", status: "completed", featureCount: 2, isActive: false, position: 1 }),
+      ];
+      const s = makeServices({
+        milestones,
+        features: [makeFeature("f1", "m1")],
+        mapReview: {
+          generatedAt: "2026-01-03T00:00:00.000Z",
+          reviewStatus: "passed",
+          reviewIssues: [],
+          reviewedAt: "2026-01-04T00:00:00.000Z",
+        },
+      });
+      const projectReviewService = {
+        getPhase: vi.fn().mockResolvedValue({ finalized: false, latestStatus: null, latestSessionId: null, openFindingsCount: 0 }),
+      };
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+        projectReviewService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("milestone_plan_finalize");
     });
   });
 });

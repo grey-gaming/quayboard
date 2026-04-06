@@ -181,6 +181,13 @@ export const buildImplementationTertiaryItems = (
   },
   {
     kind: "link",
+    key: "develop-review",
+    label: "Project Review",
+    to: `/projects/${project.id}/develop/review`,
+    end: true,
+  },
+  {
+    kind: "link",
     key: "develop-debug",
     label: "Context Debug",
     to: `/projects/${project.id}/develop/debug`,

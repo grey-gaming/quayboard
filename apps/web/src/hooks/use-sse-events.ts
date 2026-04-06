@@ -11,7 +11,7 @@ type JobUpdatedEventPayload = {
 
 type ProjectUpdatedEventPayload = {
   projectId?: string;
-  resource?: "feature" | "milestone" | "phase_gates";
+  resource?: "feature" | "milestone" | "phase_gates" | "project_review";
 };
 
 type SandboxUpdatedEventPayload = {
@@ -45,7 +45,8 @@ const isProjectUpdatedEventPayload = (value: unknown): value is ProjectUpdatedEv
     ("resource" in candidate
       ? candidate.resource === "feature" ||
         candidate.resource === "milestone" ||
-        candidate.resource === "phase_gates"
+        candidate.resource === "phase_gates" ||
+        candidate.resource === "project_review"
       : true)
   );
 };
@@ -90,6 +91,8 @@ export const useSseEvents = (projectId?: string) => {
         ["project", activeProjectId, "features"],
         ["project", activeProjectId, "features-graph"],
         ["project", activeProjectId, "features-rollup"],
+        ["project", activeProjectId, "project-reviews"],
+        ["project", activeProjectId, "project-review-latest"],
       ] as const;
 
       await Promise.all(

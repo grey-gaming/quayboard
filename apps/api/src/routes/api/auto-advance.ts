@@ -33,6 +33,7 @@ const autoAdvanceSessionJsonSchema = {
     creativityMode: { type: "string" },
     retryCount: { type: "integer" },
     reviewCount: { type: "integer" },
+    projectReviewCount: { type: "integer" },
     milestoneRepairCount: { type: "integer" },
     ciFixCount: { type: "integer" },
     ciWaitWindowCount: { type: "integer" },
@@ -56,6 +57,7 @@ const autoAdvanceSessionJsonSchema = {
     "creativityMode",
     "retryCount",
     "reviewCount",
+    "projectReviewCount",
     "milestoneRepairCount",
     "ciFixCount",
     "ciWaitWindowCount",
@@ -73,7 +75,9 @@ const autoAdvanceStatusResponseJsonSchema = {
   type: "object",
   properties: {
     session: {
-      anyOf: [{ type: "null" }, autoAdvanceSessionJsonSchema],
+      type: ["object", "null"],
+      properties: autoAdvanceSessionJsonSchema.properties,
+      additionalProperties: true,
     },
     nextStep: { type: ["string", "null"] },
   },

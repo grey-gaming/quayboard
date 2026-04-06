@@ -1,4 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { execFileMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(),
@@ -8,7 +12,11 @@ vi.mock("node:child_process", () => ({
   execFile: execFileMock,
 }));
 
-import { createSandboxService } from "../../src/services/sandbox-service.js";
+import {
+  createSandboxService,
+  determineNetworkModeForRun,
+  serializeProjectReviewFixFindings,
+} from "../../src/services/sandbox-service.js";
 
 const makeExecError = (message: string, stderr = "") => {
   const error = new Error(message) as Error & { stderr?: string; stdout?: string };
@@ -23,6 +31,7 @@ const makeService = (overrides: {
   dockerService?: Record<string, unknown>;
   executionSettingsService?: Record<string, unknown>;
   featureService?: Record<string, unknown>;
+  featureWorkstreamService?: Record<string, unknown>;
   githubService?: Record<string, unknown>;
   taskPlanningService?: Record<string, unknown>;
 } = {}) =>
@@ -56,7 +65,7 @@ const makeService = (overrides: {
     featureService: (overrides.featureService ?? {
       get: vi.fn(),
     }) as never,
-    featureWorkstreamService: {} as never,
+    featureWorkstreamService: (overrides.featureWorkstreamService ?? {}) as never,
     githubService: (overrides.githubService ?? {
       branchExists: vi.fn().mockResolvedValue(false),
       createPullRequest: vi.fn().mockResolvedValue({ url: "https://github.com/acme/repo/pull/1" }),
@@ -72,8 +81,109 @@ const makeService = (overrides: {
   });
 
 describe("sandbox service", () => {
+  const tempDirs: string[] = [];
+
   beforeEach(() => {
     execFileMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
+  });
+
+  it("uses internet-capable networking for implement runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "implement",
+      }),
+    ).toBe("bridge");
+  });
+
+  it("uses internet-capable networking for verify runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "verify",
+      }),
+    ).toBe("bridge");
+  });
+
+  it("uses internet-capable networking for project fix runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "project_fix",
+      }),
+    ).toBe("bridge");
+  });
+
+  it("preserves host networking for delivery runs that use a local model endpoint", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "http://127.0.0.1:11434/v1",
+        egressPolicy: "locked",
+        provider: "ollama",
+        runKind: "implement",
+      }),
+    ).toBe("host");
+  });
+
+  it("keeps non-delivery runs locked when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "project_review",
+      }),
+    ).toBe("none");
+  });
+
+  it("serializes only still-open findings for project fix runs", () => {
+    expect(
+      JSON.parse(
+        serializeProjectReviewFixFindings([
+          {
+            id: "finding-open",
+            category: "tests",
+            severity: "high",
+            finding: "Open issue",
+            evidence: [{ path: "src/open.ts" }],
+            whyItMatters: "Still failing.",
+            recommendedImprovement: "Fix it.",
+            status: "open",
+          },
+          {
+            id: "finding-ignored",
+            category: "documentation",
+            severity: "low",
+            finding: "Ignored issue",
+            evidence: [{ path: "README.md" }],
+            whyItMatters: "Minor.",
+            recommendedImprovement: "Optional.",
+            status: "ignored",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        id: "finding-open",
+        category: "tests",
+        severity: "high",
+        finding: "Open issue",
+        evidence: [{ path: "src/open.ts" }],
+        whyItMatters: "Still failing.",
+        recommendedImprovement: "Fix it.",
+        status: "open",
+      },
+    ]);
   });
 
   it("falls back to a branchless clone when the configured default branch does not exist yet", async () => {
@@ -272,6 +382,65 @@ describe("sandbox service", () => {
     expect(result.pullRequestUrl).toBe("https://github.com/acme/repo/pull/7");
   });
 
+  it("removes transient git message files before committing publish changes", async () => {
+    const service = makeService({
+      db: {
+        query: {
+          featureCasesTable: { findFirst: vi.fn().mockResolvedValue(null) },
+          featureRevisionsTable: { findFirst: vi.fn().mockResolvedValue(null) },
+          milestonesTable: { findFirst: vi.fn().mockResolvedValue(null) },
+        },
+      },
+    });
+    const cleanupTransientGitMessageFiles = vi.fn().mockResolvedValue(undefined);
+    const git = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === "branch") {
+        return "quayboard/m-001/abcd1234";
+      }
+      if (args[0] === "rev-parse") {
+        return "commit-sha";
+      }
+      return "";
+    });
+
+    service.hasWorkingTreeChanges = vi.fn().mockResolvedValue(true);
+    service.hasStagedChanges = vi.fn().mockResolvedValue(true);
+    service.cleanupTransientGitMessageFiles = cleanupTransientGitMessageFiles;
+    service.git = git;
+    service.updateRunState = vi.fn().mockResolvedValue(undefined);
+
+    await service.publishPullRequestIfNeeded(
+      "/tmp/workspace",
+      {
+        owner: "acme",
+        name: "repo",
+        repoUrl: "https://github.com/acme/repo",
+      } as never,
+      "github_pat_secret",
+      "Implement F-001: Counter UI",
+      "run-1",
+      {
+        baseBranchName: "main",
+        cloneBranchName: "quayboard/m-001/abcd1234",
+        targetBranchName: "quayboard/m-001/abcd1234",
+        pullRequestTitle: "Deliver milestone",
+        pullRequestBody: "body",
+      },
+      "base-sha",
+    );
+
+    expect(cleanupTransientGitMessageFiles).toHaveBeenCalledWith("/tmp/workspace");
+    expect(git).toHaveBeenCalledWith(
+      ["commit", "-m", "Implement F-001: Counter UI"],
+      "/tmp/workspace",
+    );
+    const commitCallIndex = git.mock.calls.findIndex((call) => call[0][0] === "commit");
+    expect(commitCallIndex).toBeGreaterThanOrEqual(0);
+    expect(cleanupTransientGitMessageFiles.mock.invocationCallOrder[0]).toBeLessThan(
+      git.mock.invocationCallOrder[commitCallIndex],
+    );
+  });
+
   it("creates a fresh fix branch from the default branch after a milestone has been merged", async () => {
     const githubService = {
       branchExists: vi.fn().mockResolvedValue(false),
@@ -438,6 +607,177 @@ describe("sandbox service", () => {
     expect(pruneManagedResources).toHaveBeenCalledWith({
       dockerHost: null,
     });
+  });
+
+  it("exports approved feature user and architecture docs into the target repository", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "qb-doc-export-"));
+    tempDirs.push(tempDir);
+
+    const service = makeService({
+      db: {
+        query: {
+          projectsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: "project-1",
+              name: "Demo Project",
+              ownerUserId: "user-1",
+            }),
+          },
+          onePagersTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              markdown: "# Overview\n\nProject summary.",
+            }),
+          },
+          milestonesTable: {
+            findMany: vi.fn().mockResolvedValue([
+              { id: "milestone-2", position: 2, title: "Polish" },
+              { id: "milestone-1", position: 1, title: "Foundations" },
+            ]),
+          },
+          milestoneDesignDocsTable: {
+            findMany: vi.fn().mockResolvedValue([
+              { milestoneId: "milestone-2", markdown: "# Milestone 2\n\nPolish work." },
+              { milestoneId: "milestone-1", markdown: "# Milestone 1\n\nFoundations work." },
+            ]),
+          },
+        },
+      },
+      featureService: {
+        list: vi.fn().mockResolvedValue({
+          features: [
+            {
+              id: "feature-2",
+              featureKey: "F-002",
+              milestoneId: "milestone-2",
+              milestoneTitle: "Polish",
+              headRevision: { title: "Checkout Polish" },
+            },
+            {
+              id: "feature-1",
+              featureKey: "F-001",
+              milestoneId: "milestone-1",
+              milestoneTitle: "Foundations",
+              headRevision: { title: "Auth Setup" },
+            },
+            {
+              id: "feature-3",
+              featureKey: "F-003",
+              milestoneId: "milestone-1",
+              milestoneTitle: "Foundations",
+              headRevision: { title: "Draft Docs" },
+            },
+          ],
+        }),
+      },
+      featureWorkstreamService: {
+        getTracks: vi.fn().mockImplementation(async (_ownerUserId: string, featureId: string) => {
+          if (featureId === "feature-1") {
+            return {
+              tracks: {
+                userDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Auth Setup User Documentation",
+                    markdown: "# Auth Docs\n\nHow to use auth.",
+                  },
+                },
+                archDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Auth Setup Architecture Documentation",
+                    markdown: "# Auth Architecture\n\nHow auth is wired.",
+                  },
+                },
+              },
+            };
+          }
+
+          if (featureId === "feature-2") {
+            return {
+              tracks: {
+                userDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Checkout Polish User Documentation",
+                    markdown: "# Checkout Docs\n\nCheckout flow.",
+                  },
+                },
+                archDocs: {
+                  status: "approved",
+                  headRevision: {
+                    title: "Checkout Polish Architecture Documentation",
+                    markdown: "# Checkout Architecture\n\nCheckout boundaries.",
+                  },
+                },
+              },
+            };
+          }
+
+          return {
+            tracks: {
+              userDocs: {
+                status: "draft",
+                headRevision: {
+                  title: "Draft User Docs",
+                  markdown: "# Draft",
+                },
+              },
+              archDocs: {
+                status: "draft",
+                headRevision: {
+                  title: "Draft Architecture Docs",
+                  markdown: "# Draft",
+                },
+              },
+            },
+          };
+        }),
+      },
+    });
+
+    await service.writeQuayboardDocs("project-1", tempDir);
+
+    const rootIndex = await readFile(path.join(tempDir, "docs/quayboard/README.md"), "utf8");
+    const userIndex = await readFile(path.join(tempDir, "docs/quayboard/user/README.md"), "utf8");
+    const archIndex = await readFile(
+      path.join(tempDir, "docs/quayboard/architecture/README.md"),
+      "utf8",
+    );
+    const userFiles = await readdir(path.join(tempDir, "docs/quayboard/user"));
+    const archFiles = await readdir(path.join(tempDir, "docs/quayboard/architecture"));
+
+    expect(rootIndex).toContain("- [User Docs](user/README.md)");
+    expect(rootIndex).toContain("- [Architecture Docs](architecture/README.md)");
+    expect(rootIndex).toContain("- [Milestone 1: Foundations](milestones/milestone-1.md)");
+    expect(rootIndex).toContain("- [Milestone 2: Polish](milestones/milestone-2.md)");
+
+    expect(userIndex).toContain("milestone-1-f-001-user-docs.md");
+    expect(userIndex).toContain("milestone-2-f-002-user-docs.md");
+    expect(userIndex).not.toContain("F-003");
+    expect(archIndex).toContain("milestone-1-f-001-architecture.md");
+    expect(archIndex).toContain("milestone-2-f-002-architecture.md");
+    expect(archIndex).not.toContain("F-003");
+
+    expect(userFiles.sort()).toEqual([
+      "README.md",
+      "milestone-1-f-001-user-docs.md",
+      "milestone-2-f-002-user-docs.md",
+    ]);
+    expect(archFiles.sort()).toEqual([
+      "README.md",
+      "milestone-1-f-001-architecture.md",
+      "milestone-2-f-002-architecture.md",
+    ]);
+
+    await expect(
+      readFile(path.join(tempDir, "docs/quayboard/user/milestone-1-f-001-user-docs.md"), "utf8"),
+    ).resolves.toContain("# Auth Docs");
+    await expect(
+      readFile(
+        path.join(tempDir, "docs/quayboard/architecture/milestone-2-f-002-architecture.md"),
+        "utf8",
+      ),
+    ).resolves.toContain("# Checkout Architecture");
   });
 
 });
