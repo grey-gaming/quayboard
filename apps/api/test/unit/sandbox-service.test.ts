@@ -14,6 +14,7 @@ vi.mock("node:child_process", () => ({
 
 import {
   createSandboxService,
+  determineNetworkModeForRun,
   serializeProjectReviewFixFindings,
 } from "../../src/services/sandbox-service.js";
 
@@ -88,6 +89,50 @@ describe("sandbox service", () => {
 
   afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
+  });
+
+  it("uses internet-capable networking for implement runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "implement",
+      }),
+    ).toBe("bridge");
+  });
+
+  it("uses internet-capable networking for verify runs even when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "verify",
+      }),
+    ).toBe("bridge");
+  });
+
+  it("preserves host networking for delivery runs that use a local model endpoint", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "http://127.0.0.1:11434/v1",
+        egressPolicy: "locked",
+        provider: "ollama",
+        runKind: "implement",
+      }),
+    ).toBe("host");
+  });
+
+  it("keeps non-delivery runs locked when project egress is locked", () => {
+    expect(
+      determineNetworkModeForRun({
+        baseUrl: "https://api.openai.com/v1",
+        egressPolicy: "locked",
+        provider: "openai",
+        runKind: "project_review",
+      }),
+    ).toBe("none");
   });
 
   it("serializes only still-open findings for project fix runs", () => {

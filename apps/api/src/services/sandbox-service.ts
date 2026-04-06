@@ -302,26 +302,39 @@ const isLocalHostName = (hostname: string) =>
   hostname === "::1" ||
   hostname === "host.docker.internal";
 
-const determineNetworkModeForModel = (
+const isDeliveryRunKind = (
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix",
+) => runKind === "implement" || runKind === "verify";
+
+export const determineNetworkModeForRun = (input: {
+  baseUrl: string | null;
+  egressPolicy: "allowlisted" | "locked";
   provider: ProviderDefinition["provider"],
-  baseUrl: string | null,
-  egressPolicy: "allowlisted" | "locked",
-) => {
-  if (!baseUrl) {
-    return "none" as const;
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix";
+}) => {
+  if (!input.baseUrl) {
+    return isDeliveryRunKind(input.runKind) ? ("bridge" as const) : ("none" as const);
   }
 
   try {
-    const url = new URL(baseUrl);
+    const url = new URL(input.baseUrl);
     const isLocal = isLocalHostName(url.hostname);
 
     if (isLocal) {
       return "host" as const;
     }
 
-    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+    if (isDeliveryRunKind(input.runKind)) {
+      return "bridge" as const;
+    }
+
+    return input.egressPolicy === "locked" ? ("none" as const) : ("bridge" as const);
   } catch {
-    return egressPolicy === "locked" ? "none" as const : "bridge" as const;
+    if (isDeliveryRunKind(input.runKind)) {
+      return "bridge" as const;
+    }
+
+    return input.egressPolicy === "locked" ? ("none" as const) : ("bridge" as const);
   }
 };
 
@@ -1598,11 +1611,12 @@ export const createSandboxService = (input: {
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
       const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
-      const networkMode = determineNetworkModeForModel(
-        llmDefinition.provider,
-        llmDefinition.baseUrl,
-        sandboxConfig.egressPolicy,
-      );
+      const networkMode = determineNetworkModeForRun({
+        baseUrl: llmDefinition.baseUrl,
+        egressPolicy: sandboxConfig.egressPolicy,
+        provider: llmDefinition.provider,
+        runKind: run.kind,
+      });
       const sandboxModelBaseUrl = normalizeModelBaseUrl(
         llmDefinition.provider,
         llmDefinition.baseUrl,

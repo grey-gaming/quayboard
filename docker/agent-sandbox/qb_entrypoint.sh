@@ -76,6 +76,12 @@ Verification mode:
 - Run the project's relevant tests, type checks, and build commands.
 - Keep any fixes narrow and tied to the requested implementation.
 - If the requested implementation depends on small adjacent code or documentation touch-ups to be coherent and verifiable, make them.
+- Prefer existing repo dependencies and platform APIs before adding new third-party packages.
+- Do not rely on model memory for package names or versions.
+- When you need to add or upgrade a package, query the relevant package registry or package-manager metadata first and use the latest stable non-prerelease release.
+- If the touched area depends on an outdated package that must change for the requested implementation to work safely, you may upgrade that package in the same run.
+- If version lookup or package download fails, stop and report the failure instead of guessing a version.
+- If install output shows deprecation, vulnerability, or obvious safety warnings for the chosen package, prefer a safer current alternative when feasible.
 - Do not expand product scope, add unrelated features, or start broader cleanup work.
 EOF
 fi
@@ -87,6 +93,12 @@ Implementation mode:
 - Follow the assigned implementation closely, but do not stop at an artificially narrow file boundary when a small adjacent integration update is required to complete the change cleanly.
 - You may add or update relevant user-facing documentation or architecture documentation when the implemented behavior, wiring, or boundary changes would otherwise leave the repository misleading or incomplete.
 - Keep documentation updates grounded in behavior that is actually implemented or touched in this run.
+- Prefer existing repo dependencies and platform APIs before adding new third-party packages.
+- Do not rely on model memory for package names or versions.
+- When you need to add or upgrade a package, query the relevant package registry or package-manager metadata first and use the latest stable non-prerelease release.
+- If the touched area depends on an outdated package that must change for the requested implementation to work safely, you may upgrade that package in the same run.
+- If version lookup or package download fails, stop and report the failure instead of guessing a version.
+- If install output shows deprecation, vulnerability, or obvious safety warnings for the chosen package, prefer a safer current alternative when feasible.
 - Do not invent new features, speculative behavior, or unrelated refactors.
 EOF
 fi

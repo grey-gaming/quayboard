@@ -537,7 +537,7 @@ export const ProjectSetupPage = () => {
         <Card surface="panel">
           <SectionHeader
             title="Sandbox Defaults"
-            summary="Define the project-level runtime limits Quayboard should use during execution. Sandbox verification checks that Docker can start a minimal container; the execution runner image itself is configured separately in instance settings."
+            summary="Define the project-level runtime limits Quayboard should use during execution. Sandbox verification checks that Docker can start a minimal container; it does not verify outbound dependency access. Develop implementation and verification runs currently use internet access for dependency lookup and install even if this project is saved as locked."
             docs={[
               { label: "First install", to: "/docs/first-install" },
               { label: "Planning workflow", to: "/docs/planning-workflow" },
@@ -586,7 +586,8 @@ export const ProjectSetupPage = () => {
               <Link className="font-medium text-accent hover:text-foreground" to="/settings/execution">
                 Execution Settings
               </Link>
-              .
+              . The saved egress policy and allowlist are retained for project setup, but current
+              Develop implement and verify runs do not enforce them.
             </Alert>
             <div className="flex flex-wrap gap-2">
               <Button

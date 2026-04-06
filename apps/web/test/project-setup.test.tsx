@@ -269,6 +269,16 @@ describe("project setup page", () => {
     expect(screen.getAllByText("Model Configuration").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sandbox Defaults").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Evidence And Documentation").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /Develop implementation and verification runs currently use internet access for dependency lookup and install even if this project is saved as locked\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /The saved egress policy and allowlist are retained for project setup, but current Develop implement and verify runs do not enforce them\./,
+      ),
+    ).toBeTruthy();
     expect(screen.getAllByRole("link", { name: "Planning workflow" })[0]?.getAttribute("href")).toBe(
       "/docs/planning-workflow",
     );
