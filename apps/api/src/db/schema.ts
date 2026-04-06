@@ -1506,7 +1506,7 @@ export const projectReviewSessionsTable = pgTable(
       .notNull()
       .$type<(typeof projectReviewSessionStatusValues)[number]>(),
     loopCount: integer("loop_count").notNull().default(0),
-    maxLoops: integer("max_loops").notNull().default(3),
+    maxLoops: integer("max_loops").notNull().default(5),
     autoApplyFixes: boolean("auto_apply_fixes").notNull().default(true),
     branchName: text("branch_name"),
     pullRequestUrl: text("pull_request_url"),

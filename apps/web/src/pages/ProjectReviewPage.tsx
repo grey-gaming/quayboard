@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
@@ -8,6 +9,7 @@ import { Alert } from "../components/ui/Alert.js";
 import { Badge } from "../components/ui/Badge.js";
 import { Button } from "../components/ui/Button.js";
 import { Card } from "../components/ui/Card.js";
+import { Input } from "../components/ui/Input.js";
 import { Spinner } from "../components/ui/Spinner.js";
 import { useProjectQuery } from "../hooks/use-projects.js";
 import {
@@ -29,6 +31,7 @@ export const ProjectReviewPage = () => {
   const reopenMutation = useReopenMilestonePlanMutation(id);
   const startMutation = useStartProjectReviewMutation(id);
   const retryMutation = useRetryProjectReviewFixesMutation(id);
+  const [maxLoops, setMaxLoops] = useState("5");
 
   useSseEvents(id);
 
@@ -102,12 +105,30 @@ export const ProjectReviewPage = () => {
           <Card surface="panel">
             <p className="qb-meta-label">Run Controls</p>
             <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Review automation</p>
+            <div className="mt-4">
+              <label className="block text-xs font-medium uppercase tracking-[0.16em] text-secondary" htmlFor="project-review-max-loops">
+                Max loops
+              </label>
+              <Input
+                id="project-review-max-loops"
+                min={1}
+                step={1}
+                type="number"
+                value={maxLoops}
+                onChange={(event) => setMaxLoops(event.target.value)}
+              />
+            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 disabled={
                   projectQuery.data.milestonePlanStatus !== "finalized" || startMutation.isPending
                 }
-                onClick={() => startMutation.mutate()}
+                onClick={() =>
+                  startMutation.mutate({
+                    maxLoops: Number.parseInt(maxLoops, 10) || 5,
+                    trigger: "manual",
+                  })
+                }
                 variant="primary"
               >
                 Run project review
@@ -118,7 +139,13 @@ export const ProjectReviewPage = () => {
                   (latestSession.status !== "needs_fixes" && latestSession.status !== "failed") ||
                   retryMutation.isPending
                 }
-                onClick={() => latestSession && retryMutation.mutate(latestSession.id)}
+                onClick={() =>
+                  latestSession &&
+                  retryMutation.mutate({
+                    reviewId: latestSession.id,
+                    maxLoops: Number.parseInt(maxLoops, 10) || latestSession.maxLoops,
+                  })
+                }
                 variant="secondary"
               >
                 Retry fixes

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   projectReviewDetailResponseSchema,
   projectReviewListResponseSchema,
+  retryProjectReviewFixesRequestSchema,
   startProjectReviewRequestSchema,
 } from "@quayboard/shared";
 
@@ -24,6 +25,23 @@ const reviewParamsJsonSchema = {
     id: { type: "string", format: "uuid" },
   },
   required: ["id"],
+  additionalProperties: false,
+} as const;
+
+const startProjectReviewBodyJsonSchema = {
+  type: "object",
+  properties: {
+    trigger: { type: "string", enum: ["manual", "auto_advance"] },
+    maxLoops: { type: "integer", minimum: 1 },
+  },
+  additionalProperties: false,
+} as const;
+
+const retryProjectReviewBodyJsonSchema = {
+  type: "object",
+  properties: {
+    maxLoops: { type: "integer", minimum: 1 },
+  },
   additionalProperties: false,
 } as const;
 
@@ -84,15 +102,18 @@ export const projectReviewRoutes =
       {
         schema: {
           params: projectParamsJsonSchema,
+          body: startProjectReviewBodyJsonSchema,
         },
       },
       async (request, reply) => {
         try {
           const projectId = (request.params as { id: string }).id;
+          const payload = startProjectReviewRequestSchema.parse(request.body ?? {});
           await services.projectReviewService.startReview(
             request.user!.id,
             projectId,
-            startProjectReviewRequestSchema.parse(request.body ?? {}).trigger,
+            payload.trigger,
+            payload.maxLoops,
           );
           publishProjectUpdate(services, request.user!.id, projectId);
           return projectReviewDetailResponseSchema.parse(
@@ -153,12 +174,18 @@ export const projectReviewRoutes =
       {
         schema: {
           params: reviewParamsJsonSchema,
+          body: retryProjectReviewBodyJsonSchema,
         },
       },
       async (request, reply) => {
         try {
           const reviewId = (request.params as { id: string }).id;
-          const result = await services.projectReviewService.retryFixes(request.user!.id, reviewId);
+          const payload = retryProjectReviewFixesRequestSchema.parse(request.body ?? {});
+          const result = await services.projectReviewService.retryFixes(
+            request.user!.id,
+            reviewId,
+            payload.maxLoops,
+          );
           publishProjectUpdate(services, request.user!.id, result.session!.projectId);
           return projectReviewDetailResponseSchema.parse(result);
         } catch (error) {

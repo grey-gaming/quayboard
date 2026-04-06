@@ -52,7 +52,8 @@ export const useStartProjectReviewMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => api.startProjectReview(projectId),
+    mutationFn: (payload?: { trigger?: "manual" | "auto_advance"; maxLoops?: number }) =>
+      api.startProjectReview(projectId, payload),
     onSuccess: () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "project-reviews"] }),
@@ -69,7 +70,8 @@ export const useRetryProjectReviewFixesMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (reviewId: string) => api.retryProjectReviewFixes(reviewId),
+    mutationFn: ({ maxLoops, reviewId }: { reviewId: string; maxLoops?: number }) =>
+      api.retryProjectReviewFixes(reviewId, { maxLoops }),
     onSuccess: () => {
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ["project", projectId, "project-reviews"] }),

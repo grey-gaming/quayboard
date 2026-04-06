@@ -124,10 +124,13 @@ export type ProjectReviewDetailResponse = z.infer<typeof projectReviewDetailResp
 
 export const startProjectReviewRequestSchema = z.object({
   trigger: z.enum(["manual", "auto_advance"]).default("manual"),
+  maxLoops: z.number().int().positive().default(5),
 });
 export type StartProjectReviewRequest = z.infer<typeof startProjectReviewRequestSchema>;
 
-export const retryProjectReviewFixesRequestSchema = z.object({});
+export const retryProjectReviewFixesRequestSchema = z.object({
+  maxLoops: z.number().int().positive().optional(),
+});
 export type RetryProjectReviewFixesRequest = z.infer<typeof retryProjectReviewFixesRequestSchema>;
 
 export const projectReviewPhaseSchema = z.object({

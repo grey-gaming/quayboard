@@ -34,6 +34,7 @@ const ACTIVE_SESSION_STATUSES = [
 ] as const;
 
 const PROJECT_REVIEW_FIX_BRANCH = "quayboard/project-review-fixes";
+const DEFAULT_PROJECT_REVIEW_MAX_LOOPS = 5;
 
 type ParsedReviewPayload = {
   biggestRisks: string[];
@@ -415,7 +416,12 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     return updatedAttempt;
   },
 
-  async startReview(ownerUserId: string, projectId: string, _trigger: "manual" | "auto_advance" = "manual") {
+  async startReview(
+    ownerUserId: string,
+    projectId: string,
+    _trigger: "manual" | "auto_advance" = "manual",
+    maxLoops = DEFAULT_PROJECT_REVIEW_MAX_LOOPS,
+  ) {
     const project = await this.assertOwnedProject(ownerUserId, projectId);
     if (project.milestonePlanStatus !== "finalized") {
       throw new HttpError(
@@ -442,7 +448,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
         triggeredByUserId: ownerUserId,
         status: "queued_review",
         loopCount: 0,
-        maxLoops: 3,
+        maxLoops,
         autoApplyFixes: true,
         startedAt: new Date(),
         createdAt: new Date(),
@@ -454,7 +460,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     return this.getSessionById(ownerUserId, session.id);
   },
 
-  async retryFixes(ownerUserId: string, sessionId: string) {
+  async retryFixes(ownerUserId: string, sessionId: string, maxLoops?: number) {
     const detail = await this.getSessionById(ownerUserId, sessionId);
     const session = detail.session;
     if (!session) {
@@ -463,12 +469,20 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
     if (session.status !== "needs_fixes" && session.status !== "failed") {
       throw new HttpError(409, "project_review_not_retryable", "This project review does not need a retry.");
     }
+    if (maxLoops !== undefined && maxLoops <= session.loopCount) {
+      throw new HttpError(
+        409,
+        "project_review_invalid_max_loops",
+        "maxLoops must be greater than the current completed loop count.",
+      );
+    }
 
     const nextSequence = (session.attempts.at(-1)?.sequence ?? 0) + 1;
     await db
       .update(projectReviewSessionsTable)
       .set({
         status: "queued_fix",
+        maxLoops: maxLoops ?? session.maxLoops,
         updatedAt: new Date(),
       })
       .where(eq(projectReviewSessionsTable.id, session.id));

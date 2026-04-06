@@ -1009,16 +1009,19 @@ export const api = {
       `/api/projects/${projectId}/project-reviews/latest`,
     );
   },
-  startProjectReview(projectId: string, payload?: { trigger?: "manual" | "auto_advance" }) {
+  startProjectReview(
+    projectId: string,
+    payload?: { trigger?: "manual" | "auto_advance"; maxLoops?: number },
+  ) {
     return apiRequest<ProjectReviewDetailResponse>(`/api/projects/${projectId}/project-reviews`, {
       method: "POST",
       body: JSON.stringify(payload ?? {}),
     });
   },
-  retryProjectReviewFixes(reviewId: string) {
+  retryProjectReviewFixes(reviewId: string, payload?: { maxLoops?: number }) {
     return apiRequest<ProjectReviewDetailResponse>(`/api/project-reviews/${reviewId}/retry-fixes`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload ?? {}),
     });
   },
 };
