@@ -127,6 +127,18 @@ const shutdownSandboxRunReason =
 const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] as const;
 const projectReviewFixBranchName = "quayboard/project-review-fixes";
 
+type ProjectReviewFixFindingRecord = Pick<
+  typeof projectReviewFindingsTable.$inferSelect,
+  | "id"
+  | "category"
+  | "severity"
+  | "finding"
+  | "evidence"
+  | "whyItMatters"
+  | "recommendedImprovement"
+  | "status"
+>;
+
 const isIsoString = (value: string) => !Number.isNaN(new Date(value).getTime());
 
 const toSandboxRunEvent = (
@@ -240,6 +252,26 @@ const getErrorText = (error: unknown) => {
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .join("\n");
 };
+
+export const serializeProjectReviewFixFindings = (
+  findings: ProjectReviewFixFindingRecord[],
+) =>
+  JSON.stringify(
+    findings
+      .filter((finding) => finding.status === "open")
+      .map((finding) => ({
+        id: finding.id,
+        category: finding.category,
+        severity: finding.severity,
+        finding: finding.finding,
+        evidence: Array.isArray(finding.evidence) ? finding.evidence : [],
+        whyItMatters: finding.whyItMatters,
+        recommendedImprovement: finding.recommendedImprovement,
+        status: finding.status,
+      })),
+    null,
+    2,
+  );
 
 const isMissingRemoteBranchError = (error: unknown, branch: string) => {
   const text = getErrorText(error);
@@ -619,20 +651,7 @@ export const createSandboxService = (input: {
 
     return {
       markdown: latestReviewAttempt.reportMarkdown,
-      findingsJson: JSON.stringify(
-        findings.map((finding) => ({
-          id: finding.id,
-          category: finding.category,
-          severity: finding.severity,
-          finding: finding.finding,
-          evidence: Array.isArray(finding.evidence) ? finding.evidence : [],
-          whyItMatters: finding.whyItMatters,
-          recommendedImprovement: finding.recommendedImprovement,
-          status: finding.status,
-        })),
-        null,
-        2,
-      ),
+      findingsJson: serializeProjectReviewFixFindings(findings),
     };
   },
 

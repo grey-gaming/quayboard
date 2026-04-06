@@ -35,6 +35,8 @@ const ACTIVE_SESSION_STATUSES = [
 
 const PROJECT_REVIEW_FIX_BRANCH = "quayboard/project-review-fixes";
 const DEFAULT_PROJECT_REVIEW_MAX_LOOPS = 5;
+const HIGH_ONLY_REMAINING_FIX_PASSES = 2;
+const blockingSeverities = new Set<ProjectReviewFinding["severity"]>(["critical", "high"]);
 
 type ParsedReviewPayload = {
   biggestRisks: string[];
@@ -184,6 +186,36 @@ const toFinding = (record: typeof projectReviewFindingsTable.$inferSelect) =>
     createdAt: record.createdAt.toISOString(),
     resolvedAt: record.resolvedAt?.toISOString() ?? null,
   });
+
+export const isProjectReviewHighOnlyPhase = (loopCount: number, maxLoops: number) =>
+  maxLoops - loopCount <= HIGH_ONLY_REMAINING_FIX_PASSES;
+
+export const partitionProjectReviewFindings = <
+  Finding extends Pick<ProjectReviewFinding, "severity">,
+>(
+  findings: Finding[],
+  highOnlyPhase: boolean,
+) => {
+  if (!highOnlyPhase) {
+    return {
+      blocking: findings,
+      ignored: [] as Finding[],
+    };
+  }
+
+  const blocking: Finding[] = [];
+  const ignored: Finding[] = [];
+
+  for (const finding of findings) {
+    if (blockingSeverities.has(finding.severity)) {
+      blocking.push(finding);
+    } else {
+      ignored.push(finding);
+    }
+  }
+
+  return { blocking, ignored };
+};
 
 const toSummary = (value: unknown): ProjectReviewAttemptSummary | null => {
   if (!value || typeof value !== "object") {
@@ -570,7 +602,29 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
       throw new Error(`Project review session ${attempt.projectReviewSessionId} not found.`);
     }
 
-    if (parsed.findings.length === 0) {
+    const highOnlyPhase = isProjectReviewHighOnlyPhase(session.loopCount, session.maxLoops);
+    const { blocking, ignored } = partitionProjectReviewFindings(parsed.findings, highOnlyPhase);
+
+    if (ignored.length > 0) {
+      await db
+        .update(projectReviewFindingsTable)
+        .set({
+          status: "ignored",
+          resolvedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(projectReviewFindingsTable.projectReviewAttemptId, attemptId),
+            inArray(
+              projectReviewFindingsTable.severity,
+              ignored.map((finding) => finding.severity),
+            ),
+            eq(projectReviewFindingsTable.status, "open"),
+          ),
+        );
+    }
+
+    if (blocking.length === 0) {
       await db
         .update(projectReviewSessionsTable)
         .set({
@@ -593,7 +647,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
           updatedAt: new Date(),
         })
         .where(eq(projectReviewSessionsTable.id, session.id));
-      return { clear: false, findingCount: parsed.findings.length, sessionId: session.id };
+      return { clear: false, findingCount: blocking.length, sessionId: session.id };
     }
 
     const nextSequence = attempt.sequence + 1;
@@ -611,7 +665,7 @@ export const createProjectReviewService = (db: AppDatabase, jobService: JobServi
       throw new Error(`Project ${attempt.projectId} not found.`);
     }
     await this.createAttempt(session.id, attempt.projectId, "fix", project.ownerUserId, nextSequence);
-    return { clear: false, findingCount: parsed.findings.length, sessionId: session.id };
+    return { clear: false, findingCount: blocking.length, sessionId: session.id };
   },
 
   async completeFixAttempt(attemptId: string, sandboxRun: { branchName: string | null; pullRequestUrl: string | null }) {

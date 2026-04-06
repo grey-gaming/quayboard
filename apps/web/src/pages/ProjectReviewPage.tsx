@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
+import type { ProjectReviewFinding } from "@quayboard/shared";
+
+import { MarkdownDocument } from "../components/composites/MarkdownDocument.js";
 import { PageIntro } from "../components/composites/PageIntro.js";
 import { buildImplementationTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
@@ -21,6 +24,28 @@ import {
   useStartProjectReviewMutation,
 } from "../hooks/use-project-reviews.js";
 import { useSseEvents } from "../hooks/use-sse-events.js";
+
+const severityRank: Record<ProjectReviewFinding["severity"], number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+const closedFindingStatuses = new Set<ProjectReviewFinding["status"]>([
+  "resolved",
+  "ignored",
+  "accepted",
+  "superseded",
+]);
+
+const sortOpenFindings = (left: ProjectReviewFinding, right: ProjectReviewFinding) =>
+  severityRank[left.severity] - severityRank[right.severity] ||
+  left.createdAt.localeCompare(right.createdAt);
+
+const sortClosedFindings = (left: ProjectReviewFinding, right: ProjectReviewFinding) =>
+  (right.resolvedAt ?? right.createdAt).localeCompare(left.resolvedAt ?? left.createdAt) ||
+  right.createdAt.localeCompare(left.createdAt);
 
 export const ProjectReviewPage = () => {
   const { id = "" } = useParams();
@@ -44,7 +69,19 @@ export const ProjectReviewPage = () => {
   }
 
   const latestSession = latestReviewQuery.data?.session ?? null;
-  const latestAttempt = latestSession?.attempts.at(-1) ?? null;
+  const latestSucceededReviewAttempt =
+    [...(latestSession?.attempts ?? [])]
+      .reverse()
+      .find((attempt) => attempt.kind === "review" && attempt.status === "succeeded") ?? null;
+  const sessionReviewFindings = (latestSession?.attempts ?? [])
+    .filter((attempt) => attempt.kind === "review")
+    .flatMap((attempt) => attempt.findings);
+  const openFindings = sessionReviewFindings
+    .filter((finding) => finding.status === "open")
+    .sort(sortOpenFindings);
+  const closedFindings = sessionReviewFindings
+    .filter((finding) => closedFindingStatuses.has(finding.status))
+    .sort(sortClosedFindings);
 
   return (
     <ProjectPageFrame
@@ -70,8 +107,11 @@ export const ProjectReviewPage = () => {
         <Alert tone="error">Failed to load project review state.</Alert>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
-        <div className="grid gap-4">
+      <div
+        className="grid items-start gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]"
+        data-testid="project-review-layout"
+      >
+        <div className="grid content-start gap-4 self-start">
           <Card surface="panel">
             <p className="qb-meta-label">Milestone Plan</p>
             <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
@@ -206,10 +246,13 @@ export const ProjectReviewPage = () => {
                     </a>
                   </p>
                 ) : null}
-                {latestAttempt?.reportMarkdown ? (
-                  <pre className="max-h-[32rem] overflow-auto border border-border/70 bg-background/70 p-4 text-sm text-secondary">
-                    {latestAttempt.reportMarkdown}
-                  </pre>
+                {latestSucceededReviewAttempt?.reportMarkdown ? (
+                  <div className="max-h-[32rem] overflow-auto border border-border/70 bg-background/70 p-4">
+                    <MarkdownDocument
+                      markdown={latestSucceededReviewAttempt.reportMarkdown}
+                      showTableOfContents
+                    />
+                  </div>
                 ) : (
                   <p className="text-sm text-secondary">
                     The latest attempt has not produced a report yet.
@@ -223,29 +266,68 @@ export const ProjectReviewPage = () => {
             <p className="qb-meta-label">Findings</p>
             <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Normalized findings</p>
             <div className="mt-4 grid gap-3">
-              {(latestAttempt?.findings ?? []).length === 0 ? (
-                <p className="text-sm text-secondary">No persisted findings for the latest attempt.</p>
+              {openFindings.length === 0 && closedFindings.length === 0 ? (
+                <p className="text-sm text-secondary">No persisted findings for this review session.</p>
               ) : (
-                latestAttempt!.findings.map((finding) => (
-                  <div key={finding.id} className="border border-border/70 bg-panel-inset p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-foreground">{finding.finding}</p>
-                      <div className="flex gap-2">
-                        <Badge tone="neutral">{finding.category}</Badge>
-                        <Badge tone="neutral">{finding.severity}</Badge>
+                <>
+                  {openFindings.length > 0 ? (
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-foreground">Unaddressed</p>
+                        <Badge tone="warning">{openFindings.length}</Badge>
                       </div>
+                      {openFindings.map((finding) => (
+                        <div key={finding.id} className="border border-border/70 bg-panel-inset p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">{finding.finding}</p>
+                            <div className="flex gap-2">
+                              <Badge tone="neutral">{finding.category}</Badge>
+                              <Badge tone="neutral">{finding.severity}</Badge>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm text-secondary">{finding.whyItMatters}</p>
+                          <p className="mt-2 text-sm text-foreground">
+                            Recommended: {finding.recommendedImprovement}
+                          </p>
+                          {finding.evidence.length > 0 ? (
+                            <p className="mt-2 text-xs text-secondary">
+                              Evidence: {finding.evidence.map((entry) => entry.path).join(", ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
                     </div>
-                    <p className="mt-2 text-sm text-secondary">{finding.whyItMatters}</p>
-                    <p className="mt-2 text-sm text-foreground">
-                      Recommended: {finding.recommendedImprovement}
-                    </p>
-                    {finding.evidence.length > 0 ? (
-                      <p className="mt-2 text-xs text-secondary">
-                        Evidence: {finding.evidence.map((entry) => entry.path).join(", ")}
-                      </p>
-                    ) : null}
-                  </div>
-                ))
+                  ) : null}
+                  {closedFindings.length > 0 ? (
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-foreground">Closed / non-blocking</p>
+                        <Badge tone="success">{closedFindings.length}</Badge>
+                      </div>
+                      {closedFindings.map((finding) => (
+                        <div key={finding.id} className="border border-border/70 bg-panel-inset p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">{finding.finding}</p>
+                            <div className="flex gap-2">
+                              <Badge tone="neutral">{finding.category}</Badge>
+                              <Badge tone="neutral">{finding.severity}</Badge>
+                              <Badge tone="success">{finding.status}</Badge>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm text-secondary">{finding.whyItMatters}</p>
+                          <p className="mt-2 text-sm text-foreground">
+                            Recommended: {finding.recommendedImprovement}
+                          </p>
+                          {finding.evidence.length > 0 ? (
+                            <p className="mt-2 text-xs text-secondary">
+                              Evidence: {finding.evidence.map((entry) => entry.path).join(", ")}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </Card>

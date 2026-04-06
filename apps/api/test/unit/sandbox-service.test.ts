@@ -8,7 +8,10 @@ vi.mock("node:child_process", () => ({
   execFile: execFileMock,
 }));
 
-import { createSandboxService } from "../../src/services/sandbox-service.js";
+import {
+  createSandboxService,
+  serializeProjectReviewFixFindings,
+} from "../../src/services/sandbox-service.js";
 
 const makeExecError = (message: string, stderr = "") => {
   const error = new Error(message) as Error & { stderr?: string; stdout?: string };
@@ -74,6 +77,46 @@ const makeService = (overrides: {
 describe("sandbox service", () => {
   beforeEach(() => {
     execFileMock.mockReset();
+  });
+
+  it("serializes only still-open findings for project fix runs", () => {
+    expect(
+      JSON.parse(
+        serializeProjectReviewFixFindings([
+          {
+            id: "finding-open",
+            category: "tests",
+            severity: "high",
+            finding: "Open issue",
+            evidence: [{ path: "src/open.ts" }],
+            whyItMatters: "Still failing.",
+            recommendedImprovement: "Fix it.",
+            status: "open",
+          },
+          {
+            id: "finding-ignored",
+            category: "documentation",
+            severity: "low",
+            finding: "Ignored issue",
+            evidence: [{ path: "README.md" }],
+            whyItMatters: "Minor.",
+            recommendedImprovement: "Optional.",
+            status: "ignored",
+          },
+        ]),
+      ),
+    ).toEqual([
+      {
+        id: "finding-open",
+        category: "tests",
+        severity: "high",
+        finding: "Open issue",
+        evidence: [{ path: "src/open.ts" }],
+        whyItMatters: "Still failing.",
+        recommendedImprovement: "Fix it.",
+        status: "open",
+      },
+    ]);
   });
 
   it("falls back to a branchless clone when the configured default branch does not exist yet", async () => {
