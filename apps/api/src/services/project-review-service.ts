@@ -55,6 +55,31 @@ type ParsedReviewPayload = {
 
 const parseJson = <T>(value: string): T => JSON.parse(value) as T;
 
+const toNonEmptyString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const normalizeEngineeringQualityVerdict = (value: unknown): string => {
+  const direct = toNonEmptyString(value);
+  if (direct) {
+    return direct;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const parts = Object.entries(value as Record<string, unknown>)
+      .map(([key, candidate]) => {
+        const normalized = toNonEmptyString(candidate);
+        return normalized ? `${key}: ${normalized}` : null;
+      })
+      .filter((entry): entry is string => entry !== null);
+
+    if (parts.length > 0) {
+      return parts.join("; ");
+    }
+  }
+
+  return "Review did not provide an engineering quality verdict.";
+};
+
 export const parseProjectReviewArtifact = (content: string): ParsedReviewPayload => {
   const parsed = parseJson<Record<string, unknown>>(content);
   const findings = Array.isArray(parsed.findings) ? parsed.findings : [];
@@ -129,10 +154,7 @@ export const parseProjectReviewArtifact = (content: string): ParsedReviewPayload
     biggestRisks: Array.isArray(parsed.biggestRisks)
       ? parsed.biggestRisks.filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
       : [],
-    engineeringQualityVerdict:
-      typeof parsed.engineeringQualityVerdict === "string" && parsed.engineeringQualityVerdict.trim()
-        ? parsed.engineeringQualityVerdict.trim()
-        : "Review did not provide an engineering quality verdict.",
+    engineeringQualityVerdict: normalizeEngineeringQualityVerdict(parsed.engineeringQualityVerdict),
     finalVerdict: {
       documentationGoodEnough: Boolean(verdict.documentationGoodEnough),
       testsGoodEnough: Boolean(verdict.testsGoodEnough),

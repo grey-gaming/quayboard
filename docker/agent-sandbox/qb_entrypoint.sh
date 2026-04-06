@@ -201,12 +201,33 @@ required_string_fields = [
     "executiveSummary",
     "maturityLevel",
     "usabilityVerdict",
-    "engineeringQualityVerdict",
 ]
 for field in required_string_fields:
     value = payload.get(field)
     if not isinstance(value, str) or not value.strip():
         raise SystemExit(f"project-review.json field '{field}' must be a non-empty string.")
+
+engineering_quality_verdict = payload.get("engineeringQualityVerdict")
+if isinstance(engineering_quality_verdict, str):
+    if not engineering_quality_verdict.strip():
+        raise SystemExit("project-review.json field 'engineeringQualityVerdict' must not be empty.")
+elif isinstance(engineering_quality_verdict, dict):
+    normalized_parts = []
+    for key, value in engineering_quality_verdict.items():
+        if isinstance(value, str) and value.strip():
+            normalized_parts.append(f"{key}: {value.strip()}")
+    if not normalized_parts:
+        raise SystemExit(
+            "project-review.json field 'engineeringQualityVerdict' must be a non-empty string or an object of non-empty strings."
+        )
+    payload["engineeringQualityVerdict"] = "; ".join(normalized_parts)
+    with open(json_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+else:
+    raise SystemExit(
+        "project-review.json field 'engineeringQualityVerdict' must be a non-empty string or an object of non-empty strings."
+    )
 
 for field in ["biggestStrengths", "biggestRisks"]:
     value = payload.get(field)
