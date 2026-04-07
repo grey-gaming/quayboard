@@ -58,7 +58,7 @@ const makeService = (overrides: {
         defaultImage: "quayboard-agent-sandbox:latest",
         dockerHost: null,
         maxConcurrentRuns: 2,
-        defaultTimeoutSeconds: 900,
+        defaultTimeoutSeconds: 1200,
         defaultCpuLimit: 1,
         defaultMemoryMb: 2048,
       }),

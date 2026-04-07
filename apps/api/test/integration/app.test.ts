@@ -1786,8 +1786,8 @@ describe("API integration", () => {
             allowlist: [],
             cpuLimit: 1,
             egressPolicy: "locked",
-            memoryMb: 1024,
-            timeoutSeconds: 300,
+            memoryMb: 2048,
+            timeoutSeconds: 1200,
           },
         },
       });
