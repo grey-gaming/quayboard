@@ -144,6 +144,49 @@ After editing:
 - Before pushing, run the required verification for the change and do not push known-broken work unless explicitly instructed.
 - Full CI green status is the merge bar, not necessarily the local push bar.
 - Prefer the narrowest relevant checks first, then wider repo checks when the change crosses boundaries.
+- **Run tests early and often.** Do not wait until the end of a task to run the test suite. Run relevant tests after each meaningful change so regressions are caught immediately rather than compounding.
+
+### Running Tests
+
+This is a pnpm workspace. Tests must be run from the correct directory or via pnpm filters to ensure configs (like jsdom for web tests) are loaded correctly.
+
+**Full suite (recommended before push):**
+
+```sh
+pnpm test          # runs test:unit then test:integration
+```
+
+**Per-workspace tests:**
+
+```sh
+# Shared package (also rebuilds dist/ — required before other tests)
+pnpm --filter @quayboard/shared build && pnpm --filter @quayboard/shared test
+
+# API unit tests (fast, no database needed)
+pnpm --filter @quayboard/api test:unit
+
+# API integration tests (requires local Postgres via Docker)
+pnpm --filter @quayboard/api test:integration
+
+# Web tests (requires jsdom — must run from apps/web or via filter)
+pnpm --filter @quayboard/web test
+```
+
+**Running a single test file:**
+
+```sh
+# From the relevant app directory:
+cd apps/api && npx vitest run test/unit/auto-advance.test.ts
+cd apps/web && npx vitest run test/project-setup.test.tsx
+
+# Or by name filter from the app directory:
+cd apps/api && npx vitest run -t "creates milestones"
+```
+
+**Important:** Do not run `npx vitest` from the repo root for web tests — the jsdom environment is configured in `apps/web/vite.config.ts` and will not be picked up from the root. Always use pnpm filters or `cd` into the app directory first.
+
+**Important:** The `@quayboard/shared` package compiles to `dist/` (gitignored). If you change any schema or type in `packages/shared/src/`, you must rebuild before running API or web tests, otherwise the stale compiled output will silently strip fields from Zod schemas and cause hard-to-diagnose serialization failures. The `pnpm test:unit` script handles this automatically.
+
 - Current top-level verification commands are:
   - `pnpm typecheck`
   - `pnpm test`

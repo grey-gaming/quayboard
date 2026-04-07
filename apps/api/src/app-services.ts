@@ -188,7 +188,7 @@ export const createAppServices = async (
     defaultImage: "quayboard-agent-sandbox:latest",
     dockerHost: appConfig.dockerHost,
     maxConcurrentRuns: 2,
-    defaultTimeoutSeconds: 900,
+    defaultTimeoutSeconds: 1200,
     defaultCpuLimit: 1,
     defaultMemoryMb: 2048,
   });

@@ -52,11 +52,11 @@ const defaultFormValues: FormValues = {
   githubRepo: "",
   llmModel: "",
   llmProvider: "",
-  memoryMb: "1024",
+  memoryMb: "2048",
   requireArchitectureDocs: "false",
   requireUserDocs: "false",
   sandboxAllowlist: "",
-  timeoutSeconds: "300",
+  timeoutSeconds: "1200",
 };
 
 const buildRepoOptions = (setupState: ProjectSetupState | undefined) => {
@@ -183,13 +183,13 @@ export const ProjectSetupPage = () => {
       githubRepo: setupQuery.data.repo.selectedRepo?.fullName ?? "",
       llmModel: setupQuery.data.llm.model ?? "",
       llmProvider: setupQuery.data.llm.provider ?? "",
-      memoryMb: String(setupQuery.data.sandboxConfig?.memoryMb ?? 1024),
+      memoryMb: String(setupQuery.data.sandboxConfig?.memoryMb ?? 2048),
       requireArchitectureDocs: String(
         setupQuery.data.evidencePolicy?.requireArchitectureDocs ?? false,
       ),
       requireUserDocs: String(setupQuery.data.evidencePolicy?.requireUserDocs ?? false),
       sandboxAllowlist: setupQuery.data.sandboxConfig?.allowlist.join(", ") ?? "",
-      timeoutSeconds: String(setupQuery.data.sandboxConfig?.timeoutSeconds ?? 300),
+      timeoutSeconds: String(setupQuery.data.sandboxConfig?.timeoutSeconds ?? 1200),
     });
     setOllamaModels(
       setupQuery.data.llm.provider === "ollama" ? setupQuery.data.llm.availableModels : [],
