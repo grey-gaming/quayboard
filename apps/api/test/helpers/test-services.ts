@@ -43,6 +43,7 @@ export const createStubServices = (): AppServices => ({
     deletePath: async () => undefined,
     ensureStorageRoot: async () => "/tmp",
     ensureRunDir: async () => "/tmp",
+    pruneRunDirectories: async () => undefined,
     readArtifact: async () => Buffer.from(""),
     restoreWorkspaceSnapshot: async () => undefined,
     snapshotWorkspace: async () => "/tmp/workspace",
