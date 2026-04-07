@@ -64,6 +64,7 @@ type MilestoneDeliveryIssue = {
 
 const MAX_MILESTONE_REPAIR_ATTEMPTS = 3;
 const AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT = 5;
+const STALE_SESSION_RECONCILE_GRACE_MS = 5_000;
 
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
@@ -954,6 +955,13 @@ export const createAutoAdvanceService = (
     }
 
     if (session.pendingJobCount <= 0 && !session.activeBatchToken) {
+      return session;
+    }
+
+    // A session can be marked running slightly before the corresponding job row exists.
+    // Give that enqueue path a short grace window before treating the session as stale.
+    const sessionAgeMs = Date.now() - session.updatedAt.getTime();
+    if (sessionAgeMs >= 0 && sessionAgeMs < STALE_SESSION_RECONCILE_GRACE_MS) {
       return session;
     }
 

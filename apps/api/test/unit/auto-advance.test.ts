@@ -329,6 +329,35 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("does not pause a recently updated running session while its next job is still being enqueued", async () => {
+      const freshSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        updatedAt: new Date(),
+      });
+      const db = makeDb({ session: freshSession, activeJobs: [] });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([freshSession]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      const result = await service.getStatus(USER_ID, PROJECT_ID);
+
+      expect(result.session?.status).toBe("running");
+      expect(result.session?.pausedReason).toBeNull();
+      expect(updates).toEqual([]);
+      expect(sseHub.publish).not.toHaveBeenCalled();
+    });
+
     it("recovers a settled successful batch instead of pausing the session", async () => {
       const staleSession = makeSessionRow({
         status: "running" as const,
