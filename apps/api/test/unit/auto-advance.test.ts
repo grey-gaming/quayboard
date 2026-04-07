@@ -927,7 +927,7 @@ describe("auto-advance service", () => {
       const retryUpdate = updates.find((u) => u.retryCount !== undefined);
       expect(retryUpdate?.retryCount).toBe(1);
       expect(retryUpdate?.pendingJobCount).toBe(1);
-      expect(retryUpdate?.activeBatchToken).toBeUndefined();
+      expect(retryUpdate?.activeBatchToken).toBe("batch-1");
       expect(updates.find((u) => u.status === "paused")).toBeUndefined();
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1217,6 +1217,35 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
       const resetUpdate = updates.find((u) => "retryCount" in u && u.retryCount === 0);
       expect(resetUpdate).toBeDefined();
+    });
+
+    it("ignores duplicate success callbacks after the batch has been claimed", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const clearedSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 0,
+        activeBatchToken: null,
+      });
+      const db = makeDb({ session: runningSession, job: makeJob() });
+      let sessionLookupCount = 0;
+      db.query.autoAdvanceSessionsTable.findFirst = vi.fn().mockImplementation(async () => {
+        sessionLookupCount += 1;
+        if (sessionLookupCount <= 2) {
+          return runningSession;
+        }
+
+        return clearedSession;
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(jobService.createJob).toHaveBeenCalledTimes(1);
     });
 
     it("pauses immediately on a non-retryable failure", async () => {
@@ -2758,7 +2787,7 @@ describe("auto-advance service", () => {
       expect(updates.find((u) => u.retryCount === 0)).toBeDefined();
     });
 
-    it("retries the failed job when other parallel jobs are still pending", async () => {
+    it("waits for the rest of a parallel batch before retrying a failed job", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 3,
@@ -2793,20 +2822,8 @@ describe("auto-advance service", () => {
       await service.onJobComplete(JOB_ID, "failure");
 
       expect(updates.find((u) => u.status === "paused")).toBeUndefined();
-      const retryUpdate = updates.find((u) => u.retryCount === 1);
-      expect(retryUpdate?.pendingJobCount).toBe(3);
-      expect(jobService.createJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "GenerateFeatureTechSpec",
-          inputs: expect.objectContaining({
-            featureId: "feature-456",
-            _autoAdvance: expect.objectContaining({
-              sessionId: SESSION_ID,
-              batchToken: "batch-1",
-            }),
-          }),
-        }),
-      );
+      expect(updates.find((u) => u.retryCount === 1)).toBeUndefined();
+      expect(jobService.createJob).not.toHaveBeenCalled();
       expect(nextActionsService.buildBatch).not.toHaveBeenCalled();
     });
   });

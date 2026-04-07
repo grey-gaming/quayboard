@@ -856,6 +856,7 @@ export const createAutoAdvanceService = (
       .update(autoAdvanceSessionsTable)
       .set({
         pendingJobCount: input.remaining + 1,
+        activeBatchToken: input.batchToken,
         retryCount: input.retryAttempt,
         updatedAt: new Date(),
       })
@@ -875,6 +876,29 @@ export const createAutoAdvanceService = (
     );
 
     return true;
+  };
+
+  const claimFinishedBatch = async (
+    sessionId: string,
+    batchToken: string,
+  ): Promise<AutoAdvanceSessionRow | null> => {
+    const [claimed] = await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(autoAdvanceSessionsTable.id, sessionId),
+          eq(autoAdvanceSessionsTable.activeBatchToken, batchToken),
+          eq(autoAdvanceSessionsTable.pendingJobCount, 0),
+        ),
+      )
+      .returning();
+
+    return claimed ?? null;
   };
 
   const reconcileStaleRunningSession = async (
@@ -1813,6 +1837,14 @@ export const createAutoAdvanceService = (
       const remaining = afterDecrement?.pendingJobCount ?? 0;
 
       if (outcome === "failure") {
+        if (remaining > 0) {
+          return;
+        }
+
+        if (!(await claimFinishedBatch(session.id, autoAdvanceMeta.batchToken))) {
+          return;
+        }
+
         const MAX_RETRIES = 3;
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
@@ -1854,6 +1886,7 @@ export const createAutoAdvanceService = (
             .update(autoAdvanceSessionsTable)
             .set({
               pendingJobCount: remaining + 1,
+              activeBatchToken: autoAdvanceMeta.batchToken,
               retryCount: nextRetryCount,
               updatedAt: new Date(),
             })
@@ -1985,6 +2018,10 @@ export const createAutoAdvanceService = (
 
       // Success path — if other parallel jobs are still pending, wait for them.
       if (remaining > 0) {
+        return;
+      }
+
+      if (!(await claimFinishedBatch(session.id, autoAdvanceMeta.batchToken))) {
         return;
       }
 

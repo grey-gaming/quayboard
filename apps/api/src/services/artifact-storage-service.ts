@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export const createArtifactStorageService = (artifactStoragePath: string) => ({
@@ -50,6 +50,23 @@ export const createArtifactStorageService = (artifactStoragePath: string) => ({
     const targetPath = path.join(runDir, "workspace");
     await cp(sourcePath, targetPath, { recursive: true, force: true });
     return targetPath;
+  },
+
+  async pruneRunDirectories(activeRunIds: string[]) {
+    await this.ensureStorageRoot();
+    const activeRunIdSet = new Set(activeRunIds);
+    const entries = await readdir(artifactStoragePath, { withFileTypes: true });
+
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && !activeRunIdSet.has(entry.name))
+        .map((entry) =>
+          rm(path.join(artifactStoragePath, entry.name), {
+            force: true,
+            recursive: true,
+          }).catch(() => undefined),
+        ),
+    );
   },
 
   async restoreWorkspaceSnapshot(snapshotPath: string, targetPath: string) {
