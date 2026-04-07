@@ -1099,6 +1099,9 @@ export const createSandboxService = (input: {
     const executionSettings = executionSettingsSchema.parse(
       await input.executionSettingsService.get(),
     );
+    const knownRuns = await input.db.query.sandboxRunsTable.findMany({
+      orderBy: [asc(sandboxRunsTable.createdAt)],
+    });
     const managedContainers = await input.dockerService
       .listManagedContainers({
         dockerHost: executionSettings.dockerHost,
@@ -1155,6 +1158,9 @@ export const createSandboxService = (input: {
       );
 
     await this.cleanupTempWorkspaces(activeWorkspacePaths);
+    await input.artifactStorageService
+      .pruneRunDirectories(knownRuns.map((run) => run.id))
+      .catch(() => undefined);
     await this.pruneWorkspaceSnapshots();
     await input.dockerService.pruneManagedResources({
       dockerHost: executionSettings.dockerHost,

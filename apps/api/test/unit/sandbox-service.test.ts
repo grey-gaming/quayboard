@@ -38,6 +38,7 @@ const makeService = (overrides: {
   createSandboxService({
     artifactStorageService: (overrides.artifactStorageService ?? {
       deletePath: vi.fn().mockResolvedValue(undefined),
+      pruneRunDirectories: vi.fn().mockResolvedValue(undefined),
     }) as never,
     contextPackService: {} as never,
     db: (overrides.db ?? {
@@ -550,17 +551,34 @@ describe("sandbox service", () => {
   it("reconciles stale running runs and removes managed containers on startup", async () => {
     const removeContainer = vi.fn().mockResolvedValue(undefined);
     const pruneManagedResources = vi.fn().mockResolvedValue(undefined);
+    const pruneRunDirectories = vi.fn().mockResolvedValue(undefined);
     const service = makeService({
+      artifactStorageService: {
+        pruneRunDirectories,
+      },
       db: {
         query: {
           sandboxRunsTable: {
-            findMany: vi.fn().mockResolvedValue([
-              {
-                id: "run-1",
-                status: "running",
-                createdAt: new Date("2026-04-04T00:00:00.000Z"),
-              },
-            ]),
+            findMany: vi.fn()
+              .mockResolvedValueOnce([
+                {
+                  id: "run-1",
+                  status: "running",
+                  createdAt: new Date("2026-04-04T00:00:00.000Z"),
+                },
+              ])
+              .mockResolvedValueOnce([
+                {
+                  id: "run-1",
+                  status: "running",
+                  createdAt: new Date("2026-04-04T00:00:00.000Z"),
+                },
+                {
+                  id: "run-2",
+                  status: "succeeded",
+                  createdAt: new Date("2026-04-03T00:00:00.000Z"),
+                },
+              ]),
           },
         },
         update: vi.fn(() => ({
@@ -603,6 +621,7 @@ describe("sandbox service", () => {
     expect(service.cleanupTempWorkspaces).toHaveBeenCalledWith([
       "/tmp/quayboard-run-stale/workspace",
     ]);
+    expect(pruneRunDirectories).toHaveBeenCalledWith(["run-1"]);
     expect(service.pruneWorkspaceSnapshots).toHaveBeenCalled();
     expect(pruneManagedResources).toHaveBeenCalledWith({
       dockerHost: null,
