@@ -15,6 +15,7 @@ import {
   buildUserFlowPrompt,
   buildDecisionConsistencyPrompt,
   buildDeliveryReviewPrompt,
+  buildMilestonePlanPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
   buildMilestoneCoverageReviewPrompt,
@@ -120,6 +121,26 @@ describe("job prompts", () => {
     expect(prompt).toContain("onboarding, happy-path, supporting, operational, and edge/failure journeys");
     expect(prompt).toContain("Approved Product Spec:");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
+  });
+
+  it("allows the first milestone plan item to omit linked user flows for foundation work", () => {
+    const prompt = buildMilestonePlanPrompt({
+      projectName: "Quayboard",
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      userFlows: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          title: "Create project",
+          userStory: "As a user I want to create a project.",
+          entryPoint: "Dashboard",
+          endState: "Project created",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("The first foundations/setup milestone may use an empty useCaseIds array");
+    expect(prompt).toContain("Every milestone after the first must use a non-empty useCaseIds array.");
   });
 
   it("keeps milestone design generation internally consistent across sections", () => {

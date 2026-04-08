@@ -1326,15 +1326,20 @@ const validateGeneratedMilestones = (
     );
   }
 
-  return milestones.map((milestone) => {
+  return milestones.map((milestone, index) => {
     if (
       !milestone.title?.trim() ||
       !milestone.summary?.trim() ||
-      !Array.isArray(milestone.useCaseIds) ||
-      milestone.useCaseIds.length === 0
+      !Array.isArray(milestone.useCaseIds)
     ) {
       throw new Error(
-        "GenerateMilestones returned an incomplete milestone. Each milestone must include title, summary, and at least one useCaseId.",
+        "GenerateMilestones returned an incomplete milestone. Each milestone must include title, summary, and a useCaseIds array.",
+      );
+    }
+
+    if (index > 0 && milestone.useCaseIds.length === 0) {
+      throw new Error(
+        "GenerateMilestones returned an incomplete milestone. Every milestone after the first foundation milestone must include at least one useCaseId.",
       );
     }
 

@@ -439,6 +439,7 @@ export const createStubServices = (): AppServices => ({
     assertApprovedUserFlows: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    assertMilestoneUseCasePolicy: async () => [],
     assertCanonicalDesignDoc: async () => {
       throw new Error("Not implemented in test stub.");
     },

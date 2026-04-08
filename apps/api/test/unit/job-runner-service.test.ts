@@ -335,6 +335,129 @@ describe("job runner service", () => {
     expect(generate).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts an empty useCaseIds array for the first generated foundation milestone", async () => {
+    const db = createDbStub();
+    const markSucceeded = vi.fn(async () => undefined);
+    const replaceDraftMilestoneMap = vi.fn(async () => undefined);
+    const generate = vi.fn().mockResolvedValue({
+      content: JSON.stringify([
+        {
+          title: "Foundation",
+          summary: "Bootstrap the project.",
+          useCaseIds: [],
+        },
+        {
+          title: "Onboarding",
+          summary: "Ship the first user-facing flow.",
+          useCaseIds: ["flow-1"],
+        },
+      ]),
+      promptTokens: 10,
+      completionTokens: 12,
+      doneReason: null,
+    });
+    const service = createJobRunnerService({
+      artifactApprovalService: createApprovedArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-milestones",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestones",
+          inputs: {},
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        replaceDraftMilestoneMap,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          userFlows: [
+            {
+              id: "flow-1",
+              title: "Onboard user",
+              userStory: "As a user, I want to get started quickly.",
+              entryPoint: "Landing page",
+              endState: "Dashboard",
+            },
+          ],
+        })),
+      } as never,
+    });
+
+    await service.run("job-generate-milestones");
+
+    expect(replaceDraftMilestoneMap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [
+          {
+            title: "Foundation",
+            summary: "Bootstrap the project.",
+            useCaseIds: [],
+          },
+          {
+            title: "Onboarding",
+            summary: "Ship the first user-facing flow.",
+            useCaseIds: ["flow-1"],
+          },
+        ],
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalled();
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it("updates the project description when generating an overview", async () => {
     const db = createDbStub();
     const updateOwnedProject = vi.fn(async () => undefined);
