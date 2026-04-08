@@ -214,6 +214,18 @@ const parseOpenAiReasoningDelta = (delta: Record<string, unknown>) => {
   return null;
 };
 
+const parseOllamaReasoningDelta = (payload: Record<string, unknown>) => {
+  if (typeof payload.thinking === "string") {
+    return payload.thinking;
+  }
+
+  if (typeof payload.reasoning === "string") {
+    return payload.reasoning;
+  }
+
+  return null;
+};
+
 const formatHealthCheckFetchError = (
   providerLabel: string,
   error: unknown,
@@ -360,6 +372,7 @@ const createOllamaAdapter = (input: {
       return [
         {
           textDelta: typeof parsed.response === "string" ? parsed.response : null,
+          reasoningDelta: parseOllamaReasoningDelta(parsed),
           doneReason: typeof parsed.done_reason === "string" ? parsed.done_reason : null,
           promptEvalCount:
             typeof parsed.prompt_eval_count === "number" ? parsed.prompt_eval_count : null,
