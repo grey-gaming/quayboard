@@ -1636,6 +1636,8 @@ export const createSandboxService = (input: {
               "Inspect the actual repository contents before making claims.",
               "Write the human-readable report to /root/.local/share/opencode/tool-output/project-review.md.",
               "Write the structured output to /root/.local/share/opencode/tool-output/project-review.json.",
+              "The JSON must satisfy Quayboard's exact schema: maturityLevel must be a non-empty string, not a number.",
+              "Only include real issues in findings. Do not list strengths, praise, or already-good behavior as findings.",
               "Do not make repository changes during the review run.",
             ].join("\n")
           : run.kind === "project_fix"

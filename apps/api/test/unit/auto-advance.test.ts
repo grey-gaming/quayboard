@@ -30,6 +30,7 @@ const makeSessionRow = (
     startedAt: Date | null;
     pausedAt: Date | null;
     completedAt: Date | null;
+    updatedAt: Date;
   }> = {},
 ) => ({
   id: SESSION_ID,
@@ -1025,6 +1026,65 @@ describe("auto-advance service", () => {
             sessionId: SESSION_ID,
             batchToken: "batch-1",
             retryAttempt: 1,
+          }),
+        }),
+      );
+      expect(
+        updates.some((update) => update.retryCount === 1 && update.pendingJobCount === 1),
+      ).toBe(true);
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
+    });
+
+    it("retries RunProjectReview even when the sandbox failure is not marked retryable", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "RunProjectReview",
+        error: {
+          message: "project_review run exited with code 1.",
+        },
+        inputs: {
+          attemptId: "attempt-123",
+          sessionId: "review-session-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const updates: Array<{ retryCount?: number; pendingJobCount?: number; status?: string }> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(
+          (data: { retryCount?: number; pendingJobCount?: number; status?: string }) => {
+            updates.push(data);
+            return {
+              where: vi
+                .fn()
+                .mockReturnValue({ returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]) }),
+            };
+          },
+        ),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "RunProjectReview",
+          projectId: PROJECT_ID,
+          inputs: expect.objectContaining({
+            attemptId: "attempt-123",
+            sessionId: "review-session-123",
+            _autoAdvance: expect.objectContaining({
+              sessionId: SESSION_ID,
+              batchToken: "batch-1",
+              retryAttempt: 1,
+            }),
           }),
         }),
       );
