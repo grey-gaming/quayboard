@@ -25,6 +25,7 @@ import { DocsHomePage } from "./pages/DocsHomePage.js";
 import { ExecutionSettingsPage } from "./pages/ExecutionSettingsPage.js";
 import { FeatureBuilderPage } from "./pages/FeatureBuilderPage.js";
 import { ImportStubPage } from "./pages/ImportStubPage.js";
+import { ImplementationBugsPage } from "./pages/ImplementationBugsPage.js";
 import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { MilestonesPage } from "./pages/MilestonesPage.js";
@@ -218,6 +219,10 @@ export const appRouter = createBrowserRouter([
                               {
                                 path: "/projects/:id/develop",
                                 element: <DevelopPage />,
+                              },
+                              {
+                                path: "/projects/:id/develop/bugs",
+                                element: <ImplementationBugsPage />,
                               },
                               {
                                 path: "/projects/:id/develop/review",

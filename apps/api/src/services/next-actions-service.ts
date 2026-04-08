@@ -1,4 +1,5 @@
 import type { ArtifactApprovalService } from "./artifact-approval-service.js";
+import type { BugService } from "./bug-service.js";
 import type { BlueprintService } from "./blueprint-service.js";
 import type { FeatureService } from "./feature-service.js";
 import type { FeatureWorkstreamService } from "./feature-workstream-service.js";
@@ -27,6 +28,7 @@ export const createNextActionsService = (
   userFlowService: UserFlowService,
   taskPlanningService?: TaskPlanningService,
   projectReviewService?: ProjectReviewService,
+  bugService?: BugService,
 ) => ({
   async build(ownerUserId: string, projectId: string) {
     const [
@@ -244,6 +246,16 @@ export const createNextActionsService = (
                 key: "project_review_retry",
                 label: "Retry project review fixes",
                 href: `/projects/${projectId}/develop/review`,
+              });
+            } else if (
+              projectReviewPhase.latestStatus === "clear" &&
+              bugService &&
+              (await bugService.countOpenBugs(ownerUserId, projectId)) > 0
+            ) {
+              actions.push({
+                key: "bug_fixes",
+                label: "Resolve open implementation bugs",
+                href: `/projects/${projectId}/develop/bugs`,
               });
             }
           } else if (activeMilestone.status === "draft") {

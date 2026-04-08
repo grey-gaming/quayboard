@@ -17,6 +17,10 @@ import {
   type BlueprintService,
 } from "./services/blueprint-service.js";
 import {
+  createBugService,
+  type BugService,
+} from "./services/bug-service.js";
+import {
   createContextPackService,
   type ContextPackService,
 } from "./services/context-pack-service.js";
@@ -128,6 +132,7 @@ export type AppServices = {
   artifactApprovalService: ArtifactApprovalService;
   artifactStorageService: ArtifactStorageService;
   authService: AuthService;
+  bugService: BugService;
   blueprintService: BlueprintService;
   contextPackService: ContextPackService;
   db: AppDatabase;
@@ -254,6 +259,16 @@ export const createAppServices = async (
     secretService,
     githubService,
   );
+  const bugService = createBugService(
+    db,
+    projectService,
+    featureService,
+    taskPlanningService,
+    jobService,
+    secretService,
+    githubService,
+    sseHub,
+  );
   const phaseGateService = createPhaseGateService(
     artifactApprovalService,
     blueprintService,
@@ -279,6 +294,7 @@ export const createAppServices = async (
     userFlowService,
     taskPlanningService,
     projectReviewService,
+    bugService,
   );
   const sandboxService = createSandboxService({
     artifactStorageService,
@@ -317,6 +333,7 @@ export const createAppServices = async (
     artifactApprovalService,
     contextPackService,
     db,
+    bugService,
     blueprintService,
     featureService,
     featureWorkstreamService,
@@ -412,6 +429,7 @@ export const createAppServices = async (
     artifactApprovalService,
     artifactStorageService,
     authService,
+    bugService,
     blueprintService,
     contextPackService,
     db,

@@ -37,6 +37,7 @@ export const sandboxRunKindSchema = z.enum([
   "ci_repair",
   "project_review",
   "project_fix",
+  "bug_fix",
 ]);
 
 export type SandboxRunKind = z.infer<typeof sandboxRunKindSchema>;
@@ -82,6 +83,7 @@ export const sandboxRunSchema = z.object({
   taskPlanningSessionId: z.string().uuid().nullable(),
   contextPackId: z.string().uuid().nullable(),
   triggeredByJobId: z.string().uuid().nullable(),
+  bugReportId: z.string().uuid().nullable(),
   kind: sandboxRunKindSchema,
   status: sandboxRunStatusSchema,
   outcome: sandboxRunOutcomeSchema.nullable(),

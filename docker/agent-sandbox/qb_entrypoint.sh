@@ -18,6 +18,7 @@ CONFIG_PATH="/tmp/quayboard-opencode.json"
 PROJECT_REVIEW_MARKDOWN_PATH="${ARTIFACT_DIR}/project-review.md"
 PROJECT_REVIEW_JSON_PATH="${ARTIFACT_DIR}/project-review.json"
 PROJECT_FIX_SUMMARY_PATH="${ARTIFACT_DIR}/project-fix-summary.md"
+BUG_FIX_SUMMARY_PATH="${ARTIFACT_DIR}/bug-fix-summary.md"
 
 mkdir -p "${ARTIFACT_DIR}"
 
@@ -132,6 +133,17 @@ Project fix mode:
 - Fix only the batched findings described there.
 - Re-run the closest relevant verification before exiting.
 - Write a concise remediation summary to ${PROJECT_FIX_SUMMARY_PATH}.
+EOF
+fi
+
+if [[ "${RUN_KIND}" == "bug_fix" ]]; then
+  cat >> "${PROMPT_PATH}" <<EOF
+
+Bug fix mode:
+- Read /workspace/.quayboard-bug-report.md before making changes.
+- Fix only the reported defect.
+- Re-run the closest relevant verification before exiting.
+- Write a concise remediation summary to ${BUG_FIX_SUMMARY_PATH}.
 EOF
 fi
 

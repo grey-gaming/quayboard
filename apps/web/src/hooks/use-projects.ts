@@ -204,6 +204,64 @@ export const useProjectJobsQuery = (projectId: string) =>
     refetchInterval: 5_000,
   });
 
+export const useBugsQuery = (projectId: string) =>
+  useQuery({
+    queryKey: ["project", projectId, "bugs"],
+    queryFn: () => api.getBugs(projectId),
+    refetchInterval: 5_000,
+  });
+
+export const useCreateBugMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: { description: string; featureId?: string }) =>
+      api.createBug(projectId, payload),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "bugs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
+export const useUpdateBugMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      bugId,
+      payload,
+    }: {
+      bugId: string;
+      payload: { description?: string; featureId?: string | null };
+    }) => api.updateBug(bugId, payload),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "bugs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
+export const useFixBugMutation = (projectId: string) => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (bugId: string) => api.fixBug(bugId),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "bugs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "sandbox-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["project", projectId, "next-actions"] }),
+      ]);
+    },
+  });
+};
+
 export const useMilestonesQuery = (projectId: string) =>
   useQuery({
     queryKey: ["project", projectId, "milestones"],

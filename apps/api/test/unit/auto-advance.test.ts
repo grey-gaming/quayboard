@@ -1331,11 +1331,6 @@ describe("auto-advance service", () => {
             batchToken: "batch-1",
           },
         },
-        outputs: {
-          sessionId: "review-session-123",
-          clear: true,
-          findingCount: 0,
-        },
       };
       const db = makeDb({ session: runningSession, job: reviewJob });
       const updates: Array<Record<string, unknown>> = [];

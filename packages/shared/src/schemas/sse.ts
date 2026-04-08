@@ -20,7 +20,7 @@ export const sseJobUpdatedEventSchema = z.object({
 export const sseProjectUpdatedEventSchema = z.object({
   type: z.literal("project:updated"),
   projectId: z.string().uuid(),
-  resource: z.enum(["feature", "milestone", "phase_gates"]),
+  resource: z.enum(["feature", "milestone", "phase_gates", "project_review", "bug"]),
 });
 
 export const sseEventSchema = z.union([

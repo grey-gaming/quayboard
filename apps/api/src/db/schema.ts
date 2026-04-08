@@ -78,6 +78,7 @@ const sandboxRunKindValues = [
   "ci_repair",
   "project_review",
   "project_fix",
+  "bug_fix",
 ] as const;
 const sandboxRunStatusValues = [
   "queued",
@@ -147,6 +148,7 @@ const projectReviewFindingStatusValues = [
   "ignored",
   "superseded",
 ] as const;
+const bugReportStatusValues = ["open", "in_progress", "fixed"] as const;
 
 export const usersTable = pgTable(
   "users",
@@ -1228,6 +1230,52 @@ export const implementationRecordsTable = pgTable(
   }),
 );
 
+export const bugReportsTable = pgTable(
+  "bug_reports",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").references(() => featureCasesTable.id, {
+      onDelete: "set null",
+    }),
+    implementationRecordId: text("implementation_record_id").references(
+      () => implementationRecordsTable.id,
+      { onDelete: "set null" },
+    ),
+    description: text("description").notNull(),
+    status: text("status").notNull().$type<(typeof bugReportStatusValues)[number]>(),
+    reportedByUserId: text("reported_by_user_id")
+      .notNull()
+      .references(() => usersTable.id, {
+        onDelete: "cascade",
+      }),
+    latestFixJobId: text("latest_fix_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    latestFixSandboxRunId: text("latest_fix_sandbox_run_id"),
+    latestFixPullRequestUrl: text("latest_fix_pull_request_url"),
+    lastFixError: text("last_fix_error"),
+    fixedAt: timestamp("fixed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    projectIndex: index("bug_reports_project_id_idx").on(table.projectId),
+    featureIndex: index("bug_reports_feature_id_idx").on(table.featureId),
+    statusIndex: index("bug_reports_status_idx").on(table.status),
+    statusCheck: check(
+      "bug_reports_status_check",
+      sql`${table.status} in (${sql.join(bugReportStatusValues.map((value) => sql`${value}`), sql`, `)})`,
+    ),
+  }),
+);
+
 export const logbookVersionsTable = pgTable(
   "logbook_versions",
   {
@@ -1336,6 +1384,9 @@ export const sandboxRunsTable = pgTable(
       onDelete: "set null",
     }),
     triggeredByJobId: text("triggered_by_job_id").references(() => jobsTable.id, {
+      onDelete: "set null",
+    }),
+    bugReportId: text("bug_report_id").references(() => bugReportsTable.id, {
       onDelete: "set null",
     }),
     kind: text("kind").notNull().$type<(typeof sandboxRunKindValues)[number]>(),
@@ -1795,6 +1846,7 @@ export const encryptedSecretsTable = pgTable(
 export type DatabaseSchema = {
   artifactApprovalsTable: typeof artifactApprovalsTable;
   autoAdvanceSessionsTable: typeof autoAdvanceSessionsTable;
+  bugReportsTable: typeof bugReportsTable;
   contextPacksTable: typeof contextPacksTable;
   encryptedSecretsTable: typeof encryptedSecretsTable;
   featureArchDocRevisionsTable: typeof featureArchDocRevisionsTable;
