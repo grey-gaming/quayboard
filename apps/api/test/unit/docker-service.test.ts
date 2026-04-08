@@ -244,8 +244,37 @@ describe("docker service", () => {
       workspaceDir: "/tmp/workspace",
     });
 
+    const expectedUser =
+      typeof process.getuid === "function" && typeof process.getgid === "function"
+        ? `${process.getuid()}:${process.getgid()}`
+        : null;
+
     expect(execFileMock.mock.calls[0]?.[1]).toEqual(
       expect.arrayContaining(["create", "--pull=never", "--network", "host"]),
+    );
+    if (expectedUser) {
+      expect(execFileMock.mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining(["--user", expectedUser]),
+      );
+    }
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        "--env",
+        "QB_ARTIFACT_DIR=/run/artifacts",
+        "--env",
+        "HOME=/run/artifacts/home",
+        "--env",
+        "XDG_CONFIG_HOME=/run/artifacts/home/.config",
+        "--env",
+        "XDG_CACHE_HOME=/run/artifacts/home/.cache",
+        "--env",
+        "XDG_DATA_HOME=/run/artifacts/home/.local/share",
+        "--mount",
+        "type=bind,src=/tmp/artifacts,dst=/run/artifacts",
+      ]),
+    );
+    expect(execFileMock.mock.calls[0]?.[1]).not.toContain(
+      "type=bind,src=/tmp/artifacts,dst=/root/.local/share/opencode/tool-output",
     );
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
   });

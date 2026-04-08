@@ -1,6 +1,23 @@
 import type { AppServices } from "../../src/app-services.js";
 import { createSseHub } from "../../src/services/sse.js";
 
+const stubBugRow = () => ({
+  id: "00000000-0000-4000-8000-000000000100",
+  projectId: "00000000-0000-4000-8000-000000000000",
+  featureId: null,
+  implementationRecordId: null,
+  description: "Stub bug",
+  status: "fixed" as const,
+  reportedByUserId: "00000000-0000-4000-8000-000000000001",
+  latestFixJobId: null,
+  latestFixSandboxRunId: null,
+  latestFixPullRequestUrl: null,
+  lastFixError: null,
+  fixedAt: new Date(),
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
 export const createStubServices = (): AppServices => ({
   autoAdvanceService: {
     recoverRunningSessions: async () => undefined,
@@ -66,6 +83,53 @@ export const createStubServices = (): AppServices => ({
     },
     logout: async () => undefined,
     register: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
+  bugService: {
+    assertOwnedProject: async () => ({
+      id: "00000000-0000-4000-8000-000000000000",
+      ownerUserId: "00000000-0000-4000-8000-000000000001",
+      name: "Stub Project",
+      description: null,
+      state: "READY",
+      milestonePlanStatus: "open",
+      milestonePlanFinalizedAt: null,
+      onePagerApprovedAt: null,
+      userFlowsApprovedAt: null,
+      userFlowsApprovalSnapshot: null,
+      milestoneMapGeneratedAt: null,
+      milestoneMapReviewStatus: "not_started",
+      milestoneMapReviewIssues: [],
+      milestoneMapReviewedAt: null,
+      milestoneMapReviewLastJobId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    attachSandboxRun: async () => undefined,
+    completeFix: async () => stubBugRow(),
+    countOpenBugs: async () => 0,
+    createBug: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    failFix: async () => stubBugRow(),
+    getBug: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getOwnedBug: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    getScopedFeature: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    listBugs: async () => ({ bugs: [] }),
+    mergeFixPullRequest: async () => ({ merged: true, pullRequestUrl: null }),
+    publishProjectUpdate: () => undefined,
+    resolveImplementationRecordId: async () => null,
+    startFix: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    updateBug: async () => {
       throw new Error("Not implemented in test stub.");
     },
   },
@@ -809,6 +873,9 @@ export const createStubServices = (): AppServices => ({
     createMilestoneCiRepairRun: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    createBugFixRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     createProjectFixRun: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -880,6 +947,13 @@ export const createStubServices = (): AppServices => ({
       targetBranchName: "quayboard/fix/f-001/test-run",
       pullRequestTitle: "Fix F-001: Stub Feature",
       pullRequestBody: "Stub branch plan.",
+    }),
+    resolveBugFixBranchPlan: async () => ({
+      baseBranchName: "main",
+      cloneBranchName: "main",
+      targetBranchName: "quayboard/bug-fix/test-bug",
+      pullRequestTitle: "Fix bug test-bug",
+      pullRequestBody: "Stub bug-fix branch plan.",
     }),
     resolveMilestoneRepairBranchPlan: async () => ({
       baseBranchName: "main",

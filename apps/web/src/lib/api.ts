@@ -3,6 +3,9 @@ import type {
   ArtifactApprovalStateResponse,
   ArtifactType,
   BlueprintKind,
+  BugDetailResponse,
+  BugListResponse,
+  BugReport,
   ContextPack,
   ContextPackListResponse,
   CreateFeatureProductRevisionRequest,
@@ -201,6 +204,12 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  createBug(projectId: string, payload: { description: string; featureId?: string }) {
+    return apiRequest<BugReport>(`/api/projects/${projectId}/bugs`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   createSecret(projectId: string, payload: { type: string; value: string }) {
     return apiRequest<SecretMetadata>(`/api/projects/${projectId}/secrets`, {
       method: "POST",
@@ -221,6 +230,12 @@ export const api = {
   deleteUserFlow(userFlowId: string) {
     return apiRequest<void>(`/api/user-flows/${userFlowId}`, {
       method: "DELETE",
+    });
+  },
+  fixBug(bugId: string) {
+    return apiRequest<BugReport>(`/api/bugs/${bugId}/fix`, {
+      method: "POST",
+      body: JSON.stringify({}),
     });
   },
   generateDescription(projectId: string) {
@@ -282,6 +297,12 @@ export const api = {
     return apiRequest<JobListResponse>(
       projectId ? `/api/projects/${projectId}/jobs` : "/api/jobs",
     );
+  },
+  getBug(bugId: string) {
+    return apiRequest<BugDetailResponse>(`/api/bugs/${bugId}`);
+  },
+  getBugs(projectId: string) {
+    return apiRequest<BugListResponse>(`/api/projects/${projectId}/bugs`);
   },
   getNextActions(projectId: string) {
     return apiRequest<NextActionsResponse>(`/api/projects/${projectId}/next-actions`);
@@ -907,6 +928,12 @@ export const api = {
   updateExecutionSettings(payload: UpdateExecutionSettingsRequest) {
     return apiRequest<ExecutionSettings>("/api/settings/execution", {
       method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  updateBug(bugId: string, payload: { description?: string; featureId?: string | null }) {
+    return apiRequest<BugReport>(`/api/bugs/${bugId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     });
   },

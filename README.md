@@ -32,6 +32,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
   - Feature Editor workstreams: Product, UX, Tech, User Docs, Arch Docs, Tasks
 - Implementation surfaces for:
   - project-level Develop runs and managed container inspection
+  - project-level bug reporting, editing, and bug-fix runs
   - project-level review runs, persisted findings, and auto-remediation tracking
   - milestone sandbox sessions
   - context pack and memory debugging
@@ -54,7 +55,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 ### Current Boundaries
 
 - The import path at `/projects/:id/import` is a stub. The supported workflow starts from scratch.
-- Bug-management routes and tool-policy routes are still registered but return `501 Not Implemented`.
+- Tool-policy routes are still registered but return `501 Not Implemented`.
 - Workflow settings are present as a read-only UI surface; persisted workflow defaults are not implemented.
 - The public docs under `docs/user` still need a wider consistency pass. Use the product and code as the source of truth where they disagree.
 
@@ -89,6 +90,7 @@ Quayboard is a web control plane for shaping software projects into reviewable d
 - `/projects/:id/features/:featureId`
 - `/projects/:id/features/:featureId/:tab`
 - `/projects/:id/develop`
+- `/projects/:id/develop/bugs`
 - `/projects/:id/develop/review`
 - `/projects/:id/develop/debug`
 
@@ -96,7 +98,7 @@ The web route map lives in [`apps/web/src/app.tsx`](/home/mirdinj/quayboard/apps
 
 ## API Surface
 
-The authenticated API currently exposes project, setup, questionnaire, one-pager, product spec, blueprint, user-flow, milestone, feature, feature-workstream, task-planning, implementation-record, sandbox, execution-settings, debug, auto-advance, jobs, artifacts, secrets, events, and system-readiness routes.
+The authenticated API currently exposes project, setup, questionnaire, one-pager, product spec, blueprint, user-flow, milestone, feature, feature-workstream, task-planning, implementation-record, bug, sandbox, execution-settings, debug, auto-advance, jobs, artifacts, secrets, events, and system-readiness routes.
 
 Shared request and response contracts live in [`packages/shared/src`](/home/mirdinj/quayboard/packages/shared/src).
 

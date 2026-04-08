@@ -45,4 +45,4 @@ Quayboard's current UI supports the current planning workflow:
 33. Draft or generate the feature **UX**, **Tech**, **User Docs**, and **Architecture Docs** workstreams as needed, reviewing revision history and approving each current head revision independently.
 34. The **Tasks** tab is present as a placeholder only; delivery-task planning has not landed yet.
 
-The import path remains a stub for now, and Quayboard does not yet provide the later task-planning, bug-report, or sandbox execution workflows.
+The import path remains a stub for now. Quayboard now provides task-planning, sandbox execution, and implementation bug-report workflows. Tool-policy routes are still registered, but the management surface is not implemented yet.

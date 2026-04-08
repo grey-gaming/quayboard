@@ -67,8 +67,8 @@ Treat these as current truth unless the user explicitly asks to change them:
 
 - The supported project flow starts from scratch. The import path is stubbed.
 - Mission Control, planning artefacts, milestones, feature workstreams, task planning, implementation runs, and auto-advance are implemented surfaces.
-- The `Implementation` section in project navigation links to the Develop and Context Debug pages once setup is complete.
-- Bug routes and tool-policy routes are still registered but currently return `501 Not Implemented`.
+- The `Implementation` section in project navigation links to the Develop, Bugs, Project Review, and Context Debug pages once setup is complete.
+- Tool-policy routes are still registered but currently return `501 Not Implemented`.
 - `apps/mcp` is placeholder scaffolding only.
 - Workflow settings are present as a read-only surface; persisted workflow defaults are not implemented.
 

@@ -59,6 +59,17 @@ const createDockerWaitTimeoutError = (containerId: string, timeoutMs: number) =>
     },
   );
 
+const resolveContainerUser = () => {
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  const gid = typeof process.getgid === "function" ? process.getgid() : null;
+
+  if (typeof uid !== "number" || typeof gid !== "number") {
+    return null;
+  }
+
+  return `${uid}:${gid}`;
+};
+
 export const createDockerService = (dockerHost: string | null) => {
   const buildEnv = (overrideDockerHost?: string | null) =>
     overrideDockerHost ?? dockerHost
@@ -216,9 +227,14 @@ export const createDockerService = (dockerHost: string | null) => {
 
     async createManagedContainer(input: CreateManagedContainerInput) {
       const args = ["create", "--pull=never"];
+      const containerUser = resolveContainerUser();
 
       if (input.name) {
         args.push("--name", input.name);
+      }
+
+      if (containerUser) {
+        args.push("--user", containerUser);
       }
 
       args.push("--label", "quayboard.managed=true");
@@ -232,12 +248,13 @@ export const createDockerService = (dockerHost: string | null) => {
         args.push("--env", `${key}=${value}`);
       }
 
+      args.push("--env", "QB_ARTIFACT_DIR=/run/artifacts");
+      args.push("--env", "HOME=/run/artifacts/home");
+      args.push("--env", "XDG_CONFIG_HOME=/run/artifacts/home/.config");
+      args.push("--env", "XDG_CACHE_HOME=/run/artifacts/home/.cache");
+      args.push("--env", "XDG_DATA_HOME=/run/artifacts/home/.local/share");
       args.push("--mount", `type=bind,src=${input.workspaceDir},dst=/workspace`);
       args.push("--mount", `type=bind,src=${input.artifactDir},dst=/run/artifacts`);
-      args.push(
-        "--mount",
-        `type=bind,src=${input.artifactDir},dst=/root/.local/share/opencode/tool-output`,
-      );
 
       if (input.networkMode !== "host") {
         args.push("--add-host", "host.docker.internal:host-gateway");

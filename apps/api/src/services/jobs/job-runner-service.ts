@@ -21,6 +21,7 @@ import {
   useCasesTable,
 } from "../../db/schema.js";
 import type { ArtifactApprovalService } from "../artifact-approval-service.js";
+import type { BugService } from "../bug-service.js";
 import type { BlueprintService } from "../blueprint-service.js";
 import type { ContextPackService } from "../context-pack-service.js";
 import type { FeatureService } from "../feature-service.js";
@@ -1880,6 +1881,7 @@ const validateGeneratedFeatures = (
 
 export const createJobRunnerService = (input: {
   artifactApprovalService: ArtifactApprovalService;
+  bugService?: BugService;
   blueprintService: BlueprintService;
   contextPackService?: ContextPackService;
   db: AppDatabase;
@@ -5144,6 +5146,64 @@ export const createJobRunnerService = (input: {
           sandboxRunId: run.id,
           sessionId: result.sessionId,
         });
+      }
+
+      case "RunBugFix": {
+        if (!input.sandboxService || !input.bugService) {
+          throw new Error("RunBugFix requires sandbox and bug service support.");
+        }
+
+        const bugId = (rawJob.inputs as { bugId?: string }).bugId;
+        if (!bugId) {
+          throw new Error("RunBugFix requires bugId.");
+        }
+
+        let runId: string | null = null;
+
+        try {
+          const run = await input.sandboxService.createBugFixRun(
+            ownerUserId,
+            projectId,
+            bugId,
+            rawJob.id,
+          );
+          runId = run.id;
+          await input.bugService.attachSandboxRun(bugId, run.id);
+          await input.sandboxService.executeRun(rawJob.id, run.id);
+          const finalRun = await input.sandboxService.getRun(ownerUserId, run.id);
+
+          if (finalRun.run.outcome !== "changes_applied" || !finalRun.run.branchName) {
+            throw new Error("Bug fix run did not produce a mergeable pull request.");
+          }
+
+          const mergeResult = await input.bugService.mergeFixPullRequest(
+            ownerUserId,
+            bugId,
+            finalRun.run.branchName,
+          );
+
+          if (!mergeResult.merged) {
+            throw new Error("Open pull request could not be found for the bug fix branch.");
+          }
+
+          await input.bugService.completeFix(ownerUserId, bugId, {
+            pullRequestUrl: mergeResult.pullRequestUrl,
+            sandboxRunId: run.id,
+          });
+
+          return input.jobService.markSucceeded(rawJob.id, {
+            bugId,
+            sandboxRunId: run.id,
+            pullRequestUrl: mergeResult.pullRequestUrl,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : "Bug fix run failed.";
+          await input.bugService.failFix(ownerUserId, bugId, message, runId);
+          throw error;
+        }
       }
 
       case "ImplementChange":

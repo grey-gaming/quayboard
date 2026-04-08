@@ -181,6 +181,13 @@ export const buildImplementationTertiaryItems = (
   },
   {
     kind: "link",
+    key: "develop-bugs",
+    label: "Bugs",
+    to: `/projects/${project.id}/develop/bugs`,
+    end: true,
+  },
+  {
+    kind: "link",
     key: "develop-review",
     label: "Project Review",
     to: `/projects/${project.id}/develop/review`,

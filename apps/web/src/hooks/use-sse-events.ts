@@ -11,7 +11,7 @@ type JobUpdatedEventPayload = {
 
 type ProjectUpdatedEventPayload = {
   projectId?: string;
-  resource?: "feature" | "milestone" | "phase_gates" | "project_review";
+  resource?: "feature" | "milestone" | "phase_gates" | "project_review" | "bug";
 };
 
 type SandboxUpdatedEventPayload = {
@@ -46,7 +46,8 @@ const isProjectUpdatedEventPayload = (value: unknown): value is ProjectUpdatedEv
       ? candidate.resource === "feature" ||
         candidate.resource === "milestone" ||
         candidate.resource === "phase_gates" ||
-        candidate.resource === "project_review"
+        candidate.resource === "project_review" ||
+        candidate.resource === "bug"
       : true)
   );
 };
@@ -125,6 +126,9 @@ export const useSseEvents = (projectId?: string) => {
         }),
         queryClient.invalidateQueries({
           queryKey: ["project", activeProjectId, "sandbox-runs"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["project", activeProjectId, "bugs"],
         }),
         queryClient.invalidateQueries({
           queryKey: ["project", activeProjectId, "sandbox-containers"],

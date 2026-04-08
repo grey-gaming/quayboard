@@ -34,6 +34,7 @@ import {
 
 import type { AppDatabase } from "../db/client.js";
 import {
+  bugReportsTable,
   contextPacksTable,
   featureCasesTable,
   featureDeliveryTasksTable,
@@ -91,6 +92,7 @@ const managedGitignoreEnd = "# --- End Quayboard managed ignore entries ---";
 const managedGitignoreEntries = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
+  ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
   "dist/",
@@ -113,6 +115,7 @@ const protectedPublishPaths = [
 const excludedPublishPaths = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
+  ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
   "dist/",
@@ -126,6 +129,7 @@ const shutdownSandboxRunReason =
   "The API shut down before this sandbox run finished, so the run was cancelled.";
 const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] as const;
 const projectReviewFixBranchName = "quayboard/project-review-fixes";
+const buildBugFixBranchName = (bugReportId: string) => `quayboard/bug-fix/${bugReportId}`;
 
 type ExportedFeatureDoc = {
   featureKey: string;
@@ -303,14 +307,14 @@ const isLocalHostName = (hostname: string) =>
   hostname === "host.docker.internal";
 
 const isDeliveryRunKind = (
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix",
-) => runKind === "implement" || runKind === "verify" || runKind === "project_fix";
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix",
+) => runKind === "implement" || runKind === "verify" || runKind === "project_fix" || runKind === "bug_fix";
 
 export const determineNetworkModeForRun = (input: {
   baseUrl: string | null;
   egressPolicy: "allowlisted" | "locked";
   provider: ProviderDefinition["provider"],
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix";
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix";
 }) => {
   if (!input.baseUrl) {
     return isDeliveryRunKind(input.runKind) ? ("bridge" as const) : ("none" as const);
@@ -547,6 +551,7 @@ export const createSandboxService = (input: {
       taskPlanningSessionId: record.taskPlanningSessionId ?? null,
       contextPackId: record.contextPackId ?? null,
       triggeredByJobId: record.triggeredByJobId ?? null,
+      bugReportId: record.bugReportId ?? null,
       kind: record.kind,
       status: record.status,
       outcome: record.outcome ?? null,
@@ -886,6 +891,33 @@ export const createSandboxService = (input: {
     };
   },
 
+  async resolveBugFixBranchPlan(
+    repo: typeof reposTable.$inferSelect,
+    token: string,
+    bugReportId: string,
+  ): Promise<DeliveryBranchPlan> {
+    if (!repo.owner || !repo.name) {
+      throw new Error("Sandbox execution requires a verified GitHub repository.");
+    }
+
+    const defaultBranchName = repo.defaultBranch ?? "main";
+    const targetBranchName = buildBugFixBranchName(bugReportId);
+    const branchExists = await input.githubService.branchExists({
+      owner: repo.owner,
+      repo: repo.name,
+      token,
+      branch: targetBranchName,
+    });
+
+    return {
+      baseBranchName: defaultBranchName,
+      cloneBranchName: branchExists ? targetBranchName : defaultBranchName,
+      targetBranchName,
+      pullRequestTitle: `Fix bug ${bugReportId.slice(0, 8)}`,
+      pullRequestBody: `Automated bug-fix branch for bug ${bugReportId}.`,
+    };
+  },
+
   async createRun(
     ownerUserId: string,
     projectId: string,
@@ -893,28 +925,44 @@ export const createSandboxService = (input: {
       | { featureId: string; kind: "implement" | "verify" }
       | { milestoneId: string; kind: "ci_repair" }
       | { kind: "project_review"; branchName?: string }
-      | { kind: "project_fix"; branchName?: string },
+      | { kind: "project_fix"; branchName?: string }
+      | { kind: "bug_fix"; bugReportId: string; branchName?: string },
     triggeredByJobId: string | null = null,
     jobInputs: Record<string, unknown> | null = null,
   ) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const payload =
-      request.kind === "ci_repair" || request.kind === "project_review" || request.kind === "project_fix"
+      request.kind === "ci_repair" ||
+      request.kind === "project_review" ||
+      request.kind === "project_fix" ||
+      request.kind === "bug_fix"
         ? request
         : createSandboxRunRequestSchema.parse(request);
+    const bugReport =
+      payload.kind === "bug_fix"
+        ? await input.db.query.bugReportsTable.findFirst({
+            where: eq(bugReportsTable.id, payload.bugReportId),
+          })
+        : null;
+    if (bugReport && bugReport.projectId !== projectId) {
+      throw new HttpError(404, "bug_not_found", "Bug not found.");
+    }
     const feature =
-      "featureId" in payload
-        ? await input.featureService.get(ownerUserId, payload.featureId)
+      "featureId" in payload || payload.kind === "bug_fix"
+        ? await input.featureService.get(
+            ownerUserId,
+            "featureId" in payload ? payload.featureId : bugReport?.featureId ?? "",
+          ).catch(() => null)
         : null;
     if (feature && feature.projectId !== projectId) {
       throw new HttpError(404, "feature_not_found", "Feature not found.");
     }
 
     const session =
-      "featureId" in payload
+      "featureId" in payload && (payload.kind === "implement" || payload.kind === "verify")
         ? await input.taskPlanningService.getSession(ownerUserId, payload.featureId)
         : null;
-    if ("featureId" in payload && !session) {
+    if ("featureId" in payload && (payload.kind === "implement" || payload.kind === "verify") && !session) {
       throw new HttpError(
         409,
         "task_planning_session_required",
@@ -923,7 +971,12 @@ export const createSandboxService = (input: {
     }
 
     const pack = await input.contextPackService.buildContextPack(ownerUserId, projectId, {
-      featureId: "featureId" in payload ? payload.featureId : undefined,
+      featureId:
+        "featureId" in payload
+          ? payload.featureId
+          : payload.kind === "bug_fix"
+            ? bugReport?.featureId ?? undefined
+            : undefined,
       type: "coding",
       createdByJobId: triggeredByJobId,
     });
@@ -933,11 +986,17 @@ export const createSandboxService = (input: {
       .values({
         id: generateId(),
         projectId,
-        featureId: "featureId" in payload ? payload.featureId : null,
+        featureId:
+          "featureId" in payload
+            ? payload.featureId
+            : payload.kind === "bug_fix"
+              ? bugReport?.featureId ?? null
+              : null,
         milestoneId: feature?.milestoneId ?? ("milestoneId" in payload ? payload.milestoneId : null),
         taskPlanningSessionId: session?.id ?? null,
         contextPackId: pack.id,
         triggeredByJobId,
+        bugReportId: payload.kind === "bug_fix" ? payload.bugReportId : null,
         kind: payload.kind,
         status: "queued",
         outcome: null,
@@ -958,6 +1017,8 @@ export const createSandboxService = (input: {
             ? "ImplementChange"
             : payload.kind === "verify"
               ? "TestAndVerify"
+              : payload.kind === "bug_fix"
+                ? "RunBugFix"
               : "RepairMilestoneCi",
         status: "queued",
         inputs: { ...(jobInputs ?? {}), sandboxRunId: created.id },
@@ -1008,6 +1069,24 @@ export const createSandboxService = (input: {
       {
         kind: "project_fix",
         branchName: branchName ?? undefined,
+      },
+      triggeredByJobId,
+    );
+  },
+
+  async createBugFixRun(
+    ownerUserId: string,
+    projectId: string,
+    bugReportId: string,
+    triggeredByJobId: string | null = null,
+  ) {
+    return this.createRun(
+      ownerUserId,
+      projectId,
+      {
+        kind: "bug_fix",
+        bugReportId,
+        branchName: buildBugFixBranchName(bugReportId),
       },
       triggeredByJobId,
     );
@@ -1504,6 +1583,12 @@ export const createSandboxService = (input: {
               secretEnv.GITHUB_PAT,
               run.branchName ?? projectReviewFixBranchName,
             )
+        : run.kind === "bug_fix" && run.bugReportId
+          ? await this.resolveBugFixBranchPlan(
+              repo,
+              secretEnv.GITHUB_PAT,
+              run.bugReportId,
+            )
         : null;
 
     const cleanup = async () => {
@@ -1616,6 +1701,12 @@ export const createSandboxService = (input: {
       const tasks = run.taskPlanningSessionId
         ? await input.taskPlanningService.getTasks(project.ownerUserId, run.taskPlanningSessionId)
         : [];
+      const bugReport =
+        run.kind === "bug_fix" && run.bugReportId
+          ? await input.db.query.bugReportsTable.findFirst({
+              where: eq(bugReportsTable.id, run.bugReportId),
+            })
+          : null;
       const llmDefinition = await this.getEffectiveLlmDefinition(project.ownerUserId, run.projectId);
       const networkMode = determineNetworkModeForRun({
         baseUrl: llmDefinition.baseUrl,
@@ -1634,8 +1725,8 @@ export const createSandboxService = (input: {
           ? [
               "Produce a project-wide engineering due diligence review for this repository.",
               "Inspect the actual repository contents before making claims.",
-              "Write the human-readable report to /root/.local/share/opencode/tool-output/project-review.md.",
-              "Write the structured output to /root/.local/share/opencode/tool-output/project-review.json.",
+              "Write the human-readable report to /run/artifacts/project-review.md.",
+              "Write the structured output to /run/artifacts/project-review.json.",
               "The JSON must satisfy Quayboard's exact schema: maturityLevel must be a non-empty string, not a number.",
               "Only include real issues in findings. Do not list strengths, praise, or already-good behavior as findings.",
               "Do not make repository changes during the review run.",
@@ -1646,8 +1737,15 @@ export const createSandboxService = (input: {
                 "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
                 "Address only the cited findings in one batched remediation pass.",
                 "Re-run relevant checks before exiting.",
-                "Write a remediation summary to /root/.local/share/opencode/tool-output/project-fix-summary.md.",
+                "Write a remediation summary to /run/artifacts/project-fix-summary.md.",
               ].join("\n")
+            : run.kind === "bug_fix"
+              ? [
+                  "Read /workspace/.quayboard-bug-report.md for the reported defect and relevant metadata.",
+                  "Fix only the reported bug without broad unrelated refactors.",
+                  "Re-run the closest relevant verification before exiting.",
+                  "Write a remediation summary to /run/artifacts/bug-fix-summary.md.",
+                ].join("\n")
             : tasks
                 .map(
                   (task, index) =>
@@ -1655,6 +1753,17 @@ export const createSandboxService = (input: {
                 )
                 .join("\n\n");
       await writeFile(path.join(workspaceDir, ".quayboard-tasks.md"), taskFileContent);
+      if (run.kind === "bug_fix" && bugReport) {
+        await writeFile(
+          path.join(workspaceDir, ".quayboard-bug-report.md"),
+          [
+            `Bug ID: ${bugReport.id}`,
+            `Description: ${bugReport.description}`,
+            `Feature ID: ${bugReport.featureId ?? "n/a"}`,
+            `Implementation Record ID: ${bugReport.implementationRecordId ?? "n/a"}`,
+          ].join("\n"),
+        );
+      }
       if (run.kind === "project_fix") {
         const latestReviewArtifact = await this.getLatestProjectReviewArtifacts(run.projectId);
         await writeFile(
@@ -1901,6 +2010,43 @@ export const createSandboxService = (input: {
           publishResult.pullRequestUrl
             ? "Project review remediation completed and updated the pull request."
             : "Project review remediation completed.",
+        );
+        return;
+      }
+
+      if (run.kind === "bug_fix" && exitCode === 0) {
+        const publishResult = await this.publishPullRequestIfNeeded(
+          workspaceDir,
+          repo,
+          secretEnv.GITHUB_PAT,
+          `Fix bug ${run.bugReportId?.slice(0, 8) ?? sandboxRunId}`,
+          sandboxRunId,
+          deliveryBranchPlan ??
+            ({
+              baseBranchName: defaultBranchName,
+              cloneBranchName: currentBranchName,
+              targetBranchName: run.branchName ?? buildBugFixBranchName(run.bugReportId ?? sandboxRunId),
+              pullRequestTitle: `Fix bug ${run.bugReportId?.slice(0, 8) ?? sandboxRunId}`,
+              pullRequestBody: `Automated bug-fix run ${sandboxRunId}.`,
+            } satisfies DeliveryBranchPlan),
+          baseCommitSha,
+        );
+        await this.updateRunState(sandboxRunId, {
+          status: "succeeded",
+          outcome: publishResult.commitSha ? "changes_applied" : "no_op",
+          headCommitSha: publishResult.commitSha ?? headCommitSha,
+          pullRequestUrl: publishResult.pullRequestUrl,
+          branchName: run.branchName ?? buildBugFixBranchName(run.bugReportId ?? sandboxRunId),
+          completedAt: new Date(),
+        });
+        runFinalized = true;
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "bug_fix_completed",
+          publishResult.pullRequestUrl
+            ? "Bug fix completed and updated the pull request."
+            : "Bug fix completed.",
         );
         return;
       }
