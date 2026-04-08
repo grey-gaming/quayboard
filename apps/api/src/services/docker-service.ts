@@ -59,6 +59,17 @@ const createDockerWaitTimeoutError = (containerId: string, timeoutMs: number) =>
     },
   );
 
+const resolveContainerUser = () => {
+  const uid = typeof process.getuid === "function" ? process.getuid() : null;
+  const gid = typeof process.getgid === "function" ? process.getgid() : null;
+
+  if (typeof uid !== "number" || typeof gid !== "number") {
+    return null;
+  }
+
+  return `${uid}:${gid}`;
+};
+
 export const createDockerService = (dockerHost: string | null) => {
   const buildEnv = (overrideDockerHost?: string | null) =>
     overrideDockerHost ?? dockerHost
@@ -216,9 +227,14 @@ export const createDockerService = (dockerHost: string | null) => {
 
     async createManagedContainer(input: CreateManagedContainerInput) {
       const args = ["create", "--pull=never"];
+      const containerUser = resolveContainerUser();
 
       if (input.name) {
         args.push("--name", input.name);
+      }
+
+      if (containerUser) {
+        args.push("--user", containerUser);
       }
 
       args.push("--label", "quayboard.managed=true");

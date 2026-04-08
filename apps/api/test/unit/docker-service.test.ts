@@ -244,9 +244,19 @@ describe("docker service", () => {
       workspaceDir: "/tmp/workspace",
     });
 
+    const expectedUser =
+      typeof process.getuid === "function" && typeof process.getgid === "function"
+        ? `${process.getuid()}:${process.getgid()}`
+        : null;
+
     expect(execFileMock.mock.calls[0]?.[1]).toEqual(
       expect.arrayContaining(["create", "--pull=never", "--network", "host"]),
     );
+    if (expectedUser) {
+      expect(execFileMock.mock.calls[0]?.[1]).toEqual(
+        expect.arrayContaining(["--user", expectedUser]),
+      );
+    }
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
   });
 
