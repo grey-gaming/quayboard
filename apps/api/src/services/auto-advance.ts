@@ -135,6 +135,19 @@ const isRetryableJobFailure = (error: unknown) => {
   );
 };
 
+const shouldRetryAutoAdvanceFailure = (
+  job: Pick<typeof jobsTable.$inferSelect, "type" | "error">,
+) => {
+  if (isRetryableJobFailure(job.error)) {
+    return true;
+  }
+
+  // Project review/fix runs can fail after producing artifacts if the sandbox
+  // agent exits on output-contract validation. Allow the bounded auto-advance
+  // retry loop to rerun the same job in that case.
+  return job.type === "RunProjectReview" || job.type === "RunProjectFix";
+};
+
 const parseStoredReconciliationIssues = (value: unknown): ReconciliationIssue[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -1856,7 +1869,7 @@ export const createAutoAdvanceService = (
         const MAX_RETRIES = 3;
         const currentRetryCount = autoAdvanceMeta.retryAttempt ?? 0;
         const nextRetryCount = currentRetryCount + 1;
-        const shouldRetry = isRetryableJobFailure(job.error);
+        const shouldRetry = shouldRetryAutoAdvanceFailure(job);
         const shouldRetryImplementation = job.type === "ImplementChange";
         const errorCode =
           job.error && typeof job.error === "object" && typeof (job.error as JobFailurePayload).code === "string"
@@ -1990,7 +2003,25 @@ export const createAutoAdvanceService = (
         }
 
         if (reviewSession.status === "clear") {
-          await projectReviewService.mergeFixPullRequest(project.ownerUserId, reviewSession.id);
+          const mergeResult = await projectReviewService.mergeFixPullRequest(
+            project.ownerUserId,
+            reviewSession.id,
+          );
+          if (!mergeResult.merged) {
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({
+                status: "paused",
+                pausedReason: "job_failed",
+                pausedAt: new Date(),
+                activeBatchToken: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(autoAdvanceSessionsTable.id, session.id));
+            await publishSessionUpdate(project.ownerUserId, job.projectId);
+            return;
+          }
+
           await projectReviewService.markProjectCompleted(project.ownerUserId, job.projectId);
           await db
             .update(autoAdvanceSessionsTable)
