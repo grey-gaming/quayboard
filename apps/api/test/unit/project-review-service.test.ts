@@ -276,4 +276,92 @@ describe("project review service", () => {
       statusCode: 409,
     });
   });
+
+  it("preserves the existing pull request url when a clear review run is a no-op", async () => {
+    const attemptId = "00000000-0000-4000-8000-000000000007";
+    const updateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const service = createProjectReviewService(
+      {
+        query: {
+          projectReviewAttemptsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: attemptId,
+              projectReviewSessionId: SESSION_ID,
+              projectId: PROJECT_ID,
+              sequence: 2,
+              jobId: null,
+            }),
+          },
+          projectReviewSessionsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: SESSION_ID,
+              projectId: PROJECT_ID,
+              status: "running_review",
+              loopCount: 1,
+              maxLoops: 5,
+              branchName: "quayboard/project-review-fixes",
+              pullRequestUrl: "https://github.com/example/repo/pull/8",
+            }),
+          },
+          jobsTable: {
+            findFirst: vi.fn().mockResolvedValue(null),
+          },
+        },
+        update: vi.fn().mockReturnValue({
+          set: updateSet,
+        }),
+        delete: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockResolvedValue(undefined),
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    const result = await service.completeReviewAttempt(
+      attemptId,
+      "# Review\nAll clear.",
+      JSON.stringify({
+        executiveSummary: "Looks good.",
+        maturityLevel: "solid",
+        usabilityVerdict: "good",
+        biggestStrengths: [],
+        biggestRisks: [],
+        finalVerdict: {
+          documentationGoodEnough: true,
+          testsGoodEnough: true,
+          projectCompleteEnough: true,
+          codeHasMajorIssues: false,
+          confidence: "high",
+        },
+        engineeringQualityVerdict: "good",
+        findings: [],
+      }),
+      {
+        id: "sandbox-run-1",
+        branchName: "quayboard/project-review-fixes",
+        pullRequestUrl: null,
+      },
+    );
+
+    expect(result).toEqual({
+      clear: true,
+      findingCount: 0,
+      sessionId: SESSION_ID,
+    });
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "clear",
+        branchName: "quayboard/project-review-fixes",
+        pullRequestUrl: "https://github.com/example/repo/pull/8",
+      }),
+    );
+  });
 });

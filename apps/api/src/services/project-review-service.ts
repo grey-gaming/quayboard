@@ -707,8 +707,8 @@ export const createProjectReviewService = (
         .update(projectReviewSessionsTable)
         .set({
           status: "clear",
-          branchName: sandboxRun.branchName,
-          pullRequestUrl: sandboxRun.pullRequestUrl,
+          branchName: sandboxRun.branchName ?? session.branchName,
+          pullRequestUrl: sandboxRun.pullRequestUrl ?? session.pullRequestUrl,
           completedAt: new Date(),
           updatedAt: new Date(),
         })
@@ -840,7 +840,7 @@ export const createProjectReviewService = (
     if (!session) {
       throw new HttpError(404, "project_review_not_found", "Project review session not found.");
     }
-    if (!session.pullRequestUrl || !session.branchName) {
+    if (!session.branchName) {
       return { merged: false };
     }
 

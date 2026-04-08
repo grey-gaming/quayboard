@@ -174,6 +174,9 @@ describe("auto-advance service", () => {
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
   let projectReviewService: {
     finalizeMilestonePlan: ReturnType<typeof vi.fn>;
+    getSessionById: ReturnType<typeof vi.fn>;
+    markProjectCompleted: ReturnType<typeof vi.fn>;
+    mergeFixPullRequest: ReturnType<typeof vi.fn>;
     startReview: ReturnType<typeof vi.fn>;
   };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
@@ -250,6 +253,9 @@ describe("auto-advance service", () => {
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
     projectReviewService = {
       finalizeMilestonePlan: vi.fn().mockResolvedValue({}),
+      getSessionById: vi.fn().mockResolvedValue({ session: null }),
+      markProjectCompleted: vi.fn().mockResolvedValue(undefined),
+      mergeFixPullRequest: vi.fn().mockResolvedValue({ merged: true }),
       startReview: vi.fn().mockResolvedValue({ session: null }),
     };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
@@ -1306,6 +1312,68 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
       const resetUpdate = updates.find((u) => "retryCount" in u && u.retryCount === 0);
       expect(resetUpdate).toBeDefined();
+    });
+
+    it("pauses instead of completing when a clear project review does not merge", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        pendingJobCount: 1,
+        activeBatchToken: "batch-1",
+        currentStep: "project_review_run",
+      });
+      const reviewJob = {
+        ...makeJob(),
+        type: "RunProjectReview",
+        inputs: {
+          sessionId: "review-session-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+        outputs: {
+          sessionId: "review-session-123",
+          clear: true,
+          findingCount: 0,
+        },
+      };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: data.status === "paused" ? ("paused" as const) : ("running" as const),
+                  pausedReason:
+                    data.status === "paused" ? ("job_failed" as const) : null,
+                  activeBatchToken: null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      projectReviewService.getSessionById.mockResolvedValue({
+        session: {
+          id: "review-session-123",
+          status: "clear",
+        },
+      });
+      projectReviewService.mergeFixPullRequest.mockResolvedValue({ merged: false });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(projectReviewService.markProjectCompleted).not.toHaveBeenCalled();
+      expect(
+        updates.some(
+          (update) => update.status === "paused" && update.pausedReason === "job_failed",
+        ),
+      ).toBe(true);
+      expect(updates.some((update) => update.status === "completed")).toBe(false);
     });
 
     it("ignores duplicate success callbacks after the batch has been claimed", async () => {

@@ -2003,7 +2003,25 @@ export const createAutoAdvanceService = (
         }
 
         if (reviewSession.status === "clear") {
-          await projectReviewService.mergeFixPullRequest(project.ownerUserId, reviewSession.id);
+          const mergeResult = await projectReviewService.mergeFixPullRequest(
+            project.ownerUserId,
+            reviewSession.id,
+          );
+          if (!mergeResult.merged) {
+            await db
+              .update(autoAdvanceSessionsTable)
+              .set({
+                status: "paused",
+                pausedReason: "job_failed",
+                pausedAt: new Date(),
+                activeBatchToken: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(autoAdvanceSessionsTable.id, session.id));
+            await publishSessionUpdate(project.ownerUserId, job.projectId);
+            return;
+          }
+
           await projectReviewService.markProjectCompleted(project.ownerUserId, job.projectId);
           await db
             .update(autoAdvanceSessionsTable)
