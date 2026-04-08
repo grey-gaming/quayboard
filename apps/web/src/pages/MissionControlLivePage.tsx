@@ -46,7 +46,8 @@ export const MissionControlLivePage = () => {
   const { id = "", jobId } = useParams();
   const [followLive, setFollowLive] = useState(true);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const reasoningRef = useRef<HTMLDivElement | null>(null);
+  const outputRef = useRef<HTMLDivElement | null>(null);
   const projectQuery = useProjectQuery(id);
   const jobsQuery = useProjectJobsQuery(id);
   const jobs = jobsQuery.data?.jobs ?? [];
@@ -68,11 +69,16 @@ export const MissionControlLivePage = () => {
   }, [snapshot?.changedFiles]);
 
   useEffect(() => {
-    if (!followLive || !transcriptRef.current) {
+    if (!followLive) {
       return;
     }
 
-    transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    if (reasoningRef.current) {
+      reasoningRef.current.scrollTop = reasoningRef.current.scrollHeight;
+    }
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
   }, [followLive, snapshot?.events.length, snapshot?.transcript.output, snapshot?.transcript.reasoning]);
 
   if (!projectQuery.data) {
@@ -242,30 +248,44 @@ export const MissionControlLivePage = () => {
                   </div>
                 ) : null}
 
-                <div
-                  ref={transcriptRef}
-                  className="max-h-[34rem] overflow-auto border border-border/80 bg-panel-inset p-4"
-                  onScroll={(event) => {
-                    const target = event.currentTarget;
-                    const bottomGap = target.scrollHeight - target.scrollTop - target.clientHeight;
-                    if (bottomGap > 64 && followLive) {
-                      setFollowLive(false);
-                    }
-                  }}
-                >
-                  {snapshot.transcript.reasoning ? (
-                    <div className="border-l-2 border-info/50 pl-4">
-                      <p className="qb-meta-label">Thinking</p>
-                      <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-secondary">
-                        {snapshot.transcript.reasoning}
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <div className="border border-border/80 bg-panel-inset p-4">
+                    <p className="qb-meta-label">Thinking</p>
+                    <div
+                      ref={reasoningRef}
+                      className="mt-2 max-h-[30rem] overflow-auto border-l-2 border-info/50 pl-4"
+                      onScroll={(event) => {
+                        const target = event.currentTarget;
+                        const bottomGap =
+                          target.scrollHeight - target.scrollTop - target.clientHeight;
+                        if (bottomGap > 64 && followLive) {
+                          setFollowLive(false);
+                        }
+                      }}
+                    >
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-secondary">
+                        {snapshot.transcript.reasoning || "Waiting for streamed thinking."}
                       </pre>
                     </div>
-                  ) : null}
-                  <div className={snapshot.transcript.reasoning ? "mt-5" : ""}>
+                  </div>
+                  <div className="border border-border/80 bg-panel-inset p-4">
                     <p className="qb-meta-label">Output</p>
-                    <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-primary">
-                      {snapshot.transcript.output || "Waiting for streamed output."}
-                    </pre>
+                    <div
+                      ref={outputRef}
+                      className="mt-2 max-h-[30rem] overflow-auto"
+                      onScroll={(event) => {
+                        const target = event.currentTarget;
+                        const bottomGap =
+                          target.scrollHeight - target.scrollTop - target.clientHeight;
+                        if (bottomGap > 64 && followLive) {
+                          setFollowLive(false);
+                        }
+                      }}
+                    >
+                      <pre className="whitespace-pre-wrap font-sans text-sm text-primary">
+                        {snapshot.transcript.output || "Waiting for streamed output."}
+                      </pre>
+                    </div>
                   </div>
                 </div>
               </div>
