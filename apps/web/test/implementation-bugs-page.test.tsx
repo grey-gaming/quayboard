@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BugReport } from "@quayboard/shared";
 
 import { AppProviders } from "../src/app.js";
 import { ImplementationBugsPage } from "../src/pages/ImplementationBugsPage.js";
@@ -46,7 +47,7 @@ describe("ImplementationBugsPage", () => {
   it("creates, edits, and queues fixes for bugs", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
 
-    let bugs = [
+    let bugs: BugReport[] = [
       {
         id: "bug-open-1",
         projectId,

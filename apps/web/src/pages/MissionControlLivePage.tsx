@@ -1,0 +1,388 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+
+import type { Job } from "@quayboard/shared";
+
+import { PageIntro } from "../components/composites/PageIntro.js";
+import { buildMissionControlTertiaryItems } from "../components/layout/project-navigation.js";
+import { Badge } from "../components/ui/Badge.js";
+import { Card } from "../components/ui/Card.js";
+import { AppFrame } from "../components/templates/AppFrame.js";
+import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
+import { useLiveJobDiffQuery, useLiveJobTrace } from "../hooks/use-live-job-trace.js";
+import { useProjectJobsQuery, useProjectQuery } from "../hooks/use-projects.js";
+import { formatDateTime, formatJobType } from "../lib/format.js";
+
+const activeStatuses = new Set(["queued", "running"]);
+const recentJobLimit = 10;
+
+const connectionTone = (
+  status: "live" | "lagging" | "reconnecting",
+): "success" | "warning" | "danger" => {
+  switch (status) {
+    case "live":
+      return "success";
+    case "lagging":
+      return "warning";
+    default:
+      return "danger";
+  }
+};
+
+const formatCount = (value: number | null) => (value === null ? "binary" : `${value}`);
+
+const formatCost = (value: number | null) => (value === null ? null : `$${value.toFixed(4)}`);
+
+const buildJobGroups = (jobs: Job[]) => {
+  const active = jobs.filter((job) => activeStatuses.has(job.status));
+  const recent = jobs
+    .filter((job) => !activeStatuses.has(job.status))
+    .slice(0, recentJobLimit);
+
+  return { active, recent };
+};
+
+export const MissionControlLivePage = () => {
+  const { id = "", jobId } = useParams();
+  const [followLive, setFollowLive] = useState(true);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const projectQuery = useProjectQuery(id);
+  const jobsQuery = useProjectJobsQuery(id);
+  const jobs = jobsQuery.data?.jobs ?? [];
+  const { active, recent } = useMemo(() => buildJobGroups(jobs), [jobs]);
+  const selectedJobId = jobId ?? active[0]?.id ?? recent[0]?.id ?? null;
+  const liveTrace = useLiveJobTrace(id, selectedJobId);
+  const snapshot = liveTrace.snapshot;
+  const diffQuery = useLiveJobDiffQuery(id, selectedJobId, selectedFilePath);
+
+  useEffect(() => {
+    setFollowLive(true);
+  }, [selectedJobId]);
+
+  useEffect(() => {
+    const nextFile = snapshot?.changedFiles[0]?.path ?? null;
+    setSelectedFilePath((current) =>
+      current && snapshot?.changedFiles.some((entry) => entry.path === current) ? current : nextFile,
+    );
+  }, [snapshot?.changedFiles]);
+
+  useEffect(() => {
+    if (!followLive || !transcriptRef.current) {
+      return;
+    }
+
+    transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+  }, [followLive, snapshot?.events.length, snapshot?.transcript.output, snapshot?.transcript.reasoning]);
+
+  if (!projectQuery.data) {
+    return (
+      <AppFrame>
+        <p className="text-sm text-secondary">Loading project...</p>
+      </AppFrame>
+    );
+  }
+
+  const tertiaryItems = buildMissionControlTertiaryItems(projectQuery.data, jobs, selectedJobId);
+
+  return (
+    <ProjectPageFrame
+      activeSection="mission-control"
+      project={projectQuery.data}
+      tertiaryItems={tertiaryItems}
+    >
+      <PageIntro
+        eyebrow="Project"
+        title="Live Mission Control"
+        summary="Observe active and recent jobs as they stream model output, tool activity, and repository changes."
+        meta={
+          <>
+            <Badge tone={connectionTone(liveTrace.connectionStatus)}>
+              {liveTrace.connectionStatus}
+            </Badge>
+            <Badge tone="neutral">{active.length} active jobs</Badge>
+            <Badge tone="neutral">{recent.length} recent jobs</Badge>
+          </>
+        }
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_22rem] xl:items-start">
+        <Card surface="rail" className="h-fit">
+          <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+            <div>
+              <p className="qb-meta-label">Jobs</p>
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Live Feed</p>
+            </div>
+            <Badge tone="neutral">{jobs.length}</Badge>
+          </div>
+
+          <div className="mt-4 grid gap-4">
+            <section className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="qb-meta-label">Active</p>
+                <span className="text-xs text-secondary">{active.length}</span>
+              </div>
+              <div className="grid gap-2">
+                {active.length ? active.map((job) => (
+                  <Link
+                    key={job.id}
+                    className={[
+                      "rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedJobId === job.id
+                        ? "border-border-strong bg-panel-raised"
+                        : "border-border/80 bg-panel-inset hover:bg-panel",
+                    ].join(" ")}
+                    to={`/projects/${id}/live/${job.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate font-medium">{formatJobType(job.type)}</span>
+                      <Badge tone={job.status === "running" ? "info" : "neutral"}>{job.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">{formatDateTime(job.startedAt ?? job.queuedAt)}</p>
+                  </Link>
+                )) : (
+                  <p className="text-sm text-secondary">No active jobs.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="qb-meta-label">Recent</p>
+                <span className="text-xs text-secondary">{recent.length}</span>
+              </div>
+              <div className="grid gap-2">
+                {recent.length ? recent.map((job) => (
+                  <Link
+                    key={job.id}
+                    className={[
+                      "rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedJobId === job.id
+                        ? "border-border-strong bg-panel-raised"
+                        : "border-border/80 bg-panel-inset hover:bg-panel",
+                    ].join(" ")}
+                    to={`/projects/${id}/live/${job.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0 truncate font-medium">{formatJobType(job.type)}</span>
+                      <Badge tone="neutral">{job.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">
+                      {formatDateTime(job.completedAt ?? job.startedAt ?? job.queuedAt)}
+                    </p>
+                  </Link>
+                )) : (
+                  <p className="text-sm text-secondary">No completed traceable jobs yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        </Card>
+
+        <div className="grid gap-4">
+          <Card surface="panel">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Transcript</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+                  {snapshot ? formatJobType(snapshot.job.type) : "Select a job"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className={[
+                    "rounded-sm border px-3 py-1 text-sm transition-colors",
+                    followLive
+                      ? "border-border-strong bg-panel-raised"
+                      : "border-border/80 bg-panel-inset hover:bg-panel",
+                  ].join(" ")}
+                  onClick={() => setFollowLive((current) => !current)}
+                  type="button"
+                >
+                  {followLive ? "Following live" : "Resume live"}
+                </button>
+                {snapshot?.relatedSandboxRun ? (
+                  <Link
+                    className="rounded-sm border border-border/80 bg-panel-inset px-3 py-1 text-sm hover:bg-panel"
+                    to={`/projects/${id}/develop`}
+                  >
+                    Open run
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+
+            {snapshot ? (
+              <div className="mt-4 grid gap-4">
+                {snapshot.llmSteps.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {snapshot.llmSteps.map((step) => (
+                      <Badge key={step.key} tone={step.status === "failed" ? "danger" : "neutral"}>
+                        {step.templateId} · {step.model}
+                        {step.promptTokens !== null || step.completionTokens !== null
+                          ? ` · ${step.promptTokens ?? 0}/${step.completionTokens ?? 0} tok`
+                          : ""}
+                        {formatCost(step.estimatedCostUsd) ? ` · ${formatCost(step.estimatedCostUsd)}` : ""}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+
+                {snapshot.outputLinks.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {snapshot.outputLinks.map((link) => (
+                      <Link
+                        key={`${link.kind}:${link.href}`}
+                        className="rounded-sm border border-border/80 bg-panel-inset px-3 py-1 text-sm hover:bg-panel"
+                        to={link.href}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div
+                  ref={transcriptRef}
+                  className="max-h-[34rem] overflow-auto border border-border/80 bg-panel-inset p-4"
+                  onScroll={(event) => {
+                    const target = event.currentTarget;
+                    const bottomGap = target.scrollHeight - target.scrollTop - target.clientHeight;
+                    if (bottomGap > 64 && followLive) {
+                      setFollowLive(false);
+                    }
+                  }}
+                >
+                  {snapshot.transcript.reasoning ? (
+                    <div className="border-l-2 border-info/50 pl-4">
+                      <p className="qb-meta-label">Thinking</p>
+                      <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-secondary">
+                        {snapshot.transcript.reasoning}
+                      </pre>
+                    </div>
+                  ) : null}
+                  <div className={snapshot.transcript.reasoning ? "mt-5" : ""}>
+                    <p className="qb-meta-label">Output</p>
+                    <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-primary">
+                      {snapshot.transcript.output || "Waiting for streamed output."}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-secondary">
+                {selectedJobId ? "Loading live trace..." : "No jobs available to observe yet."}
+              </p>
+            )}
+          </Card>
+
+          <Card surface="rail">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Tools</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Calls</p>
+              </div>
+              <Badge tone="neutral">{snapshot?.toolCalls.length ?? 0}</Badge>
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {snapshot?.toolCalls.length ? snapshot.toolCalls.map((toolCall) => (
+                <div key={toolCall.id} className="border border-border/80 bg-panel-inset p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{toolCall.toolName}</p>
+                    <Badge
+                      tone={
+                        toolCall.status === "failed"
+                          ? "danger"
+                          : toolCall.status === "running"
+                            ? "info"
+                            : "neutral"
+                      }
+                    >
+                      {toolCall.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-secondary">
+                    {toolCall.startedAt ? formatDateTime(toolCall.startedAt) : "Pending"}
+                    {toolCall.durationMs !== null ? ` · ${toolCall.durationMs} ms` : ""}
+                  </p>
+                  {toolCall.inputPreview ? (
+                    <pre className="mt-3 whitespace-pre-wrap border border-border/70 bg-panel px-3 py-2 font-sans text-xs text-secondary">
+                      {toolCall.inputPreview}
+                    </pre>
+                  ) : null}
+                  {toolCall.outputPreview ? (
+                    <pre className="mt-3 whitespace-pre-wrap border border-border/70 bg-panel px-3 py-2 font-sans text-xs text-secondary">
+                      {toolCall.outputPreview}
+                    </pre>
+                  ) : null}
+                  {toolCall.errorMessage ? (
+                    <p className="mt-2 text-xs text-danger">{toolCall.errorMessage}</p>
+                  ) : null}
+                </div>
+              )) : (
+                <p className="text-sm text-secondary">No tool calls recorded for this job.</p>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-4">
+          <Card surface="rail" className="h-fit">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Repository</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Changed Files</p>
+              </div>
+              <Badge tone="neutral">{snapshot?.changedFiles.length ?? 0}</Badge>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {snapshot?.changedFiles.length ? snapshot.changedFiles.map((file) => (
+                <button
+                  key={file.path}
+                  className={[
+                    "grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 border px-3 py-2 text-left text-sm transition-colors",
+                    selectedFilePath === file.path
+                      ? "border-border-strong bg-panel-raised"
+                      : "border-border/80 bg-panel-inset hover:bg-panel",
+                  ].join(" ")}
+                  onClick={() => setSelectedFilePath(file.path)}
+                  type="button"
+                >
+                  <span className="text-success">+{formatCount(file.additions)}</span>
+                  <span className="text-danger">-{formatCount(file.deletions)}</span>
+                  <span className="truncate font-medium" title={file.path}>
+                    {file.path}
+                  </span>
+                </button>
+              )) : (
+                <p className="text-sm text-secondary">No repository file changes for this job.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card surface="panel" className="min-h-[20rem]">
+            <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+              <div>
+                <p className="qb-meta-label">Patch Preview</p>
+                <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+                  {selectedFilePath ?? "Select a file"}
+                </p>
+              </div>
+              {diffQuery.isFetching ? <Badge tone="neutral">refreshing</Badge> : null}
+            </div>
+            <div className="mt-4">
+              {selectedFilePath ? (
+                <pre className="max-h-[36rem] overflow-auto whitespace-pre-wrap border border-border/80 bg-panel-inset p-4 font-mono text-xs text-primary">
+                  {diffQuery.data?.patch || "Patch preview not available yet."}
+                </pre>
+              ) : (
+                <p className="text-sm text-secondary">Select a changed file to inspect its patch.</p>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </ProjectPageFrame>
+  );
+};

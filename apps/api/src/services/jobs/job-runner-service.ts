@@ -36,6 +36,7 @@ import type { ProjectReviewService } from "../project-review-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { SandboxService } from "../sandbox-service.js";
+import type { JobTraceService } from "../job-trace-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
@@ -1888,6 +1889,7 @@ export const createJobRunnerService = (input: {
   featureService?: FeatureService;
   featureWorkstreamService?: FeatureWorkstreamService;
   jobService: JobService;
+  jobTraceService?: JobTraceService;
   llmProviderService: LlmProviderService;
   milestoneService?: MilestoneService;
   onePagerService: OnePagerService;
@@ -1908,6 +1910,7 @@ export const createJobRunnerService = (input: {
 
     const ownerUserId = rawJob.createdByUserId;
     const projectId = rawJob.projectId;
+    let llmStepCounter = 0;
     const autoAdvanceBatch = (rawJob.inputs as { _autoAdvance?: { batchToken?: string; sessionId?: string } } | null)?._autoAdvance;
     const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
@@ -2012,13 +2015,79 @@ export const createJobRunnerService = (input: {
       });
     };
 
+    const publishTraceEvent = async (
+      type: "job_status" | "llm_step_started" | "llm_step_finished" | "text_delta" | "reasoning_delta" | "output_link" | "error",
+      payload: Record<string, unknown>,
+    ) => {
+      if (!rawJob.projectId) {
+        return null;
+      }
+
+      return input.jobTraceService?.appendEvent({
+        jobId: rawJob.id,
+        projectId: rawJob.projectId,
+        type,
+        payload,
+      });
+    };
+
     const generateWithJobFailure = async (
       prompt: string,
-      options?: { responseFormat?: "json" },
+      options?: {
+        responseFormat?: "json";
+        templateId?: string;
+      },
     ) => {
+      const stepKey = options?.templateId ? `${rawJob.id}:${++llmStepCounter}:${options.templateId}` : null;
+
+      if (stepKey && options?.templateId) {
+        await publishTraceEvent("llm_step_started", {
+          key: stepKey,
+          model: provider.model,
+          provider: provider.provider,
+          templateId: options?.templateId,
+        });
+      }
+
       try {
-        return await input.llmProviderService.generate(provider, prompt, options);
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          onStream: stepKey
+            ? {
+                onReasoningDelta: (delta) => {
+                  void publishTraceEvent("reasoning_delta", {
+                    key: stepKey,
+                    text: delta,
+                  });
+                },
+                onTextDelta: (delta) => {
+                  void publishTraceEvent("text_delta", {
+                    key: stepKey,
+                    text: delta,
+                  });
+                },
+              }
+            : undefined,
+          responseFormat: options?.responseFormat,
+        });
+
+        if (stepKey) {
+          await publishTraceEvent("llm_step_finished", {
+            key: stepKey,
+            status: "succeeded",
+            promptTokens: generated.promptTokens,
+            completionTokens: generated.completionTokens,
+          });
+        }
+
+        return generated;
       } catch (error) {
+        if (stepKey) {
+          await publishTraceEvent("llm_step_finished", {
+            key: stepKey,
+            status: "failed",
+          }).catch(() => undefined);
+        }
+
         const providerError =
           error && typeof error === "object" && "llmProviderError" in error
             ? (error as { llmProviderError: LlmProviderError }).llmProviderError
@@ -2069,6 +2138,7 @@ export const createJobRunnerService = (input: {
         });
         const repaired = await generateWithJobFailure(repairPrompt, {
           responseFormat: "json",
+          templateId: repairTemplateId,
         });
         await storeLlmRun({
           templateId: repairTemplateId,
@@ -2101,6 +2171,7 @@ export const createJobRunnerService = (input: {
     }) => {
       const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
+        templateId: inputArgs.templateId,
       });
       await storeLlmRun({
         templateId: inputArgs.templateId,
@@ -2129,6 +2200,7 @@ export const createJobRunnerService = (input: {
     }) => {
       const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
+        templateId: inputArgs.templateId,
       });
       await storeLlmRun({
         templateId: inputArgs.templateId,
@@ -2148,6 +2220,7 @@ export const createJobRunnerService = (input: {
       const reviewPrompt = inputArgs.buildReviewPrompt(draft);
       const reviewed = await generateWithJobFailure(reviewPrompt, {
         responseFormat: "json",
+        templateId: reviewTemplateId,
       });
       await storeLlmRun({
         templateId: reviewTemplateId,
@@ -2685,7 +2758,9 @@ export const createJobRunnerService = (input: {
       case "GenerateProjectDescription": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
-        const generated = await generateWithJobFailure(prompt);
+        const generated = await generateWithJobFailure(prompt, {
+          templateId: "GenerateProjectDescription",
+        });
         await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
@@ -2843,6 +2918,7 @@ export const createJobRunnerService = (input: {
         try {
           generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: rawJob.type,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -2919,6 +2995,7 @@ export const createJobRunnerService = (input: {
         try {
           qualityChecked = await generateWithJobFailure(qualityCheckPrompt, {
             responseFormat: "json",
+            templateId: qualityCheckTemplateId,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -2997,6 +3074,7 @@ export const createJobRunnerService = (input: {
           try {
             retried = await generateWithJobFailure(retryPrompt, {
               responseFormat: "json",
+              templateId: retryTemplateId,
             });
           } catch (error) {
             logProductSpecGeneration("failure", {
@@ -3073,6 +3151,7 @@ export const createJobRunnerService = (input: {
         try {
           reviewed = await generateWithJobFailure(reviewPrompt, {
             responseFormat: "json",
+            templateId: reviewTemplateId,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -3616,6 +3695,7 @@ export const createJobRunnerService = (input: {
 
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -3779,6 +3859,7 @@ export const createJobRunnerService = (input: {
             });
             const jsonRepaired = await generateWithJobFailure(jsonRepairPrompt, {
               responseFormat: "json",
+              templateId: jsonRepairTemplateId,
             });
             await storeLlmRun({
               templateId: jsonRepairTemplateId,
@@ -3809,6 +3890,7 @@ export const createJobRunnerService = (input: {
               });
               const shapeRepaired = await generateWithJobFailure(shapeRepairPrompt, {
                 responseFormat: "json",
+                templateId: shapeRepairTemplateId,
               });
               await storeLlmRun({
                 templateId: shapeRepairTemplateId,
@@ -3857,6 +3939,7 @@ export const createJobRunnerService = (input: {
 
           const generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: inputArgs.templateId,
           });
           await storeLlmRun({
             templateId: inputArgs.templateId,
@@ -3891,6 +3974,7 @@ export const createJobRunnerService = (input: {
           });
           const generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: inputArgs.templateId,
           });
           await storeLlmRun({
             templateId: inputArgs.templateId,
@@ -4016,6 +4100,7 @@ export const createJobRunnerService = (input: {
         });
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -4381,6 +4466,7 @@ export const createJobRunnerService = (input: {
         });
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -5369,6 +5455,7 @@ export const createJobRunnerService = (input: {
 
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,

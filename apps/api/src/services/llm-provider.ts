@@ -23,6 +23,11 @@ export type GeneratedContent = {
   totalDuration?: number | null;
 };
 
+export type GenerateStreamCallbacks = {
+  onReasoningDelta?: (delta: string) => void;
+  onTextDelta?: (delta: string) => void;
+};
+
 export type LlmProviderError = {
   kind: "http_error" | "transport_error";
   message: string;
@@ -36,6 +41,7 @@ export type LlmProviderAdapter = {
     baseUrl: string | null;
     apiKey: string | null;
     model: string;
+    onStream?: GenerateStreamCallbacks;
     prompt: string;
     responseFormat?: "json";
   }): Promise<GeneratedContent>;
@@ -72,6 +78,140 @@ const createRequestSignal = (timeoutMs: number) => {
       clearTimeout(timeoutHandle);
     },
   };
+};
+
+const readStreamText = async (
+  stream: ReadableStream<Uint8Array>,
+  callbacks: GenerateStreamCallbacks | undefined,
+  parseChunk: (chunk: string) => {
+    completionTokens?: number | null;
+    doneReason?: string | null;
+    evalCount?: number | null;
+    promptEvalCount?: number | null;
+    promptTokens?: number | null;
+    reasoningDelta?: string | null;
+    textDelta?: string | null;
+    totalDuration?: number | null;
+  }[],
+) => {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let reasoning = "";
+  let promptTokens: number | null = null;
+  let completionTokens: number | null = null;
+  let doneReason: string | null = null;
+  let promptEvalCount: number | null = null;
+  let evalCount: number | null = null;
+  let totalDuration: number | null = null;
+
+  while (true) {
+    const result = await reader.read();
+    if (result.done) {
+      break;
+    }
+
+    buffer += decoder.decode(result.value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      for (const parsed of parseChunk(line)) {
+        if (parsed.textDelta) {
+          content += parsed.textDelta;
+          callbacks?.onTextDelta?.(parsed.textDelta);
+        }
+        if (parsed.reasoningDelta) {
+          reasoning += parsed.reasoningDelta;
+          callbacks?.onReasoningDelta?.(parsed.reasoningDelta);
+        }
+        if (typeof parsed.promptTokens === "number") {
+          promptTokens = parsed.promptTokens;
+        }
+        if (typeof parsed.completionTokens === "number") {
+          completionTokens = parsed.completionTokens;
+        }
+        if (typeof parsed.promptEvalCount === "number") {
+          promptEvalCount = parsed.promptEvalCount;
+        }
+        if (typeof parsed.evalCount === "number") {
+          evalCount = parsed.evalCount;
+        }
+        if (typeof parsed.totalDuration === "number") {
+          totalDuration = parsed.totalDuration;
+        }
+        if (typeof parsed.doneReason === "string") {
+          doneReason = parsed.doneReason;
+        }
+      }
+    }
+  }
+
+  if (buffer.trim().length > 0) {
+    for (const parsed of parseChunk(buffer)) {
+      if (parsed.textDelta) {
+        content += parsed.textDelta;
+        callbacks?.onTextDelta?.(parsed.textDelta);
+      }
+      if (parsed.reasoningDelta) {
+        reasoning += parsed.reasoningDelta;
+        callbacks?.onReasoningDelta?.(parsed.reasoningDelta);
+      }
+      if (typeof parsed.promptTokens === "number") {
+        promptTokens = parsed.promptTokens;
+      }
+      if (typeof parsed.completionTokens === "number") {
+        completionTokens = parsed.completionTokens;
+      }
+      if (typeof parsed.promptEvalCount === "number") {
+        promptEvalCount = parsed.promptEvalCount;
+      }
+      if (typeof parsed.evalCount === "number") {
+        evalCount = parsed.evalCount;
+      }
+      if (typeof parsed.totalDuration === "number") {
+        totalDuration = parsed.totalDuration;
+      }
+      if (typeof parsed.doneReason === "string") {
+        doneReason = parsed.doneReason;
+      }
+    }
+  }
+
+  return {
+    completionTokens,
+    content,
+    doneReason,
+    evalCount,
+    promptEvalCount,
+    promptTokens,
+    reasoning,
+    totalDuration,
+  };
+};
+
+const parseOpenAiReasoningDelta = (delta: Record<string, unknown>) => {
+  if (typeof delta.reasoning_content === "string") {
+    return delta.reasoning_content;
+  }
+
+  if (typeof delta.reasoning === "string") {
+    return delta.reasoning;
+  }
+
+  if (Array.isArray(delta.reasoning_details)) {
+    return delta.reasoning_details
+      .map((item) =>
+        typeof item === "object" && item !== null && "text" in item && typeof item.text === "string"
+          ? item.text
+          : null,
+      )
+      .filter((item): item is string => Boolean(item))
+      .join("");
+  }
+
+  return null;
 };
 
 const formatHealthCheckFetchError = (
@@ -134,9 +274,10 @@ const createOllamaAdapter = (input: {
     };
   },
 
-  async generate({ baseUrl, model, prompt, responseFormat }) {
+  async generate({ baseUrl, model, onStream, prompt, responseFormat }) {
     let response;
     const timeout = createRequestSignal(input.requestTimeoutMs);
+    const useStream = Boolean(onStream);
 
     try {
       response = await fetch(new URL("/api/generate", baseUrl ?? "").toString(), {
@@ -153,7 +294,7 @@ const createOllamaAdapter = (input: {
           options: {
             num_predict: input.maxOutputTokens,
           },
-          stream: false,
+          stream: useStream,
         }),
       });
     } catch (error) {
@@ -173,7 +314,7 @@ const createOllamaAdapter = (input: {
       timeout.clear();
     }
 
-    const payload = await parseJson(response);
+    const payload = useStream ? {} : await parseJson(response);
 
     if (!response.ok) {
       const payloadError =
@@ -191,20 +332,51 @@ const createOllamaAdapter = (input: {
       });
     }
 
+    if (!useStream || !response.body) {
+      return {
+        content:
+          typeof payload.response === "string"
+            ? payload.response
+            : "Generation returned no content.",
+        promptTokens: null,
+        completionTokens: null,
+        doneReason:
+          typeof payload.done_reason === "string" ? payload.done_reason : null,
+        promptEvalCount:
+          typeof payload.prompt_eval_count === "number" ? payload.prompt_eval_count : null,
+        evalCount: typeof payload.eval_count === "number" ? payload.eval_count : null,
+        totalDuration:
+          typeof payload.total_duration === "number" ? payload.total_duration : null,
+      };
+    }
+
+    const streamed = await readStreamText(response.body, onStream, (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        return [];
+      }
+
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      return [
+        {
+          textDelta: typeof parsed.response === "string" ? parsed.response : null,
+          doneReason: typeof parsed.done_reason === "string" ? parsed.done_reason : null,
+          promptEvalCount:
+            typeof parsed.prompt_eval_count === "number" ? parsed.prompt_eval_count : null,
+          evalCount: typeof parsed.eval_count === "number" ? parsed.eval_count : null,
+          totalDuration: typeof parsed.total_duration === "number" ? parsed.total_duration : null,
+        },
+      ];
+    });
+
     return {
-      content:
-        typeof payload.response === "string"
-          ? payload.response
-          : "Generation returned no content.",
-      promptTokens: null,
-      completionTokens: null,
-      doneReason:
-        typeof payload.done_reason === "string" ? payload.done_reason : null,
-      promptEvalCount:
-        typeof payload.prompt_eval_count === "number" ? payload.prompt_eval_count : null,
-      evalCount: typeof payload.eval_count === "number" ? payload.eval_count : null,
-      totalDuration:
-        typeof payload.total_duration === "number" ? payload.total_duration : null,
+      content: streamed.content,
+      promptTokens: streamed.promptTokens,
+      completionTokens: streamed.completionTokens,
+      doneReason: streamed.doneReason,
+      promptEvalCount: streamed.promptEvalCount,
+      evalCount: streamed.evalCount,
+      totalDuration: streamed.totalDuration,
     };
   },
 });
@@ -262,9 +434,10 @@ const createOpenAiAdapter = (input: {
     };
   },
 
-  async generate({ apiKey, baseUrl, model, prompt, responseFormat }) {
+  async generate({ apiKey, baseUrl, model, onStream, prompt, responseFormat }) {
     let response;
     const timeout = createRequestSignal(input.requestTimeoutMs);
+    const useStream = Boolean(onStream);
 
     try {
       response = await fetch(
@@ -283,6 +456,7 @@ const createOpenAiAdapter = (input: {
             ...(responseFormat === "json"
               ? { response_format: { type: "json_object" as const } }
               : {}),
+            ...(useStream ? { stream: true } : {}),
           }),
         },
       );
@@ -313,6 +487,64 @@ const createOpenAiAdapter = (input: {
         retryable: isRetryableStatus(response.status),
         statusCode: response.status,
       });
+    }
+
+    if (useStream && response.body) {
+      const streamed = await readStreamText(response.body, onStream, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) {
+          return [];
+        }
+
+        const data = trimmed.slice("data:".length).trim();
+        if (data === "[DONE]") {
+          return [];
+        }
+
+        const parsed = JSON.parse(data) as Record<string, unknown>;
+        const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+        return choices.flatMap((choice) => {
+          if (typeof choice !== "object" || choice === null) {
+            return [];
+          }
+
+          const delta =
+            "delta" in choice && typeof choice.delta === "object" && choice.delta !== null
+              ? (choice.delta as Record<string, unknown>)
+              : null;
+          const usage =
+            typeof parsed.usage === "object" && parsed.usage !== null
+              ? (parsed.usage as Record<string, unknown>)
+              : null;
+
+          return [
+            {
+              textDelta: delta && typeof delta.content === "string" ? delta.content : null,
+              reasoningDelta: delta ? parseOpenAiReasoningDelta(delta) : null,
+              promptTokens:
+                usage && typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null,
+              completionTokens:
+                usage && typeof usage.completion_tokens === "number"
+                  ? usage.completion_tokens
+                  : null,
+              doneReason:
+                "finish_reason" in choice && typeof choice.finish_reason === "string"
+                  ? choice.finish_reason
+                  : null,
+            },
+          ];
+        });
+      });
+
+      return {
+        content: streamed.content,
+        promptTokens: streamed.promptTokens,
+        completionTokens: streamed.completionTokens,
+        doneReason: streamed.doneReason,
+        promptEvalCount: null,
+        evalCount: null,
+        totalDuration: null,
+      };
     }
 
     const choices = Array.isArray(payload.choices) ? payload.choices : [];
@@ -384,12 +616,13 @@ export const createLlmProviderService = (input?: {
     async generate(
       definition: ProviderDefinition,
       prompt: string,
-      options?: { responseFormat?: "json" },
+      options?: { onStream?: GenerateStreamCallbacks; responseFormat?: "json" },
     ) {
       return adapters[definition.provider].generate({
         apiKey: definition.apiKey,
         baseUrl: definition.baseUrl,
         model: definition.model,
+        onStream: options?.onStream,
         prompt,
         responseFormat: options?.responseFormat,
       });

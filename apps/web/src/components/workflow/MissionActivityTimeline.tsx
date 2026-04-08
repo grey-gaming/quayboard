@@ -1,4 +1,5 @@
 import type { Job } from "@quayboard/shared";
+import { Link } from "react-router-dom";
 
 import { formatDateTime, formatJobType } from "../../lib/format.js";
 import { getJobErrorMessage } from "./LatestJobFailureAlert.js";
@@ -23,9 +24,11 @@ const jobTone = (
 
 export const MissionActivityTimeline = ({
   jobs,
+  projectId,
   limit = 8,
 }: {
   jobs: Job[];
+  projectId: string;
   limit?: number;
 }) => {
   const visible = jobs.slice(0, limit);
@@ -41,9 +44,10 @@ export const MissionActivityTimeline = ({
       </div>
       <div className="mt-4 grid gap-0 border border-border/80">
         {visible.map((job) => (
-          <div
+          <Link
             key={job.id}
-            className="grid gap-1 border-t border-border/80 bg-panel-inset px-4 py-3 text-sm first:border-t-0"
+            className="grid gap-1 border-t border-border/80 bg-panel-inset px-4 py-3 text-sm transition-colors first:border-t-0 hover:bg-panel"
+            to={`/projects/${projectId}/live/${job.id}`}
           >
             <div className="flex min-w-0 items-center justify-between gap-3">
               <p
@@ -67,7 +71,7 @@ export const MissionActivityTimeline = ({
                 <p className="mt-0.5 text-xs text-danger/80 leading-snug">{msg}</p>
               ) : null;
             })()}
-          </div>
+          </Link>
         ))}
         {jobs.length === 0 && (
           <div className="qb-data-row text-sm text-secondary">

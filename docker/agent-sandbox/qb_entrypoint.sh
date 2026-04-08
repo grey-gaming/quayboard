@@ -207,6 +207,7 @@ cd "${WORKSPACE_DIR}"
 
 opencode --print-logs run \
   --format json \
+  --thinking \
   --model "${OPENCODE_PROVIDER_ID}/${LLM_MODEL}" \
   -- "$(cat "${PROMPT_PATH}")" | tee "${EVENTS_PATH}"
 

@@ -3689,7 +3689,7 @@ describe("job runner service", () => {
     expect(generate).toHaveBeenCalledWith(
       { provider: "openai", model: "gpt-4.1" },
       expect.stringContaining("Selected milestone design document:"),
-      { responseFormat: "json" },
+      expect.objectContaining({ responseFormat: "json" }),
     );
     expect(generate).toHaveBeenCalledTimes(2);
     expect(prompt).toContain("Approved project Product Spec:");

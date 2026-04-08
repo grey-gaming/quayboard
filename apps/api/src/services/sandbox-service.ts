@@ -42,6 +42,7 @@ import {
   featureTaskPlanningSessionsTable,
   featureTechRevisionsTable,
   implementationRecordsTable,
+  jobTraceEventsTable,
   jobsTable,
   milestoneDesignDocsTable,
   milestonesTable,
@@ -610,9 +611,183 @@ export const createSandboxService = (input: {
         projectId: run!.projectId,
         sandboxRunId,
       });
+
+      if (run?.triggeredByJobId) {
+        await this.appendJobTraceEvent(run.triggeredByJobId, run.projectId, "sandbox_event", {
+          level,
+          type,
+          message,
+          payload: payload ?? null,
+        }).catch(() => undefined);
+      }
     }
 
     return toSandboxRunEvent(created);
+  },
+
+  async appendJobTraceEvent(
+    jobId: string,
+    projectId: string,
+    type:
+      | "changed_files"
+      | "reasoning_delta"
+      | "sandbox_event"
+      | "text_delta"
+      | "tool_call_finished"
+      | "tool_call_started",
+    payload: Record<string, unknown>,
+  ) {
+    const [created] = await input.db
+      .insert(jobTraceEventsTable)
+      .values({
+        id: generateId(),
+        jobId,
+        projectId,
+        sequence: sql`coalesce((select max(sequence) + 1 from ${jobTraceEventsTable} where ${jobTraceEventsTable.jobId} = ${jobId}), 0)`,
+        type,
+        payload,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    input.sseHub.publish(
+      (
+        await input.db.query.projectsTable.findFirst({
+          where: eq(projectsTable.id, projectId),
+        })
+      )!.ownerUserId,
+      "job:trace",
+      {
+        type: "job:trace",
+        jobId,
+        projectId,
+        event: {
+          sequence: created.sequence,
+          type: created.type,
+          createdAt: created.createdAt.toISOString(),
+          payload:
+            created.payload && typeof created.payload === "object"
+              ? created.payload
+              : {},
+        },
+      },
+    );
+  },
+
+  async captureLiveChangedFiles(
+    jobId: string,
+    projectId: string,
+    workspaceDir: string,
+    baseCommitSha: string | null,
+  ) {
+    const args = baseCommitSha ? ["diff", "--numstat", baseCommitSha] : ["diff", "--numstat"];
+    const output = await this.git(args, workspaceDir).catch(() => "");
+    const files = output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [additionsRaw, deletionsRaw, ...pathParts] = line.split("\t");
+        const filePath = pathParts.join("\t");
+        const binary = additionsRaw === "-" || deletionsRaw === "-";
+        return {
+          path: filePath,
+          additions: binary ? null : Number.parseInt(additionsRaw ?? "0", 10),
+          deletions: binary ? null : Number.parseInt(deletionsRaw ?? "0", 10),
+          binary,
+        };
+      });
+
+    await this.appendJobTraceEvent(jobId, projectId, "changed_files", { files }).catch(
+      () => undefined,
+    );
+  },
+
+  async syncOpencodeTrace(
+    jobId: string,
+    projectId: string,
+    artifactDir: string,
+    state: { processedLines: number; toolStates: Map<string, boolean> },
+  ) {
+    const eventsPath = path.join(artifactDir, "opencode-events.jsonl");
+    const raw = await readFile(eventsPath, "utf8").catch(() => "");
+    const lines = raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines.slice(state.processedLines)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      const queue: unknown[] = [parsed];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || typeof current !== "object") {
+          continue;
+        }
+
+        const record = current as Record<string, unknown>;
+        if (Array.isArray(record.content)) {
+          queue.push(...record.content);
+        }
+        if (Array.isArray(record.parts)) {
+          queue.push(...record.parts);
+        }
+        if (typeof record.delta === "object" && record.delta !== null) {
+          queue.push(record.delta);
+        }
+        if (typeof record.message === "object" && record.message !== null) {
+          queue.push(record.message);
+        }
+
+        if (record.type === "thinking" && typeof record.thinking === "string") {
+          await this.appendJobTraceEvent(jobId, projectId, "reasoning_delta", {
+            text: record.thinking,
+          }).catch(() => undefined);
+        }
+
+        if (record.type === "text" && typeof record.text === "string") {
+          await this.appendJobTraceEvent(jobId, projectId, "text_delta", {
+            text: record.text,
+          }).catch(() => undefined);
+        }
+
+        if (
+          record.type === "tool-call" &&
+          typeof record.toolCallId === "string" &&
+          typeof record.toolName === "string" &&
+          !state.toolStates.has(record.toolCallId)
+        ) {
+          state.toolStates.set(record.toolCallId, true);
+          await this.appendJobTraceEvent(jobId, projectId, "tool_call_started", {
+            toolCallId: record.toolCallId,
+            toolName: record.toolName,
+            inputPreview:
+              typeof record.input === "string"
+                ? record.input
+                : JSON.stringify(record.input ?? {}).slice(0, 400),
+          }).catch(() => undefined);
+        }
+
+        if (record.type === "tool-result" && typeof record.toolCallId === "string") {
+          await this.appendJobTraceEvent(jobId, projectId, "tool_call_finished", {
+            toolCallId: record.toolCallId,
+            status: "succeeded",
+            outputPreview:
+              typeof record.output === "string"
+                ? record.output
+                : JSON.stringify(record.output ?? {}).slice(0, 400),
+          }).catch(() => undefined);
+        }
+      }
+    }
+
+    state.processedLines = lines.length;
   },
 
   async attachArtifact(
@@ -1857,6 +2032,32 @@ export const createSandboxService = (input: {
         containerId,
         executionSettings.dockerHost,
       );
+      const traceSyncState = {
+        processedLines: 0,
+        toolStates: new Map<string, boolean>(),
+      };
+      let stopTraceSync = false;
+      let lastGitArtifactSyncAt = 0;
+      const syncLiveState = async () => {
+        await this.syncOpencodeTrace(jobId, run.projectId, artifactDir, traceSyncState).catch(
+          () => undefined,
+        );
+        await this.captureLiveChangedFiles(jobId, run.projectId, workspaceDir, baseCommitSha).catch(
+          () => undefined,
+        );
+
+        const now = Date.now();
+        if (now - lastGitArtifactSyncAt >= 3_000) {
+          lastGitArtifactSyncAt = now;
+          await this.captureGitArtifacts(sandboxRunId, workspaceDir).catch(() => undefined);
+        }
+      };
+      const traceSyncLoop = (async () => {
+        while (!stopTraceSync) {
+          await syncLiveState();
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+      })();
       let exitCode: number;
       try {
         exitCode = await input.dockerService.waitForContainer(
@@ -1865,6 +2066,9 @@ export const createSandboxService = (input: {
           sandboxConfig.timeoutSeconds * 1000,
         );
       } catch (error) {
+        stopTraceSync = true;
+        await traceSyncLoop.catch(() => undefined);
+
         if (isDockerWaitTimeoutError(error)) {
           await input.dockerService.stopContainer(
             containerId,
@@ -1895,6 +2099,9 @@ export const createSandboxService = (input: {
         throw error;
       }
 
+      stopTraceSync = true;
+      await traceSyncLoop.catch(() => undefined);
+      await syncLiveState().catch(() => undefined);
       await captureRunOutputs();
 
       const headCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(
