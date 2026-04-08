@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ARTIFACT_DIR="${QB_ARTIFACT_DIR:-/root/.local/share/opencode/tool-output}"
+ARTIFACT_DIR="${QB_ARTIFACT_DIR:-/run/artifacts}"
 CONTEXT_PATH="${QB_CONTEXT_PATH:-/workspace/.quayboard-context.md}"
 TASKS_PATH="${QB_TASKS_PATH:-/workspace/.quayboard-tasks.md}"
 WORKSPACE_DIR="${QB_WORKSPACE_DIR:-/workspace}"

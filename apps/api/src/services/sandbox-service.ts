@@ -1725,8 +1725,8 @@ export const createSandboxService = (input: {
           ? [
               "Produce a project-wide engineering due diligence review for this repository.",
               "Inspect the actual repository contents before making claims.",
-              "Write the human-readable report to /root/.local/share/opencode/tool-output/project-review.md.",
-              "Write the structured output to /root/.local/share/opencode/tool-output/project-review.json.",
+              "Write the human-readable report to /run/artifacts/project-review.md.",
+              "Write the structured output to /run/artifacts/project-review.json.",
               "The JSON must satisfy Quayboard's exact schema: maturityLevel must be a non-empty string, not a number.",
               "Only include real issues in findings. Do not list strengths, praise, or already-good behavior as findings.",
               "Do not make repository changes during the review run.",
@@ -1737,14 +1737,14 @@ export const createSandboxService = (input: {
                 "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
                 "Address only the cited findings in one batched remediation pass.",
                 "Re-run relevant checks before exiting.",
-                "Write a remediation summary to /root/.local/share/opencode/tool-output/project-fix-summary.md.",
+                "Write a remediation summary to /run/artifacts/project-fix-summary.md.",
               ].join("\n")
             : run.kind === "bug_fix"
               ? [
                   "Read /workspace/.quayboard-bug-report.md for the reported defect and relevant metadata.",
                   "Fix only the reported bug without broad unrelated refactors.",
                   "Re-run the closest relevant verification before exiting.",
-                  "Write a remediation summary to /root/.local/share/opencode/tool-output/bug-fix-summary.md.",
+                  "Write a remediation summary to /run/artifacts/bug-fix-summary.md.",
                 ].join("\n")
             : tasks
                 .map(

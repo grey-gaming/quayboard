@@ -248,12 +248,9 @@ export const createDockerService = (dockerHost: string | null) => {
         args.push("--env", `${key}=${value}`);
       }
 
+      args.push("--env", "QB_ARTIFACT_DIR=/run/artifacts");
       args.push("--mount", `type=bind,src=${input.workspaceDir},dst=/workspace`);
       args.push("--mount", `type=bind,src=${input.artifactDir},dst=/run/artifacts`);
-      args.push(
-        "--mount",
-        `type=bind,src=${input.artifactDir},dst=/root/.local/share/opencode/tool-output`,
-      );
 
       if (input.networkMode !== "host") {
         args.push("--add-host", "host.docker.internal:host-gateway");

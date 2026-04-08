@@ -257,6 +257,17 @@ describe("docker service", () => {
         expect.arrayContaining(["--user", expectedUser]),
       );
     }
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        "--env",
+        "QB_ARTIFACT_DIR=/run/artifacts",
+        "--mount",
+        "type=bind,src=/tmp/artifacts,dst=/run/artifacts",
+      ]),
+    );
+    expect(execFileMock.mock.calls[0]?.[1]).not.toContain(
+      "type=bind,src=/tmp/artifacts,dst=/root/.local/share/opencode/tool-output",
+    );
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
   });
 
