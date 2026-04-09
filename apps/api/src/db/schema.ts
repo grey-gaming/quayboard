@@ -1787,6 +1787,33 @@ export const llmRunsTable = pgTable(
   }),
 );
 
+export const jobTraceEventsTable = pgTable(
+  "job_trace_events",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobsTable.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now()),
+  },
+  (table) => ({
+    jobIndex: index("job_trace_events_job_id_idx").on(table.jobId),
+    projectIndex: index("job_trace_events_project_id_idx").on(table.projectId),
+    jobSequenceUnique: uniqueIndex("job_trace_events_job_id_sequence_key").on(
+      table.jobId,
+      table.sequence,
+    ),
+  }),
+);
+
 export const settingsTable = pgTable(
   "settings",
   {
@@ -1868,6 +1895,7 @@ export type DatabaseSchema = {
   featureUxRevisionsTable: typeof featureUxRevisionsTable;
   featureUxSpecsTable: typeof featureUxSpecsTable;
   implementationRecordsTable: typeof implementationRecordsTable;
+  jobTraceEventsTable: typeof jobTraceEventsTable;
   jobsTable: typeof jobsTable;
   llmRunsTable: typeof llmRunsTable;
   logbookVersionsTable: typeof logbookVersionsTable;

@@ -15,6 +15,7 @@ import {
   buildUserFlowPrompt,
   buildDecisionConsistencyPrompt,
   buildDeliveryReviewPrompt,
+  buildMilestonePlanPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
   buildMilestoneCoverageReviewPrompt,
@@ -122,6 +123,26 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
   });
 
+  it("allows the first milestone plan item to omit linked user flows for foundation work", () => {
+    const prompt = buildMilestonePlanPrompt({
+      projectName: "Quayboard",
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      userFlows: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          title: "Create project",
+          userStory: "As a user I want to create a project.",
+          entryPoint: "Dashboard",
+          endState: "Project created",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("The first foundations/setup milestone may use an empty useCaseIds array");
+    expect(prompt).toContain("Every milestone after the first must use a non-empty useCaseIds array.");
+  });
+
   it("keeps milestone design generation internally consistent across sections", () => {
     const prompt = buildMilestoneDesignPrompt({
       projectName: "Quayboard",
@@ -178,6 +199,20 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not leave an exit criterion, transition, ordering rule, or acceptance expectation");
     expect(prompt).toContain("If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger");
     expect(prompt).toContain("Repair guidance:");
+  });
+
+  it("tells foundation milestone design generation not to invent user flows", () => {
+    const prompt = buildMilestoneDesignPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Project Foundation",
+      milestoneSummary: "Bootstrap the repository and delivery scaffolding.",
+      linkedUserFlows: [],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+    });
+
+    expect(prompt).toContain("includedUserFlows must be an empty array");
+    expect(prompt).toContain("Do not invent user flows for this milestone");
   });
 
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {

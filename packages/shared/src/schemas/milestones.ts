@@ -125,7 +125,7 @@ export type Milestone = z.infer<typeof milestoneSchema>;
 export const createMilestoneRequestSchema = z.object({
   title: z.string().trim().min(1).max(160),
   summary: z.string().trim().min(1).max(4000),
-  useCaseIds: z.array(z.string().uuid()).min(1),
+  useCaseIds: z.array(z.string().uuid()),
 });
 
 export type CreateMilestoneRequest = z.infer<typeof createMilestoneRequestSchema>;
@@ -133,7 +133,7 @@ export type CreateMilestoneRequest = z.infer<typeof createMilestoneRequestSchema
 export const updateMilestoneRequestSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
   summary: z.string().trim().min(1).max(4000).optional(),
-  useCaseIds: z.array(z.string().uuid()).min(1).optional(),
+  useCaseIds: z.array(z.string().uuid()).optional(),
 });
 
 export type UpdateMilestoneRequest = z.infer<typeof updateMilestoneRequestSchema>;

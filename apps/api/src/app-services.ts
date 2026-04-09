@@ -51,6 +51,10 @@ import {
   type JobService,
 } from "./services/jobs/job-service.js";
 import {
+  createJobTraceService,
+  type JobTraceService,
+} from "./services/job-trace-service.js";
+import {
   createLlmProviderService,
   type LlmProviderService,
 } from "./services/llm-provider.js";
@@ -144,6 +148,7 @@ export type AppServices = {
   jobRunnerService: JobRunnerService;
   jobScheduler: JobScheduler;
   jobService: JobService;
+  jobTraceService: JobTraceService;
   llmProviderService: LlmProviderService;
   milestoneService: MilestoneService;
   nextActionsService: NextActionsService;
@@ -313,6 +318,12 @@ export const createAppServices = async (
     sseHub,
     taskPlanningService,
   });
+  const jobTraceService = createJobTraceService({
+    artifactStorageService,
+    db,
+    sandboxService,
+    sseHub,
+  });
   const autoAdvanceService = createAutoAdvanceService(
     db,
     nextActionsService,
@@ -338,6 +349,7 @@ export const createAppServices = async (
     featureService,
     featureWorkstreamService,
     jobService,
+    jobTraceService,
     llmProviderService,
     milestoneService,
     onePagerService,
@@ -356,6 +368,12 @@ export const createAppServices = async (
           where: eq(projectsTable.id, job.projectId),
         });
         if (ownerProject) {
+          await jobTraceService.appendEvent({
+            jobId: job.id,
+            projectId: job.projectId,
+            type: "job_status",
+            payload: { status: job.status },
+          });
           sseHub.publish(ownerProject.ownerUserId, "job:updated", {
             jobId: job.id,
             projectId: job.projectId,
@@ -370,6 +388,12 @@ export const createAppServices = async (
           where: eq(projectsTable.id, finishedJob.projectId),
         });
         if (ownerProject) {
+          await jobTraceService.appendEvent({
+            jobId: finishedJob.id,
+            projectId: finishedJob.projectId,
+            type: "job_status",
+            payload: { status: finishedJob.status },
+          });
           sseHub.publish(ownerProject.ownerUserId, "job:updated", {
             jobId: finishedJob.id,
             projectId: finishedJob.projectId,
@@ -392,6 +416,17 @@ export const createAppServices = async (
         where: eq(projectsTable.id, failedJob.projectId),
       });
       if (ownerProject) {
+        await jobTraceService.appendEvent({
+          jobId: failedJob.id,
+          projectId: failedJob.projectId,
+          type: "error",
+          payload: {
+            message:
+              error && typeof error === "object" && "message" in error && typeof error.message === "string"
+                ? error.message
+                : "Job failed.",
+          },
+        });
         sseHub.publish(ownerProject.ownerUserId, "job:updated", {
           jobId: failedJob.id,
           projectId: failedJob.projectId,
@@ -441,6 +476,7 @@ export const createAppServices = async (
     jobRunnerService,
     jobScheduler,
     jobService,
+    jobTraceService,
     llmProviderService,
     milestoneService,
     nextActionsService,

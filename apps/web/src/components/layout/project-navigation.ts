@@ -1,5 +1,6 @@
-import type { Project } from "@quayboard/shared";
+import type { Job, Project } from "@quayboard/shared";
 
+import { formatJobType } from "../../lib/format.js";
 import { isSetupCompletedProjectState } from "../../lib/project-state.js";
 
 export type ProjectNavSection =
@@ -201,6 +202,55 @@ export const buildImplementationTertiaryItems = (
     end: true,
   },
 ];
+
+const activeJobStatuses = new Set(["queued", "running"]);
+
+export const buildMissionControlTertiaryItems = (
+  project: Project,
+  jobs: Job[],
+  selectedJobId?: string | null,
+): ProjectTertiaryNavItem[] => {
+  const activeJobs = jobs.filter((job) => activeJobStatuses.has(job.status));
+  const pinnedJobs = activeJobs.slice(0, 3);
+
+  return [
+    {
+      kind: "link",
+      key: "mission-control-overview",
+      label: "Overview",
+      to: `/projects/${project.id}`,
+      end: true,
+    },
+    {
+      kind: "link",
+      key: "mission-control-live",
+      label: "Live",
+      to: `/projects/${project.id}/live`,
+      title: "Observe active and recent jobs live.",
+    },
+    ...pinnedJobs.map(
+      (job) =>
+        ({
+          kind: "link",
+          key: `mission-control-live-${job.id}`,
+          label: formatJobType(job.type),
+          to: `/projects/${project.id}/live/${job.id}`,
+          title: `${formatJobType(job.type)} · ${job.status}`,
+        }) satisfies ProjectTertiaryNavItem,
+    ),
+    ...(activeJobs.length > pinnedJobs.length
+      ? [
+          {
+            kind: "link" as const,
+            key: "mission-control-live-more",
+            label: `More (${activeJobs.length - pinnedJobs.length})`,
+            to: `/projects/${project.id}/live${selectedJobId ? `/${selectedJobId}` : ""}`,
+            title: "Show the full live jobs list.",
+          },
+        ]
+      : []),
+  ];
+};
 
 export const getFeatureTabUrl = (
   projectId: string,

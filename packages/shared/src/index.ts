@@ -25,4 +25,5 @@ export * from "./schemas/auto-advance.js";
 export * from "./schemas/sandbox.js";
 export * from "./schemas/project-reviews.js";
 export * from "./schemas/bugs.js";
+export * from "./schemas/job-traces.js";
 export * from "./questionnaire-definition.js";

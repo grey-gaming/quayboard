@@ -735,7 +735,9 @@ export const buildMilestonePlanPrompt = (input: {
     "Each array item must be an object with exactly these keys: title, summary, useCaseIds.",
     "title must be short and specific.",
     "summary must explain the release intent and scope for the milestone.",
-    "useCaseIds must be a non-empty array of approved user-flow IDs covered by the milestone.",
+    "useCaseIds must be an array of approved user-flow IDs covered by the milestone.",
+    "The first foundations/setup milestone may use an empty useCaseIds array when it only contains cross-cutting project setup work.",
+    "Every milestone after the first must use a non-empty useCaseIds array.",
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
     "Create milestones in execution order, from foundational work to higher-level capability.",
     'This product flow is always greenfield. The first milestone must be a foundations/setup milestone.',
@@ -832,8 +834,12 @@ export const buildMilestoneDesignPrompt = (input: {
     "Task:",
     `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
     'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
-    "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens.",
-    'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.',
+    input.linkedUserFlows.length > 0
+      ? "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens."
+      : "includedUserFlows must be an empty array because this foundation milestone has no linked user flows.",
+    input.linkedUserFlows.length > 0
+      ? 'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.'
+      : "Do not invent user flows for this milestone. Keep the design focused on project setup, scaffolding, and smoke-path delivery.",
     'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
     "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
     "Use stable kebab-case delivery group keys. Every named screen and owned responsibility must belong to exactly one delivery group.",
@@ -932,6 +938,12 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     "Preserve the milestone scope while resolving the validator issues below into one consistent ownership model.",
     "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
+    ...(input.linkedUserFlows.length === 0
+      ? [
+          "This foundation milestone has no linked user flows, so includedUserFlows must be an empty array.",
+          "Do not invent placeholder user flows just to satisfy the shape.",
+        ]
+      : []),
     "For every screen named in includedUserFlows.screens or exitCriteria.screens, include that screen's owning delivery group in the same flow or exit criterion context.",
     "Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned to one resolved interpretation of the milestone. If the previous draft or its risks chose one side of an ambiguity, carry that same choice through the repaired result.",
     "Do not leave an exit criterion, transition, ordering rule, or acceptance expectation that depends on anything listed in outOfScope.",

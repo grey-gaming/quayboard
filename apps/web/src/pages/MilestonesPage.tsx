@@ -56,6 +56,17 @@ const toggleSelectedFlow = (selectedUseCaseIds: string[], flowId: string, checke
       : [...selectedUseCaseIds, flowId]
     : selectedUseCaseIds.filter((id) => id !== flowId);
 
+const isFoundationMilestoneDraft = (
+  milestones: Milestone[] | undefined,
+  editingMilestoneId: string | null,
+) => {
+  if (editingMilestoneId) {
+    return milestones?.find((milestone) => milestone.id === editingMilestoneId)?.position === 1;
+  }
+
+  return (milestones?.length ?? 0) === 0;
+};
+
 type MilestoneDesignCardProps = {
   milestone: Milestone;
   projectId: string;
@@ -245,7 +256,14 @@ export const MilestonesPage = () => {
   useSseEvents(id);
 
   const activeMilestones = milestonesQuery.data?.milestones ?? [];
-  const canSubmit = title.trim() && summary.trim() && selectedUseCaseIds.length > 0;
+  const allowsEmptyUseCaseIds = isFoundationMilestoneDraft(
+    milestonesQuery.data?.milestones,
+    editingMilestoneId,
+  );
+  const canSubmit =
+    title.trim() &&
+    summary.trim() &&
+    (selectedUseCaseIds.length > 0 || allowsEmptyUseCaseIds);
   const activeMilestonePlanJob = useMemo(
     () => jobsQuery.data?.jobs.find((job) => job.type === "GenerateMilestones" && isActiveJob(job)) ?? null,
     [jobsQuery.data?.jobs],
@@ -426,6 +444,11 @@ export const MilestonesPage = () => {
                 </div>
                 <div className="grid gap-3">
                   <Label>Linked user flows</Label>
+                  {allowsEmptyUseCaseIds ? (
+                    <p className="text-sm text-secondary">
+                      The first foundation milestone can be saved without linked user flows.
+                    </p>
+                  ) : null}
                   {(userFlowsQuery.data?.userFlows ?? []).length > 0 ? (
                     <div className="grid gap-2 md:grid-cols-2">
                       {(userFlowsQuery.data?.userFlows ?? []).map((flow) => (

@@ -36,6 +36,7 @@ import type { ProjectReviewService } from "../project-review-service.js";
 import type { ProjectSetupService } from "../project-setup-service.js";
 import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { SandboxService } from "../sandbox-service.js";
+import type { JobTraceService } from "../job-trace-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
@@ -821,10 +822,19 @@ const normalizeMilestoneDesignGroupConstraint = (
   };
 };
 
-const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMilestoneDesignDraft => {
+const parseMilestoneDesignDraft = (
+  value: string,
+  templateId: string,
+  options?: { allowEmptyIncludedUserFlows?: boolean },
+): ParsedMilestoneDesignDraft => {
   const parsed = parseJson<MilestoneDesignDraft>(value);
 
-  if (!parsed?.title?.trim() || !parsed.objective?.trim()) {
+  if (
+    typeof parsed?.title !== "string" ||
+    parsed.title.trim().length === 0 ||
+    typeof parsed.objective !== "string" ||
+    parsed.objective.trim().length === 0
+  ) {
     throw new Error(
       `${templateId} returned invalid content. Expected non-empty "title" and "objective".`,
     );
@@ -832,7 +842,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const includedUserFlows = Array.isArray(parsed.includedUserFlows)
     ? parsed.includedUserFlows.map((flow, index) => {
-        if (!flow?.title?.trim() || !flow.summary?.trim()) {
+        if (
+          typeof flow?.title !== "string" ||
+          flow.title.trim().length === 0 ||
+          typeof flow.summary !== "string" ||
+          flow.summary.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an includedUserFlow without title or summary at index ${index}.`,
           );
@@ -856,7 +871,10 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
       })
     : null;
 
-  if (!includedUserFlows || includedUserFlows.length === 0) {
+  if (
+    !includedUserFlows ||
+    (!options?.allowEmptyIncludedUserFlows && includedUserFlows.length === 0)
+  ) {
     throw new Error(
       `${templateId} returned invalid content. Expected a non-empty "includedUserFlows" array.`,
     );
@@ -876,7 +894,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const inScope = Array.isArray(parsed.scopeBoundaries.inScope)
     ? parsed.scopeBoundaries.inScope.map((item, index) => {
-        if (!item?.item?.trim() || !item.deliveryGroupKey?.trim()) {
+        if (
+          typeof item?.item !== "string" ||
+          item.item.trim().length === 0 ||
+          typeof item.deliveryGroupKey !== "string" ||
+          item.deliveryGroupKey.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid inScope item at index ${index}.`,
           );
@@ -903,7 +926,14 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const deliveryGroups = Array.isArray(parsed.deliveryGroups)
     ? parsed.deliveryGroups.map((group, index) => {
-        if (!group?.key?.trim() || !group.title?.trim() || !group.summary?.trim()) {
+        if (
+          typeof group?.key !== "string" ||
+          group.key.trim().length === 0 ||
+          typeof group.title !== "string" ||
+          group.title.trim().length === 0 ||
+          typeof group.summary !== "string" ||
+          group.summary.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid deliveryGroup at index ${index}.`,
           );
@@ -948,7 +978,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const dependenciesAndSequencing = Array.isArray(parsed.dependenciesAndSequencing)
     ? parsed.dependenciesAndSequencing.map((phase, index) => {
-        if (!phase?.phase?.trim() || !phase.notes?.trim()) {
+        if (
+          typeof phase?.phase !== "string" ||
+          phase.phase.trim().length === 0 ||
+          typeof phase.notes !== "string" ||
+          phase.notes.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid dependenciesAndSequencing item at index ${index}.`,
           );
@@ -974,7 +1009,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const exitCriteria = Array.isArray(parsed.exitCriteria)
     ? parsed.exitCriteria.map((criterion, index) => {
-        if (!criterion?.criterion?.trim() || !criterion.deliveryGroupKey?.trim()) {
+        if (
+          typeof criterion?.criterion !== "string" ||
+          criterion.criterion.trim().length === 0 ||
+          typeof criterion.deliveryGroupKey !== "string" ||
+          criterion.deliveryGroupKey.trim().length === 0
+        ) {
           throw new Error(`${templateId} returned an invalid exitCriteria item at index ${index}.`);
         }
 
@@ -1020,6 +1060,10 @@ const validateMilestoneDesignDraft = (
   const groupByKey = new Map<string, ParsedMilestoneDesignDraft["deliveryGroups"][number]>();
   const screenOwners = new Map<string, string>();
   const responsibilityOwners = new Map<string, string>();
+
+  if (linkedTitles.size === 0 && draft.includedUserFlows.length > 0) {
+    issues.push("Foundation milestones without linked user flows must leave Included User Flows empty.");
+  }
 
   for (const group of draft.deliveryGroups) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(group.key)) {
@@ -1081,9 +1125,11 @@ const validateMilestoneDesignDraft = (
     }
   }
 
-  for (const linkedTitle of linkedTitles) {
-    if (!seenFlowTitles.has(linkedTitle)) {
-      issues.push(`Linked user flow "${linkedTitle}" is missing from Included User Flows.`);
+  if (linkedTitles.size > 0) {
+    for (const linkedTitle of linkedTitles) {
+      if (!seenFlowTitles.has(linkedTitle)) {
+        issues.push(`Linked user flow "${linkedTitle}" is missing from Included User Flows.`);
+      }
     }
   }
 
@@ -1146,23 +1192,28 @@ const renderMilestoneDesignMarkdown = (draft: ParsedMilestoneDesignDraft) => {
     "## Included User Flows",
   ];
 
-  for (const flow of draft.includedUserFlows) {
-    lines.push(`### ${flow.title}`);
-    lines.push(flow.summary);
+  if (draft.includedUserFlows.length === 0) {
+    lines.push("This foundation milestone intentionally has no linked user flows.");
     lines.push("");
-    lines.push("Steps:");
-    for (const step of flow.steps) {
-      lines.push(`- ${step}`);
+  } else {
+    for (const flow of draft.includedUserFlows) {
+      lines.push(`### ${flow.title}`);
+      lines.push(flow.summary);
+      lines.push("");
+      lines.push("Steps:");
+      for (const step of flow.steps) {
+        lines.push(`- ${step}`);
+      }
+      lines.push("Delivery groups:");
+      for (const groupKey of flow.deliveryGroupKeys) {
+        lines.push(`- ${groupKey}`);
+      }
+      lines.push("Screens:");
+      for (const screen of flow.screens) {
+        lines.push(`- ${screen}`);
+      }
+      lines.push("");
     }
-    lines.push("Delivery groups:");
-    for (const groupKey of flow.deliveryGroupKeys) {
-      lines.push(`- ${groupKey}`);
-    }
-    lines.push("Screens:");
-    for (const screen of flow.screens) {
-      lines.push(`- ${screen}`);
-    }
-    lines.push("");
   }
 
   lines.push("## Scope Boundaries");
@@ -1325,15 +1376,20 @@ const validateGeneratedMilestones = (
     );
   }
 
-  return milestones.map((milestone) => {
+  return milestones.map((milestone, index) => {
     if (
       !milestone.title?.trim() ||
       !milestone.summary?.trim() ||
-      !Array.isArray(milestone.useCaseIds) ||
-      milestone.useCaseIds.length === 0
+      !Array.isArray(milestone.useCaseIds)
     ) {
       throw new Error(
-        "GenerateMilestones returned an incomplete milestone. Each milestone must include title, summary, and at least one useCaseId.",
+        "GenerateMilestones returned an incomplete milestone. Each milestone must include title, summary, and a useCaseIds array.",
+      );
+    }
+
+    if (index > 0 && milestone.useCaseIds.length === 0) {
+      throw new Error(
+        "GenerateMilestones returned an incomplete milestone. Every milestone after the first foundation milestone must include at least one useCaseId.",
       );
     }
 
@@ -1888,6 +1944,7 @@ export const createJobRunnerService = (input: {
   featureService?: FeatureService;
   featureWorkstreamService?: FeatureWorkstreamService;
   jobService: JobService;
+  jobTraceService?: JobTraceService;
   llmProviderService: LlmProviderService;
   milestoneService?: MilestoneService;
   onePagerService: OnePagerService;
@@ -1908,6 +1965,7 @@ export const createJobRunnerService = (input: {
 
     const ownerUserId = rawJob.createdByUserId;
     const projectId = rawJob.projectId;
+    let llmStepCounter = 0;
     const autoAdvanceBatch = (rawJob.inputs as { _autoAdvance?: { batchToken?: string; sessionId?: string } } | null)?._autoAdvance;
     const project = await input.projectService.getOwnedProject(ownerUserId, projectId);
     const provider = await input.projectSetupService.getLlmDefinition(
@@ -2012,13 +2070,79 @@ export const createJobRunnerService = (input: {
       });
     };
 
+    const publishTraceEvent = async (
+      type: "job_status" | "llm_step_started" | "llm_step_finished" | "text_delta" | "reasoning_delta" | "output_link" | "error",
+      payload: Record<string, unknown>,
+    ) => {
+      if (!rawJob.projectId) {
+        return null;
+      }
+
+      return input.jobTraceService?.appendEvent({
+        jobId: rawJob.id,
+        projectId: rawJob.projectId,
+        type,
+        payload,
+      });
+    };
+
     const generateWithJobFailure = async (
       prompt: string,
-      options?: { responseFormat?: "json" },
+      options?: {
+        responseFormat?: "json";
+        templateId?: string;
+      },
     ) => {
+      const stepKey = options?.templateId ? `${rawJob.id}:${++llmStepCounter}:${options.templateId}` : null;
+
+      if (stepKey && options?.templateId) {
+        await publishTraceEvent("llm_step_started", {
+          key: stepKey,
+          model: provider.model,
+          provider: provider.provider,
+          templateId: options?.templateId,
+        });
+      }
+
       try {
-        return await input.llmProviderService.generate(provider, prompt, options);
+        const generated = await input.llmProviderService.generate(provider, prompt, {
+          onStream: stepKey
+            ? {
+                onReasoningDelta: (delta) => {
+                  void publishTraceEvent("reasoning_delta", {
+                    key: stepKey,
+                    text: delta,
+                  });
+                },
+                onTextDelta: (delta) => {
+                  void publishTraceEvent("text_delta", {
+                    key: stepKey,
+                    text: delta,
+                  });
+                },
+              }
+            : undefined,
+          responseFormat: options?.responseFormat,
+        });
+
+        if (stepKey) {
+          await publishTraceEvent("llm_step_finished", {
+            key: stepKey,
+            status: "succeeded",
+            promptTokens: generated.promptTokens,
+            completionTokens: generated.completionTokens,
+          });
+        }
+
+        return generated;
       } catch (error) {
+        if (stepKey) {
+          await publishTraceEvent("llm_step_finished", {
+            key: stepKey,
+            status: "failed",
+          }).catch(() => undefined);
+        }
+
         const providerError =
           error && typeof error === "object" && "llmProviderError" in error
             ? (error as { llmProviderError: LlmProviderError }).llmProviderError
@@ -2069,6 +2193,7 @@ export const createJobRunnerService = (input: {
         });
         const repaired = await generateWithJobFailure(repairPrompt, {
           responseFormat: "json",
+          templateId: repairTemplateId,
         });
         await storeLlmRun({
           templateId: repairTemplateId,
@@ -2101,6 +2226,7 @@ export const createJobRunnerService = (input: {
     }) => {
       const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
+        templateId: inputArgs.templateId,
       });
       await storeLlmRun({
         templateId: inputArgs.templateId,
@@ -2129,6 +2255,7 @@ export const createJobRunnerService = (input: {
     }) => {
       const generated = await generateWithJobFailure(inputArgs.prompt, {
         responseFormat: "json",
+        templateId: inputArgs.templateId,
       });
       await storeLlmRun({
         templateId: inputArgs.templateId,
@@ -2148,6 +2275,7 @@ export const createJobRunnerService = (input: {
       const reviewPrompt = inputArgs.buildReviewPrompt(draft);
       const reviewed = await generateWithJobFailure(reviewPrompt, {
         responseFormat: "json",
+        templateId: reviewTemplateId,
       });
       await storeLlmRun({
         templateId: reviewTemplateId,
@@ -2685,7 +2813,9 @@ export const createJobRunnerService = (input: {
       case "GenerateProjectDescription": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
-        const generated = await generateWithJobFailure(prompt);
+        const generated = await generateWithJobFailure(prompt, {
+          templateId: "GenerateProjectDescription",
+        });
         await assertAutoAdvanceBatchIsCurrent();
         await input.db.insert(llmRunsTable).values({
           id: generateId(),
@@ -2843,6 +2973,7 @@ export const createJobRunnerService = (input: {
         try {
           generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: rawJob.type,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -2919,6 +3050,7 @@ export const createJobRunnerService = (input: {
         try {
           qualityChecked = await generateWithJobFailure(qualityCheckPrompt, {
             responseFormat: "json",
+            templateId: qualityCheckTemplateId,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -2997,6 +3129,7 @@ export const createJobRunnerService = (input: {
           try {
             retried = await generateWithJobFailure(retryPrompt, {
               responseFormat: "json",
+              templateId: retryTemplateId,
             });
           } catch (error) {
             logProductSpecGeneration("failure", {
@@ -3073,6 +3206,7 @@ export const createJobRunnerService = (input: {
         try {
           reviewed = await generateWithJobFailure(reviewPrompt, {
             responseFormat: "json",
+            templateId: reviewTemplateId,
           });
         } catch (error) {
           logProductSpecGeneration("failure", {
@@ -3616,6 +3750,7 @@ export const createJobRunnerService = (input: {
 
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -3756,7 +3891,9 @@ export const createJobRunnerService = (input: {
           templateId: string;
         }) => {
           try {
-            return parseMilestoneDesignDraft(inputArgs.generated.content, inputArgs.templateId);
+            return parseMilestoneDesignDraft(inputArgs.generated.content, inputArgs.templateId, {
+              allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+            });
           } catch (error) {
             const validationMessage =
               error instanceof Error
@@ -3779,6 +3916,7 @@ export const createJobRunnerService = (input: {
             });
             const jsonRepaired = await generateWithJobFailure(jsonRepairPrompt, {
               responseFormat: "json",
+              templateId: jsonRepairTemplateId,
             });
             await storeLlmRun({
               templateId: jsonRepairTemplateId,
@@ -3791,7 +3929,9 @@ export const createJobRunnerService = (input: {
             });
 
             try {
-              return parseMilestoneDesignDraft(jsonRepaired.content, inputArgs.templateId);
+              return parseMilestoneDesignDraft(jsonRepaired.content, inputArgs.templateId, {
+                allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+              });
             } catch (jsonRepairError) {
               const shapeRepairMessage =
                 jsonRepairError instanceof Error ? jsonRepairError.message : validationMessage;
@@ -3809,6 +3949,7 @@ export const createJobRunnerService = (input: {
               });
               const shapeRepaired = await generateWithJobFailure(shapeRepairPrompt, {
                 responseFormat: "json",
+                templateId: shapeRepairTemplateId,
               });
               await storeLlmRun({
                 templateId: shapeRepairTemplateId,
@@ -3822,7 +3963,9 @@ export const createJobRunnerService = (input: {
               });
 
               try {
-                return parseMilestoneDesignDraft(shapeRepaired.content, inputArgs.templateId);
+                return parseMilestoneDesignDraft(shapeRepaired.content, inputArgs.templateId, {
+                  allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+                });
               } catch (shapeRepairError) {
                 throw createStructuredOutputFailure({
                   message:
@@ -3857,6 +4000,7 @@ export const createJobRunnerService = (input: {
 
           const generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: inputArgs.templateId,
           });
           await storeLlmRun({
             templateId: inputArgs.templateId,
@@ -3891,6 +4035,7 @@ export const createJobRunnerService = (input: {
           });
           const generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
+            templateId: inputArgs.templateId,
           });
           await storeLlmRun({
             templateId: inputArgs.templateId,
@@ -4016,6 +4161,7 @@ export const createJobRunnerService = (input: {
         });
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -4381,6 +4527,7 @@ export const createJobRunnerService = (input: {
         });
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,
@@ -5369,6 +5516,7 @@ export const createJobRunnerService = (input: {
 
         const generated = await generateWithJobFailure(prompt, {
           responseFormat: "json",
+          templateId: rawJob.type,
         });
         await storeLlmRun({
           templateId: rawJob.type,

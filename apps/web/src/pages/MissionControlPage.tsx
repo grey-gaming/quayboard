@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 
 import { PageIntro } from "../components/composites/PageIntro.js";
+import { buildMissionControlTertiaryItems } from "../components/layout/project-navigation.js";
 import { AppFrame } from "../components/templates/AppFrame.js";
 import { ProjectPageFrame } from "../components/templates/ProjectPageFrame.js";
 import { AutoAdvanceBanner } from "../components/workflow/AutoAdvanceBanner.js";
@@ -59,7 +60,11 @@ export const MissionControlPage = () => {
   const jobs = jobsQuery.data?.jobs ?? [];
 
   return (
-    <ProjectPageFrame activeSection="mission-control" project={projectQuery.data}>
+    <ProjectPageFrame
+      activeSection="mission-control"
+      project={projectQuery.data}
+      tertiaryItems={buildMissionControlTertiaryItems(projectQuery.data, jobs)}
+    >
       <PageIntro
         eyebrow="Project"
         title="Mission Control"
@@ -92,7 +97,7 @@ export const MissionControlPage = () => {
         </div>
         <div className="grid gap-4 items-start">
           <AutoAdvanceControlsCard projectId={id} session={session} nextStep={nextStep} />
-          <MissionActivityTimeline jobs={jobs} />
+          <MissionActivityTimeline jobs={jobs} projectId={id} />
         </div>
       </div>
     </ProjectPageFrame>

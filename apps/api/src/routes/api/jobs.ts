@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 
-import { jobListResponseSchema, jobSchema } from "@quayboard/shared";
+import {
+  jobListResponseSchema,
+  jobSchema,
+  liveJobDiffResponseSchema,
+  liveJobTraceResponseSchema,
+} from "@quayboard/shared";
 
 import type { AppServices } from "../../app-services.js";
 import { handleRouteError } from "../route-helpers.js";
@@ -11,6 +16,15 @@ const paramsSchema = {
     id: { type: "string", format: "uuid" },
   },
   required: ["id"],
+  additionalProperties: false,
+} as const;
+
+const diffQuerySchema = {
+  type: "object",
+  properties: {
+    path: { type: "string", minLength: 1 },
+  },
+  required: ["path"],
   additionalProperties: false,
 } as const;
 
@@ -124,6 +138,50 @@ export const jobRoutes = (services: AppServices): FastifyPluginAsync => async (a
         );
 
         return jobSchema.parse(job);
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/jobs/:id/live",
+    {
+      schema: {
+        params: paramsSchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        return liveJobTraceResponseSchema.parse(
+          await services.jobTraceService.getOwnedSnapshot(
+            request.user!.id,
+            (request.params as { id: string }).id,
+          ),
+        );
+      } catch (error) {
+        return handleRouteError(reply, error);
+      }
+    },
+  );
+
+  app.get(
+    "/jobs/:id/live/diff",
+    {
+      schema: {
+        params: paramsSchema,
+        querystring: diffQuerySchema,
+      },
+    },
+    async (request, reply) => {
+      try {
+        return liveJobDiffResponseSchema.parse(
+          await services.jobTraceService.getOwnedDiff(
+            request.user!.id,
+            (request.params as { id: string }).id,
+            (request.query as { path: string }).path,
+          ),
+        );
       } catch (error) {
         return handleRouteError(reply, error);
       }

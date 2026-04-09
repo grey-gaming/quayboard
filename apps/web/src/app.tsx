@@ -30,6 +30,7 @@ import { InstanceReadinessPage } from "./pages/InstanceReadinessPage.js";
 import { LoginPage } from "./pages/LoginPage.js";
 import { MilestonesPage } from "./pages/MilestonesPage.js";
 import { MissionControlPage } from "./pages/MissionControlPage.js";
+import { MissionControlLivePage } from "./pages/MissionControlLivePage.js";
 import { NewProjectPage } from "./pages/NewProjectPage.js";
 import { OnePagerOverviewPage } from "./pages/OnePagerOverviewPage.js";
 import { OnePagerQuestionsPage } from "./pages/OnePagerQuestionsPage.js";
@@ -139,6 +140,14 @@ export const appRouter = createBrowserRouter([
           {
             path: "/projects/:id",
             element: <MissionControlPage />,
+          },
+          {
+            path: "/projects/:id/live",
+            element: <MissionControlLivePage />,
+          },
+          {
+            path: "/projects/:id/live/:jobId",
+            element: <MissionControlLivePage />,
           },
           {
             path: "/projects/:id/settings",

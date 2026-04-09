@@ -14,6 +14,8 @@ import type {
   ExecutionSettings,
   DecisionCardListResponse,
   Job,
+  LiveJobDiffResponse,
+  LiveJobTraceResponse,
   JobListResponse,
   LoadLlmModelsResponse,
   ManagedContainerListResponse,
@@ -297,6 +299,13 @@ export const api = {
     return apiRequest<JobListResponse>(
       projectId ? `/api/projects/${projectId}/jobs` : "/api/jobs",
     );
+  },
+  getLiveJobTrace(jobId: string) {
+    return apiRequest<LiveJobTraceResponse>(`/api/jobs/${jobId}/live`);
+  },
+  getLiveJobDiff(jobId: string, filePath: string) {
+    const query = new URLSearchParams({ path: filePath });
+    return apiRequest<LiveJobDiffResponse>(`/api/jobs/${jobId}/live/diff?${query.toString()}`);
   },
   getBug(bugId: string) {
     return apiRequest<BugDetailResponse>(`/api/bugs/${bugId}`);

@@ -207,6 +207,7 @@ export const createMilestoneService = (
       .select({
         id: milestonesTable.id,
         projectId: milestonesTable.projectId,
+        position: milestonesTable.position,
         status: milestonesTable.status,
         ownerUserId: projectsTable.ownerUserId,
       })
@@ -498,6 +499,10 @@ export const createMilestoneService = (
   },
 
   async validateLinkedUseCases(projectId: string, useCaseIds: string[]) {
+    if (useCaseIds.length === 0) {
+      return [];
+    }
+
     const approvedFlows = await db.query.useCasesTable.findMany({
       where: and(
         eq(useCasesTable.projectId, projectId),
@@ -517,6 +522,26 @@ export const createMilestoneService = (
     return approvedFlows;
   },
 
+  async assertMilestoneUseCasePolicy(input: {
+    projectId: string;
+    useCaseIds: string[];
+    allowEmpty: boolean;
+  }) {
+    if (input.useCaseIds.length === 0) {
+      if (!input.allowEmpty) {
+        throw new HttpError(
+          400,
+          "milestone_user_flows_required",
+          "Only the first foundation milestone can omit linked user flows.",
+        );
+      }
+
+      return [];
+    }
+
+    return this.validateLinkedUseCases(input.projectId, input.useCaseIds);
+  },
+
   async create(
     ownerUserId: string,
     projectId: string,
@@ -525,13 +550,17 @@ export const createMilestoneService = (
   ) {
     await this.assertApprovedUserFlows(ownerUserId, projectId);
     const payload = createMilestoneRequestSchema.parse(input);
-    await this.validateLinkedUseCases(projectId, payload.useCaseIds);
+    const latestMilestone = await db.query.milestonesTable.findFirst({
+      where: eq(milestonesTable.projectId, projectId),
+      orderBy: [desc(milestonesTable.position)],
+    });
+    await this.assertMilestoneUseCasePolicy({
+      projectId,
+      useCaseIds: payload.useCaseIds,
+      allowEmpty: !latestMilestone,
+    });
 
     const milestoneId = await db.transaction(async (tx) => {
-      const latestMilestone = await tx.query.milestonesTable.findFirst({
-        where: eq(milestonesTable.projectId, projectId),
-        orderBy: [desc(milestonesTable.position)],
-      });
       const now = new Date();
       const [milestone] = await tx
         .insert(milestonesTable)
@@ -563,13 +592,15 @@ export const createMilestoneService = (
         })
         .returning();
 
-      await tx.insert(milestoneUseCasesTable).values(
-        payload.useCaseIds.map((useCaseId) => ({
-          milestoneId: milestone.id,
-          useCaseId,
-          createdAt: now,
-        })),
-      );
+      if (payload.useCaseIds.length > 0) {
+        await tx.insert(milestoneUseCasesTable).values(
+          payload.useCaseIds.map((useCaseId) => ({
+            milestoneId: milestone.id,
+            useCaseId,
+            createdAt: now,
+          })),
+        );
+      }
 
       return milestone.id;
     });
@@ -602,7 +633,11 @@ export const createMilestoneService = (
     await this.assertApprovedUserFlows(input.ownerUserId, input.projectId);
 
     for (const milestone of input.items) {
-      await this.validateLinkedUseCases(input.projectId, milestone.useCaseIds);
+      await this.assertMilestoneUseCasePolicy({
+        projectId: input.projectId,
+        useCaseIds: milestone.useCaseIds,
+        allowEmpty: false,
+      });
     }
 
     await db.transaction(async (tx) => {
@@ -697,13 +732,15 @@ export const createMilestoneService = (
           createdAt: now,
           updatedAt: now,
         });
-        await tx.insert(milestoneUseCasesTable).values(
-          milestone.useCaseIds.map((useCaseId) => ({
-            milestoneId,
-            useCaseId,
-            createdAt: now,
-          })),
-        );
+        if (milestone.useCaseIds.length > 0) {
+          await tx.insert(milestoneUseCasesTable).values(
+            milestone.useCaseIds.map((useCaseId) => ({
+              milestoneId,
+              useCaseId,
+              createdAt: now,
+            })),
+          );
+        }
         nextPosition += 1;
       }
 
@@ -735,8 +772,12 @@ export const createMilestoneService = (
   }) {
     await this.assertApprovedUserFlows(input.ownerUserId, input.projectId);
 
-    for (const milestone of input.items) {
-      await this.validateLinkedUseCases(input.projectId, milestone.useCaseIds);
+    for (const [index, milestone] of input.items.entries()) {
+      await this.assertMilestoneUseCasePolicy({
+        projectId: input.projectId,
+        useCaseIds: milestone.useCaseIds,
+        allowEmpty: index === 0,
+      });
     }
 
     await db.transaction(async (tx) => {
@@ -798,13 +839,15 @@ export const createMilestoneService = (
           createdAt: now,
           updatedAt: now,
         });
-        await tx.insert(milestoneUseCasesTable).values(
-          milestone.useCaseIds.map((useCaseId) => ({
-            milestoneId,
-            useCaseId,
-            createdAt: now,
-          })),
-        );
+        if (milestone.useCaseIds.length > 0) {
+          await tx.insert(milestoneUseCasesTable).values(
+            milestone.useCaseIds.map((useCaseId) => ({
+              milestoneId,
+              useCaseId,
+              createdAt: now,
+            })),
+          );
+        }
       }
 
       await tx
@@ -835,7 +878,11 @@ export const createMilestoneService = (
 
     const payload = updateMilestoneRequestSchema.parse(input);
     if (payload.useCaseIds) {
-      await this.validateLinkedUseCases(context.projectId, payload.useCaseIds);
+      await this.assertMilestoneUseCasePolicy({
+        projectId: context.projectId,
+        useCaseIds: payload.useCaseIds,
+        allowEmpty: context.position === 1,
+      });
     }
 
     await db.transaction(async (tx) => {
@@ -857,13 +904,15 @@ export const createMilestoneService = (
 
       if (payload.useCaseIds) {
         await tx.delete(milestoneUseCasesTable).where(eq(milestoneUseCasesTable.milestoneId, milestoneId));
-        await tx.insert(milestoneUseCasesTable).values(
-          payload.useCaseIds.map((useCaseId) => ({
-            milestoneId,
-            useCaseId,
-            createdAt: new Date(),
-          })),
-        );
+        if (payload.useCaseIds.length > 0) {
+          await tx.insert(milestoneUseCasesTable).values(
+            payload.useCaseIds.map((useCaseId) => ({
+              milestoneId,
+              useCaseId,
+              createdAt: new Date(),
+            })),
+          );
+        }
       }
     });
 

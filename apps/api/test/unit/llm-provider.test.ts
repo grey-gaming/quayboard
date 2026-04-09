@@ -188,4 +188,58 @@ describe("llm provider service", () => {
       }),
     });
   });
+
+  it("streams Ollama thinking chunks through the reasoning callback", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            `${JSON.stringify({ thinking: "draft plan ", response: "" })}\n`,
+          ),
+        );
+        controller.enqueue(
+          new TextEncoder().encode(
+            `${JSON.stringify({
+              thinking: "check repo",
+              response: "final answer",
+              done_reason: "stop",
+            })}\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      body,
+      text: async () => "",
+    });
+
+    const onReasoningDelta = vi.fn();
+    const onTextDelta = vi.fn();
+    const service = createLlmProviderService({ requestTimeoutMs: 1_000 });
+
+    const generated = await service.generate(
+      {
+        apiKey: null,
+        baseUrl: "http://127.0.0.1:11434",
+        model: "glm-5:cloud",
+        provider: "ollama",
+      },
+      "Return JSON.",
+      {
+        onStream: {
+          onReasoningDelta,
+          onTextDelta,
+        },
+      },
+    );
+
+    expect(onReasoningDelta).toHaveBeenCalledTimes(2);
+    expect(onReasoningDelta).toHaveBeenNthCalledWith(1, "draft plan ");
+    expect(onReasoningDelta).toHaveBeenNthCalledWith(2, "check repo");
+    expect(onTextDelta).toHaveBeenCalledWith("final answer");
+    expect(generated.content).toBe("final answer");
+  });
 });

@@ -211,6 +211,13 @@
       "when": 1760000029000,
       "tag": "0029_m10_implementation_bugs",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1760000030000,
+      "tag": "0030_m11_job_live_traces",
+      "breakpoints": true
     }
   ]
 }

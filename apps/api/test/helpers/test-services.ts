@@ -414,6 +414,21 @@ export const createStubServices = (): AppServices => ({
       throw new Error("Not implemented in test stub.");
     },
   },
+  jobTraceService: {
+    appendEvent: async () => ({
+      id: "00000000-0000-4000-8000-000000000777",
+      jobId: "00000000-0000-4000-8000-000000000778",
+      projectId: "00000000-0000-4000-8000-000000000000",
+      sequence: 0,
+      type: "job_status" as const,
+      payload: {},
+      createdAt: new Date().toISOString(),
+    }),
+    getOwnedDiff: async () => ({ path: "README.md", patch: "" }),
+    getOwnedSnapshot: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+  },
   llmProviderService: {
     checkHealth: async () => ({ ok: false, message: "Unavailable.", models: [] }),
     generate: async () => {
@@ -424,6 +439,7 @@ export const createStubServices = (): AppServices => ({
     assertApprovedUserFlows: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    assertMilestoneUseCasePolicy: async () => [],
     assertCanonicalDesignDoc: async () => {
       throw new Error("Not implemented in test stub.");
     },
@@ -837,6 +853,7 @@ export const createStubServices = (): AppServices => ({
     appendEvent: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    appendJobTraceEvent: async () => undefined,
     assertOwnedProject: async () => ({
       id: "00000000-0000-4000-8000-000000000000",
       ownerUserId: "00000000-0000-4000-8000-000000000001",
@@ -980,6 +997,8 @@ export const createStubServices = (): AppServices => ({
     pruneWorkspaceSnapshots: async () => undefined,
     reconcileRuntimeState: async () => undefined,
     runMilestoneSession: async () => undefined,
+    captureLiveChangedFiles: async () => undefined,
+    syncOpencodeTrace: async () => undefined,
     updateRunState: async () => {
       throw new Error("Not implemented in test stub.");
     },
