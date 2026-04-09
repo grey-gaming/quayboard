@@ -93,6 +93,7 @@ describe("mission control live page", () => {
   it("stacks thinking above output and keeps the live feed rail ahead of changed files and patch preview", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
 
+    const toolOutputPreview = Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n");
     const jobs = [
       buildJob({}),
       buildJob({
@@ -148,7 +149,19 @@ describe("mission control live page", () => {
                   binary: false,
                 },
               ],
-              toolCalls: [],
+              toolCalls: [
+                {
+                  id: "tool-call-1",
+                  toolName: "shell",
+                  status: "succeeded",
+                  startedAt: "2026-04-09T10:02:00.000Z",
+                  finishedAt: "2026-04-09T10:02:05.000Z",
+                  durationMs: 5000,
+                  inputPreview: "{\"command\":\"pnpm test\"}",
+                  outputPreview: toolOutputPreview,
+                  errorMessage: null,
+                },
+              ],
               llmSteps: [],
               outputLinks: [],
               transcript: {
@@ -204,6 +217,11 @@ describe("mission control live page", () => {
       const patchContent = patchPreview.querySelector("pre");
       expect(patchContent?.textContent).toBe("@@ -1,2 +1,3 @@\n+stacked transcript");
     });
+    const outputPreview = await screen.findByTestId("tool-output-preview-tool-call-1");
+    const previewContent = outputPreview.querySelector("pre");
+    expect(previewContent?.textContent).toBe(toolOutputPreview);
+    expect(previewContent?.className).toContain("max-h-[7rem]");
+    expect(previewContent?.className).toContain("overflow-hidden");
   });
 
   it("keeps the activity timeline linked, shows failures, and preserves truncating job labels", () => {

@@ -260,9 +260,14 @@ export const MissionControlLivePage = () => {
                     </pre>
                   ) : null}
                   {toolCall.outputPreview ? (
-                    <pre className="mt-3 whitespace-pre-wrap border border-border/70 bg-panel px-3 py-2 font-sans text-xs text-secondary">
-                      {toolCall.outputPreview}
-                    </pre>
+                    <div
+                      className="mt-3 overflow-hidden rounded-sm border border-border/70 bg-panel px-3 py-2"
+                      data-testid={`tool-output-preview-${toolCall.id}`}
+                    >
+                      <pre className="max-h-[7rem] overflow-hidden whitespace-pre-wrap font-sans text-xs text-secondary">
+                        {toolCall.outputPreview}
+                      </pre>
+                    </div>
                   ) : null}
                   {toolCall.errorMessage ? (
                     <p className="mt-2 text-xs text-danger">{toolCall.errorMessage}</p>
