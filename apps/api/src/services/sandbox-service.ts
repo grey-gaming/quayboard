@@ -132,6 +132,80 @@ const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] a
 const projectReviewFixBranchName = "quayboard/project-review-fixes";
 const buildBugFixBranchName = (bugReportId: string) => `quayboard/bug-fix/${bugReportId}`;
 
+const stringifyTracePreview = (value: unknown) => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value ?? {}).slice(0, 400);
+};
+
+const extractTraceText = (record: Record<string, unknown>, key: "text" | "thinking") => {
+  if (typeof record[key] === "string") {
+    return record[key];
+  }
+
+  const part =
+    typeof record.part === "object" && record.part !== null
+      ? (record.part as Record<string, unknown>)
+      : null;
+
+  return part && typeof part[key] === "string" ? part[key] : null;
+};
+
+const extractToolTraceRecord = (record: Record<string, unknown>) => {
+  const part =
+    typeof record.part === "object" && record.part !== null
+      ? (record.part as Record<string, unknown>)
+      : null;
+  const state =
+    part && typeof part.state === "object" && part.state !== null
+      ? (part.state as Record<string, unknown>)
+      : null;
+
+  const toolCallId =
+    typeof record.toolCallId === "string"
+      ? record.toolCallId
+      : part && typeof part.callID === "string"
+        ? part.callID
+        : null;
+  const toolName =
+    typeof record.toolName === "string"
+      ? record.toolName
+      : part && typeof part.tool === "string"
+        ? part.tool
+        : null;
+
+  return {
+    errorMessage:
+      typeof record.errorMessage === "string"
+        ? record.errorMessage
+        : state && typeof state.error === "string"
+          ? state.error
+          : null,
+    inputPreview:
+      record.input !== undefined
+        ? stringifyTracePreview(record.input)
+        : state && "input" in state
+          ? stringifyTracePreview(state.input)
+          : null,
+    outputPreview:
+      record.output !== undefined
+        ? stringifyTracePreview(record.output)
+        : state && "output" in state
+          ? stringifyTracePreview(state.output)
+          : null,
+    status:
+      typeof record.status === "string"
+        ? record.status
+        : state && typeof state.status === "string"
+          ? state.status
+          : null,
+    toolCallId,
+    toolName,
+  };
+};
+
 type ExportedFeatureDoc = {
   featureKey: string;
   milestonePosition: number;
@@ -744,44 +818,51 @@ export const createSandboxService = (input: {
         if (typeof record.message === "object" && record.message !== null) {
           queue.push(record.message);
         }
-
-        if (record.type === "thinking" && typeof record.thinking === "string") {
+        const reasoningText =
+          record.type === "reasoning"
+            ? extractTraceText(record, "text")
+            : extractTraceText(record, "thinking");
+        if ((record.type === "thinking" || record.type === "reasoning") && reasoningText) {
           await this.appendJobTraceEvent(jobId, projectId, "reasoning_delta", {
-            text: record.thinking,
+            text: reasoningText,
           }).catch(() => undefined);
         }
 
-        if (record.type === "text" && typeof record.text === "string") {
+        const outputText = extractTraceText(record, "text");
+        if (record.type === "text" && outputText) {
           await this.appendJobTraceEvent(jobId, projectId, "text_delta", {
-            text: record.text,
+            text: outputText,
+          }).catch(() => undefined);
+        }
+
+        const toolTrace = extractToolTraceRecord(record);
+        if (
+          (record.type === "tool-call" || record.type === "tool_use") &&
+          toolTrace.toolCallId &&
+          toolTrace.toolName &&
+          !state.toolStates.has(toolTrace.toolCallId)
+        ) {
+          state.toolStates.set(toolTrace.toolCallId, true);
+          await this.appendJobTraceEvent(jobId, projectId, "tool_call_started", {
+            toolCallId: toolTrace.toolCallId,
+            toolName: toolTrace.toolName,
+            inputPreview: toolTrace.inputPreview,
           }).catch(() => undefined);
         }
 
         if (
-          record.type === "tool-call" &&
-          typeof record.toolCallId === "string" &&
-          typeof record.toolName === "string" &&
-          !state.toolStates.has(record.toolCallId)
+          (record.type === "tool-result" ||
+            record.type === "tool_use" ||
+            record.type === "tool") &&
+          toolTrace.toolCallId &&
+          toolTrace.status &&
+          ["completed", "failed", "cancelled"].includes(toolTrace.status)
         ) {
-          state.toolStates.set(record.toolCallId, true);
-          await this.appendJobTraceEvent(jobId, projectId, "tool_call_started", {
-            toolCallId: record.toolCallId,
-            toolName: record.toolName,
-            inputPreview:
-              typeof record.input === "string"
-                ? record.input
-                : JSON.stringify(record.input ?? {}).slice(0, 400),
-          }).catch(() => undefined);
-        }
-
-        if (record.type === "tool-result" && typeof record.toolCallId === "string") {
           await this.appendJobTraceEvent(jobId, projectId, "tool_call_finished", {
-            toolCallId: record.toolCallId,
-            status: "succeeded",
-            outputPreview:
-              typeof record.output === "string"
-                ? record.output
-                : JSON.stringify(record.output ?? {}).slice(0, 400),
+            toolCallId: toolTrace.toolCallId,
+            status: toolTrace.status === "completed" ? "succeeded" : toolTrace.status,
+            outputPreview: toolTrace.outputPreview,
+            errorMessage: toolTrace.errorMessage,
           }).catch(() => undefined);
         }
       }

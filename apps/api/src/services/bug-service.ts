@@ -12,6 +12,8 @@ import {
 import type { AppDatabase } from "../db/client.js";
 import {
   bugReportsTable,
+  jobsTable,
+  projectsTable,
   reposTable,
 } from "../db/schema.js";
 import { generateId } from "./ids.js";
@@ -266,6 +268,96 @@ export const createBugService = (
 
     this.publishProjectUpdate(ownerUserId, bug.projectId);
     return updated;
+  },
+
+  async reopenInterruptedFixes(jobIds: string[], message: string) {
+    if (jobIds.length === 0) {
+      return [];
+    }
+
+    const reopened = await db
+      .update(bugReportsTable)
+      .set({
+        status: "open",
+        lastFixError: message,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          inArray(bugReportsTable.latestFixJobId, jobIds),
+          eq(bugReportsTable.status, "in_progress"),
+        ),
+      )
+      .returning();
+
+    if (reopened.length === 0) {
+      return [];
+    }
+
+    const distinctProjectIds = [...new Set(reopened.map((bug) => bug.projectId))];
+    const projects = await db.query.projectsTable.findMany({
+      where: inArray(projectsTable.id, distinctProjectIds),
+    });
+
+    for (const project of projects) {
+      this.publishProjectUpdate(project.ownerUserId, project.id);
+    }
+
+    return reopened.map(toBugReport);
+  },
+
+  async reconcileStaleInProgressFixes() {
+    const staleBugs = await db.query.bugReportsTable.findMany({
+      where: eq(bugReportsTable.status, "in_progress"),
+      orderBy: [desc(bugReportsTable.updatedAt)],
+    });
+
+    if (staleBugs.length === 0) {
+      return [];
+    }
+
+    const latestJobIds = staleBugs
+      .map((bug) => bug.latestFixJobId)
+      .filter((jobId): jobId is string => Boolean(jobId));
+
+    const jobs = latestJobIds.length
+      ? await db.query.jobsTable.findMany({
+          where: inArray(jobsTable.id, latestJobIds),
+        })
+      : [];
+    const jobsById = new Map(jobs.map((job) => [job.id, job]));
+
+    const staleBugIds = staleBugs
+      .filter((bug) => {
+        const latestJob = bug.latestFixJobId ? jobsById.get(bug.latestFixJobId) ?? null : null;
+        return !latestJob || (latestJob.status !== "queued" && latestJob.status !== "running");
+      })
+      .map((bug) => bug.id);
+
+    if (staleBugIds.length === 0) {
+      return [];
+    }
+
+    const reopened = await db
+      .update(bugReportsTable)
+      .set({
+        status: "open",
+        lastFixError: "The previous fix run is no longer active. Start a new fix run if needed.",
+        updatedAt: new Date(),
+      })
+      .where(inArray(bugReportsTable.id, staleBugIds))
+      .returning();
+
+    const distinctProjectIds = [...new Set(reopened.map((bug) => bug.projectId))];
+    const projects = await db.query.projectsTable.findMany({
+      where: inArray(projectsTable.id, distinctProjectIds),
+    });
+
+    for (const project of projects) {
+      this.publishProjectUpdate(project.ownerUserId, project.id);
+    }
+
+    return reopened.map(toBugReport);
   },
 
   async mergeFixPullRequest(ownerUserId: string, bugId: string, branchName: string) {

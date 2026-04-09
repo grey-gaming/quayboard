@@ -52,7 +52,7 @@ const buildJob = (overrides: Partial<Job>): Job => ({
   ...overrides,
 });
 
-const renderLivePage = () => {
+const renderLivePage = (selectedJobId = runningJobId) => {
   const routes = new Map<string, ReactNode>([
     ["/", <div />],
     ["/docs", <div />],
@@ -73,7 +73,7 @@ const renderLivePage = () => {
 
   const router = createMemoryRouter(
     Array.from(routes.entries()).map(([path, element]) => ({ path, element })),
-    { initialEntries: [`/projects/${projectId}/live/${runningJobId}`] },
+    { initialEntries: [`/projects/${projectId}/live/${selectedJobId}`] },
   );
 
   return render(
@@ -90,10 +90,26 @@ describe("mission control live page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("stacks thinking above output and keeps the live feed rail ahead of changed files and patch preview", async () => {
+  it("elevates todowrite into a todo card and keeps right-rail ordering stable", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
 
     const toolOutputPreview = Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n");
+    const todoOutputPreview = JSON.stringify(
+      [
+        {
+          content: "Update VisualConstants with authentic split-flap colors",
+          priority: "high",
+          status: "in_progress",
+        },
+        {
+          content: "Add proper font for split-flap display (condensed grotesque)",
+          priority: "high",
+          status: "pending",
+        },
+      ],
+      null,
+      2,
+    );
     const jobs = [
       buildJob({}),
       buildJob({
@@ -151,6 +167,18 @@ describe("mission control live page", () => {
               ],
               toolCalls: [
                 {
+                  id: "tool-call-todo",
+                  toolName: "todowrite",
+                  status: "succeeded",
+                  startedAt: "2026-04-09T10:01:30.000Z",
+                  finishedAt: "2026-04-09T10:01:50.000Z",
+                  durationMs: 2000,
+                  inputPreview:
+                    "{\"todos\":[{\"content\":\"Update VisualConstants with authentic split-flap colors\",\"status\":\"in_progress\"}]}",
+                  outputPreview: todoOutputPreview,
+                  errorMessage: null,
+                },
+                {
                   id: "tool-call-1",
                   toolName: "shell",
                   status: "succeeded",
@@ -201,13 +229,30 @@ describe("mission control live page", () => {
 
     const rightRail = screen.getByTestId("live-right-rail");
     const rightRailCards = within(rightRail).getAllByTestId(
-      /live-feed-card|changed-files-card|patch-preview-card/,
+      /live-todo-card|live-feed-card|changed-files-card|patch-preview-card/,
     );
     expect(rightRailCards.map((card) => card.getAttribute("data-testid"))).toEqual([
+      "live-todo-card",
       "live-feed-card",
       "changed-files-card",
       "patch-preview-card",
     ]);
+
+    const todoCard = screen.getByTestId("live-todo-card");
+    expect(
+      within(todoCard).getByText("Update VisualConstants with authentic split-flap colors"),
+    ).toBeTruthy();
+    expect(within(todoCard).getByTestId("live-todo-item-0").getAttribute("data-status")).toBe(
+      "in_progress",
+    );
+    expect(within(todoCard).getByTestId("live-todo-item-1").getAttribute("data-status")).toBe(
+      "pending",
+    );
+
+    const toolsCard = screen.getByTestId("tools-calls-card");
+    expect(screen.getByTestId("tools-call-count").textContent).toBe("1");
+    expect(within(toolsCard).queryByText("todowrite")).toBeNull();
+    expect(within(toolsCard).getByText("shell")).toBeTruthy();
 
     expect(
       await screen.findByText("apps/web/src/pages/MissionControlLivePage.tsx"),
@@ -222,6 +267,84 @@ describe("mission control live page", () => {
     expect(previewContent?.textContent).toBe(toolOutputPreview);
     expect(previewContent?.className).toContain("max-h-[7rem]");
     expect(previewContent?.className).toContain("overflow-hidden");
+  });
+
+  it("hides the todo card when todowrite payload is not parseable", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+
+    const nonParsableJobId = "22222222-2222-4222-8222-222222222222";
+    const jobs = [buildJob({ id: nonParsableJobId })];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const path = typeof input === "string" ? input : input.toString();
+
+        if (path === "/auth/me") {
+          return jsonResponse({ user });
+        }
+
+        if (path === `/api/projects/${projectId}`) {
+          return jsonResponse({
+            id: projectId,
+            name: "Quayboard",
+            description: "Governed software delivery workspace.",
+            state: "READY",
+            ownerUserId: user.id,
+            createdAt: "2026-04-08T00:00:00.000Z",
+            updatedAt: "2026-04-09T10:00:00.000Z",
+          });
+        }
+
+        if (path === `/api/projects/${projectId}/jobs`) {
+          return jsonResponse({ jobs });
+        }
+
+        if (path === `/api/jobs/${nonParsableJobId}/live`) {
+          return jsonResponse({
+            snapshot: {
+              job: jobs[0],
+              events: [],
+              changedFiles: [],
+              toolCalls: [
+                {
+                  id: "tool-call-todo",
+                  toolName: "todowrite",
+                  status: "succeeded",
+                  startedAt: "2026-04-09T10:01:30.000Z",
+                  finishedAt: "2026-04-09T10:01:50.000Z",
+                  durationMs: 2000,
+                  inputPreview: "{\"todos\":[{\"content\":\"Task one\"",
+                  outputPreview: "[{\"content\":",
+                  errorMessage: null,
+                },
+              ],
+              llmSteps: [],
+              outputLinks: [],
+              transcript: {
+                reasoning: "Reasoning stream",
+                output: "Output stream",
+              },
+              relatedSandboxRun: null,
+              latestSequence: 0,
+            },
+          });
+        }
+
+        throw new Error(`Unhandled fetch for ${path}`);
+      }),
+    );
+
+    renderLivePage(nonParsableJobId);
+
+    expect(await screen.findByRole("heading", { name: "Live Mission Control" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByTestId("live-todo-card")).toBeNull();
+    });
+
+    const toolsCard = screen.getByTestId("tools-calls-card");
+    expect(screen.getByTestId("tools-call-count").textContent).toBe("0");
+    expect(within(toolsCard).getByText("No tool calls recorded for this job.")).toBeTruthy();
   });
 
   it("keeps the activity timeline linked, shows failures, and preserves truncating job labels", () => {

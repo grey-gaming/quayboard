@@ -1036,6 +1036,85 @@ describe("API integration", () => {
     }
   });
 
+  it("reopens stale in-progress bug fixes when the API restarts", async () => {
+    const userId = "8d4d69b8-4254-41b6-bc73-b50ab3e0e001";
+    const projectId = "8fedda26-c1ba-4b34-b1f1-7af3606ebd11";
+    const jobId = "da56b42d-0da8-4da9-90c7-4bd3c6b53380";
+    const bugId = "277b9f31-1b9b-46c3-81b3-db55cd057f3c";
+
+    await sql`
+      insert into "users" ("id", "email", "password_hash", "display_name")
+      values (${userId}, ${"bug-restart@example.com"}, ${"hashed-password"}, ${"Bug Restart Tester"})
+    `;
+    await sql`
+      insert into "projects" ("id", "owner_user_id", "name", "description", "state")
+      values (${projectId}, ${userId}, ${"Bug Restart Recovery"}, ${"Bug restart recovery test project"}, ${"READY"})
+    `;
+    await sql`
+      insert into "jobs" (
+        "id",
+        "project_id",
+        "created_by_user_id",
+        "type",
+        "status",
+        "inputs",
+        "queued_at",
+        "started_at"
+      )
+      values (
+        ${jobId},
+        ${projectId},
+        ${userId},
+        ${"RunBugFix"},
+        ${"running"},
+        ${JSON.stringify({ bugId })}::jsonb,
+        now() - interval '2 minutes',
+        now() - interval '90 seconds'
+      )
+    `;
+    await sql`
+      insert into "bug_reports" (
+        "id",
+        "project_id",
+        "feature_id",
+        "implementation_record_id",
+        "description",
+        "status",
+        "reported_by_user_id",
+        "latest_fix_job_id",
+        "created_at",
+        "updated_at"
+      )
+      values (
+        ${bugId},
+        ${projectId},
+        null,
+        null,
+        ${"The board freezes after the first flip."},
+        ${"in_progress"},
+        ${userId},
+        ${jobId},
+        now() - interval '3 minutes',
+        now() - interval '2 minutes'
+      )
+    `;
+
+    const restartedServices = await createAppServices(databaseUrl, secretsKey);
+
+    try {
+      const recoveredBug = await restartedServices.services.bugService.getBug(userId, bugId);
+      const recoveredJob = await restartedServices.services.jobService.getRawJob(jobId);
+
+      expect(recoveredJob?.status).toBe("cancelled");
+      expect(recoveredBug.bug.status).toBe("open");
+      expect(recoveredBug.bug.lastFixError).toBe(
+        "The API restarted before this LLM job finished, so the job was cancelled.",
+      );
+    } finally {
+      await restartedServices.close();
+    }
+  });
+
   it("registers, authenticates, and logs out a user with a cookie session", async () => {
     const restoreReadiness = withHealthyAuthReadiness();
 
