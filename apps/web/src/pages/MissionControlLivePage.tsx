@@ -112,79 +112,7 @@ export const MissionControlLivePage = () => {
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_22rem] xl:items-start">
-        <Card surface="rail" className="h-fit">
-          <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
-            <div>
-              <p className="qb-meta-label">Jobs</p>
-              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Live Feed</p>
-            </div>
-            <Badge tone="neutral">{jobs.length}</Badge>
-          </div>
-
-          <div className="mt-4 grid gap-4">
-            <section className="grid gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="qb-meta-label">Active</p>
-                <span className="text-xs text-secondary">{active.length}</span>
-              </div>
-              <div className="grid gap-2">
-                {active.length ? active.map((job) => (
-                  <Link
-                    key={job.id}
-                    className={[
-                      "rounded-sm border px-3 py-2 text-sm transition-colors",
-                      selectedJobId === job.id
-                        ? "border-border-strong bg-panel-raised"
-                        : "border-border/80 bg-panel-inset hover:bg-panel",
-                    ].join(" ")}
-                    to={`/projects/${id}/live/${job.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate font-medium">{formatJobType(job.type)}</span>
-                      <Badge tone={job.status === "running" ? "info" : "neutral"}>{job.status}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-secondary">{formatDateTime(job.startedAt ?? job.queuedAt)}</p>
-                  </Link>
-                )) : (
-                  <p className="text-sm text-secondary">No active jobs.</p>
-                )}
-              </div>
-            </section>
-
-            <section className="grid gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="qb-meta-label">Recent</p>
-                <span className="text-xs text-secondary">{recent.length}</span>
-              </div>
-              <div className="grid gap-2">
-                {recent.length ? recent.map((job) => (
-                  <Link
-                    key={job.id}
-                    className={[
-                      "rounded-sm border px-3 py-2 text-sm transition-colors",
-                      selectedJobId === job.id
-                        ? "border-border-strong bg-panel-raised"
-                        : "border-border/80 bg-panel-inset hover:bg-panel",
-                    ].join(" ")}
-                    to={`/projects/${id}/live/${job.id}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 truncate font-medium">{formatJobType(job.type)}</span>
-                      <Badge tone="neutral">{job.status}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-secondary">
-                      {formatDateTime(job.completedAt ?? job.startedAt ?? job.queuedAt)}
-                    </p>
-                  </Link>
-                )) : (
-                  <p className="text-sm text-secondary">No completed traceable jobs yet.</p>
-                )}
-              </div>
-            </section>
-          </div>
-        </Card>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
         <div className="grid gap-4">
           <Card surface="panel">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-3">
@@ -248,12 +176,12 @@ export const MissionControlLivePage = () => {
                   </div>
                 ) : null}
 
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid gap-4" data-testid="live-transcript-stack">
                   <div className="border border-border/80 bg-panel-inset p-4">
                     <p className="qb-meta-label">Thinking</p>
                     <div
                       ref={reasoningRef}
-                      className="mt-2 max-h-[30rem] overflow-auto border-l-2 border-info/50 pl-4"
+                      className="mt-2 max-h-[20rem] overflow-auto border-l-2 border-info/50 pl-4"
                       onScroll={(event) => {
                         const target = event.currentTarget;
                         const bottomGap =
@@ -272,7 +200,7 @@ export const MissionControlLivePage = () => {
                     <p className="qb-meta-label">Output</p>
                     <div
                       ref={outputRef}
-                      className="mt-2 max-h-[30rem] overflow-auto"
+                      className="mt-2 max-h-[28rem] overflow-auto"
                       onScroll={(event) => {
                         const target = event.currentTarget;
                         const bottomGap =
@@ -347,8 +275,90 @@ export const MissionControlLivePage = () => {
           </Card>
         </div>
 
-        <div className="grid gap-4">
-          <Card surface="rail" className="h-fit">
+        <div className="grid gap-4" data-testid="live-right-rail">
+          <Card surface="rail" className="h-fit" data-testid="live-feed-card">
+          <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
+            <div>
+              <p className="qb-meta-label">Jobs</p>
+              <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">Live Feed</p>
+            </div>
+            <Badge tone="neutral">{jobs.length}</Badge>
+          </div>
+
+          <div className="mt-4 grid gap-4">
+            <section className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="qb-meta-label">Active</p>
+                <span className="text-xs text-secondary">{active.length}</span>
+              </div>
+              <div className="grid gap-2">
+                {active.length ? active.map((job) => (
+                  <Link
+                    key={job.id}
+                    className={[
+                      "rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedJobId === job.id
+                        ? "border-border-strong bg-panel-raised"
+                        : "border-border/80 bg-panel-inset hover:bg-panel",
+                    ].join(" ")}
+                    to={`/projects/${id}/live/${job.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className="min-w-0 flex-1 truncate font-medium"
+                        title={formatJobType(job.type)}
+                      >
+                        {formatJobType(job.type)}
+                      </span>
+                      <Badge tone={job.status === "running" ? "info" : "neutral"}>{job.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">{formatDateTime(job.startedAt ?? job.queuedAt)}</p>
+                  </Link>
+                )) : (
+                  <p className="text-sm text-secondary">No active jobs.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="grid gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="qb-meta-label">Recent</p>
+                <span className="text-xs text-secondary">{recent.length}</span>
+              </div>
+              <div className="grid gap-2">
+                {recent.length ? recent.map((job) => (
+                  <Link
+                    key={job.id}
+                    className={[
+                      "rounded-sm border px-3 py-2 text-sm transition-colors",
+                      selectedJobId === job.id
+                        ? "border-border-strong bg-panel-raised"
+                        : "border-border/80 bg-panel-inset hover:bg-panel",
+                    ].join(" ")}
+                    to={`/projects/${id}/live/${job.id}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span
+                        className="min-w-0 flex-1 truncate font-medium"
+                        title={formatJobType(job.type)}
+                      >
+                        {formatJobType(job.type)}
+                      </span>
+                      <Badge tone="neutral">{job.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-secondary">
+                      {formatDateTime(job.completedAt ?? job.startedAt ?? job.queuedAt)}
+                    </p>
+                  </Link>
+                )) : (
+                  <p className="text-sm text-secondary">No completed traceable jobs yet.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        </Card>
+
+          <Card surface="rail" className="h-fit" data-testid="changed-files-card">
             <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
               <div>
                 <p className="qb-meta-label">Repository</p>
@@ -381,7 +391,7 @@ export const MissionControlLivePage = () => {
             </div>
           </Card>
 
-          <Card surface="panel" className="min-h-[20rem]">
+          <Card surface="panel" className="min-h-[20rem]" data-testid="patch-preview-card">
             <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
               <div>
                 <p className="qb-meta-label">Patch Preview</p>
