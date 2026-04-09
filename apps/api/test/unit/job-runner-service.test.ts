@@ -2575,9 +2575,9 @@ describe("job runner service", () => {
           ],
           dependenciesAndSequencing: [
             {
-              phase: "Phase 1",
-              deliveryGroupKeys: ["account-frontend", "account-backend"],
-              notes: "Stand up account creation first.",
+              phase: 1,
+              deliveryGroupKey: "account-backend",
+              description: "Stand up account creation first.",
             },
           ],
           exitCriteria: [
@@ -2706,6 +2706,11 @@ describe("job runner service", () => {
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.stringContaining("Keep together:\n- Entire delivery group"),
+      }),
+    );
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        markdown: expect.stringContaining("## Dependencies and Sequencing\n### Phase 1\nDelivery groups: account-backend\nStand up account creation first."),
       }),
     );
     expect(createDesignDocVersion).toHaveBeenCalledWith(
@@ -3157,6 +3162,233 @@ describe("job runner service", () => {
         designDocId: "design-doc-id",
       }),
     );
+  });
+
+  it("rejects sequencing edge-list shapes after repair attempts", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Project Foundation",
+      summary: "Bootstrap the repository and delivery scaffolding.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => []),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Stand up the repository, tooling, and smoke path.",
+          includedUserFlows: [],
+          scopeBoundaries: {
+            inScope: [{ item: "Repository scaffolding", deliveryGroupKey: "foundation-tooling" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "foundation-tooling",
+              title: "Foundation Tooling",
+              summary: "Owns repository scaffolding, CI, and environment bootstrap.",
+              ownedScreens: [],
+              ownedResponsibilities: ["Repo scaffolding"],
+              dependsOn: [],
+              mustStayTogether: true,
+              mustNotSplit: false,
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              predecessor: "foundation-tooling",
+              successor: "smoke-path",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "The repository boots locally.",
+              deliveryGroupKey: "foundation-tooling",
+              screens: [],
+            },
+          ],
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Stand up the repository, tooling, and smoke path.",
+          includedUserFlows: [],
+          scopeBoundaries: {
+            inScope: [{ item: "Repository scaffolding", deliveryGroupKey: "foundation-tooling" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "foundation-tooling",
+              title: "Foundation Tooling",
+              summary: "Owns repository scaffolding, CI, and environment bootstrap.",
+              ownedScreens: [],
+              ownedResponsibilities: ["Repo scaffolding"],
+              dependsOn: [],
+              mustStayTogether: true,
+              mustNotSplit: false,
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              order: 1,
+              deliveryGroupKey: "foundation-tooling",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "The repository boots locally.",
+              deliveryGroupKey: "foundation-tooling",
+              screens: [],
+            },
+          ],
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          title: "Milestone Design",
+          objective: "Stand up the repository, tooling, and smoke path.",
+          includedUserFlows: [],
+          scopeBoundaries: {
+            inScope: [{ item: "Repository scaffolding", deliveryGroupKey: "foundation-tooling" }],
+            outOfScope: [],
+          },
+          deliveryGroups: [
+            {
+              key: "foundation-tooling",
+              title: "Foundation Tooling",
+              summary: "Owns repository scaffolding, CI, and environment bootstrap.",
+              ownedScreens: [],
+              ownedResponsibilities: ["Repo scaffolding"],
+              dependsOn: [],
+              mustStayTogether: true,
+              mustNotSplit: false,
+            },
+          ],
+          dependenciesAndSequencing: [
+            {
+              dependsOn: [],
+              deliveryGroupKey: "foundation-tooling",
+            },
+          ],
+          exitCriteria: [
+            {
+              criterion: "The repository boots locally.",
+              deliveryGroupKey: "foundation-tooling",
+              screens: [],
+            },
+          ],
+        }),
+        promptTokens: 12,
+        completionTokens: 14,
+      });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Project Foundation",
+          summary: "Bootstrap the repository and delivery scaffolding.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await expect(service.run("job-generate-design")).rejects.toMatchObject({
+      jobError: expect.objectContaining({
+        code: "llm_output_invalid",
+        retryable: true,
+      }),
+    });
+    expect(createDesignDocVersion).not.toHaveBeenCalled();
+    expect(markSucceeded).not.toHaveBeenCalled();
+    expect(generate).toHaveBeenCalledTimes(3);
   });
 
   it("fails closed when milestone design consistency remains unresolved after retry", async () => {

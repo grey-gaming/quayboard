@@ -209,9 +209,11 @@ type MilestoneDesignDraft = {
     title?: string;
   }>;
   dependenciesAndSequencing?: Array<{
+    deliveryGroupKey?: string;
     deliveryGroupKeys?: unknown;
+    description?: string;
     notes?: string;
-    phase?: string;
+    phase?: string | number;
   }>;
   exitCriteria?: Array<{
     criterion?: string;
@@ -275,6 +277,7 @@ type ParsedMilestoneDesignDraft = {
 };
 
 const buildJsonRepairPrompt = (input: {
+  contractGuidance?: string[];
   invalidResponse: string;
   templateId: string;
   validationMessage: string;
@@ -286,6 +289,9 @@ const buildJsonRepairPrompt = (input: {
     "Return valid JSON only.",
     "Preserve the original scope and intent. Fix formatting, missing keys, invalid enums, or invalid JSON escaping as needed.",
     "Do not wrap the JSON in code fences.",
+    ...(input.contractGuidance && input.contractGuidance.length > 0
+      ? ["", "Contract guidance:", ...input.contractGuidance]
+      : []),
     "",
     "Previous invalid response:",
     input.invalidResponse,
@@ -822,6 +828,21 @@ const normalizeMilestoneDesignGroupConstraint = (
   };
 };
 
+const normalizeMilestoneDesignPhaseLabel = (
+  value: unknown,
+  errorMessage: string,
+) => {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `Phase ${value}`;
+  }
+
+  throw new Error(errorMessage);
+};
+
 const parseMilestoneDesignDraft = (
   value: string,
   templateId: string,
@@ -978,11 +999,20 @@ const parseMilestoneDesignDraft = (
 
   const dependenciesAndSequencing = Array.isArray(parsed.dependenciesAndSequencing)
     ? parsed.dependenciesAndSequencing.map((phase, index) => {
+        const normalizedGroupKeys =
+          typeof phase?.deliveryGroupKey === "string" &&
+          phase.deliveryGroupKey.trim().length > 0 &&
+          phase.deliveryGroupKeys === undefined
+            ? [phase.deliveryGroupKey.trim()]
+            : phase?.deliveryGroupKeys;
+        const normalizedNotes =
+          typeof phase?.notes === "string" && phase.notes.trim().length > 0
+            ? phase.notes
+            : phase?.description;
+
         if (
-          typeof phase?.phase !== "string" ||
-          phase.phase.trim().length === 0 ||
-          typeof phase.notes !== "string" ||
-          phase.notes.trim().length === 0
+          (typeof phase?.phase !== "string" && typeof phase?.phase !== "number") ||
+          (typeof normalizedNotes !== "string" || normalizedNotes.trim().length === 0)
         ) {
           throw new Error(
             `${templateId} returned an invalid dependenciesAndSequencing item at index ${index}.`,
@@ -990,10 +1020,13 @@ const parseMilestoneDesignDraft = (
         }
 
         return {
-          phase: phase.phase.trim(),
-          notes: phase.notes.trim(),
+          phase: normalizeMilestoneDesignPhaseLabel(
+            phase.phase,
+            `${templateId} returned an invalid dependenciesAndSequencing item at index ${index}.`,
+          ),
+          notes: normalizedNotes.trim(),
           deliveryGroupKeys: normalizeStringArray(
-            phase.deliveryGroupKeys,
+            normalizedGroupKeys,
             `${templateId} returned an invalid deliveryGroupKeys array for dependenciesAndSequencing item ${index}.`,
             { unique: true },
           ),
@@ -3885,6 +3918,7 @@ export const createJobRunnerService = (input: {
         const techBlueprint = blueprints.techBlueprint;
 
         const parseMilestoneDesignCoreWithShapeRepair = async (inputArgs: {
+          contractGuidance?: string[];
           generated: Awaited<ReturnType<LlmProviderService["generate"]>>;
           hint?: string;
           parameters: Record<string, unknown>;
@@ -3910,6 +3944,7 @@ export const createJobRunnerService = (input: {
 
             const jsonRepairTemplateId = `${inputArgs.templateId}Repair`;
             const jsonRepairPrompt = buildJsonRepairPrompt({
+              contractGuidance: inputArgs.contractGuidance,
               templateId: inputArgs.templateId,
               validationMessage,
               invalidResponse: inputArgs.generated.content,
@@ -4009,6 +4044,12 @@ export const createJobRunnerService = (input: {
             generated,
           });
           return parseMilestoneDesignCoreWithShapeRepair({
+            contractGuidance: [
+              'Top-level keys must be exactly "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
+              "dependenciesAndSequencing items must use phase, deliveryGroupKeys, and notes.",
+              'Use a string phase label such as "Phase 1".',
+              "deliveryGroupKeys must always be an array.",
+            ],
             generated,
             hint: inputArgs.hint,
             parameters: { milestoneId },
@@ -4044,6 +4085,12 @@ export const createJobRunnerService = (input: {
             generated,
           });
           return parseMilestoneDesignCoreWithShapeRepair({
+            contractGuidance: [
+              'Top-level keys must be exactly "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
+              "dependenciesAndSequencing items must use phase, deliveryGroupKeys, and notes.",
+              'Use a string phase label such as "Phase 1".',
+              "deliveryGroupKeys must always be an array.",
+            ],
             generated,
             hint: inputArgs.hint,
             parameters: { milestoneId },
