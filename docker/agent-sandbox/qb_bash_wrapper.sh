@@ -3,6 +3,7 @@ set -eu
 
 REAL_BASH="${REAL_BASH:-/usr/local/share/quayboard/bash.real}"
 COMMAND_TIMEOUT_SECONDS="${QB_BASH_COMMAND_TIMEOUT_SECONDS:-900}"
+TIMEOUT_BYPASS_SCRIPT="${QB_BASH_TIMEOUT_BYPASS_SCRIPT:-/usr/local/bin/qb_entrypoint.sh}"
 child_pid=""
 watchdog_pid=""
 timeout_marker="/tmp/qb-bash-timeout-$$"
@@ -16,6 +17,14 @@ is_positive_integer() {
       return 0
       ;;
   esac
+}
+
+should_bypass_timeout() {
+  if [ "$#" -eq 0 ]; then
+    return 1
+  fi
+
+  [ "$1" = "${TIMEOUT_BYPASS_SCRIPT}" ]
 }
 
 cleanup_process_group() {
@@ -50,7 +59,9 @@ rm -f "${timeout_marker}"
 setsid "${REAL_BASH}" "$@" &
 child_pid="$!"
 
-if is_positive_integer "${COMMAND_TIMEOUT_SECONDS}" && [ "${COMMAND_TIMEOUT_SECONDS}" -gt 0 ]; then
+if ! should_bypass_timeout "$@" \
+  && is_positive_integer "${COMMAND_TIMEOUT_SECONDS}" \
+  && [ "${COMMAND_TIMEOUT_SECONDS}" -gt 0 ]; then
   setsid sh -c '
     timeout_seconds="$1"
     target_pid="$2"
