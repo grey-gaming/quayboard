@@ -13,7 +13,9 @@ vi.mock("node:child_process", () => ({
 }));
 
 import {
+  createRunStallState,
   createSandboxService,
+  detectSandboxRunStall,
   determineNetworkModeForRun,
   serializeProjectReviewFixFindings,
 } from "../../src/services/sandbox-service.js";
@@ -145,6 +147,105 @@ describe("sandbox service", () => {
         runKind: "project_review",
       }),
     ).toBe("none");
+  });
+
+  it("detects a stalled run when trace progress is idle while changed files keep mutating", () => {
+    const state = createRunStallState(0);
+    let message: string | null = null;
+
+    for (let tick = 1; tick <= 240; tick += 1) {
+      message = detectSandboxRunStall({
+        changedFiles: [
+          {
+            path: `.next/cache/chunk-${tick}.js`,
+            additions: tick,
+            deletions: tick % 3,
+            binary: false,
+          },
+        ],
+        hadMeaningfulTraceProgress: false,
+        nowMs: tick * 1000,
+        runKind: "verify",
+        state,
+      });
+      if (message) {
+        break;
+      }
+    }
+
+    expect(message).toContain("verify run appears stalled");
+    expect(message).toContain("long-lived dev/watch process");
+  });
+
+  it("does not mark the run as stalled when changed files are static", () => {
+    const state = createRunStallState(0);
+
+    for (let tick = 1; tick <= 360; tick += 1) {
+      const message = detectSandboxRunStall({
+        changedFiles: [
+          {
+            path: "src/main.ts",
+            additions: 10,
+            deletions: 2,
+            binary: false,
+          },
+        ],
+        hadMeaningfulTraceProgress: false,
+        nowMs: tick * 1000,
+        runKind: "verify",
+        state,
+      });
+      expect(message).toBeNull();
+    }
+  });
+
+  it("resets stall tracking once meaningful trace progress resumes", () => {
+    const state = createRunStallState(0);
+
+    for (let tick = 1; tick <= 170; tick += 1) {
+      detectSandboxRunStall({
+        changedFiles: [
+          {
+            path: `.next/cache/build-${tick}.js`,
+            additions: tick,
+            deletions: 0,
+            binary: false,
+          },
+        ],
+        hadMeaningfulTraceProgress: false,
+        nowMs: tick * 1000,
+        runKind: "verify",
+        state,
+      });
+    }
+
+    expect(
+      detectSandboxRunStall({
+        changedFiles: [],
+        hadMeaningfulTraceProgress: true,
+        nowMs: 171_000,
+        runKind: "verify",
+        state,
+      }),
+    ).toBeNull();
+
+    for (let tick = 172; tick <= 340; tick += 1) {
+      const message = detectSandboxRunStall({
+        changedFiles: [
+          {
+            path: `.next/cache/build-${tick}.js`,
+            additions: tick,
+            deletions: 0,
+            binary: false,
+          },
+        ],
+        hadMeaningfulTraceProgress: false,
+        nowMs: tick * 1000,
+        runKind: "verify",
+        state,
+      });
+      expect(message).toBeNull();
+    }
   });
 
   it("serializes only still-open findings for project fix runs", () => {

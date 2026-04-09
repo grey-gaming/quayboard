@@ -125,6 +125,8 @@ export const createStubServices = (): AppServices => ({
     listBugs: async () => ({ bugs: [] }),
     mergeFixPullRequest: async () => ({ merged: true, pullRequestUrl: null }),
     publishProjectUpdate: () => undefined,
+    reconcileStaleInProgressFixes: async () => [],
+    reopenInterruptedFixes: async () => [],
     resolveImplementationRecordId: async () => null,
     startFix: async () => {
       throw new Error("Not implemented in test stub.");
@@ -997,8 +999,8 @@ export const createStubServices = (): AppServices => ({
     pruneWorkspaceSnapshots: async () => undefined,
     reconcileRuntimeState: async () => undefined,
     runMilestoneSession: async () => undefined,
-    captureLiveChangedFiles: async () => undefined,
-    syncOpencodeTrace: async () => undefined,
+    captureLiveChangedFiles: async () => [],
+    syncOpencodeTrace: async () => ({ hadMeaningfulTraceProgress: false }),
     updateRunState: async () => {
       throw new Error("Not implemented in test stub.");
     },

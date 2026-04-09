@@ -43,4 +43,40 @@ describe("agent sandbox bash wrapper", () => {
 
     expect(result.stdout).toBe("dead");
   });
+
+  it("terminates commands that exceed the configured timeout", async () => {
+    const startedAt = Date.now();
+
+    let capturedError:
+      | (Error & {
+          code?: number;
+          stderr?: string;
+        })
+      | null = null;
+
+    try {
+      await execFileAsync(
+        "sh",
+        [
+          wrapperPath,
+          "-lc",
+          "sleep 5",
+        ],
+        {
+          env: {
+            ...process.env,
+            QB_BASH_COMMAND_TIMEOUT_SECONDS: "1",
+            REAL_BASH: process.env.SHELL ?? "/bin/bash",
+          },
+        },
+      );
+    } catch (error) {
+      capturedError = error as Error & { code?: number; stderr?: string };
+    }
+
+    expect(capturedError).not.toBeNull();
+    expect(capturedError?.code).toBe(124);
+    expect(capturedError?.stderr ?? "").toContain("qb_bash_wrapper_timeout");
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
 });

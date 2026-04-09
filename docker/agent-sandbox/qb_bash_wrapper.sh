@@ -2,7 +2,21 @@
 set -eu
 
 REAL_BASH="${REAL_BASH:-/usr/local/share/quayboard/bash.real}"
+COMMAND_TIMEOUT_SECONDS="${QB_BASH_COMMAND_TIMEOUT_SECONDS:-900}"
 child_pid=""
+watchdog_pid=""
+timeout_marker="/tmp/qb-bash-timeout-$$"
+
+is_positive_integer() {
+  case "$1" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
 
 cleanup_process_group() {
   if [ -z "${child_pid}" ]; then
@@ -14,17 +28,56 @@ cleanup_process_group() {
   kill -KILL "-${child_pid}" 2>/dev/null || true
 }
 
-trap cleanup_process_group EXIT INT TERM
+cleanup_watchdog() {
+  if [ -n "${watchdog_pid}" ]; then
+    kill -TERM "-${watchdog_pid}" 2>/dev/null || kill -TERM "${watchdog_pid}" 2>/dev/null || true
+    sleep 0.1
+    kill -KILL "-${watchdog_pid}" 2>/dev/null || kill -KILL "${watchdog_pid}" 2>/dev/null || true
+    wait "${watchdog_pid}" 2>/dev/null || true
+  fi
+}
+
+cleanup_wrapper() {
+  cleanup_watchdog
+  cleanup_process_group
+  rm -f "${timeout_marker}"
+}
+
+trap cleanup_wrapper EXIT INT TERM
+
+rm -f "${timeout_marker}"
 
 setsid "${REAL_BASH}" "$@" &
 child_pid="$!"
+
+if is_positive_integer "${COMMAND_TIMEOUT_SECONDS}" && [ "${COMMAND_TIMEOUT_SECONDS}" -gt 0 ]; then
+  setsid sh -c '
+    timeout_seconds="$1"
+    target_pid="$2"
+    marker_path="$3"
+
+    sleep "${timeout_seconds}"
+    if kill -0 "-${target_pid}" 2>/dev/null; then
+      echo "timeout" >"${marker_path}"
+      printf "qb_bash_wrapper_timeout: command exceeded %ss; terminating process group.\n" "${timeout_seconds}" >&2
+      kill -TERM "-${target_pid}" 2>/dev/null || true
+      sleep 1
+      kill -KILL "-${target_pid}" 2>/dev/null || true
+    fi
+  ' sh "${COMMAND_TIMEOUT_SECONDS}" "${child_pid}" "${timeout_marker}" &
+  watchdog_pid="$!"
+fi
 
 set +e
 wait "${child_pid}"
 status="$?"
 set -e
 
-cleanup_process_group
+if [ -f "${timeout_marker}" ]; then
+  status="124"
+fi
+
+cleanup_wrapper
 trap - EXIT INT TERM
 
 exit "${status}"
