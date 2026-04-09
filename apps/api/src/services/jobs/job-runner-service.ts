@@ -822,10 +822,19 @@ const normalizeMilestoneDesignGroupConstraint = (
   };
 };
 
-const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMilestoneDesignDraft => {
+const parseMilestoneDesignDraft = (
+  value: string,
+  templateId: string,
+  options?: { allowEmptyIncludedUserFlows?: boolean },
+): ParsedMilestoneDesignDraft => {
   const parsed = parseJson<MilestoneDesignDraft>(value);
 
-  if (!parsed?.title?.trim() || !parsed.objective?.trim()) {
+  if (
+    typeof parsed?.title !== "string" ||
+    parsed.title.trim().length === 0 ||
+    typeof parsed.objective !== "string" ||
+    parsed.objective.trim().length === 0
+  ) {
     throw new Error(
       `${templateId} returned invalid content. Expected non-empty "title" and "objective".`,
     );
@@ -833,7 +842,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const includedUserFlows = Array.isArray(parsed.includedUserFlows)
     ? parsed.includedUserFlows.map((flow, index) => {
-        if (!flow?.title?.trim() || !flow.summary?.trim()) {
+        if (
+          typeof flow?.title !== "string" ||
+          flow.title.trim().length === 0 ||
+          typeof flow.summary !== "string" ||
+          flow.summary.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an includedUserFlow without title or summary at index ${index}.`,
           );
@@ -857,7 +871,10 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
       })
     : null;
 
-  if (!includedUserFlows || includedUserFlows.length === 0) {
+  if (
+    !includedUserFlows ||
+    (!options?.allowEmptyIncludedUserFlows && includedUserFlows.length === 0)
+  ) {
     throw new Error(
       `${templateId} returned invalid content. Expected a non-empty "includedUserFlows" array.`,
     );
@@ -877,7 +894,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const inScope = Array.isArray(parsed.scopeBoundaries.inScope)
     ? parsed.scopeBoundaries.inScope.map((item, index) => {
-        if (!item?.item?.trim() || !item.deliveryGroupKey?.trim()) {
+        if (
+          typeof item?.item !== "string" ||
+          item.item.trim().length === 0 ||
+          typeof item.deliveryGroupKey !== "string" ||
+          item.deliveryGroupKey.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid inScope item at index ${index}.`,
           );
@@ -904,7 +926,14 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const deliveryGroups = Array.isArray(parsed.deliveryGroups)
     ? parsed.deliveryGroups.map((group, index) => {
-        if (!group?.key?.trim() || !group.title?.trim() || !group.summary?.trim()) {
+        if (
+          typeof group?.key !== "string" ||
+          group.key.trim().length === 0 ||
+          typeof group.title !== "string" ||
+          group.title.trim().length === 0 ||
+          typeof group.summary !== "string" ||
+          group.summary.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid deliveryGroup at index ${index}.`,
           );
@@ -949,7 +978,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const dependenciesAndSequencing = Array.isArray(parsed.dependenciesAndSequencing)
     ? parsed.dependenciesAndSequencing.map((phase, index) => {
-        if (!phase?.phase?.trim() || !phase.notes?.trim()) {
+        if (
+          typeof phase?.phase !== "string" ||
+          phase.phase.trim().length === 0 ||
+          typeof phase.notes !== "string" ||
+          phase.notes.trim().length === 0
+        ) {
           throw new Error(
             `${templateId} returned an invalid dependenciesAndSequencing item at index ${index}.`,
           );
@@ -975,7 +1009,12 @@ const parseMilestoneDesignDraft = (value: string, templateId: string): ParsedMil
 
   const exitCriteria = Array.isArray(parsed.exitCriteria)
     ? parsed.exitCriteria.map((criterion, index) => {
-        if (!criterion?.criterion?.trim() || !criterion.deliveryGroupKey?.trim()) {
+        if (
+          typeof criterion?.criterion !== "string" ||
+          criterion.criterion.trim().length === 0 ||
+          typeof criterion.deliveryGroupKey !== "string" ||
+          criterion.deliveryGroupKey.trim().length === 0
+        ) {
           throw new Error(`${templateId} returned an invalid exitCriteria item at index ${index}.`);
         }
 
@@ -1021,6 +1060,10 @@ const validateMilestoneDesignDraft = (
   const groupByKey = new Map<string, ParsedMilestoneDesignDraft["deliveryGroups"][number]>();
   const screenOwners = new Map<string, string>();
   const responsibilityOwners = new Map<string, string>();
+
+  if (linkedTitles.size === 0 && draft.includedUserFlows.length > 0) {
+    issues.push("Foundation milestones without linked user flows must leave Included User Flows empty.");
+  }
 
   for (const group of draft.deliveryGroups) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(group.key)) {
@@ -1082,9 +1125,11 @@ const validateMilestoneDesignDraft = (
     }
   }
 
-  for (const linkedTitle of linkedTitles) {
-    if (!seenFlowTitles.has(linkedTitle)) {
-      issues.push(`Linked user flow "${linkedTitle}" is missing from Included User Flows.`);
+  if (linkedTitles.size > 0) {
+    for (const linkedTitle of linkedTitles) {
+      if (!seenFlowTitles.has(linkedTitle)) {
+        issues.push(`Linked user flow "${linkedTitle}" is missing from Included User Flows.`);
+      }
     }
   }
 
@@ -1147,23 +1192,28 @@ const renderMilestoneDesignMarkdown = (draft: ParsedMilestoneDesignDraft) => {
     "## Included User Flows",
   ];
 
-  for (const flow of draft.includedUserFlows) {
-    lines.push(`### ${flow.title}`);
-    lines.push(flow.summary);
+  if (draft.includedUserFlows.length === 0) {
+    lines.push("This foundation milestone intentionally has no linked user flows.");
     lines.push("");
-    lines.push("Steps:");
-    for (const step of flow.steps) {
-      lines.push(`- ${step}`);
+  } else {
+    for (const flow of draft.includedUserFlows) {
+      lines.push(`### ${flow.title}`);
+      lines.push(flow.summary);
+      lines.push("");
+      lines.push("Steps:");
+      for (const step of flow.steps) {
+        lines.push(`- ${step}`);
+      }
+      lines.push("Delivery groups:");
+      for (const groupKey of flow.deliveryGroupKeys) {
+        lines.push(`- ${groupKey}`);
+      }
+      lines.push("Screens:");
+      for (const screen of flow.screens) {
+        lines.push(`- ${screen}`);
+      }
+      lines.push("");
     }
-    lines.push("Delivery groups:");
-    for (const groupKey of flow.deliveryGroupKeys) {
-      lines.push(`- ${groupKey}`);
-    }
-    lines.push("Screens:");
-    for (const screen of flow.screens) {
-      lines.push(`- ${screen}`);
-    }
-    lines.push("");
   }
 
   lines.push("## Scope Boundaries");
@@ -3841,7 +3891,9 @@ export const createJobRunnerService = (input: {
           templateId: string;
         }) => {
           try {
-            return parseMilestoneDesignDraft(inputArgs.generated.content, inputArgs.templateId);
+            return parseMilestoneDesignDraft(inputArgs.generated.content, inputArgs.templateId, {
+              allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+            });
           } catch (error) {
             const validationMessage =
               error instanceof Error
@@ -3877,7 +3929,9 @@ export const createJobRunnerService = (input: {
             });
 
             try {
-              return parseMilestoneDesignDraft(jsonRepaired.content, inputArgs.templateId);
+              return parseMilestoneDesignDraft(jsonRepaired.content, inputArgs.templateId, {
+                allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+              });
             } catch (jsonRepairError) {
               const shapeRepairMessage =
                 jsonRepairError instanceof Error ? jsonRepairError.message : validationMessage;
@@ -3909,7 +3963,9 @@ export const createJobRunnerService = (input: {
               });
 
               try {
-                return parseMilestoneDesignDraft(shapeRepaired.content, inputArgs.templateId);
+                return parseMilestoneDesignDraft(shapeRepaired.content, inputArgs.templateId, {
+                  allowEmptyIncludedUserFlows: linkedFlows.length === 0,
+                });
               } catch (shapeRepairError) {
                 throw createStructuredOutputFailure({
                   message:

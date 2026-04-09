@@ -201,6 +201,20 @@ describe("job prompts", () => {
     expect(prompt).toContain("Repair guidance:");
   });
 
+  it("tells foundation milestone design generation not to invent user flows", () => {
+    const prompt = buildMilestoneDesignPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Project Foundation",
+      milestoneSummary: "Bootstrap the repository and delivery scaffolding.",
+      linkedUserFlows: [],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+    });
+
+    expect(prompt).toContain("includedUserFlows must be an empty array");
+    expect(prompt).toContain("Do not invent user flows for this milestone");
+  });
+
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {
     const prompt = buildMilestoneFeatureSetPrompt({
       existingFeatures: [

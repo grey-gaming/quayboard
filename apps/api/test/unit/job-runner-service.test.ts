@@ -2728,6 +2728,163 @@ describe("job runner service", () => {
     );
   });
 
+  it("supports foundation milestone designs with no linked user flows", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Project Foundation",
+      summary: "Bootstrap the repository and delivery scaffolding.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => []),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        title: "Milestone Design",
+        objective: "Stand up the repository, tooling, and smoke path.",
+        includedUserFlows: [],
+        scopeBoundaries: {
+          inScope: [{ item: "Repository scaffolding", deliveryGroupKey: "foundation-tooling" }],
+          outOfScope: ["User-facing briefing flows"],
+        },
+        deliveryGroups: [
+          {
+            key: "foundation-tooling",
+            title: "Foundation Tooling",
+            summary: "Owns repository scaffolding, CI, and environment bootstrap.",
+            ownedScreens: [],
+            ownedResponsibilities: ["Repo scaffolding", "CI setup", "Smoke path"],
+            dependsOn: [],
+            mustStayTogether: true,
+            mustNotSplit: false,
+          },
+        ],
+        dependenciesAndSequencing: [
+          {
+            phase: "Phase 1",
+            deliveryGroupKeys: ["foundation-tooling"],
+            notes: "Create the base repository and validate it with a smoke path.",
+          },
+        ],
+        exitCriteria: [
+          {
+            criterion: "The repository boots locally and the smoke path passes.",
+            deliveryGroupKey: "foundation-tooling",
+            screens: [],
+          },
+        ],
+      }),
+      promptTokens: 10,
+      completionTokens: 12,
+    });
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Project Foundation",
+          summary: "Bootstrap the repository and delivery scaffolding.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {} as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(createDesignDocVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        milestoneId: "milestone-id",
+        markdown: expect.stringContaining(
+          "This foundation milestone intentionally has no linked user flows.",
+        ),
+      }),
+    );
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
   it("runs a milestone-specific repair pass when JSON repair still leaves invalid milestone design shapes", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
