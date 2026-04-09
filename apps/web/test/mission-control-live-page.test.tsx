@@ -52,7 +52,13 @@ const buildJob = (overrides: Partial<Job>): Job => ({
   ...overrides,
 });
 
-const renderLivePage = (selectedJobId = runningJobId) => {
+const renderLivePage = ({
+  selectedJobId = runningJobId,
+  projectId: routeProjectId = projectId,
+}: {
+  selectedJobId?: string | null;
+  projectId?: string;
+} = {}) => {
   const routes = new Map<string, ReactNode>([
     ["/", <div />],
     ["/docs", <div />],
@@ -73,7 +79,13 @@ const renderLivePage = (selectedJobId = runningJobId) => {
 
   const router = createMemoryRouter(
     Array.from(routes.entries()).map(([path, element]) => ({ path, element })),
-    { initialEntries: [`/projects/${projectId}/live/${selectedJobId}`] },
+    {
+      initialEntries: [
+        selectedJobId
+          ? `/projects/${routeProjectId}/live/${selectedJobId}`
+          : `/projects/${routeProjectId}/live`,
+      ],
+    },
   );
 
   return render(
@@ -335,7 +347,7 @@ describe("mission control live page", () => {
       }),
     );
 
-    renderLivePage(nonParsableJobId);
+    renderLivePage({ selectedJobId: nonParsableJobId });
 
     expect(await screen.findByRole("heading", { name: "Live Mission Control" })).toBeTruthy();
     await waitFor(() => {
@@ -345,6 +357,60 @@ describe("mission control live page", () => {
     const toolsCard = screen.getByTestId("tools-calls-card");
     expect(screen.getByTestId("tools-call-count").textContent).toBe("0");
     expect(within(toolsCard).getByText("No tool calls recorded for this job.")).toBeTruthy();
+  });
+
+  it("shows an explicit idle state when no job is currently running", async () => {
+    vi.stubGlobal("EventSource", MockEventSource);
+    const idleProjectId = "33333333-3333-4333-8333-333333333333";
+
+    const jobs = [
+      buildJob({
+        projectId: idleProjectId,
+        id: recentJobId,
+        type: "GenerateOnePager",
+        status: "succeeded",
+        startedAt: "2026-04-09T08:01:00.000Z",
+        completedAt: "2026-04-09T08:20:00.000Z",
+      }),
+    ];
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const path = typeof input === "string" ? input : input.toString();
+
+      if (path === "/auth/me") {
+        return jsonResponse({ user });
+      }
+
+      if (path === `/api/projects/${idleProjectId}`) {
+        return jsonResponse({
+          id: idleProjectId,
+          name: "Quayboard",
+          description: "Governed software delivery workspace.",
+          state: "READY",
+          ownerUserId: user.id,
+          createdAt: "2026-04-08T00:00:00.000Z",
+          updatedAt: "2026-04-09T10:00:00.000Z",
+        });
+      }
+
+      if (path === `/api/projects/${idleProjectId}/jobs`) {
+        return jsonResponse({ jobs });
+      }
+
+      throw new Error(`Unhandled fetch for ${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderLivePage({ selectedJobId: null, projectId: idleProjectId });
+
+    expect(await screen.findByRole("heading", { name: "Live Mission Control" })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "No job is currently running. Select a recent job to inspect its trace.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText("No job running").length).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/jobs/"))).toBe(false);
   });
 
   it("keeps the activity timeline linked, shows failures, and preserves truncating job labels", () => {

@@ -181,7 +181,8 @@ export const MissionControlLivePage = () => {
   const jobsQuery = useProjectJobsQuery(id);
   const jobs = jobsQuery.data?.jobs ?? [];
   const { active, recent } = useMemo(() => buildJobGroups(jobs), [jobs]);
-  const selectedJobId = jobId ?? active[0]?.id ?? recent[0]?.id ?? null;
+  const hasActiveJobs = active.length > 0;
+  const selectedJobId = jobId ?? active[0]?.id ?? null;
   const liveTrace = useLiveJobTrace(id, selectedJobId);
   const snapshot = liveTrace.snapshot;
   const diffQuery = useLiveJobDiffQuery(id, selectedJobId, selectedFilePath);
@@ -236,10 +237,10 @@ export const MissionControlLivePage = () => {
         summary="Observe active and recent jobs as they stream model output, tool activity, and repository changes."
         meta={
           <>
-            <Badge tone={connectionTone(liveTrace.connectionStatus)}>
-              {liveTrace.connectionStatus}
+            <Badge tone={selectedJobId ? connectionTone(liveTrace.connectionStatus) : "neutral"}>
+              {selectedJobId ? liveTrace.connectionStatus : "idle"}
             </Badge>
-            <Badge tone="neutral">{active.length} active jobs</Badge>
+            <Badge tone="neutral">{hasActiveJobs ? `${active.length} active jobs` : "No job running"}</Badge>
             <Badge tone="neutral">{recent.length} recent jobs</Badge>
           </>
         }
@@ -252,7 +253,11 @@ export const MissionControlLivePage = () => {
               <div>
                 <p className="qb-meta-label">Transcript</p>
                 <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">
-                  {snapshot ? formatJobType(snapshot.job.type) : "Select a job"}
+                  {snapshot
+                    ? formatJobType(snapshot.job.type)
+                    : hasActiveJobs
+                      ? "Select a job"
+                      : "No job running"}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -352,7 +357,9 @@ export const MissionControlLivePage = () => {
               </div>
             ) : (
               <p className="mt-4 text-sm text-secondary">
-                {selectedJobId ? "Loading live trace..." : "No jobs available to observe yet."}
+                {selectedJobId
+                  ? "Loading live trace..."
+                  : "No job is currently running. Select a recent job to inspect its trace."}
               </p>
             )}
           </Card>
