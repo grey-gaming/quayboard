@@ -5,7 +5,6 @@ import {
   buildRewriteMilestoneFeatureSetReviewPrompt,
   buildMilestoneFeatureSetPrompt,
   buildQuestionnaireAutoAnswerPrompt,
-  buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
@@ -39,16 +38,6 @@ const sampleAnswers = {
 };
 
 describe("job prompts", () => {
-  it("adds the shared quality framing to the description prompt", () => {
-    const prompt = buildProjectDescriptionPrompt(sampleAnswers);
-
-    expect(prompt).toContain("senior product strategist and UX writer");
-    expect(prompt).toContain("Be professional, creative, and specific.");
-    expect(prompt).toContain("Do not hyper-focus on one answer or signal.");
-    expect(prompt).toContain("one concise paragraph");
-    expect(prompt).toContain('"q1_name_and_description"');
-  });
-
   it("preserves the overview JSON contract while generating a richer preference document", () => {
     const prompt = buildProjectOverviewPrompt({
       projectDescription: "Governed planning workspace for software teams.",

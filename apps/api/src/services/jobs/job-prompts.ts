@@ -95,19 +95,6 @@ const renderQuestionnaireDefinition = () =>
     2,
   );
 
-export const buildProjectDescriptionPrompt = (answers: QuestionnaireAnswers["answers"]) =>
-  [
-    qualityCharter,
-    "",
-    "Task:",
-    "Write one concise paragraph that describes the product clearly and persuasively.",
-    "The paragraph must feel specific to this project, capture the product's users and value, and stay grounded in the full questionnaire context.",
-    "Do not use bullet points, headings, or JSON.",
-    "",
-    "Questionnaire answers:",
-    renderQuestionnaireContext(answers),
-  ].join("\n");
-
 export const buildQuestionnaireAutoAnswerPrompt = (input: {
   projectDescription: string | null;
   projectName: string;

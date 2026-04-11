@@ -419,17 +419,6 @@ export const useAutoAnswerQuestionnaireMutation = (projectId: string) => {
   });
 };
 
-export const useGenerateDescriptionMutation = (projectId: string) => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: () => api.generateDescription(projectId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId, "jobs"] });
-    },
-  });
-};
-
 export const useGenerateOnePagerMutation = (projectId: string) => {
   const queryClient = useQueryClient();
 

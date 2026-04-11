@@ -548,7 +548,6 @@ The REST API is served by the Fastify backend under the `/api` prefix (except `/
 - `GET /projects/status-summary` — aggregated status
 - `GET /projects/:id` — get
 - `PATCH /projects/:id` — update
-- `POST /projects/:id/generate-description` — trigger LLM description generation
 - `POST /projects/:id/complete-one-pager-onboarding` — mark overview document phase complete
 - `GET /projects/:id/next-actions` — Mission Control next-action queue
 - `GET /projects/:id/phase-gates` — phase gate checklist
@@ -659,7 +658,7 @@ The **JobScheduler** (`apps/api/src/services/job-scheduler.ts`) runs a 5-second 
 | Area | Job Types |
 |---|---|
 | Overview document | `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `SuggestExampleAnswer` |
-| Project description | `GenerateProjectDescription`, `SuggestProjectNames`, `AutoAnswerQuestionnaire` |
+| Project description | `SuggestProjectNames`, `AutoAnswerQuestionnaire` |
 | User flows | `GenerateUseCases`, `DeduplicateUseCases` |
 | UX / Technical Spec | `GenerateDecisionDeck`, `GenerateProjectBlueprint`, `ValidateDecisionConsistency` |
 | Feature builder | `GenerateFeatureProductSpec`, `GenerateFeatureUxSpec`, `GenerateFeatureTechSpec`, `GenerateMilestoneFeatureSet` |
@@ -1176,7 +1175,7 @@ The following milestones describe an ordered delivery plan. Each milestone is se
 - Product Spec routes (canonical, versions, restore, approve)
 - User-flow routes (list, create, update, archive, generate, deduplicate, approve)
 - Job system: scheduler polling loop, job CRUD routes, terminal state handling
-- LLM executors: `GenerateProjectDescription`, `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `GenerateProductSpec`, `RegenerateProductSpec`, `GenerateProductSpecImprovements`, `SuggestExampleAnswer`, `SuggestProjectNames`, `AutoAnswerQuestionnaire`, `GenerateUseCases`, `DeduplicateUseCases`, `GenerateOnePager`, `RefineOnePagerSection`
+- LLM executors: `GenerateProjectOverview`, `RegenerateProjectOverview`, `GenerateOverviewImprovements`, `GenerateProductSpec`, `RegenerateProductSpec`, `GenerateProductSpecImprovements`, `SuggestExampleAnswer`, `SuggestProjectNames`, `AutoAnswerQuestionnaire`, `GenerateUseCases`, `DeduplicateUseCases`, `GenerateOnePager`, `RefineOnePagerSection`
 - LLM provider integration via provider abstraction (see §3.6)
 - SSE events emitted on job state changes
 

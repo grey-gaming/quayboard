@@ -641,61 +641,6 @@ export const projectsRoutes = (
   );
 
   app.post(
-    "/projects/:id/generate-description",
-    {
-      schema: {
-        params: projectParamsJsonSchema,
-        response: {
-          202: {
-            type: "object",
-            properties: {
-              id: { type: "string", format: "uuid" },
-              projectId: { type: ["string", "null"], format: "uuid" },
-              type: { type: "string" },
-              status: { type: "string" },
-              inputs: {},
-              outputs: {},
-              error: {},
-              queuedAt: { type: "string", format: "date-time" },
-              startedAt: { type: ["string", "null"], format: "date-time" },
-              completedAt: { type: ["string", "null"], format: "date-time" },
-            },
-            required: [
-              "id",
-              "projectId",
-              "type",
-              "status",
-              "inputs",
-              "outputs",
-              "error",
-              "queuedAt",
-              "startedAt",
-              "completedAt",
-            ],
-            additionalProperties: true,
-          },
-        },
-      },
-    },
-    async (request, reply) => {
-      try {
-        const projectId = (request.params as { id: string }).id;
-        await services.projectSetupService.assertSetupCompleted(request.user!.id, projectId);
-        await services.projectService.getOwnedProject(request.user!.id, projectId);
-        const job = await services.jobService.createJob({
-          createdByUserId: request.user!.id,
-          projectId,
-          type: "GenerateProjectDescription",
-        });
-
-        return reply.status(202).send(job);
-      } catch (error) {
-        return handleRouteError(reply, error);
-      }
-    },
-  );
-
-  app.post(
     "/projects/:id/complete-one-pager-onboarding",
     {
       schema: {
