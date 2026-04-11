@@ -41,3 +41,11 @@ List of use cases stored in the database.
 - Verdict: Detailed and useful, but not consistently tier-1 for this stage because it can over-prescribe UI labels, screens, and interaction copy.
 - Quality gaps: sampled use cases provided strong flow detail, but some content belongs in UX design rather than use-case discovery and can prematurely constrain later design work.
 - Tier-1 bar: separate user intent and success criteria from proposed UI examples, and mark any screen/copy detail as non-binding unless sourced from an approved UX spec.
+
+## Fix Applied (2026-04-11)
+
+Added three behavioral-constraint lines to `buildUserFlowPrompt` (`apps/api/src/services/jobs/job-prompts.ts`):
+
+1. `flowSteps` — must describe what the user is trying to accomplish, not specific screens, buttons, or UI elements.
+2. `entryPoint` / `endState` — must describe user or system state, not a screen name or page.
+3. `acceptanceCriteria` — must state observable business outcomes or user success conditions, not UI elements or copy strings.
