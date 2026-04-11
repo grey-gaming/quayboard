@@ -1,6 +1,7 @@
 import { questionnaireDefinition } from "@quayboard/shared";
 
 import type { QuestionnaireAnswers } from "@quayboard/shared";
+import type { ProjectSizeProfile } from "../project-sizer.js";
 
 const qualityCharter = [
   "You are a senior product strategist and UX writer helping shape a high-quality software product.",
@@ -13,6 +14,74 @@ const qualityCharter = [
 
 const renderQuestionnaireContext = (answers: QuestionnaireAnswers["answers"]) =>
   JSON.stringify(answers, null, 2);
+
+const renderProjectScaleGuidance = (profile: ProjectSizeProfile): string => {
+  const lines: string[] = ["## Project Scale and Proportionality"];
+
+  if (profile.tier === "small") {
+    lines.push(
+      "This is a small-scope project. Scale the specification and planning proportionally:",
+      "- Aim for 5–12 core features total. Do not enumerate enterprise subsystems or platform infrastructure.",
+      "- Skip sections that genuinely do not apply (progression curves, economy models, simulation rules, game loops, multi-tenant architecture).",
+      "- The feature inventory must list real product capabilities, not implementation layers or scaffolding steps.",
+      "- If the feature set is thin after removing padding, that is correct — do not add placeholder or aspirational features to fill space.",
+      "- Prefer vertical slices that deliver user value over horizontal platform layers.",
+    );
+  } else if (profile.tier === "medium") {
+    lines.push(
+      "This is a medium-scope project. Aim for 12–20 core features with full section coverage where applicable.",
+      "- Include all sections relevant to the product type. Skip sections that genuinely do not apply.",
+      "- Prefer vertical slices over exhaustive system inventories.",
+    );
+  } else {
+    lines.push(
+      "This is a large-scope project. Aim for comprehensive coverage across all relevant sections.",
+      "- Include full system and component inventories, subsystem breakdowns, and cross-cutting concerns.",
+    );
+  }
+
+  if (profile.techStackHint) {
+    lines.push(
+      "",
+      "## Tech Stack",
+      `The stated or inferred tech stack is: ${profile.techStackHint}.`,
+      "Do not propose platform migration, language change, or framework replacement unless the source material explicitly requires it.",
+      "When generating features, tasks, or technical guidance, stay within the established tech stack.",
+    );
+  }
+
+  return lines.join("\n");
+};
+
+const renderMilestoneScaffoldingGuidance = (profile: ProjectSizeProfile): string => {
+  if (profile.tier === "small") {
+    return (
+      "The first milestone should bootstrap only what is needed to start delivering: " +
+      "repo setup, minimal CI, and a first working capability. " +
+      "Do not require full ADR scaffolding, documentation structure, or a comprehensive test harness for a small utility."
+    );
+  }
+  if (profile.tier === "medium") {
+    return (
+      "The first milestone should include essential delivery scaffolding " +
+      "(CI, folder structure, baseline docs) plus a meaningful first delivery slice."
+    );
+  }
+  return (
+    "The first milestone must be a foundations/setup milestone covering repository and delivery scaffolding " +
+    "such as AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, " +
+    "CI/test harness, and a minimal smoke-path or hello-world slice."
+  );
+};
+
+const renderFeatureBudgetGuidance = (profile: ProjectSizeProfile): string => {
+  if (profile.tier === "large") return "";
+  return (
+    `Feature count guidance: For a project of this scope, aim for ${profile.featureBudgetPerMilestone} features per milestone. ` +
+    "Prefer complete vertical slices over granular system shards. " +
+    "If the milestone is thin after covering real user value, that is correct — do not add placeholder features."
+  );
+};
 
 const renderQuestionnaireDefinition = () =>
   JSON.stringify(
@@ -393,6 +462,7 @@ Before finalizing, silently review your own output and ensure:
 export const buildProductSpecPrompt = (input: {
   projectName: string;
   sourceMaterial: string;
+  sizeProfile?: ProjectSizeProfile;
   hint?: string;
 }) =>
   [
@@ -402,6 +472,12 @@ export const buildProductSpecPrompt = (input: {
     "Do not wrap the JSON in code fences.",
     "",
     productSpecPrompt,
+    ...(input.sizeProfile
+      ? [
+          "",
+          renderProjectScaleGuidance(input.sizeProfile),
+        ]
+      : []),
     ...(input.hint
       ? [
           "",
@@ -724,6 +800,7 @@ export const buildMilestonePlanPrompt = (input: {
     entryPoint: string;
     endState: string;
   }>;
+  sizeProfile?: ProjectSizeProfile;
   hint?: string;
 }) =>
   [
@@ -740,8 +817,10 @@ export const buildMilestonePlanPrompt = (input: {
     "Every milestone after the first must use a non-empty useCaseIds array.",
     "Do not repeat the same user flow in multiple milestones unless the overlap is necessary.",
     "Create milestones in execution order, from foundational work to higher-level capability.",
-    'This product flow is always greenfield. The first milestone must be a foundations/setup milestone.',
-    "The first milestone must cover repository and delivery scaffolding such as AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, CI/test harness, and a minimal smoke-path or hello-world slice.",
+    "This product flow is always greenfield. The first milestone must be a foundations/setup milestone.",
+    input.sizeProfile
+      ? renderMilestoneScaffoldingGuidance(input.sizeProfile)
+      : "The first milestone must cover repository and delivery scaffolding such as AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, CI/test harness, and a minimal smoke-path or hello-world slice.",
     "Do not wrap the JSON in code fences.",
     ...(input.hint
       ? [
@@ -1022,6 +1101,7 @@ export const buildMilestoneFeatureSetPrompt = (input: {
     id: string;
     title: string;
   }>;
+  sizeProfile?: ProjectSizeProfile;
 }) =>
   [
     qualityCharter,
@@ -1039,6 +1119,7 @@ export const buildMilestoneFeatureSetPrompt = (input: {
     "Build on work already planned in earlier or parallel milestones instead of recreating it.",
     "Do not repeat or lightly rename an existing feature from any milestone.",
     "Prefer the smallest set of coherent features that fully covers the milestone without overlap.",
+    ...(input.sizeProfile ? [renderFeatureBudgetGuidance(input.sizeProfile)].filter(Boolean) : []),
     "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard boundary constraints.",
     "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one feature in the output.",
     "Cover every delivery group named in the milestone design document, including state-management or service groups that do not own screens.",

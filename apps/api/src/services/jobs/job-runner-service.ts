@@ -38,6 +38,7 @@ import type { QuestionnaireService } from "../questionnaire-service.js";
 import type { SandboxService } from "../sandbox-service.js";
 import type { JobTraceService } from "../job-trace-service.js";
 import type { UserFlowService } from "../user-flow-service.js";
+import { classifyProjectSize } from "../project-sizer.js";
 import { createTaskPlanningService } from "../task-planning-service.js";
 import {
   buildTaskPlanningDocuments,
@@ -2989,9 +2990,13 @@ export const createJobRunnerService = (input: {
           );
         }
 
+        const productSpecQuestionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
+        const productSpecSizeProfile = classifyProjectSize(productSpecQuestionnaire.answers);
+
         const prompt = buildProductSpecPrompt({
           projectName: project.name,
           sourceMaterial: onePager.markdown,
+          sizeProfile: productSpecSizeProfile,
         });
         const firstPassStartedAt = Date.now();
         logProductSpecGeneration("start", {
@@ -3625,6 +3630,7 @@ export const createJobRunnerService = (input: {
         }
 
         const generateMilestonesInput = parseJobInputs<{ hint?: string }>(rawJob.inputs);
+        const milestonesQuestionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildMilestonePlanPrompt({
           projectName: project.name,
           uxSpec: blueprints.uxBlueprint.markdown,
@@ -3636,6 +3642,7 @@ export const createJobRunnerService = (input: {
             entryPoint: flow.entryPoint,
             endState: flow.endState,
           })),
+          sizeProfile: classifyProjectSize(milestonesQuestionnaire.answers),
           hint: generateMilestonesInput?.hint,
         });
         const milestones = await runStructuredJsonGeneration({
@@ -4279,6 +4286,7 @@ export const createJobRunnerService = (input: {
         const selectedMilestone =
           milestoneList.milestones.find((item) => item.id === milestoneId) ?? null;
 
+        const featureSetQuestionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const prompt = buildMilestoneFeatureSetPrompt({
           existingFeatures: features.features.map((feature) => ({
             dependencies: feature.dependencyIds.map(
@@ -4306,6 +4314,7 @@ export const createJobRunnerService = (input: {
             id: flow.id,
             title: flow.title,
           })),
+          sizeProfile: classifyProjectSize(featureSetQuestionnaire.answers),
         });
         const items = await runReviewedJsonGeneration({
           templateId: rawJob.type,
@@ -5211,6 +5220,53 @@ export const createJobRunnerService = (input: {
         await taskPlanning.createTasks(sessionId, tasks);
 
         return input.jobService.markSucceeded(rawJob.id, { featureId, sessionId });
+      }
+
+      case "PlanFeatureTasksSandbox": {
+        if (!input.db || !input.milestoneService || !input.sandboxService) {
+          throw new Error("PlanFeatureTasksSandbox requires database, milestone, and sandbox support.");
+        }
+
+        const taskSandboxInputs = parseJobInputs<{ featureId?: string; sessionId?: string }>(rawJob.inputs);
+        const taskSandboxFeatureId = taskSandboxInputs?.featureId;
+
+        if (!taskSandboxFeatureId) {
+          throw new Error("PlanFeatureTasksSandbox requires featureId.");
+        }
+
+        const taskSandboxTaskPlanning = createTaskPlanningService(
+          input.db,
+          input.milestoneService,
+          input.featureWorkstreamService,
+        );
+
+        // Verify workstreams are ready before triggering the sandbox
+        const taskSandboxTracks = await input.featureWorkstreamService?.getTracks(ownerUserId, taskSandboxFeatureId);
+        if (!taskSandboxTracks || !isTaskPlanningReady(taskSandboxTracks.tracks)) {
+          throw new Error(
+            taskSandboxTracks
+              ? buildTaskPlanningReadinessMessage(taskSandboxTracks.tracks)
+              : "PlanFeatureTasksSandbox requires feature workstream support.",
+          );
+        }
+
+        const taskSandboxSession = await taskSandboxTaskPlanning.getOrCreateSession(
+          ownerUserId,
+          taskSandboxFeatureId,
+        );
+        const sandboxRun = await input.sandboxService.createFeatureTaskPlanningRun(
+          ownerUserId,
+          rawJob.projectId,
+          taskSandboxFeatureId,
+          taskSandboxSession.id,
+          rawJob.id,
+        );
+
+        return input.jobService.markSucceeded(rawJob.id, {
+          featureId: taskSandboxFeatureId,
+          sessionId: taskSandboxSession.id,
+          sandboxRunId: sandboxRun.id,
+        });
       }
 
       case "RepoFingerprint": {

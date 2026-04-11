@@ -38,6 +38,7 @@ export const sandboxRunKindSchema = z.enum([
   "project_review",
   "project_fix",
   "bug_fix",
+  "task_planning",
 ]);
 
 export type SandboxRunKind = z.infer<typeof sandboxRunKindSchema>;
