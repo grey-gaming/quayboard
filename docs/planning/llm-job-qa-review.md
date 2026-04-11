@@ -80,6 +80,7 @@ Work through the following for each job entry. Update the **Status** column as y
 
 #### Cross-cutting (all jobs)
 
+- [ ] **Output usefulness** — given the purpose of the project being reviewed, does the output actually make sense? Does it read like something a professional software team would produce — or is it generic, vague, shallow, or structurally wrong? If not, identify specifically what is missing or misleading and note what prompt changes would fix it
 - [ ] **Model-agnostic language** — prompts must degrade gracefully on smaller Ollama models, not just large OpenAI-compatible endpoints
 - [ ] **Token budget** — verify that realistic inputs fit within `LLM_MAX_OUTPUT_TOKENS` (default 50,000) without truncation; flag any job where a large project might hit the limit
 - [ ] **Notes** — record any findings, edge cases, or suggested improvements in a notes field below the checklist when you mark the entry as reviewed
