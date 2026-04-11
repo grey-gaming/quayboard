@@ -39,4 +39,5 @@ Feature product spec markdown stored in the database as a workstream revision.
 
 - Verdict: Detailed and useful, but not always tier-1 because it can blur product requirements with proposed implementation details.
 - Quality gaps: sampled outputs included concrete error taxonomies and backend-like codes that may be helpful, but they should not appear as confirmed product truth unless tied to existing contracts.
-- Tier-1 bar: split confirmed user-facing requirements from proposed technical assumptions, and require traceability from each acceptance criterion to a feature goal or source constraint.
+- Root cause: prompt lacked the committed-direction philosophy applied to `GenerateProductSpec` (commit 5919b69) — the LLM had no guidance to distinguish confirmed requirements from its own inferences, so technical assumptions were embedded in the main spec body as fact.
+- Fix applied: added committed-direction instructions to both the generation and review prompts — core feature capabilities are stated authoritatively; proposed technical approaches and non-obvious design choices go in an "Assumptions and Proposed Defaults" section only.
