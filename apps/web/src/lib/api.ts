@@ -240,11 +240,6 @@ export const api = {
       body: JSON.stringify({}),
     });
   },
-  generateDescription(projectId: string) {
-    return apiRequest<Job>(`/api/projects/${projectId}/generate-description`, {
-      method: "POST",
-    });
-  },
   generateOnePager(projectId: string, mode: "generate" | "regenerate" | "improve") {
     return apiRequest<Job>(`/api/projects/${projectId}/one-pager`, {
       method: "POST",

@@ -5,7 +5,6 @@ import {
   buildRewriteMilestoneFeatureSetReviewPrompt,
   buildMilestoneFeatureSetPrompt,
   buildQuestionnaireAutoAnswerPrompt,
-  buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecReviewPrompt,
@@ -39,17 +38,7 @@ const sampleAnswers = {
 };
 
 describe("job prompts", () => {
-  it("adds the shared quality framing to the description prompt", () => {
-    const prompt = buildProjectDescriptionPrompt(sampleAnswers);
-
-    expect(prompt).toContain("senior product strategist and UX writer");
-    expect(prompt).toContain("Be professional, creative, and specific.");
-    expect(prompt).toContain("Do not hyper-focus on one answer or signal.");
-    expect(prompt).toContain("one concise paragraph");
-    expect(prompt).toContain('"q1_name_and_description"');
-  });
-
-  it("preserves the overview JSON contract while generating a richer preference document", () => {
+  it("preserves the overview JSON contract while committing to a product direction", () => {
     const prompt = buildProjectOverviewPrompt({
       projectDescription: "Governed planning workspace for software teams.",
       projectName: "Quayboard",
@@ -61,7 +50,9 @@ describe("job prompts", () => {
     );
     expect(prompt).toContain("Current project description:");
     expect(prompt).toContain("Questionnaire definition:");
-    expect(prompt).toContain("stitched questionnaire recap");
+    expect(prompt).toContain("questionnaire recap");
+    expect(prompt).toContain("commits to a product direction");
+    expect(prompt).toContain("design thesis");
     expect(prompt).toContain("Assumptions and Proposed Defaults");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
     expect(prompt).toContain("Quayboard");

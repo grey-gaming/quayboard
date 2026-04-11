@@ -71,7 +71,6 @@ import {
   buildQuestionnaireAutoAnswerPrompt,
   buildRewriteMilestoneFeatureSetPrompt,
   buildRewriteMilestoneFeatureSetReviewPrompt,
-  buildProjectDescriptionPrompt,
   buildProjectOverviewPrompt,
   buildProductSpecPrompt,
   buildProductSpecQualityCheckPrompt,
@@ -2844,34 +2843,6 @@ export const createJobRunnerService = (input: {
     };
 
     switch (rawJob.type) {
-      case "GenerateProjectDescription": {
-        const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
-        const prompt = buildProjectDescriptionPrompt(questionnaire.answers);
-        const generated = await generateWithJobFailure(prompt, {
-          templateId: "GenerateProjectDescription",
-        });
-        await assertAutoAdvanceBatchIsCurrent();
-        await input.db.insert(llmRunsTable).values({
-          id: generateId(),
-          projectId: rawJob.projectId,
-          jobId: rawJob.id,
-          provider: provider.provider,
-          model: provider.model,
-          templateId: "GenerateProjectDescription",
-          parameters: {},
-          input: { prompt },
-          output: { content: generated.content },
-          promptTokens: generated.promptTokens,
-          completionTokens: generated.completionTokens,
-          createdAt: new Date(),
-        });
-        const description = generated.content.trim();
-        await input.projectService.updateOwnedProject(ownerUserId, rawJob.projectId, {
-          description,
-        });
-        return input.jobService.markSucceeded(rawJob.id, { description });
-      }
-
       case "AutoAnswerQuestionnaire": {
         const questionnaire = await input.questionnaireService.getAnswers(rawJob.projectId);
         const blankKeys = new Set(
