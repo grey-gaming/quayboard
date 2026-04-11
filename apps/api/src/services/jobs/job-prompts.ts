@@ -902,6 +902,7 @@ export const buildMilestoneDesignPrompt = (input: {
 }) =>
   [
     qualityCharter,
+    "For this task, act as a senior software architect breaking delivery scope into implementation workstreams.",
     "",
     "Task:",
     `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
@@ -992,6 +993,8 @@ const buildMilestoneDesignContractInstructions = (input: { hasLinkedUserFlows: b
     : "Do not invent user flows for this milestone. Keep the design focused on project setup, scaffolding, and smoke-path delivery.",
   'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
   "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
+  "Aim for 2–5 delivery groups per milestone. Each group should represent a coherent implementation workstream (e.g., 'Auth API', 'Auth Frontend', 'Session Schema'). Do not split at the file or function level, and do not merge unrelated workstreams into one oversized group.",
+  "Each ownedResponsibilities entry must be a concrete, scoped statement — name the specific API endpoint, interaction, data model, or behaviour being built. Avoid generic category labels like 'Handle auth', 'Manage sessions', or 'Implement UI'.",
   "dependenciesAndSequencing must be a non-empty array. Each item must contain: phase, deliveryGroupKeys, and notes.",
   'dependenciesAndSequencing.phase must be a non-empty string label such as "Phase 1", not a number.',
   "dependenciesAndSequencing.deliveryGroupKeys must always be an array, even for one delivery group.",
@@ -1001,9 +1004,10 @@ const buildMilestoneDesignContractInstructions = (input: { hasLinkedUserFlows: b
   "Do not list a trigger, mechanic, ordering rule, or dependency as required in objective, includedUserFlows, deliveryGroups, or exitCriteria if it is listed in outOfScope.",
   "Mention GAME_OVER transitions only when the triggering mechanism is explicitly in scope for this milestone. Otherwise keep the milestone focused on the in-scope loop and omit that transition.",
   "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
+  "Each exitCriteria criterion must describe a verifiable working behaviour a reviewer can check against the running application — not a completion statement. Bad: 'Authentication feature is complete.' Good: 'A new user can register with email and password, receive a session token, and access a protected route.'",
   "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
   "Do not wrap the JSON in code fences.",
-  "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+  "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans (true/false), and backend-only exit criteria may use screens: [].",
   "",
   "Example JSON fragment:",
   JSON.stringify(
