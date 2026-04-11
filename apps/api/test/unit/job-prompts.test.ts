@@ -167,6 +167,9 @@ describe("job prompts", () => {
     expect(prompt).toContain("Use stable kebab-case delivery group keys");
     expect(prompt).toContain("include that screen's owning delivery group");
     expect(prompt).toContain("Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned");
+    expect(prompt).toContain('dependenciesAndSequencing.phase must be a non-empty string label such as "Phase 1", not a number.');
+    expect(prompt).toContain('"dependenciesAndSequencing"');
+    expect(prompt).toContain('"phase": "Phase 1"');
     expect(prompt).toContain("Do not list a trigger, mechanic, ordering rule, or dependency as required");
     expect(prompt).toContain("Mention GAME_OVER transitions only when the triggering mechanism is explicitly in scope");
     expect(prompt).toContain("Repair guidance:");
@@ -195,6 +198,8 @@ describe("job prompts", () => {
     expect(prompt).toContain("Repair the structured milestone design draft");
     expect(prompt).toContain("Validator issues:");
     expect(prompt).toContain("Previous structured milestone design draft:");
+    expect(prompt).toContain('dependenciesAndSequencing.phase must be a non-empty string label such as "Phase 1", not a number.');
+    expect(prompt).toContain('"deliveryGroupKeys": [');
     expect(prompt).toContain("include that screen's owning delivery group");
     expect(prompt).toContain("Do not leave an exit criterion, transition, ordering rule, or acceptance expectation");
     expect(prompt).toContain("If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger");
@@ -213,6 +218,8 @@ describe("job prompts", () => {
 
     expect(prompt).toContain("includedUserFlows must be an empty array");
     expect(prompt).toContain("Do not invent user flows for this milestone");
+    expect(prompt).toContain("Foundation milestone example:");
+    expect(prompt).toContain('"includedUserFlows": []');
   });
 
   it("pushes milestone feature generation toward cohesive feature-sized slices", () => {

@@ -834,64 +834,7 @@ export const buildMilestoneDesignPrompt = (input: {
     "Task:",
     `Create a structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}".`,
     'Return valid JSON with exactly these top-level keys: "title", "objective", "includedUserFlows", "scopeBoundaries", "deliveryGroups", "dependenciesAndSequencing", and "exitCriteria".',
-    input.linkedUserFlows.length > 0
-      ? "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens."
-      : "includedUserFlows must be an empty array because this foundation milestone has no linked user flows.",
-    input.linkedUserFlows.length > 0
-      ? 'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.'
-      : "Do not invent user flows for this milestone. Keep the design focused on project setup, scaffolding, and smoke-path delivery.",
-    'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
-    "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
-    "Use stable kebab-case delivery group keys. Every named screen and owned responsibility must belong to exactly one delivery group.",
-    "For every screen named in includedUserFlows.screens or exitCriteria.screens, include that screen's owning delivery group in the same flow or exit criterion context.",
-    "Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned to one resolved interpretation of the milestone. If a risk or ambiguity is resolved in one section, apply that same choice everywhere else.",
-    "Do not list a trigger, mechanic, ordering rule, or dependency as required in objective, includedUserFlows, deliveryGroups, or exitCriteria if it is listed in outOfScope.",
-    "Mention GAME_OVER transitions only when the triggering mechanism is explicitly in scope for this milestone. Otherwise keep the milestone focused on the in-scope loop and omit that transition.",
-    "dependenciesAndSequencing must be a non-empty array. Each item must contain: phase, deliveryGroupKeys, and notes.",
-    "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
-    "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
-    "Do not wrap the JSON in code fences.",
-    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
-    "",
-    "Example JSON fragment:",
-    JSON.stringify(
-      {
-        includedUserFlows: [
-          {
-            title: "Linked flow title",
-            summary: "Short summary.",
-            steps: ["User opens signup", "System creates account"],
-            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
-            screens: ["signup-page"],
-          },
-        ],
-        scopeBoundaries: {
-          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
-          outOfScope: ["Password reset"],
-        },
-        deliveryGroups: [
-          {
-            key: "auth-backend",
-            title: "Authentication Backend",
-            summary: "Owns auth APIs.",
-            ownedScreens: [],
-            ownedResponsibilities: ["Create account endpoint"],
-            dependsOn: [],
-            mustStayTogether: true,
-            mustNotSplit: false,
-          },
-        ],
-        exitCriteria: [
-          {
-            criterion: "Signup API stores a session.",
-            deliveryGroupKey: "auth-backend",
-            screens: [],
-          },
-        ],
-      },
-      null,
-      2,
-    ),
+    ...buildMilestoneDesignContractInstructions({ hasLinkedUserFlows: input.linkedUserFlows.length > 0 }),
     ...(input.hint?.trim()
       ? [
           "",
@@ -938,58 +881,9 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     "Preserve the milestone scope while resolving the validator issues below into one consistent ownership model.",
     "Do not introduce future-milestone work. Do not rename linked user flows. Do not leave the ambiguity unresolved.",
     "Do not invent future-milestone scope.",
-    ...(input.linkedUserFlows.length === 0
-      ? [
-          "This foundation milestone has no linked user flows, so includedUserFlows must be an empty array.",
-          "Do not invent placeholder user flows just to satisfy the shape.",
-        ]
-      : []),
-    "For every screen named in includedUserFlows.screens or exitCriteria.screens, include that screen's owning delivery group in the same flow or exit criterion context.",
-    "Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned to one resolved interpretation of the milestone. If the previous draft or its risks chose one side of an ambiguity, carry that same choice through the repaired result.",
     "Do not leave an exit criterion, transition, ordering rule, or acceptance expectation that depends on anything listed in outOfScope.",
     "If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger. Otherwise remove that transition from the repaired result.",
-    "Do not wrap the JSON in code fences.",
-    "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
-    "",
-    "Example JSON fragment:",
-    JSON.stringify(
-      {
-        includedUserFlows: [
-          {
-            title: "Linked flow title",
-            summary: "Short summary.",
-            steps: ["User opens signup", "System creates account"],
-            deliveryGroupKeys: ["auth-frontend", "auth-backend"],
-            screens: ["signup-page"],
-          },
-        ],
-        scopeBoundaries: {
-          inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
-          outOfScope: ["Password reset"],
-        },
-        deliveryGroups: [
-          {
-            key: "auth-backend",
-            title: "Authentication Backend",
-            summary: "Owns auth APIs.",
-            ownedScreens: [],
-            ownedResponsibilities: ["Create account endpoint"],
-            dependsOn: [],
-            mustStayTogether: true,
-            mustNotSplit: false,
-          },
-        ],
-        exitCriteria: [
-          {
-            criterion: "Signup API stores a session.",
-            deliveryGroupKey: "auth-backend",
-            screens: [],
-          },
-        ],
-      },
-      null,
-      2,
-    ),
+    ...buildMilestoneDesignContractInstructions({ hasLinkedUserFlows: input.linkedUserFlows.length > 0 }),
     ...(input.hint?.trim()
       ? [
           "",
@@ -1016,6 +910,92 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     "Previous structured milestone design draft:",
     input.draftJson,
   ].join("\n");
+
+const buildMilestoneDesignContractInstructions = (input: { hasLinkedUserFlows: boolean }) => [
+  input.hasLinkedUserFlows
+    ? "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens."
+    : "includedUserFlows must be an empty array because this foundation milestone has no linked user flows.",
+  input.hasLinkedUserFlows
+    ? 'Each includedUserFlows title must exactly match one linked user-flow title from the provided list.'
+    : "Do not invent user flows for this milestone. Keep the design focused on project setup, scaffolding, and smoke-path delivery.",
+  'scopeBoundaries must be an object with exactly two array keys: "inScope" and "outOfScope". Every in-scope item must contain: item and deliveryGroupKey.',
+  "deliveryGroups must be a non-empty array. Each item must contain: key, title, summary, ownedScreens, ownedResponsibilities, dependsOn, mustStayTogether, and mustNotSplit.",
+  "dependenciesAndSequencing must be a non-empty array. Each item must contain: phase, deliveryGroupKeys, and notes.",
+  'dependenciesAndSequencing.phase must be a non-empty string label such as "Phase 1", not a number.',
+  "dependenciesAndSequencing.deliveryGroupKeys must always be an array, even for one delivery group.",
+  "Use stable kebab-case delivery group keys. Every named screen and owned responsibility must belong to exactly one delivery group.",
+  "For every screen named in includedUserFlows.screens or exitCriteria.screens, include that screen's owning delivery group in the same flow or exit criterion context.",
+  "Keep scopeBoundaries.inScope, deliveryGroups, dependenciesAndSequencing, and exitCriteria aligned to one resolved interpretation of the milestone. If a risk or ambiguity is resolved in one section, apply that same choice everywhere else.",
+  "Do not list a trigger, mechanic, ordering rule, or dependency as required in objective, includedUserFlows, deliveryGroups, or exitCriteria if it is listed in outOfScope.",
+  "Mention GAME_OVER transitions only when the triggering mechanism is explicitly in scope for this milestone. Otherwise keep the milestone focused on the in-scope loop and omit that transition.",
+  "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
+  "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
+  "Do not wrap the JSON in code fences.",
+  "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans or string arrays, and backend-only exit criteria may use screens: [].",
+  "",
+  "Example JSON fragment:",
+  JSON.stringify(
+    {
+      includedUserFlows: [
+        {
+          title: "Linked flow title",
+          summary: "Short summary.",
+          steps: ["User opens signup", "System creates account"],
+          deliveryGroupKeys: ["auth-frontend", "auth-backend"],
+          screens: ["signup-page"],
+        },
+      ],
+      scopeBoundaries: {
+        inScope: [{ item: "User signup", deliveryGroupKey: "auth-backend" }],
+        outOfScope: ["Password reset"],
+      },
+      deliveryGroups: [
+        {
+          key: "auth-backend",
+          title: "Authentication Backend",
+          summary: "Owns auth APIs.",
+          ownedScreens: [],
+          ownedResponsibilities: ["Create account endpoint"],
+          dependsOn: [],
+          mustStayTogether: true,
+          mustNotSplit: false,
+        },
+      ],
+      dependenciesAndSequencing: [
+        {
+          phase: "Phase 1",
+          deliveryGroupKeys: ["auth-backend"],
+          notes: "Stand up the account API before dependent UI work.",
+        },
+      ],
+      exitCriteria: [
+        {
+          criterion: "Signup API stores a session.",
+          deliveryGroupKey: "auth-backend",
+          screens: [],
+        },
+      ],
+    },
+    null,
+    2,
+  ),
+  "",
+  "Foundation milestone example:",
+  JSON.stringify(
+    {
+      includedUserFlows: [],
+      dependenciesAndSequencing: [
+        {
+          phase: "Phase 1",
+          deliveryGroupKeys: ["foundation-tooling"],
+          notes: "Establish repository scaffolding before smoke-path validation.",
+        },
+      ],
+    },
+    null,
+    2,
+  ),
+];
 
 export const buildMilestoneFeatureSetPrompt = (input: {
   existingFeatures: Array<{

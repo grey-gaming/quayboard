@@ -132,6 +132,80 @@ const transientGitMessageFiles = ["COMMIT_EDITMSG", "MERGE_MSG", "SQUASH_MSG"] a
 const projectReviewFixBranchName = "quayboard/project-review-fixes";
 const buildBugFixBranchName = (bugReportId: string) => `quayboard/bug-fix/${bugReportId}`;
 
+const stringifyTracePreview = (value: unknown) => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return JSON.stringify(value ?? {}).slice(0, 400);
+};
+
+const extractTraceText = (record: Record<string, unknown>, key: "text" | "thinking") => {
+  if (typeof record[key] === "string") {
+    return record[key];
+  }
+
+  const part =
+    typeof record.part === "object" && record.part !== null
+      ? (record.part as Record<string, unknown>)
+      : null;
+
+  return part && typeof part[key] === "string" ? part[key] : null;
+};
+
+const extractToolTraceRecord = (record: Record<string, unknown>) => {
+  const part =
+    typeof record.part === "object" && record.part !== null
+      ? (record.part as Record<string, unknown>)
+      : null;
+  const state =
+    part && typeof part.state === "object" && part.state !== null
+      ? (part.state as Record<string, unknown>)
+      : null;
+
+  const toolCallId =
+    typeof record.toolCallId === "string"
+      ? record.toolCallId
+      : part && typeof part.callID === "string"
+        ? part.callID
+        : null;
+  const toolName =
+    typeof record.toolName === "string"
+      ? record.toolName
+      : part && typeof part.tool === "string"
+        ? part.tool
+        : null;
+
+  return {
+    errorMessage:
+      typeof record.errorMessage === "string"
+        ? record.errorMessage
+        : state && typeof state.error === "string"
+          ? state.error
+          : null,
+    inputPreview:
+      record.input !== undefined
+        ? stringifyTracePreview(record.input)
+        : state && "input" in state
+          ? stringifyTracePreview(state.input)
+          : null,
+    outputPreview:
+      record.output !== undefined
+        ? stringifyTracePreview(record.output)
+        : state && "output" in state
+          ? stringifyTracePreview(state.output)
+          : null,
+    status:
+      typeof record.status === "string"
+        ? record.status
+        : state && typeof state.status === "string"
+          ? state.status
+          : null,
+    toolCallId,
+    toolName,
+  };
+};
+
 type ExportedFeatureDoc = {
   featureKey: string;
   milestonePosition: number;
@@ -389,6 +463,85 @@ const isDockerWaitTimeoutError = (
       "code" in error &&
       (error as { code?: unknown }).code === "docker_wait_timeout",
   );
+
+const stallNoProgressTimeoutMs = 3 * 60_000;
+const stallChangedTickThreshold = 60;
+const stallChangedSignatureThreshold = 8;
+
+type LiveChangedFile = {
+  additions: number | null;
+  binary: boolean;
+  deletions: number | null;
+  path: string;
+};
+
+type RunStallState = {
+  consecutiveChangedTicks: number;
+  lastChangedSignature: string | null;
+  lastMeaningfulProgressAtMs: number;
+  signatureChangeCount: number;
+};
+
+const buildChangedFilesSignature = (files: LiveChangedFile[]) =>
+  files
+    .slice()
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .map((file) =>
+      [file.path, file.additions ?? "b", file.deletions ?? "b", file.binary ? "1" : "0"].join(":"),
+    )
+    .join("|");
+
+export const createRunStallState = (startedAtMs: number): RunStallState => ({
+  consecutiveChangedTicks: 0,
+  lastChangedSignature: null,
+  lastMeaningfulProgressAtMs: startedAtMs,
+  signatureChangeCount: 0,
+});
+
+export const detectSandboxRunStall = (input: {
+  changedFiles: LiveChangedFile[];
+  hadMeaningfulTraceProgress: boolean;
+  nowMs: number;
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix";
+  state: RunStallState;
+}) => {
+  if (input.hadMeaningfulTraceProgress) {
+    input.state.lastMeaningfulProgressAtMs = input.nowMs;
+    input.state.consecutiveChangedTicks = 0;
+    input.state.lastChangedSignature = null;
+    input.state.signatureChangeCount = 0;
+    return null;
+  }
+
+  if (input.changedFiles.length === 0) {
+    input.state.consecutiveChangedTicks = 0;
+    input.state.lastChangedSignature = null;
+    input.state.signatureChangeCount = 0;
+    return null;
+  }
+
+  input.state.consecutiveChangedTicks += 1;
+  const signature = buildChangedFilesSignature(input.changedFiles);
+  if (input.state.lastChangedSignature && input.state.lastChangedSignature !== signature) {
+    input.state.signatureChangeCount += 1;
+  }
+  input.state.lastChangedSignature = signature;
+
+  const idleMs = input.nowMs - input.state.lastMeaningfulProgressAtMs;
+  if (
+    idleMs < stallNoProgressTimeoutMs ||
+    input.state.consecutiveChangedTicks < stallChangedTickThreshold ||
+    input.state.signatureChangeCount < stallChangedSignatureThreshold
+  ) {
+    return null;
+  }
+
+  const idleMinutes = Math.max(1, Math.floor(idleMs / 60_000));
+  return (
+    `${input.runKind} run appears stalled: no meaningful trace progress for ${idleMinutes} ` +
+    "minutes while changed files kept mutating. This usually means a long-lived dev/watch process was left running."
+  );
+};
 
 export const createSandboxService = (input: {
   artifactStorageService: ArtifactStorageService;
@@ -701,6 +854,7 @@ export const createSandboxService = (input: {
     await this.appendJobTraceEvent(jobId, projectId, "changed_files", { files }).catch(
       () => undefined,
     );
+    return files as LiveChangedFile[];
   },
 
   async syncOpencodeTrace(
@@ -709,6 +863,7 @@ export const createSandboxService = (input: {
     artifactDir: string,
     state: { processedLines: number; toolStates: Map<string, boolean> },
   ) {
+    let hadMeaningfulTraceProgress = false;
     const eventsPath = path.join(artifactDir, "opencode-events.jsonl");
     const raw = await readFile(eventsPath, "utf8").catch(() => "");
     const lines = raw
@@ -744,50 +899,62 @@ export const createSandboxService = (input: {
         if (typeof record.message === "object" && record.message !== null) {
           queue.push(record.message);
         }
-
-        if (record.type === "thinking" && typeof record.thinking === "string") {
+        const reasoningText =
+          record.type === "reasoning"
+            ? extractTraceText(record, "text")
+            : extractTraceText(record, "thinking");
+        if ((record.type === "thinking" || record.type === "reasoning") && reasoningText) {
+          hadMeaningfulTraceProgress = true;
           await this.appendJobTraceEvent(jobId, projectId, "reasoning_delta", {
-            text: record.thinking,
+            text: reasoningText,
           }).catch(() => undefined);
         }
 
-        if (record.type === "text" && typeof record.text === "string") {
+        const outputText = extractTraceText(record, "text");
+        if (record.type === "text" && outputText) {
+          hadMeaningfulTraceProgress = true;
           await this.appendJobTraceEvent(jobId, projectId, "text_delta", {
-            text: record.text,
+            text: outputText,
+          }).catch(() => undefined);
+        }
+
+        const toolTrace = extractToolTraceRecord(record);
+        if (
+          (record.type === "tool-call" || record.type === "tool_use") &&
+          toolTrace.toolCallId &&
+          toolTrace.toolName &&
+          !state.toolStates.has(toolTrace.toolCallId)
+        ) {
+          hadMeaningfulTraceProgress = true;
+          state.toolStates.set(toolTrace.toolCallId, true);
+          await this.appendJobTraceEvent(jobId, projectId, "tool_call_started", {
+            toolCallId: toolTrace.toolCallId,
+            toolName: toolTrace.toolName,
+            inputPreview: toolTrace.inputPreview,
           }).catch(() => undefined);
         }
 
         if (
-          record.type === "tool-call" &&
-          typeof record.toolCallId === "string" &&
-          typeof record.toolName === "string" &&
-          !state.toolStates.has(record.toolCallId)
+          (record.type === "tool-result" ||
+            record.type === "tool_use" ||
+            record.type === "tool") &&
+          toolTrace.toolCallId &&
+          toolTrace.status &&
+          ["completed", "failed", "cancelled"].includes(toolTrace.status)
         ) {
-          state.toolStates.set(record.toolCallId, true);
-          await this.appendJobTraceEvent(jobId, projectId, "tool_call_started", {
-            toolCallId: record.toolCallId,
-            toolName: record.toolName,
-            inputPreview:
-              typeof record.input === "string"
-                ? record.input
-                : JSON.stringify(record.input ?? {}).slice(0, 400),
-          }).catch(() => undefined);
-        }
-
-        if (record.type === "tool-result" && typeof record.toolCallId === "string") {
+          hadMeaningfulTraceProgress = true;
           await this.appendJobTraceEvent(jobId, projectId, "tool_call_finished", {
-            toolCallId: record.toolCallId,
-            status: "succeeded",
-            outputPreview:
-              typeof record.output === "string"
-                ? record.output
-                : JSON.stringify(record.output ?? {}).slice(0, 400),
+            toolCallId: toolTrace.toolCallId,
+            status: toolTrace.status === "completed" ? "succeeded" : toolTrace.status,
+            outputPreview: toolTrace.outputPreview,
+            errorMessage: toolTrace.errorMessage,
           }).catch(() => undefined);
         }
       }
     }
 
     state.processedLines = lines.length;
+    return { hadMeaningfulTraceProgress };
   },
 
   async attachArtifact(
@@ -2036,15 +2203,43 @@ export const createSandboxService = (input: {
         processedLines: 0,
         toolStates: new Map<string, boolean>(),
       };
+      const runStallState = createRunStallState(Date.now());
       let stopTraceSync = false;
+      let stallFailureMessage: string | null = null;
       let lastGitArtifactSyncAt = 0;
       const syncLiveState = async () => {
-        await this.syncOpencodeTrace(jobId, run.projectId, artifactDir, traceSyncState).catch(
-          () => undefined,
-        );
-        await this.captureLiveChangedFiles(jobId, run.projectId, workspaceDir, baseCommitSha).catch(
-          () => undefined,
-        );
+        const traceProgress = await this.syncOpencodeTrace(
+          jobId,
+          run.projectId,
+          artifactDir,
+          traceSyncState,
+        ).catch(() => ({ hadMeaningfulTraceProgress: false }));
+        const changedFiles = await this.captureLiveChangedFiles(
+          jobId,
+          run.projectId,
+          workspaceDir,
+          baseCommitSha,
+        ).catch(() => [] as LiveChangedFile[]);
+
+        if (!stallFailureMessage) {
+          const detectedStall = detectSandboxRunStall({
+            changedFiles,
+            hadMeaningfulTraceProgress: traceProgress.hadMeaningfulTraceProgress,
+            nowMs: Date.now(),
+            runKind: run.kind,
+            state: runStallState,
+          });
+          if (detectedStall) {
+            stallFailureMessage = detectedStall;
+            stopTraceSync = true;
+            await this.appendEvent(sandboxRunId, "error", "run_stalled", detectedStall).catch(
+              () => undefined,
+            );
+            await input.dockerService
+              .stopContainer(containerId, executionSettings.dockerHost)
+              .catch(() => undefined);
+          }
+        }
 
         const now = Date.now();
         if (now - lastGitArtifactSyncAt >= 3_000) {
@@ -2103,6 +2298,22 @@ export const createSandboxService = (input: {
       await traceSyncLoop.catch(() => undefined);
       await syncLiveState().catch(() => undefined);
       await captureRunOutputs();
+
+      if (stallFailureMessage) {
+        await this.updateRunState(sandboxRunId, {
+          status: "failed",
+          outcome: run.kind === "verify" ? "verification_failed" : "error",
+          completedAt: new Date(),
+        });
+        runFinalized = true;
+        await this.appendEvent(
+          sandboxRunId,
+          "error",
+          "run_failed",
+          stallFailureMessage,
+        );
+        throw createHandledRunFailure(stallFailureMessage);
+      }
 
       const headCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(
         () => baseCommitSha,

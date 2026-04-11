@@ -179,6 +179,18 @@ const shutdownJobCancellation = {
   message: "The API shut down before this LLM job finished, so the job was cancelled.",
 } as const;
 
+const reconcileInterruptedBugFixes = async (
+  bugService: BugService,
+  cancelledJobs: Awaited<ReturnType<JobService["cancelRunningJobs"]>>,
+  message: string,
+) => {
+  const interruptedBugFixJobIds = cancelledJobs
+    .filter((job) => job.type === "RunBugFix")
+    .map((job) => job.id);
+
+  await bugService.reopenInterruptedFixes(interruptedBugFixJobIds, message);
+};
+
 export const createAppServices = async (
   databaseUrl: string,
   secretsEncryptionKey: string | null,
@@ -446,7 +458,13 @@ export const createAppServices = async (
     },
     maxConcurrent: 4,
   });
-  await jobService.cancelRunningJobs(staleJobCancellation);
+  const startupCancelledJobs = await jobService.cancelRunningJobs(staleJobCancellation);
+  await reconcileInterruptedBugFixes(
+    bugService,
+    startupCancelledJobs,
+    staleJobCancellation.message,
+  );
+  await bugService.reconcileStaleInProgressFixes();
   await sandboxService.reconcileRuntimeState().catch((error) => {
     console.error("sandbox runtime reconciliation on startup failed:", error);
   });
@@ -498,7 +516,12 @@ export const createAppServices = async (
     },
     async close() {
       jobScheduler.stop();
-      await jobService.cancelRunningJobs(shutdownJobCancellation);
+      const shutdownCancelledJobs = await jobService.cancelRunningJobs(shutdownJobCancellation);
+      await reconcileInterruptedBugFixes(
+        bugService,
+        shutdownCancelledJobs,
+        shutdownJobCancellation.message,
+      );
       await sandboxService
         .reconcileRuntimeState(
           "The API shut down before this sandbox run finished, so the run was cancelled.",

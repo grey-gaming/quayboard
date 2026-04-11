@@ -34,7 +34,7 @@ export const MissionActivityTimeline = ({
   const visible = jobs.slice(0, limit);
 
   return (
-    <Card surface="rail" className="h-fit w-full max-w-80">
+    <Card surface="rail" className="h-fit">
       <div className="flex items-center justify-between gap-3 border-b border-border/80 pb-3">
         <div>
           <p className="qb-meta-label">History</p>
@@ -42,11 +42,11 @@ export const MissionActivityTimeline = ({
         </div>
         <Badge tone="neutral">{jobs.length} events</Badge>
       </div>
-      <div className="mt-4 grid gap-0 border border-border/80">
+      <div className="mt-4 grid gap-2">
         {visible.map((job) => (
           <Link
             key={job.id}
-            className="grid gap-1 border-t border-border/80 bg-panel-inset px-4 py-3 text-sm transition-colors first:border-t-0 hover:bg-panel"
+            className="rounded-sm border border-border/80 bg-panel-inset px-3 py-2 text-sm transition-colors hover:bg-panel"
             to={`/projects/${projectId}/live/${job.id}`}
           >
             <div className="flex min-w-0 items-center justify-between gap-3">
@@ -74,7 +74,7 @@ export const MissionActivityTimeline = ({
           </Link>
         ))}
         {jobs.length === 0 && (
-          <div className="qb-data-row text-sm text-secondary">
+          <div className="rounded-sm border border-border/80 bg-panel-inset px-3 py-2 text-sm text-secondary">
             No activity recorded yet.
           </div>
         )}
