@@ -1,0 +1,33 @@
+# Review: GenerateFeatureProductSpec
+
+| | |
+|---|---|
+| **Status** | NOT REVIEWED |
+| **Type** | Direct LLM (Ollama / OpenAI) |
+| **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4837` |
+| **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
+
+## Purpose
+
+Generate a product specification for a specific feature, drawing on the project-level product spec, technical spec, UX spec, and the feature's acceptance criteria and milestone context.
+
+## Output
+
+Feature product spec markdown stored in the database as a workstream revision.
+
+## Checklist
+
+- [ ] Read the prompt builder in `apps/api/src/services/jobs/job-prompts.ts` for this job's template ID
+- [ ] Pull a real prompt and response from the database (filter `llm_runs` by `template_id = 'GenerateFeatureProductSpec'`)
+- [ ] **Prompt clarity** — are instructions unambiguous? Could a weaker local Ollama model still produce usable output?
+- [ ] **Context completeness** — does the prompt include the project product spec, technical spec, UX spec, milestone design document, sibling features, and the feature's acceptance criteria?
+- [ ] **Output usefulness** — does the generated spec read like something a professional software team would write for a feature? Is it specific and actionable, or generic filler? If not, what is missing and what prompt changes would fix it?
+- [ ] **Failure handling** — what happens if the LLM returns an unusable or empty spec?
+- [ ] **Terminology consistency** — are feature terms consistent with `GenerateMilestoneFeatureSet` and downstream feature spec jobs?
+- [ ] **Prompt injection surface** — acceptance criteria and spec content are user-influenced; verify they cannot hijack the instruction structure
+- [ ] **Model-agnostic language** — will this degrade gracefully on smaller Ollama models?
+- [ ] **Token budget** — multiple specs plus milestone context could be large; verify realistic inputs fit within 50,000 output tokens
+
+## Findings
+
+_No findings yet._
