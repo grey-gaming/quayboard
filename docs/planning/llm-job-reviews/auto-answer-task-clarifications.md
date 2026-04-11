@@ -37,3 +37,9 @@ JSON array of answers, each referencing a clarification question, stored in the 
 - This job is superseded in auto-advance by `PlanFeatureTasksSandbox`, but remains callable and still executes in local history.
 - Schema handling is minimal (array of answers only). It enforces non-empty answers but does not verify answer grounding against source docs, so generic-but-valid answers can pass.
 - Observed failures were primarily provider-side (`503` retryable HTTP errors), not parser-shape failures.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Generally high quality for implementation defaults, but still below a tier-1 handoff because it can settle ambiguous engineering choices without showing provenance.
+- Quality gaps: answers are detailed and practical, but they lack confidence labels, owner visibility, and an explicit option to refuse a default when the source material does not justify one.
+- Tier-1 bar: preserve the detailed answers, but require a source-grounded rationale, confidence level, and "requires product/engineering decision" escape hatch per clarification.

@@ -35,3 +35,9 @@ Feature definitions for the milestone stored in the database.
 - Prompt explicitly encodes ownership boundaries from milestone design docs and parser enforces non-empty acceptance criteria/kind/priority normalization.
 - Primary risk is token pressure: this is one of the largest prompts in the system (local max prompt ~184k chars).
 - Recommended: include only active-milestone-relevant slices from large project specs to improve model-agnostic stability.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Solid planning output and often close to tier-1, but it still needs stronger delivery management signals.
+- Quality gaps: feature sets are coherent and acceptance criteria are useful, but dependency order, sizing, exit criteria, and cross-feature risk are not consistently explicit.
+- Tier-1 bar: add dependency sequencing, rough implementation size, feature-level risk, and milestone exit criteria to the generated feature set.

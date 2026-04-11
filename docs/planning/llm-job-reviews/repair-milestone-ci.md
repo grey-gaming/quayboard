@@ -34,3 +34,9 @@ Sandbox run outcome recorded in the database. The CI repair run targets the mile
 - Local evidence is limited (1 succeeded job/run), so quality conclusions are low-confidence beyond control-flow correctness.
 - Prompt scope is clear (`repair only CI conditions`), and context includes pending/failing check metadata plus stale-check guidance.
 - No strict artifact contract exists for CI repair output summaries; success is determined by run exit and PR publish behavior.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not enough evidence to call it tier-1; the observed history is too small and the artifact contract is weak.
+- Quality gaps: a tier-1 CI repair run should show the failing command, reproduced failure, root cause, exact fix, rerun checks, and any remaining flakes or skipped checks.
+- Tier-1 bar: require a structured CI repair summary and reject completions that do not include command-level verification evidence.

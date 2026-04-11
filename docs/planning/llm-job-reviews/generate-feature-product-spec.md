@@ -34,3 +34,9 @@ Feature product spec markdown stored in the database as a workstream revision.
 - Output schema alignment is solid via `parseFeatureWorkstreamResult`; malformed responses fail explicitly and trigger repair attempts.
 - Prompt context is very large in practice (local max prompt ~167k chars), which is a real model-agnostic risk for smaller Ollama models.
 - Recommended: trim repeated upstream sections or pre-summarize sibling/project docs to reduce prompt size without losing feature-boundary constraints.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Detailed and useful, but not always tier-1 because it can blur product requirements with proposed implementation details.
+- Quality gaps: sampled outputs included concrete error taxonomies and backend-like codes that may be helpful, but they should not appear as confirmed product truth unless tied to existing contracts.
+- Tier-1 bar: split confirmed user-facing requirements from proposed technical assumptions, and require traceability from each acceptance criterion to a feature goal or source constraint.

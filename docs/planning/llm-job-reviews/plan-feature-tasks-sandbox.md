@@ -33,3 +33,9 @@ A `task-plan.json` artifact containing an array of tasks, each with `title`, `de
 - No local jobs/runs exist for this item (`PlanFeatureTasksSandbox` jobs: 0; `task_planning` sandbox runs: 0), so this is code-path review only.
 - Prompt acceptance criteria and output schema are explicit and stricter than the legacy direct-LLM task-planning jobs.
 - Local sandbox artifact files are currently cleaned from disk, so no historical prompt/context/output file could be reopened directly.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot verify tier-1 output quality because no representative local output was available in the sampled history.
+- Quality gaps: sandbox task planning should prove that tasks are bounded, ordered, source-grounded, and independently verifiable; the current review cannot confirm those properties.
+- Tier-1 bar: add fixture-based review examples and require a task-plan quality score covering task size, dependency order, acceptance checks, and missing-context handling.

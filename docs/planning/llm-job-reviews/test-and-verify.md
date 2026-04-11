@@ -33,3 +33,9 @@ Sandbox run outcome recorded in the database (verification passed/failed, etc.).
 - No local `TestAndVerify` jobs were recorded, but verify runs are actively executed as part of `ImplementChange` chaining (64 verify runs total).
 - Prompt acceptance criteria are clear for narrow verification/fix behavior and avoiding scope expansion.
 - Because direct `TestAndVerify` job evidence is absent, add at least one targeted integration test/job fixture for this standalone path.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot verify standalone tier-1 output quality because no direct TestAndVerify job output was available in the sampled history.
+- Quality gaps: verification tasks must show exact commands, relevant output, environment assumptions, skipped checks, and why the chosen checks cover the change.
+- Tier-1 bar: require command-level evidence and reject verification summaries that do not state what was run, what passed/failed, and what remains untested.

@@ -34,3 +34,9 @@ JSON with a `complete` boolean and optional issue list, used to decide whether t
 - The implementation reuses `buildMilestoneCoverageReviewPrompt` rather than a delivery-specific prompt; parser then remaps actions into `refresh_artifacts`/`needs_human_review`.
 - Output schema alignment is technically consistent with parser expectations, but terminology is mixed (coverage-style prompt feeding delivery decisions).
 - Recommended: split prompt copy for delivery-specific criteria (workstream/task readiness and shipability) to reduce ambiguity.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not tier-1 based on sampled output; a boolean complete result with empty issues is not a professional delivery review.
+- Quality gaps: the sampled output did not include evidence, coverage, confidence, task/feature traceability, or rationale for why the milestone was complete.
+- Tier-1 bar: require per-feature delivery evidence, verification commands, unresolved-risk notes, and confidence before accepting a complete milestone.

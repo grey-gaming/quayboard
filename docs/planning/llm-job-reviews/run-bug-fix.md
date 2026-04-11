@@ -34,3 +34,9 @@ A `bug-fix-summary.md` artifact describing the fix. The job also creates a pull 
 - Local evidence: 21 jobs (12 succeeded, 7 failed, 2 cancelled); failures include non-zero exits/timeouts (e.g., exit code 124).
 - Done criteria are strong in code: success requires a mergeable PR path (`changes_applied` + branch + merge).
 - Prompt requests `bug-fix-summary.md`, but runner does not hard-fail when the summary artifact is missing; consider enforcing this output contract in code.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not enough local output evidence to call it tier-1; observed behavior needs a stronger completion contract.
+- Quality gaps: bug-fix runs should consistently report root cause, changed files, tests run, non-regression evidence, and any behavior that remains unverified.
+- Tier-1 bar: require a structured bug-fix artifact that maps bug symptoms to root cause, patch summary, verification, and residual risk.

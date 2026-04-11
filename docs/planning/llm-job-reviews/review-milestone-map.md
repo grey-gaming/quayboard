@@ -34,3 +34,9 @@ Review report / issues list used to decide whether `RewriteMilestoneMap` should 
 - When uncovered flows are detected from authoritative coverage data, the job correctly short-circuits without LLM and emits deterministic repair hints.
 - When LLM is used, prompt currently reuses `buildDeliveryReviewPrompt`; parser supports both modern `action` and legacy `jobType` issue formats.
 - Recommended: provide a dedicated milestone-map review prompt to avoid conflating map structure checks with project delivery checks.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not tier-1 based on sampled output; a bare `{ complete: true, issues: [] }` response is too thin for roadmap coverage validation.
+- Quality gaps: the output lacks a coverage matrix, rationale for completeness, missing-scope analysis, and evidence that use cases or product goals were considered.
+- Tier-1 bar: require a milestone-to-flow coverage table, identified gaps, false-positive safeguards, and a short rationale for every complete/no-issue result.

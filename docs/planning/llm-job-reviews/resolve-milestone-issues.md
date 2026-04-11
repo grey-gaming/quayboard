@@ -34,3 +34,9 @@ JSON with resolution details — which defaults were chosen, what operations wer
 - No local `llm_runs` evidence exists for either template (run count: 0 each).
 - Schema alignment issue: delivery review emits `refresh_artifacts` actions, but resolver input parsing currently filters for `rewrite_feature_set`/`needs_human_review`; this drops delivery issues and produces no-op unresolved outcomes.
 - Recommended: implement a dedicated delivery-issue parser/prompt contract that accepts `refresh_artifacts` and maps directly to executable refresh operations.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not tier-1 in its current reviewed state because the flow can drop required operations such as refresh_artifacts.
+- Quality gaps: an issue-resolution agent must prove every review issue maps to a concrete operation or explicit deferral; missing operation coverage undermines trust in the output.
+- Tier-1 bar: fix operation parsing, then require an issue-to-operation matrix with status, evidence, and artifact refresh handling.

@@ -32,3 +32,9 @@ Deduplicated use case list stored in the database.
 - No `llm_runs` rows exist for template `DeduplicateUseCases` (run count: 0), which matches the current non-LLM implementation.
 - Current behavior archives only exact title duplicates after lowercase/trim normalization; semantic duplicates with different wording are not deduplicated.
 - Recommended: update this review metadata/type to reflect non-LLM behavior, or reintroduce a true LLM path if semantic deduplication is required.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not tier-1 as a deduplication review mechanism because it only checks exact-title duplication instead of semantic overlap.
+- Quality gaps: a tier-1 team would expect duplicate clusters, merge rationale, preserved source references, and a non-destructive review path rather than silent exact-match filtering.
+- Tier-1 bar: move from title-only dedupe to semantic duplicate detection with an audit trail that shows kept, merged, and rejected use cases.

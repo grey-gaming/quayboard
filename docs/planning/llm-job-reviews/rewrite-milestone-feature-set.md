@@ -37,3 +37,9 @@ Updated feature definitions for the milestone stored in the database, replacing 
 - Prompt includes strong ownership/exit-criteria constraints and explicit issue-driven rewrite framing, then validates through feature-shape parser before persistence.
 - Major risk is prompt size/context bloat (local max ~187k chars), especially on smaller Ollama models.
 - No local repair runs were observed for this template, but broader-context truncation risk remains for larger projects.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Useful and generally professional, but not fully tier-1 because it does not consistently prove that each prior issue was resolved.
+- Quality gaps: sampled rewritten feature sets were security-aware and coherent, but the output lacked an explicit issue-to-feature/acceptance-criterion mapping.
+- Tier-1 bar: add a resolution matrix showing each input issue, the rewritten artifact change, and whether any concern remains deferred.

@@ -35,3 +35,9 @@ Product spec markdown stored in the database.
 - Failure handling is mature: malformed JSON routes through repair; major quality failures route through a dedicated quality-check pass with regeneration hints.
 - Token budget risk is high on output size (local max response ~136k chars), which can degrade smaller models or increase truncation risk.
 - Recommended: consider section-wise generation with deterministic assembly for large projects to reduce single-pass output pressure.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Polished and comprehensive, but not reliably tier-1 because it can overstate inferred scope as product truth.
+- Quality gaps: sampled specs are useful for exploration, yet they can expand into broad catalogs of features, personas, and future capabilities without marking assumptions or MVP constraints.
+- Tier-1 bar: require MVP/non-MVP separation, source-grounded requirement labels, assumption confidence, and explicit rejection of unsupported scope expansion.

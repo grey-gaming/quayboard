@@ -35,3 +35,9 @@ Decision deck with options/choices stored in the database.
 - Prompt and parser are aligned on required keys and nested option shapes; validation correctly rejects incomplete cards and weak alternative sets.
 - Prompt clarity is high for tradeoff framing, but token budget can become heavy when full product specs are large (local max prompt ~115k chars).
 - Prompt injection surface remains from user-authored product specs; wrapping source blocks with explicit data delimiters would reduce instruction hijack risk.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Stronger than most planning outputs and often close to tier-1 quality, but it still overcommits to vendor and architecture choices without enough traceability.
+- Quality gaps: recommendations such as TTS vendors, caching strategies, or platform choices can be sensible but need clearer cost, constraint, and source linkage before a team should treat them as decisions.
+- Tier-1 bar: require every decision card to include source constraints, alternatives considered, defer/no-decision viability, implementation impact, and confidence.

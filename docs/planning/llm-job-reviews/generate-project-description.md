@@ -33,3 +33,9 @@ Project description text stored in the database.
 - No local `llm_runs` rows exist for this template, so this assessment is code-only in this environment.
 - Unlike most jobs, this path does not enforce structured output or minimum content quality; it persists `generated.content.trim()` directly.
 - Recommended: add lightweight guardrails (minimum length, sentence count, non-empty assertion) to avoid silently storing empty or trivial descriptions.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot verify tier-1 quality without a local representative output; the current review only covers contract and prompt risks.
+- Quality gaps: description generation needs stronger validation for empty, generic, injected, or marketing-only summaries before a team should rely on it as project identity.
+- Tier-1 bar: store output examples and require a description quality rubric covering specificity, source grounding, prohibited invented claims, and minimum useful detail.

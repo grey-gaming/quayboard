@@ -34,3 +34,9 @@ A `project-fix-summary.md` artifact describing what was fixed. The job also reco
 - Local evidence: 4 successful jobs/runs; artifact metadata includes `project-fix-summary.md` for sampled runs.
 - Prompt scope containment is clear (fix only batched findings), but success criteria in code are exit/publish-driven and do not validate summary artifact presence.
 - Recommended: add explicit artifact validation for `project-fix-summary.md` analogous to `project_review` JSON/markdown validation.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Useful automation path, but not tier-1 unless every fix is traceable to a project-review finding and verified.
+- Quality gaps: a successful run alone is not enough; the output needs finding-to-change mapping, exact checks run, skipped checks, and evidence that the original issue was actually resolved.
+- Tier-1 bar: require a fix matrix with review finding ID, changed files, verification command, result, and remaining risk.

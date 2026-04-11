@@ -34,3 +34,9 @@ JSON with a `complete` boolean and optional issues. If uncovered user flows exis
 - No local `ReviewDelivery` runs exist, so this item is code-path only in the current environment.
 - Prompt contract uses `jobType` actions (`GenerateUseCases`/`GenerateMilestones`) and parser enforces `complete` boolean before output acceptance.
 - Because this shares prompt structure with milestone-map review logic, dedicated project-level delivery examples should be added to integration tests before wider rollout.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot verify tier-1 output quality from local runs, and the prompt-level review shows the output contract needs more evidence structure.
+- Quality gaps: a delivery review should not be a bare judgment; it needs acceptance criteria coverage, implementation evidence, test evidence, and explicit unresolved risks.
+- Tier-1 bar: require a delivery evidence matrix and block completion when the review cannot cite the artifacts or checks behind its conclusion.

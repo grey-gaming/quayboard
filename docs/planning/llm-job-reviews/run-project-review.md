@@ -33,3 +33,9 @@ Two artifacts: `project-review.md` (human-readable review report) and `project-r
 - Local evidence: 5 jobs (4 succeeded, 1 failed). Successful runs produced `project-review.md` and `project-review.json` artifact records.
 - Failure handling is explicit: missing/invalid required artifacts fail the run, and auto-advance treats review/fix jobs as retryable in bounded loops.
 - Local artifact files are not currently present on disk (metadata remains), so this review used DB metadata plus code-path validation.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Useful and detailed, but not consistently tier-1 because sampled reports use broad maturity claims with insufficient evidence density.
+- Quality gaps: project reviews can say a repository is mature or production-ready while only partially grounding claims in files, line references, check outputs, and severity-calibrated findings.
+- Tier-1 bar: require evidence per major claim, exact verification commands and results, severity calibration, confidence, and clear separation between observed facts and reviewer judgment.

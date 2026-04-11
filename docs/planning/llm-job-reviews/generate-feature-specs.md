@@ -34,3 +34,9 @@ Feature spec markdown (UX, tech, user docs, or arch docs) stored in the database
 - Draft+review flow is robust and enforces explicit failures on malformed JSON; repair templates are actively used for UX/Tech/Arch variants, indicating real-world shape drift.
 - Variant intent is generally clear, but prompt size is high (local max prompts between ~72k and ~150k chars), increasing truncation and quality risk on smaller models.
 - No local evidence exists for template `GenerateFeatureArchDocs` requiring dedicated output schema beyond title/markdown; if stronger structure is desired, add variant-specific schema checks.
+
+## Tier-1 Output Quality Review
+
+- Verdict: The sampled UX, technical, architecture, and user-doc outputs are often professional, but the set is uneven because the prompts can invent routes, APIs, vendors, or user-facing behavior.
+- Quality gaps: UX specs can over-define UI for non-visual features, technical specs can fabricate contracts, architecture specs can over-prescribe interfaces, and user docs can document capabilities before they exist.
+- Tier-1 bar: add a confirmed/proposed/unknown label to concrete contracts, require source links for API and route claims, and gate user-doc outputs on shipped or explicitly planned behavior.

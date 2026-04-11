@@ -34,3 +34,9 @@ JSON object with questionnaire field answers stored in the database.
 - Prompt clarity and schema alignment are strong: output is constrained to a JSON object, then filtered to blank keys and validated by `questionnaireAnswerMapSchema` before persistence.
 - Prompt injection surface exists because user-provided answers are interpolated verbatim; current risk is partially mitigated by strict key filtering and schema parsing but still benefits from stronger data delimiting.
 - Token budget risk appears low in local data (max prompt size ~7.1k chars, max response ~4.8k chars).
+
+## Tier-1 Output Quality Review
+
+- Verdict: Useful as a draft accelerator, but not consistently tier-1 quality because it answers strategic unknowns too confidently.
+- Quality gaps: the output can turn sparse product context into firm requirements, market assumptions, and roadmap defaults without labeling which facts are inferred versus confirmed.
+- Tier-1 bar: add confidence/provenance labels, allow "needs human answer" for unknowable items, and require a short assumption log for every answer that is not directly grounded in the source context.

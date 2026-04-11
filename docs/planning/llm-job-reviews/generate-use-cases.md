@@ -35,3 +35,9 @@ List of use cases stored in the database.
 - Output schema alignment is strong and explicit: required fields plus normalized flow steps are enforced before persistence.
 - Prompt and output can be large (local max prompt ~119k chars, response ~34k chars), which can stress smaller models.
 - Recommended: if local-model quality drops, add a two-pass strategy (core flows first, then edge/failure augmentation) instead of one large generation pass.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Detailed and useful, but not consistently tier-1 for this stage because it can over-prescribe UI labels, screens, and interaction copy.
+- Quality gaps: sampled use cases provided strong flow detail, but some content belongs in UX design rather than use-case discovery and can prematurely constrain later design work.
+- Tier-1 bar: separate user intent and success criteria from proposed UI examples, and mark any screen/copy detail as non-binding unless sourced from an approved UX spec.

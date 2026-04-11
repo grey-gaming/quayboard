@@ -37,3 +37,9 @@ JSON array of tasks (each with title, description, and metadata) stored in the d
 - This direct-LLM path is superseded in auto-advance by `PlanFeatureTasksSandbox`, but remains callable and still has active historical runs.
 - Schema alignment is good (`title`, `description`, optional `instructions`, `acceptanceCriteria`), and malformed outputs fail explicitly.
 - Token budget is non-trivial (local max prompt ~86k chars), which is another reason the sandbox planner is now the preferred path.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Actionable but not reliably tier-1 because tasks can become oversized mini-specifications rather than bounded implementation slices.
+- Quality gaps: sampled tasks were detailed, but some asked for whole state machines or subsystems in one item and lacked changed-area anchors, expected tests, and effort boundaries.
+- Tier-1 bar: enforce task size limits, touched-area hints, explicit verification commands, dependency ordering, and a clear acceptance check per task.

@@ -33,3 +33,9 @@ Additional milestone definitions stored in the database alongside the existing o
 - No local `llm_runs` rows exist for template `AppendMilestones` (run count: 0), so output quality and regeneration stability could not be validated on real data in this environment.
 - Prompt/schema alignment is consistent with `validateGeneratedMilestones`, but this path still needs at least one integration run to confirm duplicate-avoidance behavior against existing milestone maps.
 - Recommended: add a targeted integration test that seeds uncovered flows plus existing milestones and asserts appended milestones are non-overlapping and only reference uncovered flow IDs.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not enough local evidence to say the generated output is tier-1 quality; no representative AppendMilestones run was found in the sampled job history.
+- Quality gaps: the current review can only evaluate the prompt shape, not whether the output preserves milestone sequencing, avoids duplicates, and explains why each appended milestone belongs in the roadmap.
+- Tier-1 bar: require an output fixture or recent run sample with a before/after milestone map, explicit coverage gaps, and a rationale for every appended milestone.

@@ -35,3 +35,9 @@ Milestone definitions stored in the database.
 - Schema alignment is clear (`title`, `summary`, `useCaseIds`), with first-milestone exception handled explicitly and post-parse validation catching empty downstream milestones.
 - Observed failures include both structured-output issues and domain guards (e.g., invalid cross-project user-flow references), which is the correct fail-fast behavior.
 - Prompt size is substantial (local max ~92k chars), so smaller models may still require additional decomposition or summarization.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Coherent roadmap output, but not consistently tier-1 because milestones are broad and lack enough execution evidence.
+- Quality gaps: sampled milestones read like a plausible plan, but they omit capacity assumptions, risk ranking, definition of done, and a coverage matrix tying each milestone to required user flows.
+- Tier-1 bar: require milestone DoD, explicit out-of-scope boundaries, flow coverage, dependency/risk notes, and a size signal before accepting the roadmap.

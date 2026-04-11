@@ -4,6 +4,18 @@ This document is the index for all LLM job prompt quality reviews. Each entry li
 
 **Status values:** `NOT REVIEWED` → `IN REVIEW` → `REVIEWED`
 
+## Second-Pass Output Quality Findings
+
+Completed on 2026-04-11 as a subagent-style independent rereview focused on whether each LLM job output would meet a tier-1 software team bar. The per-job review files now include a dedicated `Tier-1 Output Quality Review` section.
+
+- Overall verdict: the best planning generators are useful and often professional, but the system is not yet consistently tier-1 because several jobs produce outputs that are too speculative, too broad, or too thinly evidenced for downstream automation to trust without human review.
+- Strongest outputs: `GenerateTaskClarifications`, `GenerateDecisionDeck`, `GenerateMilestoneDesign`, `GenerateMilestoneFeatureSetReview`, and parts of the feature-spec generators. These are detailed and actionable, but still need stronger traceability, confidence labels, and decision provenance.
+- Weakest outputs: milestone review jobs that can return bare boolean completion results, especially `ReviewMilestoneMap`, `ReviewMilestoneScope`, and `ReviewMilestoneDelivery`. A tier-1 team would require coverage matrices, evidence, rationale, and placeholder rejection before accepting those as validation.
+- Common gap: generated planning artifacts frequently convert inferred assumptions into authoritative product, architecture, route, API, vendor, or UX decisions. The fix is to require confirmed/proposed/unknown labels and a source-grounded assumption log.
+- Common gap: implementation, repair, verification, and fix jobs lack a strong completion artifact contract. A tier-1 output should map scope or findings to changed files, exact checks run, failures/skips, and residual risk.
+- Common gap: several jobs had no representative local output available, so the review could only evaluate prompt and orchestration shape. Those jobs need stored fixtures or recent run samples before their output quality can be meaningfully certified.
+- Quality bar change recommended: add schema-level evidence fields where possible instead of only prompt wording. Prompt instructions alone are not enough for review jobs that downstream automation treats as gates.
+
 ---
 
 ## Review Process

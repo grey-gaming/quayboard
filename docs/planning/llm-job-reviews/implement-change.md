@@ -35,3 +35,9 @@ Sandbox run outcome recorded in the database (changes applied, no-op, verificati
 - Local evidence: 79 `ImplementChange` jobs (55 succeeded, 21 failed, 3 cancelled), with automatic chaining into `verify` sandbox runs.
 - Common failure mode is runtime stall/timeout (`implement run did not exit within 40 minutes`), which is explicitly detected and surfaced.
 - Scope containment is prompt-driven and generally clear, but there is no changed-file allowlist at runtime, so broad edits remain technically possible.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot judge generated code quality from a single prompt review; observed run behavior shows the process needs stronger implementation evidence to meet a tier-1 bar.
+- Quality gaps: scope containment is mostly prompt-driven, and completed runs need consistent changed-file summaries, tests run, failure handling, and residual-risk reporting.
+- Tier-1 bar: require the implementation agent to produce a structured completion artifact with diff summary, verification evidence, skipped checks, and follow-up risks.

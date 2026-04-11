@@ -35,3 +35,9 @@ Milestone design document with delivery groups and flows stored in the database.
 - Local evidence shows high repair pressure (24 base runs with 19 repair runs), indicating the schema contract remains difficult for models to satisfy consistently.
 - Failure handling is strong and explicit: unresolved validation conflicts become retryable job failures rather than silently persisted bad docs.
 - Recommended: simplify or partition the structured contract (especially flow/group cross-linking fields) to reduce repair churn and improve small-model reliability.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Professional and detailed, but not fully tier-1 because it can be schema-heavy and over-prescriptive for a milestone design artifact.
+- Quality gaps: sampled designs had useful flows and scope boundaries, but they lacked a compact risk/decision log and could duplicate downstream feature-planning responsibilities.
+- Tier-1 bar: require a trace matrix from milestone goals to delivery groups, explicit open risks, and separation between confirmed constraints and suggested implementation structure.

@@ -34,3 +34,9 @@ Overview markdown stored in the database.
 - Local evidence exists only for `GenerateProjectOverview` (3 runs); no local runs were found for regenerate/improvement variants.
 - Schema alignment is strong (`title`, `description`, `markdown`) with explicit failure on missing fields and JSON repair fallback.
 - Token budget appears moderate in local data (max prompt ~13k chars), with lower risk than milestone/feature-generation templates.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Polished and readable, but not consistently tier-1 because it leans toward product-strategy prose rather than testable planning constraints.
+- Quality gaps: sampled overview content was helpful, but it lacked clear assumption labels, risk callouts, and concrete decisions that downstream planning can verify.
+- Tier-1 bar: require explicit confirmed facts, inferred assumptions, open risks, and downstream planning constraints instead of only narrative synthesis.

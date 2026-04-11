@@ -34,3 +34,9 @@ Blueprint markdown stored in the database.
 - Prompt/parser alignment is good for title/markdown outputs, and decision-consistency gating materially reduces downstream contradiction risk.
 - One repair run exists, showing structured-output fallback is exercised in practice.
 - Token budget is significant (local max prompt ~118k chars; response up to ~51k chars), so this remains sensitive for smaller local models.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Technically rich, but below tier-1 when treated as an authoritative blueprint because it inserts architecture choices that may not be confirmed.
+- Quality gaps: sampled output confidently proposed items such as offline/PWA behavior, auth providers, caching, and TTS architecture without enough proof those decisions were accepted.
+- Tier-1 bar: require a decision-trace section linking every major architecture choice to accepted decisions, constraints, and alternatives rejected.

@@ -35,3 +35,9 @@ Updated milestone definitions stored in the database, replacing the previous map
 - No local `llm_runs` exist for template `RewriteMilestoneMap`, so regeneration stability could not be validated empirically.
 - Unlike newer rewrite jobs, this path has no explicit draft+review pass, making output quality more sensitive to a single generation attempt.
 - Recommended: add a review pass (or deterministic post-check) analogous to feature-set rewrite to improve stability.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot verify tier-1 output quality without a representative local output; current evidence is prompt-level only.
+- Quality gaps: a map rewrite must show before/after coverage, preserve intentional roadmap sequencing, and explain why changed milestones resolve the review findings.
+- Tier-1 bar: require a before/after milestone map, issue-resolution matrix, and regression check for dropped scope.

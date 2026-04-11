@@ -37,3 +37,9 @@ JSON array of clarification questions stored in the database, each with a questi
 - This direct-LLM path is superseded by `PlanFeatureTasksSandbox` in auto-advance, but remains active for explicit/manual task-planning flows.
 - Schema validation is simple but strict for non-empty question text; semantic usefulness still depends heavily on prompt quality and source docs.
 - Prompt size is high in local runs (~78k chars max), reinforcing the migration rationale toward sandbox-based planning.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Strong output and one of the closer items to tier-1 quality; the questions are specific and catch real ambiguity.
+- Quality gaps: the output would be more team-ready if questions were classified by blocking status, owner, severity, and the cost of choosing a default.
+- Tier-1 bar: keep the specificity, but add required/optional classification, recommended owner, and decision impact per clarification.

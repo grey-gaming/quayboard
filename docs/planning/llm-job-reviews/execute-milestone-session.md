@@ -33,3 +33,9 @@ Sandbox milestone session result recorded in the database, including the status 
 - No local milestone session executions are present (`sandbox_milestone_sessions` row count: 0), so this review is code-path only.
 - Failure handling is explicit: feature tasks run sequentially, and the first failed implement run marks both task and session failed and stops the remaining queue.
 - There is no dedicated milestone-session OpenCode prompt/output contract; behavior inherits implement/verify run prompts and artifacts.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Cannot confirm tier-1 output quality from local evidence; the current review relies on orchestration behavior rather than a session-level output artifact.
+- Quality gaps: the system appears to rely on per-feature implementation runs, but a tier-1 session output should include a rollup of scope, changed files, verification, failures, and remaining risks.
+- Tier-1 bar: define and store a milestone-session summary artifact that ties each feature run to acceptance evidence and unresolved work.

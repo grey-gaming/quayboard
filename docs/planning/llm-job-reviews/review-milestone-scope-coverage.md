@@ -34,3 +34,9 @@ Review findings (issues, gaps) used to determine whether remediation jobs should
 - Prompt contract and parser align on `{ complete, issues[] }` with actionable `action` + `hint` pairs used by downstream repair jobs.
 - Coverage and scope currently share the same prompt text and data payload, which limits role-specific diagnostics.
 - Recommended: add a mode flag or split prompt templates so scope-boundary and coverage-completeness failures can be distinguished more consistently.
+
+## Tier-1 Output Quality Review
+
+- Verdict: Not tier-1 based on sampled output; the placeholder milestoneId plus bare completion result is a serious quality failure.
+- Quality gaps: placeholder identifiers and no evidence trail make the review unsafe because downstream automation can treat a low-information answer as validation.
+- Tier-1 bar: reject placeholder IDs, require source artifact references, and demand coverage evidence plus issue rationale before marking scope complete.
