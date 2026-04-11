@@ -37,6 +37,7 @@ Overview markdown stored in the database.
 
 ## Tier-1 Output Quality Review
 
-- Verdict: Polished and readable, but not consistently tier-1 because it leans toward product-strategy prose rather than testable planning constraints.
-- Quality gaps: sampled overview content was helpful, but it lacked clear assumption labels, risk callouts, and concrete decisions that downstream planning can verify.
-- Tier-1 bar: require explicit confirmed facts, inferred assumptions, open risks, and downstream planning constraints instead of only narrative synthesis.
+- Verdict: Polished and readable, but the previous prompt was overly restrictive — forcing all inferred content into the Assumptions section left the body of the document thin and non-committal.
+- Root cause: `"Place any inferred capabilities or proposed defaults exclusively in the Assumptions section"` conflated high-level product direction (which should be owned throughout) with specific capability extensions (which belong in Assumptions).
+- Fix applied: prompt now instructs the LLM to make and commit to high-level design decisions (product paradigm, user model, experience model) throughout the document. The Assumptions section is scoped to specific capabilities beyond stated requirements and choices that later planning jobs will resolve. A tech-specifics guardrail was added to prevent premature implementation decisions.
+- This job is an early-stage overview — downstream jobs (Product Spec, Decision Deck, Milestones) are responsible for progressively more specific decisions.

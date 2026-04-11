@@ -38,7 +38,7 @@ const sampleAnswers = {
 };
 
 describe("job prompts", () => {
-  it("preserves the overview JSON contract while generating a richer preference document", () => {
+  it("preserves the overview JSON contract while committing to a product direction", () => {
     const prompt = buildProjectOverviewPrompt({
       projectDescription: "Governed planning workspace for software teams.",
       projectName: "Quayboard",
@@ -50,7 +50,9 @@ describe("job prompts", () => {
     );
     expect(prompt).toContain("Current project description:");
     expect(prompt).toContain("Questionnaire definition:");
-    expect(prompt).toContain("stitched questionnaire recap");
+    expect(prompt).toContain("questionnaire recap");
+    expect(prompt).toContain("commits to a product direction");
+    expect(prompt).toContain("design thesis");
     expect(prompt).toContain("Assumptions and Proposed Defaults");
     expect(prompt).toContain("Do not wrap the JSON in code fences.");
     expect(prompt).toContain("Quayboard");
