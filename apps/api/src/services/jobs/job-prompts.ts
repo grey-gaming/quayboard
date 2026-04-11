@@ -192,7 +192,7 @@ Do not leave major areas underspecified. When information is missing, do not sto
 ## Proportionality Rule
 Scale the depth and feature inventory to match the stated project size and scope. A "small web app" or simple utility does not need full enterprise subsystems, multi-device sync architecture, or a comprehensive platform feature stack.
 
-When you infer a capability that is not explicitly stated in the source material, mark it clearly as an assumption or proposed default — not as a settled requirement. Place all such inferences in the Assumptions section rather than embedding them throughout the spec as if they were confirmed scope.
+Commit to product decisions throughout the specification — including reasonable inferences about core capabilities, workflows, and product shape. Stated requirements take priority, but core product direction and user model may be owned throughout the document even when inferred from context. Where you extend into non-obvious scope expansions, optional platform capabilities, or integrations beyond the stated direction, place those in the Assumptions and Proposed Defaults section — do not embed them in the main spec body as confirmed requirements.
 
 Do not add platform capabilities (offline support, push notifications, service workers, real-time sync, PWA installability, invitation systems, public sharing links) unless the source material explicitly requires them. If you believe one of these is a natural fit, note it as a proposed extension in the Assumptions section only.
 
@@ -437,7 +437,7 @@ End with these three structured outputs:
 - Do not merely summarize the source material.
 - Expand it into a full product specification.
 - Where appropriate, use tables or structured lists, but keep the document readable.
-- Explicitly distinguish fact from inference.
+- Write as a committed product authority. Make product decisions and own them — do not hedge or present alternatives. Scope extensions belong in Assumptions and Proposed Defaults, not scattered through the spec body as uncertainty.
 
 ## Completeness Check
 Before finalizing, silently review your own output and ensure:
@@ -499,7 +499,7 @@ export const buildProductSpecReviewPrompt = (input: {
     "- improve clarity, completeness, consistency, and organization without changing the document materially",
     '- if a final "Specification Gaps" section is empty after review, remove it',
     '- if unresolved items remain, convert that content into a section named "Assumptions and Proposed Defaults" instead of "Specification Gaps"',
-    "- explicitly label any remaining inference or assumption-driven content",
+    "- ensure scope extensions and non-obvious capabilities are in the Assumptions and Proposed Defaults section rather than embedded throughout the spec body as if they were confirmed requirements; the main spec should read as a committed product direction",
     "",
     "First-pass Product Spec title:",
     input.draftTitle,

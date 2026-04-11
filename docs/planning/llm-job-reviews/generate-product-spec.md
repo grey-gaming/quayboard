@@ -38,6 +38,7 @@ Product spec markdown stored in the database.
 
 ## Tier-1 Output Quality Review
 
-- Verdict: Polished and comprehensive, but not reliably tier-1 because it can overstate inferred scope as product truth.
-- Quality gaps: sampled specs are useful for exploration, yet they can expand into broad catalogs of features, personas, and future capabilities without marking assumptions or MVP constraints.
-- Tier-1 bar: require MVP/non-MVP separation, source-grounded requirement labels, assumption confidence, and explicit rejection of unsupported scope expansion.
+- Verdict: Polished and comprehensive. The prompts have been updated to align with the committed-direction philosophy used by `GenerateProjectOverview`.
+- Source-grounded requirement labels and assumption confidence markers are not applicable — the LLM is the product author here, not an annotator of external requirements. Everything is generated from a questionnaire; labeling inferences throughout the spec body produces a hedged document that downstream jobs cannot treat as authoritative product direction.
+- Scope bloat is the legitimate concern from the original audit finding. Addressed by replacing the inference-labeling rule with committed-direction language: the main spec body owns product decisions; the Assumptions and Proposed Defaults section holds non-obvious scope extensions and platform capabilities beyond the stated direction.
+- The review pass has been updated to enforce scope discipline (push extensions to Assumptions section) rather than add hedging markers throughout the spec.
