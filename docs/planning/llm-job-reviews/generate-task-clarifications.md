@@ -34,7 +34,7 @@ JSON array of clarification questions stored in the database, each with a questi
 ## Findings
 
 - Reviewed prompt/parser (`GenerateTaskClarifications`) and local history (57 runs, 1 repair run).
-- This direct-LLM path is superseded by `PlanFeatureTasksSandbox` in auto-advance, but remains active for explicit/manual task-planning flows.
+- This direct-LLM path is superseded by `PlanFeatureTasksSandbox` in auto-advance, but remains active for explicit task-planning flows initiated outside auto-advance.
 - Schema validation is simple but strict for non-empty question text; semantic usefulness still depends heavily on prompt quality and source docs.
 - Prompt size is high in local runs (~78k chars max), reinforcing the migration rationale toward sandbox-based planning.
 

@@ -42,4 +42,4 @@ JSON array of answers, each referencing a clarification question, stored in the 
 
 - Verdict: Generally high quality for implementation defaults, but still below a tier-1 handoff because it can settle ambiguous engineering choices without showing provenance.
 - Quality gaps: answers are detailed and practical, but they lack confidence labels, owner visibility, and an explicit option to refuse a default when the source material does not justify one.
-- Tier-1 bar: preserve the detailed answers, but require a source-grounded rationale, confidence level, and "requires product/engineering decision" escape hatch per clarification.
+- Tier-1 bar: preserve the detailed answers, but require a source-grounded rationale, confidence level, and an automated "defer to later artifact / choose safe default" escape hatch per clarification.

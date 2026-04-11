@@ -31,7 +31,7 @@ JSON with a `complete` boolean and optional issue list, used to decide whether t
 ## Findings
 
 - Reviewed `ReviewMilestoneDelivery` path and local evidence (12 runs, all succeeded in sampled history).
-- The implementation reuses `buildMilestoneCoverageReviewPrompt` rather than a delivery-specific prompt; parser then remaps actions into `refresh_artifacts`/`needs_human_review`.
+- The implementation reuses `buildMilestoneCoverageReviewPrompt` rather than a delivery-specific prompt; parser then remaps actions into `refresh_artifacts`/`needs_human_review` (a legacy action name that should be replaced or aliased for autonomous resolution).
 - Output schema alignment is technically consistent with parser expectations, but terminology is mixed (coverage-style prompt feeding delivery decisions).
 - Recommended: split prompt copy for delivery-specific criteria (workstream/task readiness and shipability) to reduce ambiguity.
 

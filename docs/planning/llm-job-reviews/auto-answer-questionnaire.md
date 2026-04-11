@@ -39,4 +39,4 @@ JSON object with questionnaire field answers stored in the database.
 
 - Verdict: Useful as a draft accelerator, but not consistently tier-1 quality because it answers strategic unknowns too confidently.
 - Quality gaps: the output can turn sparse product context into firm requirements, market assumptions, and roadmap defaults without labeling which facts are inferred versus confirmed.
-- Tier-1 bar: add confidence/provenance labels, allow "needs human answer" for unknowable items, and require a short assumption log for every answer that is not directly grounded in the source context.
+- Tier-1 bar: add confidence/provenance labels, allow an automated "insufficient evidence / use safe default" outcome for unknowable items, and require a short assumption log for every answer that is not directly grounded in the source context.

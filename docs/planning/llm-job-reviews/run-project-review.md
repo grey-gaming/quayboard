@@ -13,7 +13,7 @@ Perform a full repository engineering review via the OpenCode sandbox (run kind:
 
 ## Output
 
-Two artifacts: `project-review.md` (human-readable review report) and `project-review.json` (machine-readable review with findings, severity ratings, verdicts, and evidence paths).
+Two artifacts: `project-review.md` (Markdown review report) and `project-review.json` (machine-readable review with findings, severity ratings, verdicts, and evidence paths).
 
 ## Checklist
 

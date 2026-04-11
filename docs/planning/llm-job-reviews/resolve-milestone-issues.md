@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Resolve delivery or coverage issues identified by `ReviewMilestoneDelivery` or `ReviewMilestoneScope`/`ReviewMilestoneCoverage`. For issues flagged as `needs_human_review`, the prompt tries to reconcile them; for others, it applies targeted fixes to bring the milestone back on track.
+Resolve delivery or coverage issues identified by `ReviewMilestoneDelivery` or `ReviewMilestoneScope`/`ReviewMilestoneCoverage`. For issues currently labeled `needs_human_review` (a legacy action name), the prompt should reconcile them autonomously through safe defaults, artifact rewrites, or explicit unresolved states; for others, it applies targeted fixes to bring the milestone back on track.
 
 ## Output
 
@@ -19,7 +19,7 @@ JSON with resolution details — which defaults were chosen, what operations wer
 
 - [ ] Read the prompt builder in `apps/api/src/services/jobs/job-prompts.ts` for this job's template ID
 - [ ] Pull a real prompt and response from the database (filter `llm_runs` by `template_id = 'ResolveMilestoneDeliveryIssues'` or `'ResolveMilestoneCoverageIssues'`)
-- [ ] **Prompt clarity** — are instructions for reconciling `needs_human_review` issues unambiguous?
+- [ ] **Prompt clarity** — are instructions for autonomously reconciling `needs_human_review` legacy action issues unambiguous?
 - [ ] **Context completeness** — does the prompt include the milestone design document, feature list, workstream statuses, and the specific issues to resolve?
 - [ ] **Output schema alignment** — does the prompt's described resolution structure match what the parser expects?
 - [ ] **Output usefulness** — are the resolution choices sensible and specific? Would a professional team trust the defaults chosen? If not, what is missing and what prompt changes would fix it?
@@ -32,11 +32,11 @@ JSON with resolution details — which defaults were chosen, what operations wer
 
 - Reviewed shared resolver path for `ResolveMilestoneDeliveryIssues` and `ResolveMilestoneCoverageIssues`, including prompt builders and auto-advance consumers.
 - No local `llm_runs` evidence exists for either template (run count: 0 each).
-- Schema alignment issue: delivery review emits `refresh_artifacts` actions, but resolver input parsing currently filters for `rewrite_feature_set`/`needs_human_review`; this drops delivery issues and produces no-op unresolved outcomes.
+- Schema alignment issue: delivery review emits `refresh_artifacts` actions, but resolver input parsing currently filters for `rewrite_feature_set`/`needs_human_review`; this drops delivery issues and produces no-op unresolved outcomes. The `needs_human_review` name is also misaligned with the product goal and should become an autonomous-resolution action in a future contract migration.
 - Recommended: implement a dedicated delivery-issue parser/prompt contract that accepts `refresh_artifacts` and maps directly to executable refresh operations.
 
 ## Tier-1 Output Quality Review
 
 - Verdict: Not tier-1 in its current reviewed state because the flow can drop required operations such as refresh_artifacts.
 - Quality gaps: an issue-resolution agent must prove every review issue maps to a concrete operation or explicit deferral; missing operation coverage undermines trust in the output.
-- Tier-1 bar: fix operation parsing, then require an issue-to-operation matrix with status, evidence, and artifact refresh handling.
+- Tier-1 bar: fix operation parsing, replace or alias `needs_human_review` with an autonomous-resolution action, then require an issue-to-operation matrix with status, evidence, and artifact refresh handling.

@@ -8,7 +8,7 @@ This document is the index for all LLM job prompt quality reviews. Each entry li
 
 Completed on 2026-04-11 as a subagent-style independent rereview focused on whether each LLM job output would meet a tier-1 software team bar. The per-job review files now include a dedicated `Tier-1 Output Quality Review` section.
 
-- Overall verdict: the best planning generators are useful and often professional, but the system is not yet consistently tier-1 because several jobs produce outputs that are too speculative, too broad, or too thinly evidenced for downstream automation to trust without human review.
+- Overall verdict: the best planning generators are useful and often professional, but the system is not yet consistently tier-1 because several jobs produce outputs that are too speculative, too broad, or too thinly evidenced for downstream automation to accept as autonomous gate inputs.
 - Strongest outputs: `GenerateTaskClarifications`, `GenerateDecisionDeck`, `GenerateMilestoneDesign`, `GenerateMilestoneFeatureSetReview`, and parts of the feature-spec generators. These are detailed and actionable, but still need stronger traceability, confidence labels, and decision provenance.
 - Weakest outputs: milestone review jobs that can return bare boolean completion results, especially `ReviewMilestoneMap`, `ReviewMilestoneScope`, and `ReviewMilestoneDelivery`. A tier-1 team would require coverage matrices, evidence, rationale, and placeholder rejection before accepting those as validation.
 - Common gap: generated planning artifacts frequently convert inferred assumptions into authoritative product, architecture, route, API, vendor, or UX decisions. The fix is to require confirmed/proposed/unknown labels and a source-grounded assumption log.
@@ -73,7 +73,7 @@ The per-job review files contain an instance of this checklist. This section is 
 - [ ] **Read the prompt builder** in `apps/api/src/services/jobs/job-prompts.ts` for the job's `templateId`
 - [ ] **Pull a real prompt from the database** using the queries above and read it end-to-end as the model would
 - [ ] **Prompt clarity** — are instructions unambiguous? Could a smaller/weaker model (e.g. a local Ollama model) still produce usable output?
-- [ ] **Context completeness** — does the prompt include all data a human expert would need to perform the same task? Is any injected content at risk of being truncated for large projects given the 50,000 token output cap?
+- [ ] **Context completeness** — does the prompt include all data an autonomous expert reviewer or generation agent would need to perform the same task? Is any injected content at risk of being truncated for large projects given the 50,000 token output cap?
 - [ ] **Output schema alignment** — for JSON-generating jobs, does the prompt's described output shape exactly match what the parser in `job-runner-service.ts` expects? Mismatches cause silent failures or corrupt DB state
 - [ ] **Multi-step generation** — for jobs using draft + review generation: does the review prompt catch the failure modes the draft prompt is prone to?
 - [ ] **Regeneration stability** — for `Regenerate*` and `Rewrite*` variants: does the prompt produce stable output when called repeatedly on the same input?
