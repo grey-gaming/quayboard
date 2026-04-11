@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5555` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -29,4 +29,7 @@ Sandbox milestone session result recorded in the database, including the status 
 
 ## Findings
 
-_No findings yet._
+- Reviewed orchestration in `sandbox-service.ts` (`runMilestoneSession`) and job dispatch in `job-runner-service.ts` (`ExecuteMilestoneSession`).
+- No local milestone session executions are present (`sandbox_milestone_sessions` row count: 0), so this review is code-path only.
+- Failure handling is explicit: feature tasks run sequentially, and the first failed implement run marks both task and session failed and stops the remaining queue.
+- There is no dedicated milestone-session OpenCode prompt/output contract; behavior inherits implement/verify run prompts and artifacts.

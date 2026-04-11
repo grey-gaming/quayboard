@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3880` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Milestone design document with delivery groups and flows stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed `GenerateMilestoneDesign` multi-step flow: draft generation, JSON repair, shape retry, deterministic validator (`validateMilestoneDesignDraft`), and consistency retry.
+- Local evidence shows high repair pressure (24 base runs with 19 repair runs), indicating the schema contract remains difficult for models to satisfy consistently.
+- Failure handling is strong and explicit: unresolved validation conflicts become retryable job failures rather than silently persisted bad docs.
+- Recommended: simplify or partition the structured contract (especially flow/group cross-linking fields) to reduce repair churn and improve small-model reliability.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:2929` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Overview markdown stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed shared overview prompt for `GenerateProjectOverview`/`RegenerateProjectOverview`/`GenerateOverviewImprovements` and parser logic.
+- Local evidence exists only for `GenerateProjectOverview` (3 runs); no local runs were found for regenerate/improvement variants.
+- Schema alignment is strong (`title`, `description`, `markdown`) with explicit failure on missing fields and JSON repair fallback.
+- Token budget appears moderate in local data (max prompt ~13k chars), with lower risk than milestone/feature-generation templates.

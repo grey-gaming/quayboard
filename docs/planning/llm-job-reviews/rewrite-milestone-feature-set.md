@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4372` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -33,4 +33,7 @@ Updated feature definitions for the milestone stored in the database, replacing 
 
 ## Findings
 
-_No findings yet._
+- Reviewed rewrite+review prompt pair and parser for `RewriteMilestoneFeatureSet`, with local evidence (5 base runs, 5 review runs).
+- Prompt includes strong ownership/exit-criteria constraints and explicit issue-driven rewrite framing, then validates through feature-shape parser before persistence.
+- Major risk is prompt size/context bloat (local max ~187k chars), especially on smaller Ollama models.
+- No local repair runs were observed for this template, but broader-context truncation risk remains for larger projects.

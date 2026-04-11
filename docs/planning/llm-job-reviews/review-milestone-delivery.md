@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4516` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ JSON with a `complete` boolean and optional issue list, used to decide whether t
 
 ## Findings
 
-_No findings yet._
+- Reviewed `ReviewMilestoneDelivery` path and local evidence (12 runs, all succeeded in sampled history).
+- The implementation reuses `buildMilestoneCoverageReviewPrompt` rather than a delivery-specific prompt; parser then remaps actions into `refresh_artifacts`/`needs_human_review`.
+- Output schema alignment is technically consistent with parser expectations, but terminology is mixed (coverage-style prompt feeding delivery decisions).
+- Recommended: split prompt copy for delivery-specific criteria (workstream/task readiness and shipability) to reduce ambiguity.

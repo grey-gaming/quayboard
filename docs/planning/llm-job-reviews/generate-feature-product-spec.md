@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4837` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Feature product spec markdown stored in the database as a workstream revision.
 
 ## Findings
 
-_No findings yet._
+- Reviewed draft+review generation path (`GenerateFeatureProductSpec` + `GenerateFeatureProductSpecReview`) and local run history (65 base runs, 64 review runs, 1 repair run).
+- Output schema alignment is solid via `parseFeatureWorkstreamResult`; malformed responses fail explicitly and trigger repair attempts.
+- Prompt context is very large in practice (local max prompt ~167k chars), which is a real model-agnostic risk for smaller Ollama models.
+- Recommended: trim repeated upstream sections or pre-summarize sibling/project docs to reduce prompt size without losing feature-boundary constraints.

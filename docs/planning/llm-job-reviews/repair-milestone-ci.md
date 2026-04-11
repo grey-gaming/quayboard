@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5532` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -30,4 +30,7 @@ Sandbox run outcome recorded in the database. The CI repair run targets the mile
 
 ## Findings
 
-_No findings yet._
+- Reviewed `RepairMilestoneCi` orchestration, CI-context document generation, and `ci_repair` prompt mode in `qb_entrypoint.sh`.
+- Local evidence is limited (1 succeeded job/run), so quality conclusions are low-confidence beyond control-flow correctness.
+- Prompt scope is clear (`repair only CI conditions`), and context includes pending/failing check metadata plus stale-check guidance.
+- No strict artifact contract exists for CI repair output summaries; success is determined by run exit and PR publish behavior.

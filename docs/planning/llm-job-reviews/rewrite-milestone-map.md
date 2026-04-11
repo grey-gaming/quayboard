@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3816` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Updated milestone definitions stored in the database, replacing the previous map
 
 ## Findings
 
-_No findings yet._
+- Reviewed `RewriteMilestoneMap` path: it reuses `buildMilestonePlanPrompt` with aggregated hints from map-review issues.
+- No local `llm_runs` exist for template `RewriteMilestoneMap`, so regeneration stability could not be validated empirically.
+- Unlike newer rewrite jobs, this path has no explicit draft+review pass, making output quality more sensitive to a single generation attempt.
+- Recommended: add a review pass (or deterministic post-check) analogous to feature-set rewrite to improve stability.

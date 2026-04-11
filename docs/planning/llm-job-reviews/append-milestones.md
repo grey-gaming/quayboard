@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3665` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -29,4 +29,7 @@ Additional milestone definitions stored in the database alongside the existing o
 
 ## Findings
 
-_No findings yet._
+- Reviewed `buildAppendMilestonePlanPrompt` in `apps/api/src/services/jobs/job-prompts.ts` and `AppendMilestones` execution/parsing in `apps/api/src/services/jobs/job-runner-service.ts` on 2026-04-11.
+- No local `llm_runs` rows exist for template `AppendMilestones` (run count: 0), so output quality and regeneration stability could not be validated on real data in this environment.
+- Prompt/schema alignment is consistent with `validateGeneratedMilestones`, but this path still needs at least one integration run to confirm duplicate-avoidance behavior against existing milestone maps.
+- Recommended: add a targeted integration test that seeds uncovered flows plus existing milestones and asserts appended milestones are non-overlapping and only reference uncovered flow IDs.

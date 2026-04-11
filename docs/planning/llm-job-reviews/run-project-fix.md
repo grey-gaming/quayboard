@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5369` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -30,4 +30,7 @@ A `project-fix-summary.md` artifact describing what was fixed. The job also reco
 
 ## Findings
 
-_No findings yet._
+- Reviewed `RunProjectFix` orchestration and `project_fix` prompt instructions in sandbox entrypoint.
+- Local evidence: 4 successful jobs/runs; artifact metadata includes `project-fix-summary.md` for sampled runs.
+- Prompt scope containment is clear (fix only batched findings), but success criteria in code are exit/publish-driven and do not validate summary artifact presence.
+- Recommended: add explicit artifact validation for `project-fix-summary.md` analogous to `project_review` JSON/markdown validation.

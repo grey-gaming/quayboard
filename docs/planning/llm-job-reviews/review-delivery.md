@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5574` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ JSON with a `complete` boolean and optional issues. If uncovered user flows exis
 
 ## Findings
 
-_No findings yet._
+- Reviewed `ReviewDelivery` execution/parsing and shared prompt builder `buildDeliveryReviewPrompt`.
+- No local `ReviewDelivery` runs exist, so this item is code-path only in the current environment.
+- Prompt contract uses `jobType` actions (`GenerateUseCases`/`GenerateMilestones`) and parser enforces `complete` boolean before output acceptance.
+- Because this shares prompt structure with milestone-map review logic, dedicated project-level delivery examples should be added to integration tests before wider rollout.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:2847` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -29,4 +29,7 @@ Project description text stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed `buildProjectDescriptionPrompt` and `GenerateProjectDescription` execution path in `job-runner-service.ts`.
+- No local `llm_runs` rows exist for this template, so this assessment is code-only in this environment.
+- Unlike most jobs, this path does not enforce structured output or minimum content quality; it persists `generated.content.trim()` directly.
+- Recommended: add lightweight guardrails (minimum length, sentence count, non-empty assertion) to avoid silently storing empty or trivial descriptions.

@@ -93,30 +93,30 @@ These jobs call the project's configured LLM provider directly through `llmProvi
 
 | # | Job Name(s) | Purpose | Status | Findings |
 |---|-------------|---------|--------|----------|
-| 1 | `GenerateProjectDescription` | Generate project description from questionnaire answers | NOT REVIEWED | [review](llm-job-reviews/generate-project-description.md) |
-| 2 | `AutoAnswerQuestionnaire` | Auto-fill unanswered questionnaire fields | NOT REVIEWED | [review](llm-job-reviews/auto-answer-questionnaire.md) |
-| 3 | `GenerateProjectOverview` `RegenerateProjectOverview` `GenerateOverviewImprovements` | Generate or update the project overview document | NOT REVIEWED | [review](llm-job-reviews/generate-project-overview.md) |
-| 4 | `GenerateProductSpec` `RegenerateProductSpec` `GenerateProductSpecImprovements` | Generate or update the product specification | NOT REVIEWED | [review](llm-job-reviews/generate-product-spec.md) |
-| 5 | `GenerateUseCases` | Generate use cases from project context | NOT REVIEWED | [review](llm-job-reviews/generate-use-cases.md) |
-| 6 | `DeduplicateUseCases` | Deduplicate the existing use case list | NOT REVIEWED | [review](llm-job-reviews/deduplicate-use-cases.md) |
-| 7 | `GenerateDecisionDeck` | Generate a decision deck with architectural choices for the project blueprint | NOT REVIEWED | [review](llm-job-reviews/generate-decision-deck.md) |
-| 8 | `GenerateProjectBlueprint` | Compile the full project blueprint document | NOT REVIEWED | [review](llm-job-reviews/generate-project-blueprint.md) |
-| 9 | `GenerateMilestones` | Generate milestone definitions from use cases and planning documents | NOT REVIEWED | [review](llm-job-reviews/generate-milestones.md) |
-| 10 | `AppendMilestones` | Append additional milestones to the existing milestone map | NOT REVIEWED | [review](llm-job-reviews/append-milestones.md) |
-| 11 | `ReviewMilestoneMap` | Review the milestone map for structural issues | NOT REVIEWED | [review](llm-job-reviews/review-milestone-map.md) |
-| 12 | `RewriteMilestoneMap` | Rewrite the milestone map based on review feedback | NOT REVIEWED | [review](llm-job-reviews/rewrite-milestone-map.md) |
-| 13 | `GenerateMilestoneDesign` | Generate milestone design with delivery groups and user flows | NOT REVIEWED | [review](llm-job-reviews/generate-milestone-design.md) |
-| 14 | `ReviewMilestoneScope` `ReviewMilestoneCoverage` | Review milestone scope completeness and use-case coverage | NOT REVIEWED | [review](llm-job-reviews/review-milestone-scope-coverage.md) |
-| 15 | `GenerateMilestoneFeatureSet` | Generate the feature set for a milestone | NOT REVIEWED | [review](llm-job-reviews/generate-milestone-feature-set.md) |
-| 16 | `RewriteMilestoneFeatureSet` | Rewrite the milestone's feature set | NOT REVIEWED | [review](llm-job-reviews/rewrite-milestone-feature-set.md) |
-| 17 | `ReviewMilestoneDelivery` | Review delivery against product requirements | NOT REVIEWED | [review](llm-job-reviews/review-milestone-delivery.md) |
-| 18 | `ResolveMilestoneDeliveryIssues` `ResolveMilestoneCoverageIssues` | Resolve identified delivery and coverage issues | NOT REVIEWED | [review](llm-job-reviews/resolve-milestone-issues.md) |
-| 19 | `GenerateFeatureProductSpec` | Generate product spec for a specific feature | NOT REVIEWED | [review](llm-job-reviews/generate-feature-product-spec.md) |
-| 20 | `GenerateFeatureUxSpec` `GenerateFeatureTechSpec` `GenerateFeatureUserDocs` `GenerateFeatureArchDocs` | Generate UX spec, tech spec, user docs, and arch docs for a feature | NOT REVIEWED | [review](llm-job-reviews/generate-feature-specs.md) |
-| 21 | `GenerateTaskClarifications` | Generate clarification questions for feature task planning | SUPERSEDED by `PlanFeatureTasksSandbox` | [review](llm-job-reviews/generate-task-clarifications.md) |
-| 22 | `AutoAnswerTaskClarifications` | Auto-answer pending task clarification questions | SUPERSEDED by `PlanFeatureTasksSandbox` | [review](llm-job-reviews/auto-answer-task-clarifications.md) |
-| 23 | `GenerateFeatureTaskList` | Generate the implementation task list for a feature | SUPERSEDED by `PlanFeatureTasksSandbox` | [review](llm-job-reviews/generate-feature-task-list.md) |
-| 24 | `ReviewDelivery` | Review overall milestone coverage completeness against approved user flows | NOT REVIEWED | [review](llm-job-reviews/review-delivery.md) |
+| 1 | `GenerateProjectDescription` | Generate project description from questionnaire answers | REVIEWED | [review](llm-job-reviews/generate-project-description.md) |
+| 2 | `AutoAnswerQuestionnaire` | Auto-fill unanswered questionnaire fields | REVIEWED | [review](llm-job-reviews/auto-answer-questionnaire.md) |
+| 3 | `GenerateProjectOverview` `RegenerateProjectOverview` `GenerateOverviewImprovements` | Generate or update the project overview document | REVIEWED | [review](llm-job-reviews/generate-project-overview.md) |
+| 4 | `GenerateProductSpec` `RegenerateProductSpec` `GenerateProductSpecImprovements` | Generate or update the product specification | REVIEWED | [review](llm-job-reviews/generate-product-spec.md) |
+| 5 | `GenerateUseCases` | Generate use cases from project context | REVIEWED | [review](llm-job-reviews/generate-use-cases.md) |
+| 6 | `DeduplicateUseCases` | Deduplicate the existing use case list | REVIEWED | [review](llm-job-reviews/deduplicate-use-cases.md) |
+| 7 | `GenerateDecisionDeck` | Generate a decision deck with architectural choices for the project blueprint | REVIEWED | [review](llm-job-reviews/generate-decision-deck.md) |
+| 8 | `GenerateProjectBlueprint` | Compile the full project blueprint document | REVIEWED | [review](llm-job-reviews/generate-project-blueprint.md) |
+| 9 | `GenerateMilestones` | Generate milestone definitions from use cases and planning documents | REVIEWED | [review](llm-job-reviews/generate-milestones.md) |
+| 10 | `AppendMilestones` | Append additional milestones to the existing milestone map | REVIEWED | [review](llm-job-reviews/append-milestones.md) |
+| 11 | `ReviewMilestoneMap` | Review the milestone map for structural issues | REVIEWED | [review](llm-job-reviews/review-milestone-map.md) |
+| 12 | `RewriteMilestoneMap` | Rewrite the milestone map based on review feedback | REVIEWED | [review](llm-job-reviews/rewrite-milestone-map.md) |
+| 13 | `GenerateMilestoneDesign` | Generate milestone design with delivery groups and user flows | REVIEWED | [review](llm-job-reviews/generate-milestone-design.md) |
+| 14 | `ReviewMilestoneScope` `ReviewMilestoneCoverage` | Review milestone scope completeness and use-case coverage | REVIEWED | [review](llm-job-reviews/review-milestone-scope-coverage.md) |
+| 15 | `GenerateMilestoneFeatureSet` | Generate the feature set for a milestone | REVIEWED | [review](llm-job-reviews/generate-milestone-feature-set.md) |
+| 16 | `RewriteMilestoneFeatureSet` | Rewrite the milestone's feature set | REVIEWED | [review](llm-job-reviews/rewrite-milestone-feature-set.md) |
+| 17 | `ReviewMilestoneDelivery` | Review delivery against product requirements | REVIEWED | [review](llm-job-reviews/review-milestone-delivery.md) |
+| 18 | `ResolveMilestoneDeliveryIssues` `ResolveMilestoneCoverageIssues` | Resolve identified delivery and coverage issues | REVIEWED | [review](llm-job-reviews/resolve-milestone-issues.md) |
+| 19 | `GenerateFeatureProductSpec` | Generate product spec for a specific feature | REVIEWED | [review](llm-job-reviews/generate-feature-product-spec.md) |
+| 20 | `GenerateFeatureUxSpec` `GenerateFeatureTechSpec` `GenerateFeatureUserDocs` `GenerateFeatureArchDocs` | Generate UX spec, tech spec, user docs, and arch docs for a feature | REVIEWED | [review](llm-job-reviews/generate-feature-specs.md) |
+| 21 | `GenerateTaskClarifications` | Generate clarification questions for feature task planning | REVIEWED (SUPERSEDED) | [review](llm-job-reviews/generate-task-clarifications.md) |
+| 22 | `AutoAnswerTaskClarifications` | Auto-answer pending task clarification questions | REVIEWED (SUPERSEDED) | [review](llm-job-reviews/auto-answer-task-clarifications.md) |
+| 23 | `GenerateFeatureTaskList` | Generate the implementation task list for a feature | REVIEWED (SUPERSEDED) | [review](llm-job-reviews/generate-feature-task-list.md) |
+| 24 | `ReviewDelivery` | Review overall milestone coverage completeness against approved user flows | REVIEWED | [review](llm-job-reviews/review-delivery.md) |
 
 ---
 
@@ -126,11 +126,11 @@ These jobs launch a Docker container running `opencode` (via `docker/agent-sandb
 
 | # | Job Name(s) | Purpose | Status | Findings |
 |---|-------------|---------|--------|----------|
-| 1 | `PlanFeatureTasksSandbox` | Plan feature tasks via OpenCode sandbox (run kind: `task_planning`) | NOT REVIEWED | [review](llm-job-reviews/plan-feature-tasks-sandbox.md) |
-| 2 | `RunProjectReview` | Full repository engineering review via OpenCode (run kind: `project_review`) | NOT REVIEWED | [review](llm-job-reviews/run-project-review.md) |
-| 3 | `RunProjectFix` | Fix project review issues via OpenCode (run kind: `project_fix`) | NOT REVIEWED | [review](llm-job-reviews/run-project-fix.md) |
-| 4 | `RunBugFix` | Fix a specific bug via OpenCode sandbox (run kind: `bug_fix`) | NOT REVIEWED | [review](llm-job-reviews/run-bug-fix.md) |
-| 5 | `ImplementChange` | Execute a feature implementation via OpenCode (run kind: `implement`) | NOT REVIEWED | [review](llm-job-reviews/implement-change.md) |
-| 6 | `TestAndVerify` | Test and verify an implementation via OpenCode (run kind: `verify`) | NOT REVIEWED | [review](llm-job-reviews/test-and-verify.md) |
-| 7 | `RepairMilestoneCi` | Repair CI failures via OpenCode (run kind: `ci_repair`) | NOT REVIEWED | [review](llm-job-reviews/repair-milestone-ci.md) |
-| 8 | `ExecuteMilestoneSession` | Execute a milestone-level sandbox session via OpenCode | NOT REVIEWED | [review](llm-job-reviews/execute-milestone-session.md) |
+| 1 | `PlanFeatureTasksSandbox` | Plan feature tasks via OpenCode sandbox (run kind: `task_planning`) | REVIEWED | [review](llm-job-reviews/plan-feature-tasks-sandbox.md) |
+| 2 | `RunProjectReview` | Full repository engineering review via OpenCode (run kind: `project_review`) | REVIEWED | [review](llm-job-reviews/run-project-review.md) |
+| 3 | `RunProjectFix` | Fix project review issues via OpenCode (run kind: `project_fix`) | REVIEWED | [review](llm-job-reviews/run-project-fix.md) |
+| 4 | `RunBugFix` | Fix a specific bug via OpenCode sandbox (run kind: `bug_fix`) | REVIEWED | [review](llm-job-reviews/run-bug-fix.md) |
+| 5 | `ImplementChange` | Execute a feature implementation via OpenCode (run kind: `implement`) | REVIEWED | [review](llm-job-reviews/implement-change.md) |
+| 6 | `TestAndVerify` | Test and verify an implementation via OpenCode (run kind: `verify`) | REVIEWED | [review](llm-job-reviews/test-and-verify.md) |
+| 7 | `RepairMilestoneCi` | Repair CI failures via OpenCode (run kind: `ci_repair`) | REVIEWED | [review](llm-job-reviews/repair-milestone-ci.md) |
+| 8 | `ExecuteMilestoneSession` | Execute a milestone-level sandbox session via OpenCode | REVIEWED | [review](llm-job-reviews/execute-milestone-session.md) |

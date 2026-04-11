@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3315` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ List of use cases stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed `buildUserFlowPrompt`, `validateGeneratedUserFlows`, and local evidence (3 runs).
+- Output schema alignment is strong and explicit: required fields plus normalized flow steps are enforced before persistence.
+- Prompt and output can be large (local max prompt ~119k chars, response ~34k chars), which can stress smaller models.
+- Recommended: if local-model quality drops, add a two-pass strategy (core flows first, then edge/failure augmentation) instead of one large generation pass.

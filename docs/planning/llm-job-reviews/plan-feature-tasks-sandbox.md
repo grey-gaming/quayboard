@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5225` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -29,4 +29,7 @@ A `task-plan.json` artifact containing an array of tasks, each with `title`, `de
 
 ## Findings
 
-_No findings yet._
+- Reviewed `PlanFeatureTasksSandbox` orchestration, `task_planning` prompt block in `qb_entrypoint.sh`, and post-run JSON validation for `task-plan.json`.
+- No local jobs/runs exist for this item (`PlanFeatureTasksSandbox` jobs: 0; `task_planning` sandbox runs: 0), so this is code-path review only.
+- Prompt acceptance criteria and output schema are explicit and stricter than the legacy direct-LLM task-planning jobs.
+- Local sandbox artifact files are currently cleaned from disk, so no historical prompt/context/output file could be reopened directly.

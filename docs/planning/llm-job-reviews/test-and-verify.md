@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5459` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -29,4 +29,7 @@ Sandbox run outcome recorded in the database (verification passed/failed, etc.).
 
 ## Findings
 
-_No findings yet._
+- Reviewed verify-mode prompt and `TestAndVerify` job branch in `job-runner-service.ts` plus `verify` run behavior in `sandbox-service.ts`.
+- No local `TestAndVerify` jobs were recorded, but verify runs are actively executed as part of `ImplementChange` chaining (64 verify runs total).
+- Prompt acceptance criteria are clear for narrow verification/fix behavior and avoiding scope expansion.
+- Because direct `TestAndVerify` job evidence is absent, add at least one targeted integration test/job fixture for this standalone path.

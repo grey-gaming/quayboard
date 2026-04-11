@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4609` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ JSON with resolution details — which defaults were chosen, what operations wer
 
 ## Findings
 
-_No findings yet._
+- Reviewed shared resolver path for `ResolveMilestoneDeliveryIssues` and `ResolveMilestoneCoverageIssues`, including prompt builders and auto-advance consumers.
+- No local `llm_runs` evidence exists for either template (run count: 0 each).
+- Schema alignment issue: delivery review emits `refresh_artifacts` actions, but resolver input parsing currently filters for `rewrite_feature_set`/`needs_human_review`; this drops delivery issues and produces no-op unresolved outcomes.
+- Recommended: implement a dedicated delivery-issue parser/prompt contract that accepts `refresh_artifacts` and maps directly to executable refresh operations.

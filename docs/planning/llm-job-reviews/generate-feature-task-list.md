@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | SUPERSEDED |
+| **Status** | REVIEWED (SUPERSEDED) |
 | **Type** | Direct LLM (Ollama / OpenAI) — superseded by `PlanFeatureTasksSandbox` |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5074` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -33,4 +33,7 @@ JSON array of tasks (each with title, description, and metadata) stored in the d
 
 ## Findings
 
-_No findings yet._
+- Reviewed `GenerateFeatureTaskList` prompt + review path and local run history (58 base runs, 57 review runs).
+- This direct-LLM path is superseded in auto-advance by `PlanFeatureTasksSandbox`, but remains callable and still has active historical runs.
+- Schema alignment is good (`title`, `description`, optional `instructions`, `acceptanceCriteria`), and malformed outputs fail explicitly.
+- Token budget is non-trivial (local max prompt ~86k chars), which is another reason the sandbox planner is now the preferred path.

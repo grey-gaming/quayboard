@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3599` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Milestone definitions stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed milestone planning prompt/validator and local evidence (5 base runs, 2 repair runs).
+- Schema alignment is clear (`title`, `summary`, `useCaseIds`), with first-milestone exception handled explicitly and post-parse validation catching empty downstream milestones.
+- Observed failures include both structured-output issues and domain guards (e.g., invalid cross-project user-flow references), which is the correct fail-fast behavior.
+- Prompt size is substantial (local max ~92k chars), so smaller models may still require additional decomposition or summarization.

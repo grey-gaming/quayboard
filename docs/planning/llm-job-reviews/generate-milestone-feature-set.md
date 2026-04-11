@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4241` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Feature definitions for the milestone stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed `GenerateMilestoneFeatureSet` draft+review prompts, validator (`validateGeneratedFeatures`), and local run history (12 base + 12 review runs).
+- Prompt explicitly encodes ownership boundaries from milestone design docs and parser enforces non-empty acceptance criteria/kind/priority normalization.
+- Primary risk is token pressure: this is one of the largest prompts in the system (local max prompt ~184k chars).
+- Recommended: include only active-milestone-relevant slices from large project specs to improve model-agnostic stability.

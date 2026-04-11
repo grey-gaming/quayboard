@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | SUPERSEDED |
+| **Status** | REVIEWED (SUPERSEDED) |
 | **Type** | Direct LLM (Ollama / OpenAI) — superseded by `PlanFeatureTasksSandbox` |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5073` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -33,4 +33,7 @@ JSON array of answers, each referencing a clarification question, stored in the 
 
 ## Findings
 
-_No findings yet._
+- Reviewed prompt and parser (`buildAutoAnswerClarificationsPrompt`, `parseAutoAnswerResult`) plus local run history (57 runs, last: 2026-04-10).
+- This job is superseded in auto-advance by `PlanFeatureTasksSandbox`, but remains callable and still executes in local history.
+- Schema handling is minimal (array of answers only). It enforces non-empty answers but does not verify answer grounding against source docs, so generic-but-valid answers can pass.
+- Observed failures were primarily provider-side (`503` retryable HTTP errors), not parser-shape failures.

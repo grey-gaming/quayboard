@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:2982` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Product spec markdown stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed the full multi-step chain (`GenerateProductSpec` -> quality check -> optional retry -> review) and local run history (4 base runs, review/repair templates present).
+- Failure handling is mature: malformed JSON routes through repair; major quality failures route through a dedicated quality-check pass with regeneration hints.
+- Token budget risk is high on output size (local max response ~136k chars), which can degrade smaller models or increase truncation risk.
+- Recommended: consider section-wise generation with deterministic assembly for large projects to reduce single-pass output pressure.

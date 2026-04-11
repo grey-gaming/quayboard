@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4152` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Review findings (issues, gaps) used to determine whether remediation jobs should
 
 ## Findings
 
-_No findings yet._
+- Reviewed shared scope/coverage review flow and parser behavior, with local evidence for `ReviewMilestoneScope` only (21 runs; `ReviewMilestoneCoverage` runs: 0).
+- Prompt contract and parser align on `{ complete, issues[] }` with actionable `action` + `hint` pairs used by downstream repair jobs.
+- Coverage and scope currently share the same prompt text and data payload, which limits role-specific diagnostics.
+- Recommended: add a mode flag or split prompt templates so scope-boundary and coverage-completeness failures can be distinguished more consistently.

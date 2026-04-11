@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:2875` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ JSON object with questionnaire field answers stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed prompt builder and parser path (`buildQuestionnaireAutoAnswerPrompt`, `AutoAnswerQuestionnaire` branch) and sampled local DB evidence (3 runs, last: 2026-04-08).
+- Prompt clarity and schema alignment are strong: output is constrained to a JSON object, then filtered to blank keys and validated by `questionnaireAnswerMapSchema` before persistence.
+- Prompt injection surface exists because user-provided answers are interpolated verbatim; current risk is partially mitigated by strict key filtering and schema parsing but still benefits from stronger data delimiting.
+- Token budget risk appears low in local data (max prompt size ~7.1k chars, max response ~4.8k chars).

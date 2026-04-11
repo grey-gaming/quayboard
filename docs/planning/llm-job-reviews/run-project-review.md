@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5315` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -29,4 +29,7 @@ Two artifacts: `project-review.md` (human-readable review report) and `project-r
 
 ## Findings
 
-_No findings yet._
+- Reviewed `RunProjectReview` flow end-to-end, including run prompt, mandatory artifacts, JSON schema validation in `qb_entrypoint.sh`, and job completion parsing.
+- Local evidence: 5 jobs (4 succeeded, 1 failed). Successful runs produced `project-review.md` and `project-review.json` artifact records.
+- Failure handling is explicit: missing/invalid required artifacts fail the run, and auto-advance treats review/fix jobs as retryable in bounded loops.
+- Local artifact files are not currently present on disk (metadata remains), so this review used DB metadata plus code-path validation.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3744` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Review report / issues list used to decide whether `RewriteMilestoneMap` should 
 
 ## Findings
 
-_No findings yet._
+- Reviewed `ReviewMilestoneMap` prompt path and parser plus local evidence (4 runs).
+- When uncovered flows are detected from authoritative coverage data, the job correctly short-circuits without LLM and emits deterministic repair hints.
+- When LLM is used, prompt currently reuses `buildDeliveryReviewPrompt`; parser supports both modern `action` and legacy `jobType` issue formats.
+- Recommended: provide a dedicated milestone-map review prompt to avoid conflating map structure checks with project delivery checks.

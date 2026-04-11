@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:4933` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Feature spec markdown (UX, tech, user docs, or arch docs) stored in the database
 
 ## Findings
 
-_No findings yet._
+- Reviewed all four variant prompts (UX/Tech/UserDocs/ArchDocs), shared review prompt, parser behavior, and local run history (`UX 30`, `Tech 63`, `UserDocs 5`, `ArchDocs 38`).
+- Draft+review flow is robust and enforces explicit failures on malformed JSON; repair templates are actively used for UX/Tech/Arch variants, indicating real-world shape drift.
+- Variant intent is generally clear, but prompt size is high (local max prompts between ~72k and ~150k chars), increasing truncation and quality risk on smaller models.
+- No local evidence exists for template `GenerateFeatureArchDocs` requiring dedicated output schema beyond title/markdown; if stronger structure is desired, add variant-specific schema checks.

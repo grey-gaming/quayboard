@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | SUPERSEDED |
+| **Status** | REVIEWED (SUPERSEDED) |
 | **Type** | Direct LLM (Ollama / OpenAI) — superseded by `PlanFeatureTasksSandbox` |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5072` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -33,4 +33,7 @@ JSON array of clarification questions stored in the database, each with a questi
 
 ## Findings
 
-_No findings yet._
+- Reviewed prompt/parser (`GenerateTaskClarifications`) and local history (57 runs, 1 repair run).
+- This direct-LLM path is superseded by `PlanFeatureTasksSandbox` in auto-advance, but remains active for explicit/manual task-planning flows.
+- Schema validation is simple but strict for non-empty question text; semantic usefulness still depends heavily on prompt quality and source docs.
+- Prompt size is high in local runs (~78k chars max), reinforcing the migration rationale toward sandbox-based planning.

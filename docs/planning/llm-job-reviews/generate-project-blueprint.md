@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3484` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -30,4 +30,7 @@ Blueprint markdown stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed blueprint generation path including `ValidateDecisionConsistency` and repair loop, plus local evidence (6 blueprint runs, 6 consistency checks).
+- Prompt/parser alignment is good for title/markdown outputs, and decision-consistency gating materially reduces downstream contradiction risk.
+- One repair run exists, showing structured-output fallback is exercised in practice.
+- Token budget is significant (local max prompt ~118k chars; response up to ~51k chars), so this remains sensitive for smaller local models.

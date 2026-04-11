@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5459` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -31,4 +31,7 @@ Sandbox run outcome recorded in the database (changes applied, no-op, verificati
 
 ## Findings
 
-_No findings yet._
+- Reviewed implement orchestration across `job-runner-service.ts`, `sandbox-service.ts`, and sandbox entrypoint prompt modes.
+- Local evidence: 79 `ImplementChange` jobs (55 succeeded, 21 failed, 3 cancelled), with automatic chaining into `verify` sandbox runs.
+- Common failure mode is runtime stall/timeout (`implement run did not exit within 40 minutes`), which is explicitly detected and surfaced.
+- Scope containment is prompt-driven and generally clear, but there is no changed-file allowlist at runtime, so broad edits remain technically possible.

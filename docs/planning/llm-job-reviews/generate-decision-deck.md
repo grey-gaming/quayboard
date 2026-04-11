@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Direct LLM (Ollama / OpenAI) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:3403` |
 | **Prompt builder** | `apps/api/src/services/jobs/job-prompts.ts` |
@@ -31,4 +31,7 @@ Decision deck with options/choices stored in the database.
 
 ## Findings
 
-_No findings yet._
+- Reviewed `buildDecisionDeckPrompt`, parser/validator (`validateGeneratedDecisionDeck`), and local evidence (6 runs, last: 2026-04-08).
+- Prompt and parser are aligned on required keys and nested option shapes; validation correctly rejects incomplete cards and weak alternative sets.
+- Prompt clarity is high for tradeoff framing, but token budget can become heavy when full product specs are large (local max prompt ~115k chars).
+- Prompt injection surface remains from user-authored product specs; wrapping source blocks with explicit data delimiters would reduce instruction hijack risk.

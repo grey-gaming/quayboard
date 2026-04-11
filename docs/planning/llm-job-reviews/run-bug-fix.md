@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | NOT REVIEWED |
+| **Status** | REVIEWED |
 | **Type** | Sandbox (OpenCode) |
 | **Code location** | `apps/api/src/services/jobs/job-runner-service.ts:5401` |
 | **Entrypoint** | `docker/agent-sandbox/qb_entrypoint.sh` |
@@ -30,4 +30,7 @@ A `bug-fix-summary.md` artifact describing the fix. The job also creates a pull 
 
 ## Findings
 
-_No findings yet._
+- Reviewed bug-fix sandbox flow across `qb_entrypoint.sh`, `sandbox-service.ts`, and `RunBugFix` job handling.
+- Local evidence: 21 jobs (12 succeeded, 7 failed, 2 cancelled); failures include non-zero exits/timeouts (e.g., exit code 124).
+- Done criteria are strong in code: success requires a mergeable PR path (`changes_applied` + branch + merge).
+- Prompt requests `bug-fix-summary.md`, but runner does not hard-fail when the summary artifact is missing; consider enforcing this output contract in code.
