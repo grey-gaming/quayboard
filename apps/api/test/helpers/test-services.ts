@@ -889,6 +889,12 @@ export const createStubServices = (): AppServices => ({
     createMilestoneSession: async () => {
       throw new Error("Not implemented in test stub.");
     },
+    buildTaskPlanningContextDocument: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
+    createFeatureTaskPlanningRun: async () => {
+      throw new Error("Not implemented in test stub.");
+    },
     createMilestoneCiRepairRun: async () => {
       throw new Error("Not implemented in test stub.");
     },

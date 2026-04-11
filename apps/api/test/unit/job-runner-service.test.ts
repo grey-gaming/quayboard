@@ -125,7 +125,9 @@ describe("job runner service", () => {
           model: "glm-5:cloud",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       sandboxService: {
         executeRun: vi.fn(async () => {
           throw new Error("implement run exited with code 1.");
@@ -308,7 +310,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       sandboxService: {} as never,
       userFlowService: {
         list: vi.fn(async () => ({
@@ -418,7 +422,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       sandboxService: {} as never,
       userFlowService: {
         list: vi.fn(async () => ({
@@ -626,7 +632,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         list: vi.fn(async () => ({
           userFlows: [
@@ -730,7 +738,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -820,7 +830,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1014,7 +1026,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1216,7 +1230,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1308,7 +1324,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1403,7 +1421,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1518,7 +1538,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1642,7 +1664,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -1757,7 +1781,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         archive,
       } as never,
@@ -1849,7 +1875,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         createMany,
       } as never,
@@ -1928,7 +1956,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         createMany,
       } as never,
@@ -2021,7 +2051,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         createMany,
       } as never,
@@ -2138,7 +2170,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         createMany,
       } as never,
@@ -2240,7 +2274,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         createMany,
       } as never,
@@ -2467,7 +2503,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -2686,7 +2724,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -2868,7 +2908,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -3148,7 +3190,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -3376,7 +3420,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -3592,7 +3638,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -3779,7 +3827,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -3951,7 +4001,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -4159,7 +4211,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         list: vi.fn(async () => ({
           userFlows: [
@@ -4324,7 +4378,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         list: vi.fn(async () => ({
           userFlows: [],
@@ -4520,7 +4576,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -4688,7 +4746,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -4774,7 +4834,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -4904,7 +4966,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {} as never,
     });
 
@@ -5041,7 +5105,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         list: vi.fn(async () => ({
           userFlows: [],
@@ -5184,7 +5250,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       userFlowService: {
         list: vi.fn(async () => ({
           userFlows: [],
@@ -5281,7 +5349,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       sandboxService: {} as never,
       userFlowService: {
         list: vi.fn(async () => ({
@@ -5410,7 +5480,9 @@ describe("job runner service", () => {
           model: "gpt-4.1",
         })),
       } as never,
-      questionnaireService: {} as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
       sandboxService: {} as never,
       userFlowService: {
         list: vi.fn(async () => ({

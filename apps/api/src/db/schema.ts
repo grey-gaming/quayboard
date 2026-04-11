@@ -79,6 +79,7 @@ const sandboxRunKindValues = [
   "project_review",
   "project_fix",
   "bug_fix",
+  "task_planning",
 ] as const;
 const sandboxRunStatusValues = [
   "queued",

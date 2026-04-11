@@ -4,6 +4,8 @@ set -euo pipefail
 ARTIFACT_DIR="${QB_ARTIFACT_DIR:-/run/artifacts}"
 CONTEXT_PATH="${QB_CONTEXT_PATH:-/workspace/.quayboard-context.md}"
 TASKS_PATH="${QB_TASKS_PATH:-/workspace/.quayboard-tasks.md}"
+TASK_PLANNING_CONTEXT_PATH="${QB_TASK_PLANNING_CONTEXT_PATH:-/workspace/.quayboard-task-planning-context.md}"
+TASK_PLAN_OUTPUT_PATH="${ARTIFACT_DIR}/task-plan.json"
 WORKSPACE_DIR="${QB_WORKSPACE_DIR:-/workspace}"
 RUN_KIND="${QB_RUN_KIND:-implement}"
 LLM_PROVIDER="${QB_LLM_PROVIDER:-}"
@@ -27,8 +29,14 @@ if [[ ! -f "${CONTEXT_PATH}" ]]; then
   exit 2
 fi
 
-if [[ ! -f "${TASKS_PATH}" ]]; then
+# task_planning runs provide context via a separate file; .quayboard-tasks.md is not required
+if [[ "${RUN_KIND}" != "task_planning" && ! -f "${TASKS_PATH}" ]]; then
   echo "Quayboard tasks file not found: ${TASKS_PATH}" >&2
+  exit 2
+fi
+
+if [[ "${RUN_KIND}" == "task_planning" && ! -f "${TASK_PLANNING_CONTEXT_PATH}" ]]; then
+  echo "Quayboard task planning context file not found: ${TASK_PLANNING_CONTEXT_PATH}" >&2
   exit 2
 fi
 
@@ -156,6 +164,40 @@ CI repair mode:
 - Re-run the failing or closest equivalent local checks before exiting.
 - Avoid unrelated refactors or new feature work.
 EOF
+fi
+
+if [[ "${RUN_KIND}" == "task_planning" ]]; then
+  cat >> "${PROMPT_PATH}" <<TPEOF
+
+Task planning mode:
+- Do NOT modify any repository files. Do not commit. Do not push.
+- Read /workspace/.quayboard-context.md for the project context and design decisions.
+- Read /workspace/.quayboard-task-planning-context.md for the feature details, planning documents, and acceptance criteria you must plan tasks for.
+- Inspect the actual repository code to understand what already exists, the tech stack in use, and what previous milestones have delivered. Base your tasks on what the repo actually contains — not on assumptions about what might be there.
+- Do not propose technology changes (language, framework, major library) unless the tech already present in the repo requires them for the feature to work.
+- Generate an ordered, implementation-ready task list for the feature.
+
+Output schema — write a valid JSON array to ${TASK_PLAN_OUTPUT_PATH}. Each element must conform exactly to:
+
+{
+  "title": string,           // required — short, action-oriented task title
+  "description": string,     // required — what to implement and why, grounded in the repo
+  "instructions": string,    // optional (omit key if not needed) — concrete steps, commands, or code guidance the implementer should follow
+  "acceptanceCriteria": [    // required — non-empty array; each entry is a concrete, independently verifiable statement
+    string
+  ]
+}
+
+Rules:
+- The output must be a JSON array (not an object, not wrapped in a key).
+- Every element must have "title", "description", and "acceptanceCriteria". "instructions" is optional.
+- "acceptanceCriteria" must be a non-empty array of strings. Each criterion must be concrete and verifiable (e.g. "The /api/users endpoint returns 200 with the correct schema" not "It works correctly").
+- Order tasks: setup/dependencies first → core logic → integration → verification last.
+- Merge closely related work into one task. Do not create micro-tasks.
+- Do not include tasks for work that is clearly already present in the repository.
+- Do not add tasks to set up or migrate the tech stack unless explicitly called for.
+- Write the final array to ${TASK_PLAN_OUTPUT_PATH} and nowhere else.
+TPEOF
 fi
 
 python - <<'PY' > "${CONFIG_PATH}"
@@ -315,6 +357,47 @@ for index, finding in enumerate(findings):
             raise SystemExit(
                 f"project-review.json findings[{index}].evidence[{evidence_index}] must contain a non-empty path string."
             )
+PY
+fi
+
+if [[ "${RUN_KIND}" == "task_planning" ]]; then
+  python - <<'PY' "${TASK_PLAN_OUTPUT_PATH}"
+import json
+import sys
+
+output_path = sys.argv[1]
+
+if not __import__("os").path.exists(output_path):
+    raise SystemExit(f"Missing task plan artifact: {output_path}")
+
+with open(output_path, "r", encoding="utf-8") as handle:
+    try:
+        payload = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"task-plan.json is not valid JSON: {exc}") from exc
+
+if not isinstance(payload, list):
+    raise SystemExit("task-plan.json must be a JSON array.")
+
+if not payload:
+    raise SystemExit("task-plan.json must not be an empty array.")
+
+for index, task in enumerate(payload):
+    if not isinstance(task, dict):
+        raise SystemExit(f"task-plan.json[{index}] must be an object.")
+    for field in ["title", "description"]:
+        value = task.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise SystemExit(f"task-plan.json[{index}].{field} must be a non-empty string.")
+    if "instructions" in task and task["instructions"] is not None:
+        if not isinstance(task["instructions"], str):
+            raise SystemExit(f"task-plan.json[{index}].instructions must be a string or null.")
+    criteria = task.get("acceptanceCriteria")
+    if not isinstance(criteria, list) or not criteria:
+        raise SystemExit(f"task-plan.json[{index}].acceptanceCriteria must be a non-empty array.")
+    for ci, criterion in enumerate(criteria):
+        if not isinstance(criterion, str) or not criterion.strip():
+            raise SystemExit(f"task-plan.json[{index}].acceptanceCriteria[{ci}] must be a non-empty string.")
 PY
 fi
 

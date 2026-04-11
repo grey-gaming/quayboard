@@ -3028,7 +3028,7 @@ describe("auto-advance service", () => {
       );
     });
 
-    it("queues AutoAnswerTaskClarifications once with auto-advance metadata", async () => {
+    it("does not queue a job for feature_task_clarifications_answer (now handled by sandbox)", async () => {
       const featureId = "66666666-6666-4666-8666-666666666666";
       const taskSessionId = "77777777-7777-4777-8777-777777777777";
       nextActionsService.build.mockResolvedValue({
@@ -3046,20 +3046,7 @@ describe("auto-advance service", () => {
       await service.start(USER_ID, PROJECT_ID, {});
 
       expect(taskPlanningService.autoAnswerClarifications).not.toHaveBeenCalled();
-      expect(jobService.createJob).toHaveBeenCalledTimes(1);
-      expect(jobService.createJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "AutoAnswerTaskClarifications",
-          projectId: PROJECT_ID,
-          inputs: expect.objectContaining({
-            featureId,
-            sessionId: taskSessionId,
-            _autoAdvance: expect.objectContaining({
-              sessionId: SESSION_ID,
-            }),
-          }),
-        }),
-      );
+      expect(jobService.createJob).not.toHaveBeenCalled();
     });
   });
 

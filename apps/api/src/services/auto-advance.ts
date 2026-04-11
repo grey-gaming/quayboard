@@ -318,38 +318,18 @@ const AUTOMATABLE_STEPS: Record<
   },
   feature_arch_docs_approval: null,
   feature_task_clarifications_generate: {
-    type: "GenerateTaskClarifications",
+    type: "PlanFeatureTasksSandbox",
     buildInputs: (href) => {
       const featureIdMatch = href.match(/\/features\/([^/?]+)/);
-      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
       return {
         featureId: featureIdMatch?.[1] ?? "",
-        sessionId: sessionMatch?.[1] === "missing" ? "" : sessionMatch?.[1] ?? "",
       };
     },
   },
-  feature_task_clarifications_answer: {
-    type: "AutoAnswerTaskClarifications",
-    buildInputs: (href) => {
-      const featureIdMatch = href.match(/\/features\/([^/?]+)/);
-      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
-      return {
-        featureId: featureIdMatch?.[1] ?? "",
-        sessionId: sessionMatch?.[1] ?? "",
-      };
-    },
-  },
-  feature_task_list_generate: {
-    type: "GenerateFeatureTaskList",
-    buildInputs: (href) => {
-      const featureIdMatch = href.match(/\/features\/([^/?]+)/);
-      const sessionMatch = href.match(/[?&]taskSession=([^&]+)/);
-      return {
-        featureId: featureIdMatch?.[1] ?? "",
-        sessionId: sessionMatch?.[1] ?? "",
-      };
-    },
-  },
+  // These two steps are now handled inside PlanFeatureTasksSandbox — kept as
+  // non-automatable so existing next-action logic can transition them cleanly.
+  feature_task_clarifications_answer: null,
+  feature_task_list_generate: null,
   feature_implement: null,
   feature_stale_implementation: null,
 };
@@ -1469,16 +1449,6 @@ export const createAutoAdvanceService = (
           const cfg = AUTOMATABLE_STEPS[action.key];
           if (!cfg) return Promise.resolve();
           const inputs = cfg.buildInputs ? cfg.buildInputs(action.href) : {};
-          if (action.key === "feature_task_clarifications_generate") {
-            const taskInputs = inputs as { featureId?: string; sessionId?: string };
-            if (taskInputs.featureId && !taskInputs.sessionId) {
-              const planningSession = await taskPlanningService.getOrCreateSession(
-                ownerUserId,
-                taskInputs.featureId,
-              );
-              taskInputs.sessionId = planningSession.id;
-            }
-          }
           return jobService.createJob({
             createdByUserId: ownerUserId,
             projectId,

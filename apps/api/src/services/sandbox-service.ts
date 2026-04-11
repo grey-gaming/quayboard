@@ -77,6 +77,10 @@ import {
 import type { SecretService } from "./secret-service.js";
 import type { SseHub } from "./sse.js";
 import type { TaskPlanningService } from "./task-planning-service.js";
+import {
+  buildTaskPlanningDocuments,
+  isTaskPlanningReady,
+} from "./task-planning-support.js";
 
 const execFileAsync = promisify(execFile);
 const gitUserEnv = {
@@ -382,14 +386,14 @@ const isLocalHostName = (hostname: string) =>
   hostname === "host.docker.internal";
 
 const isDeliveryRunKind = (
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix",
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix" | "task_planning",
 ) => runKind === "implement" || runKind === "verify" || runKind === "project_fix" || runKind === "bug_fix";
 
 export const determineNetworkModeForRun = (input: {
   baseUrl: string | null;
   egressPolicy: "allowlisted" | "locked";
   provider: ProviderDefinition["provider"],
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix";
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix" | "task_planning";
 }) => {
   if (!input.baseUrl) {
     return isDeliveryRunKind(input.runKind) ? ("bridge" as const) : ("none" as const);
@@ -502,7 +506,7 @@ export const detectSandboxRunStall = (input: {
   changedFiles: LiveChangedFile[];
   hadMeaningfulTraceProgress: boolean;
   nowMs: number;
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix";
+  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix" | "task_planning";
   state: RunStallState;
 }) => {
   if (input.hadMeaningfulTraceProgress) {
@@ -1030,6 +1034,50 @@ export const createSandboxService = (input: {
     };
   },
 
+  /**
+   * Build the markdown context document written to .quayboard-task-planning-context.md
+   * for task_planning sandbox runs. Fetches all approved feature planning workstreams
+   * and formats them for the agent to read.
+   */
+  async buildTaskPlanningContextDocument(ownerUserId: string, featureId: string): Promise<string> {
+    const tracks = await input.featureWorkstreamService.getTracks(ownerUserId, featureId);
+
+    if (!isTaskPlanningReady(tracks.tracks)) {
+      throw new Error(
+        "Feature workstreams are not ready for task planning. All required planning documents must be approved.",
+      );
+    }
+
+    const featureRecord = await input.db.query.featureCasesTable.findFirst({
+      where: eq(featureCasesTable.id, featureId),
+    });
+    const headRevision = featureRecord
+      ? await input.db.query.featureRevisionsTable.findFirst({
+          where: eq(featureRevisionsTable.featureId, featureId),
+          orderBy: [desc(featureRevisionsTable.version)],
+        })
+      : null;
+
+    const lines: string[] = [
+      "# Feature Task Planning Context",
+      "",
+      "## Feature",
+      `**Feature key:** ${featureRecord?.featureKey ?? featureId}`,
+      `**Title:** ${headRevision?.title ?? "(unknown)"}`,
+      `**Summary:** ${headRevision?.summary ?? "(unknown)"}`,
+      "",
+      "## Acceptance Criteria",
+      ...((headRevision?.acceptanceCriteria as string[] | null | undefined) ?? []).map(
+        (criterion) => `- ${criterion}`,
+      ),
+      "",
+      "## Planning Documents",
+      buildTaskPlanningDocuments(tracks.tracks),
+    ];
+
+    return lines.join("\n");
+  },
+
   async getOptions(ownerUserId: string, projectId: string) {
     await this.assertOwnedProject(ownerUserId, projectId);
     const [executionSettings, repo, features, codingPacks] = await Promise.all([
@@ -1268,7 +1316,8 @@ export const createSandboxService = (input: {
       | { milestoneId: string; kind: "ci_repair" }
       | { kind: "project_review"; branchName?: string }
       | { kind: "project_fix"; branchName?: string }
-      | { kind: "bug_fix"; bugReportId: string; branchName?: string },
+      | { kind: "bug_fix"; bugReportId: string; branchName?: string }
+      | { featureId: string; sessionId: string; kind: "task_planning" },
     triggeredByJobId: string | null = null,
     jobInputs: Record<string, unknown> | null = null,
   ) {
@@ -1277,7 +1326,8 @@ export const createSandboxService = (input: {
       request.kind === "ci_repair" ||
       request.kind === "project_review" ||
       request.kind === "project_fix" ||
-      request.kind === "bug_fix"
+      request.kind === "bug_fix" ||
+      request.kind === "task_planning"
         ? request
         : createSandboxRunRequestSchema.parse(request);
     const bugReport =
@@ -1301,9 +1351,11 @@ export const createSandboxService = (input: {
     }
 
     const session =
-      "featureId" in payload && (payload.kind === "implement" || payload.kind === "verify")
-        ? await input.taskPlanningService.getSession(ownerUserId, payload.featureId)
-        : null;
+      "featureId" in payload && payload.kind === "task_planning"
+        ? { id: payload.sessionId }
+        : "featureId" in payload && (payload.kind === "implement" || payload.kind === "verify")
+          ? await input.taskPlanningService.getSession(ownerUserId, payload.featureId)
+          : null;
     if ("featureId" in payload && (payload.kind === "implement" || payload.kind === "verify") && !session) {
       throw new HttpError(
         409,
@@ -1347,7 +1399,7 @@ export const createSandboxService = (input: {
       })
       .returning();
 
-    if (!triggeredByJobId) {
+    if (!triggeredByJobId && payload.kind !== "task_planning") {
       await input.db.insert(jobsTable).values({
         id: generateId(),
         projectId,
@@ -1446,6 +1498,25 @@ export const createSandboxService = (input: {
       {
         milestoneId,
         kind: "ci_repair",
+      },
+      triggeredByJobId,
+    );
+  },
+
+  async createFeatureTaskPlanningRun(
+    ownerUserId: string,
+    projectId: string,
+    featureId: string,
+    sessionId: string,
+    triggeredByJobId: string | null = null,
+  ) {
+    return this.createRun(
+      ownerUserId,
+      projectId,
+      {
+        featureId,
+        sessionId,
+        kind: "task_planning",
       },
       triggeredByJobId,
     );
@@ -2062,6 +2133,18 @@ export const createSandboxService = (input: {
         networkMode,
       );
       await writeFile(path.join(workspaceDir, ".quayboard-context.md"), pack.content);
+
+      if (run.kind === "task_planning" && run.featureId) {
+        const featurePlanningContext = await this.buildTaskPlanningContextDocument(
+          project.ownerUserId,
+          run.featureId,
+        );
+        await writeFile(
+          path.join(workspaceDir, ".quayboard-task-planning-context.md"),
+          featurePlanningContext,
+        );
+      }
+
       const taskFileContent =
         run.kind === "project_review"
           ? [
@@ -2088,12 +2171,14 @@ export const createSandboxService = (input: {
                   "Re-run the closest relevant verification before exiting.",
                   "Write a remediation summary to /run/artifacts/bug-fix-summary.md.",
                 ].join("\n")
-            : tasks
-                .map(
-                  (task, index) =>
-                    `${index + 1}. ${task.title}\n${task.description}\n${task.acceptanceCriteria.join("\n")}`,
-                )
-                .join("\n\n");
+              : run.kind === "task_planning"
+                ? "Task planning run — see /workspace/.quayboard-task-planning-context.md for the work context."
+                : tasks
+                    .map(
+                      (task, index) =>
+                        `${index + 1}. ${task.title}\n${task.description}\n${task.acceptanceCriteria.join("\n")}`,
+                    )
+                    .join("\n\n");
       await writeFile(path.join(workspaceDir, ".quayboard-tasks.md"), taskFileContent);
       if (run.kind === "bug_fix" && bugReport) {
         await writeFile(
@@ -2146,6 +2231,7 @@ export const createSandboxService = (input: {
           QB_LLM_MODEL: llmDefinition.model,
           QB_LLM_PROVIDER: llmDefinition.provider,
           QB_TASKS_PATH: "/workspace/.quayboard-tasks.md",
+          QB_TASK_PLANNING_CONTEXT_PATH: "/workspace/.quayboard-task-planning-context.md",
           QB_RUN_KIND: run.kind,
         },
         image: executionSettings.defaultImage,
@@ -2544,6 +2630,48 @@ export const createSandboxService = (input: {
                 ? "Verification completed and pushed the initial commit to the default branch."
                 : "Verification completed with no pull request because the workspace was unchanged."
             : "Project review completed successfully.",
+        );
+        return;
+      }
+
+      if (run.kind === "task_planning" && exitCode === 0 && run.taskPlanningSessionId) {
+        const taskPlanPath = path.join(artifactDir, "task-plan.json");
+        let parsedTasks: Array<{
+          title: string;
+          description: string;
+          instructions?: string | null;
+          acceptanceCriteria: string[];
+        }>;
+        try {
+          const taskPlanRaw = await readFile(taskPlanPath, "utf-8");
+          parsedTasks = JSON.parse(taskPlanRaw) as typeof parsedTasks;
+          if (!Array.isArray(parsedTasks) || parsedTasks.length === 0) {
+            throw new Error("task-plan.json must be a non-empty JSON array.");
+          }
+        } catch (err) {
+          await this.updateRunState(sandboxRunId, {
+            status: "failed",
+            outcome: "error",
+            completedAt: new Date(),
+          });
+          runFinalized = true;
+          const msg = `Task planning run did not produce a valid task-plan.json: ${err instanceof Error ? err.message : String(err)}`;
+          await this.appendEvent(sandboxRunId, "error", "run_failed", msg);
+          throw createHandledRunFailure(msg);
+        }
+
+        await input.taskPlanningService.createTasks(run.taskPlanningSessionId, parsedTasks);
+        await this.updateRunState(sandboxRunId, {
+          status: "succeeded",
+          outcome: "no_op",
+          completedAt: new Date(),
+        });
+        runFinalized = true;
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "task_planning_completed",
+          `Task planning run produced ${parsedTasks.length} task(s).`,
         );
         return;
       }
