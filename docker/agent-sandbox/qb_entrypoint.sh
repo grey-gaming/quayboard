@@ -74,6 +74,13 @@ Prefer single-command verification patterns that start the service, probe it, an
 Do not leave watch processes, dev servers, or background jobs running between steps.
 Individual shell commands are limited to 15 minutes.
 
+Quayboard runner contract:
+- Follow repository instructions unless they conflict with this Quayboard runner contract.
+- Do not commit, push, create pull requests, merge pull requests, or mutate remote branches. Quayboard captures your working tree and publishes it after verification.
+- Leave all publishable changes in the working tree.
+- Before exiting a code-changing run, inspect the final diff and status so generated files, secrets, logs, and unrelated edits are not left behind.
+- If the assigned work remains incomplete, blocked, or unverified, report that clearly and exit non-zero instead of claiming success.
+
 Code quality:
 - Refactor as you work. Extract shared logic, eliminate duplication, and keep modules focused. Do not take the shortest path when it leaves a mess behind.
 - Write meaningful tests for any code you implement or change. Tests are as important as the production code.
@@ -107,6 +114,7 @@ Security:
 
 Artifacts:
 - Leave useful machine-readable or human-readable evidence under ${ARTIFACT_DIR}.
+- Include the commands you ran and their results in your final response or artifact output.
 EOF
 
 if [[ "${RUN_KIND}" == "verify" ]]; then
@@ -118,6 +126,8 @@ Verification mode:
 - Keep any fixes narrow and tied to the requested implementation.
 - If the requested implementation depends on small adjacent code or documentation touch-ups to be coherent and verifiable, make them.
 - Do not expand product scope, add unrelated features, or start broader cleanup work.
+- Confirm every assigned task and acceptance criterion in /workspace/.quayboard-tasks.md is satisfied or explicitly identify the blocker.
+- Inspect the final diff before exiting.
 EOF
 fi
 
@@ -129,6 +139,9 @@ Implementation mode:
 - Always add or update user-facing and architecture documentation when you introduce a new library, a new software choice, or when behavior, wiring, or boundaries change. Keep documentation grounded in behavior actually implemented in this run.
 - As you work, be aware of what prior agents built before you. Explore the codebase to understand the user journey, flow, and integration points. Ensure your new code paths and changes are reachable from the existing application — routes are registered, navigation links exist, components are wired in. If this is the first task in the feature and no integration is needed yet, that is fine.
 - Do not invent new features, speculative behavior, or unrelated refactors beyond what the assigned tasks require.
+- Complete every assigned task and acceptance criterion in /workspace/.quayboard-tasks.md, or exit non-zero with a concise blocker description.
+- Add or update meaningful tests for changed behavior and run the closest relevant verification before exiting.
+- Inspect the final diff before exiting and remove unrelated edits, generated output, logs, and secrets from the working tree.
 EOF
 fi
 
@@ -156,7 +169,7 @@ Output:
 - The JSON must be a single object with exactly these top-level keys: executiveSummary, maturityLevel, usabilityVerdict, biggestStrengths, biggestRisks, engineeringQualityVerdict, finalVerdict, findings.
 - finalVerdict must be an object with boolean fields documentationGoodEnough, testsGoodEnough, projectCompleteEnough, codeHasMajorIssues, plus confidence set to high, medium, or low.
 - findings must be an array. Each finding must be an object with: category, severity, finding, evidence, whyItMatters, recommendedImprovement.
-- category must be one of: documentation, tests, completeness, architecture.
+- category must be one of: documentation, tests, completeness, architecture, code_quality, security.
 - severity must be one of: critical, high, medium, low.
 - evidence must be an array of objects shaped like { "path": "relative/or/absolute/path" }.
 - whyItMatters and recommendedImprovement must be non-empty strings.
@@ -174,6 +187,7 @@ Project fix mode:
 - Write meaningful tests for any code changes you make as part of the fix.
 - Re-run the closest relevant verification (tests, type checks, build) before exiting.
 - Write a concise remediation summary to ${PROJECT_FIX_SUMMARY_PATH}. For each finding, state what you changed and how you verified it.
+- Inspect the final diff before exiting and leave the remediation changes uncommitted in the working tree.
 EOF
 fi
 
@@ -187,6 +201,7 @@ Bug fix mode:
 - Write or update a test that would have caught this bug, so it cannot regress.
 - Re-run the closest relevant verification (tests, type checks, build) before exiting.
 - Write a concise remediation summary to ${BUG_FIX_SUMMARY_PATH} covering: root cause, what you changed, how you verified the fix, and what test you added.
+- Inspect the final diff before exiting and leave the fix uncommitted in the working tree.
 EOF
 fi
 
@@ -200,6 +215,7 @@ CI repair mode:
 - If tests appear to finish but the process does not exit, treat it as an open-handle or teardown problem.
 - Re-run the failing or closest equivalent local checks before exiting to confirm the repair.
 - Avoid unrelated refactors or new feature work.
+- Inspect the final diff before exiting and leave the repair uncommitted in the working tree.
 EOF
 fi
 
@@ -374,7 +390,7 @@ findings = payload.get("findings")
 if not isinstance(findings, list):
     raise SystemExit("project-review.json field 'findings' must be an array.")
 
-valid_categories = {"documentation", "tests", "completeness", "architecture"}
+valid_categories = {"documentation", "tests", "completeness", "architecture", "code_quality", "security"}
 valid_severities = {"critical", "high", "medium", "low"}
 for index, finding in enumerate(findings):
     if not isinstance(finding, dict):

@@ -8,6 +8,8 @@ export const projectReviewCategorySchema = z.enum([
   "tests",
   "completeness",
   "architecture",
+  "code_quality",
+  "security",
 ]);
 export type ProjectReviewCategory = z.infer<typeof projectReviewCategorySchema>;
 
