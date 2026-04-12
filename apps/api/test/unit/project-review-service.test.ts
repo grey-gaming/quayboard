@@ -5,6 +5,7 @@ import {
   createProjectReviewService,
   isProjectReviewHighOnlyPhase,
   partitionProjectReviewFindings,
+  parseProjectReviewArtifact,
 } from "../../src/services/project-review-service.js";
 
 describe("project review service helpers", () => {
@@ -38,6 +39,44 @@ describe("project review service helpers", () => {
         { severity: "low", finding: "low issue" },
       ],
     });
+  });
+
+  it("parses code quality and security finding categories", () => {
+    const parsed = parseProjectReviewArtifact(JSON.stringify({
+      executiveSummary: "Review completed.",
+      maturityLevel: "solid",
+      usabilityVerdict: "usable",
+      biggestStrengths: ["Clear flow"],
+      biggestRisks: ["Security coverage"],
+      finalVerdict: {
+        documentationGoodEnough: true,
+        testsGoodEnough: false,
+        projectCompleteEnough: true,
+        codeHasMajorIssues: true,
+        confidence: "high",
+      },
+      engineeringQualityVerdict: "Needs targeted cleanup.",
+      findings: [
+        {
+          category: "code_quality",
+          severity: "medium",
+          finding: "Duplicate validation logic exists.",
+          evidence: [{ path: "apps/api/src/example.ts" }],
+          whyItMatters: "Duplication makes fixes inconsistent.",
+          recommendedImprovement: "Extract shared validation.",
+        },
+        {
+          category: "security",
+          severity: "high",
+          finding: "A token is logged.",
+          evidence: [{ path: "apps/api/src/logging.ts" }],
+          whyItMatters: "Secrets can leak into persisted logs.",
+          recommendedImprovement: "Redact tokens before logging.",
+        },
+      ],
+    }));
+
+    expect(parsed.findings.map((finding) => finding.category)).toEqual(["code_quality", "security"]);
   });
 });
 

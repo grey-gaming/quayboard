@@ -208,6 +208,7 @@ export const createStubServices = (): AppServices => ({
       updatedAt: new Date(),
     }),
     listContextPacks: async () => [],
+    listApprovedFeatureDocs: async () => [],
     listMemoryChunks: async () => [],
   },
   db: {} as AppServices["db"],

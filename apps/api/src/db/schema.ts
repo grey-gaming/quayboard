@@ -140,6 +140,8 @@ const projectReviewCategoryValues = [
   "tests",
   "completeness",
   "architecture",
+  "code_quality",
+  "security",
 ] as const;
 const projectReviewSeverityValues = ["critical", "high", "medium", "low"] as const;
 const projectReviewFindingStatusValues = [
