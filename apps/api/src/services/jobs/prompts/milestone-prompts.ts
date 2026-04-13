@@ -40,6 +40,7 @@ export const buildMilestonePlanPrompt = (input: {
       ? [
           "",
           "## Guidance",
+          "Treat this guidance as hard repair criteria. If it names missing first-milestone foundation items, rewrite milestone 1's summary to explicitly include those items while preserving complete approved user-flow coverage.",
           input.hint,
         ]
       : []),

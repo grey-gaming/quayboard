@@ -3717,10 +3717,11 @@ export const createJobRunnerService = (input: {
           throw new Error("ReviewMilestoneMap requires milestone service support.");
         }
 
-        const [productSpec, userFlows, milestones] = await Promise.all([
+        const [productSpec, userFlows, milestones, reviewQuestionnaire] = await Promise.all([
           input.productSpecService.getCanonical(ownerUserId, rawJob.projectId),
           input.userFlowService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
+          input.questionnaireService.getAnswers(rawJob.projectId),
         ]);
         const uncoveredFlowSet = new Set(milestones.coverage.uncoveredUserFlowIds);
         const uncoveredFlows = userFlows.userFlows.filter((flow) => uncoveredFlowSet.has(flow.id));
@@ -3752,6 +3753,7 @@ export const createJobRunnerService = (input: {
             coveredUserFlowCount: milestones.coverage.coveredUserFlowCount,
             uncoveredUserFlowTitles: [],
           },
+          sizeProfile: classifyProjectSize(reviewQuestionnaire.answers),
           milestones: milestones.milestones.map((milestone) => ({
             title: milestone.title,
             summary: milestone.summary,
@@ -3807,8 +3809,11 @@ export const createJobRunnerService = (input: {
         ]
           .filter((value): value is string => Boolean(value))
           .join("\n");
-        const userFlows = await input.userFlowService.list(ownerUserId, rawJob.projectId);
-        const blueprints = await input.blueprintService.getCanonical(ownerUserId, rawJob.projectId);
+        const [userFlows, blueprints, rewriteQuestionnaire] = await Promise.all([
+          input.userFlowService.list(ownerUserId, rawJob.projectId),
+          input.blueprintService.getCanonical(ownerUserId, rawJob.projectId),
+          input.questionnaireService.getAnswers(rawJob.projectId),
+        ]);
 
         if (!userFlows.approvedAt) {
           throw new Error("RewriteMilestoneMap requires approved user flows.");
@@ -3829,6 +3834,7 @@ export const createJobRunnerService = (input: {
             entryPoint: flow.entryPoint,
             endState: flow.endState,
           })),
+          sizeProfile: classifyProjectSize(rewriteQuestionnaire.answers),
           hint: hint.length > 0 ? hint : undefined,
         });
         const milestones = await runStructuredJsonGeneration({
@@ -5547,10 +5553,11 @@ export const createJobRunnerService = (input: {
           throw new Error("ReviewDelivery requires milestone service support.");
         }
 
-        const [productSpec, userFlows, milestones] = await Promise.all([
+        const [productSpec, userFlows, milestones, reviewQuestionnaire] = await Promise.all([
           input.productSpecService.getCanonical(ownerUserId, rawJob.projectId),
           input.userFlowService.list(ownerUserId, rawJob.projectId),
           input.milestoneService.list(ownerUserId, rawJob.projectId),
+          input.questionnaireService.getAnswers(rawJob.projectId),
         ]);
         const uncoveredFlowSet = new Set(milestones.coverage.uncoveredUserFlowIds);
         const uncoveredFlows = userFlows.userFlows.filter((flow) => uncoveredFlowSet.has(flow.id));
@@ -5581,6 +5588,7 @@ export const createJobRunnerService = (input: {
             coveredUserFlowCount: milestones.coverage.coveredUserFlowCount,
             uncoveredUserFlowTitles: [],
           },
+          sizeProfile: classifyProjectSize(reviewQuestionnaire.answers),
           milestones: milestones.milestones.map((milestone) => ({
             title: milestone.title,
             summary: milestone.summary,

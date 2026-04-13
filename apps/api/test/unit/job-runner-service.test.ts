@@ -5524,4 +5524,132 @@ describe("job runner service", () => {
     );
     expect(generate).not.toHaveBeenCalled();
   });
+
+  it("passes project size guidance into milestone-map review prompts", async () => {
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({ complete: true, issues: [] }),
+      promptTokens: 10,
+      completionTokens: 10,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: createDbStub() as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-review-map",
+          projectId,
+          createdByUserId: userId,
+          type: "ReviewMilestoneMap",
+          inputs: {},
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        list: vi.fn(async () => ({
+          milestones: [
+            {
+              title: "Foundations",
+              summary: "Bootstrap the repository.",
+              featureCount: 0,
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 1,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: [],
+          },
+          mapReview: {
+            generatedAt: "2026-03-18T00:00:00.000Z",
+            reviewStatus: "not_started",
+            reviewIssues: [],
+            reviewedAt: null,
+          },
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {
+        getAnswers: async () => ({
+          answers: {
+            q1_name_and_description: "A small utility for a solo user.",
+            q6_main_capabilities: "Simple lightweight display tool.",
+            q11_constraints_and_requirements: "Minimal side project scope.",
+          },
+          completedAt: "2026-03-18T00:00:00.000Z",
+          projectId,
+          updatedAt: new Date().toISOString(),
+        }),
+      } as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-1",
+              projectId,
+              title: "View display",
+              userStory: "As a user I want to view the display.",
+              entryPoint: "Home",
+              endState: "Display visible",
+              flowSteps: [],
+              coverageTags: [],
+              acceptanceCriteria: [],
+              doneCriteriaRefs: [],
+              source: "GenerateUseCases",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-review-map");
+
+    const prompt = (generate.mock.calls[0] as unknown[] | undefined)?.[1] as string | undefined;
+    expect(prompt).toContain("AGENTS.md");
+    expect(prompt).toContain("lightweight for a small utility");
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-review-map",
+      expect.objectContaining({ complete: true }),
+    );
+  });
 });

@@ -134,6 +134,41 @@ describe("job prompts", () => {
     expect(prompt).toContain("Every milestone after the first must use a non-empty useCaseIds array.");
   });
 
+  it("keeps named first-milestone foundation minimums for small projects", () => {
+    const prompt = buildMilestonePlanPrompt({
+      projectName: "Quayboard",
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      userFlows: [],
+      sizeProfile: {
+        tier: "small",
+        featureBudgetPerMilestone: 4,
+        techStackHint: null,
+      },
+    });
+
+    expect(prompt).toContain("AGENTS.md");
+    expect(prompt).toContain("baseline docs/ADR scaffolding");
+    expect(prompt).toContain("environment/bootstrap setup");
+    expect(prompt).toContain("CI/test harness");
+    expect(prompt).toContain("minimal smoke-path or hello-world slice");
+    expect(prompt).toContain("lightweight for a small utility");
+  });
+
+  it("treats milestone rewrite guidance as hard repair criteria", () => {
+    const prompt = buildMilestonePlanPrompt({
+      projectName: "Quayboard",
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      userFlows: [],
+      hint: "Milestone 1 is missing AGENTS.md.",
+    });
+
+    expect(prompt).toContain("Treat this guidance as hard repair criteria");
+    expect(prompt).toContain("rewrite milestone 1's summary to explicitly include those items");
+    expect(prompt).toContain("Milestone 1 is missing AGENTS.md.");
+  });
+
   it("keeps milestone design generation internally consistent across sections", () => {
     const prompt = buildMilestoneDesignPrompt({
       projectName: "Quayboard",
@@ -532,6 +567,24 @@ describe("job prompts", () => {
       const prompt = buildDeliveryReviewPrompt(baseInput);
       expect(prompt).toContain("conservative");
       expect(prompt).toContain("Prefer returning complete: true");
+    });
+
+    it("uses the same named foundation minimums as milestone generation", () => {
+      const prompt = buildDeliveryReviewPrompt({
+        ...baseInput,
+        sizeProfile: {
+          tier: "medium",
+          featureBudgetPerMilestone: 6,
+          techStackHint: null,
+        },
+      });
+
+      expect(prompt).toContain("AGENTS.md");
+      expect(prompt).toContain("baseline docs/ADR scaffolding");
+      expect(prompt).toContain("environment/bootstrap setup");
+      expect(prompt).toContain("CI/test harness");
+      expect(prompt).toContain("minimal smoke-path or hello-world slice");
+      expect(prompt).toContain("Fail milestone review if milestone 1 does not explicitly establish those named foundation minimums.");
     });
 
     it("instructs the LLM not to flag user flow gaps when milestones don't yet cover existing flows", () => {
