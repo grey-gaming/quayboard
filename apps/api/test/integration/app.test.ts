@@ -291,6 +291,17 @@ describe("API integration", () => {
     await runMigrations(databaseUrl);
   });
 
+  it("allows task planning sandbox runs after migrations", async () => {
+    const [constraint] = await sql<[{ definition: string }]>`
+      select pg_get_constraintdef(oid) as definition
+      from pg_constraint
+      where conrelid = 'sandbox_runs'::regclass
+        and conname = 'sandbox_runs_kind_check'
+    `;
+
+    expect(constraint?.definition).toContain("'task_planning'::text");
+  });
+
   it("reopens approved milestones without canonical design docs when the follow-up migration runs", async () => {
     const tempDatabaseName = `quayboard_migration_${Date.now()}`;
     const tempDatabaseUrl = new URL(databaseUrl);
