@@ -4,6 +4,7 @@ import { createJobRunnerService } from "../../src/services/jobs/job-runner-servi
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
 const userId = "d3057770-eca1-417a-a1c6-c00bb83a47d0";
+const featureId = "7c2257cd-72be-4d26-b071-522f19916ff1";
 
 const createDbStub = () => {
   const values = vi.fn(async () => undefined);
@@ -140,6 +141,102 @@ describe("job runner service", () => {
       "implement run exited with code 1.",
     );
     expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("executes task planning sandbox runs before marking the job succeeded", async () => {
+    const db = createDbStub();
+    const markSucceeded = vi.fn(async () => undefined);
+    const createFeatureTaskPlanningRun = vi.fn(async () => ({ id: "task-planning-run-1" }));
+    const executeRun = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: db as never,
+      featureService: {} as never,
+      featureWorkstreamService: {
+        getTracks: vi.fn(async () => ({
+          tracks: {
+            product: {
+              status: "approved",
+              headRevision: { id: "p1", markdown: "# Product" },
+              required: true,
+            },
+            ux: {
+              status: "approved",
+              headRevision: { id: "u1", markdown: "# UX" },
+              required: true,
+            },
+            tech: {
+              status: "approved",
+              headRevision: { id: "t1", markdown: "# Tech" },
+              required: true,
+            },
+            userDocs: { status: "missing", headRevision: null, required: false },
+            archDocs: {
+              status: "approved",
+              headRevision: { id: "a1", markdown: "# Arch" },
+              required: true,
+            },
+          },
+        })),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-task-planning",
+          projectId,
+          createdByUserId: userId,
+          type: "PlanFeatureTasksSandbox",
+          inputs: { featureId },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {} as never,
+      milestoneService: {} as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Governed planning workspace.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "ollama",
+          model: "glm-5:cloud",
+        })),
+      } as never,
+      questionnaireService: {
+        getAnswers: async () => ({
+          answers: {},
+          completedAt: null,
+          projectId,
+          updatedAt: new Date().toISOString(),
+        }),
+      } as never,
+      sandboxService: {
+        createFeatureTaskPlanningRun,
+        executeRun,
+      } as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-task-planning");
+
+    expect(createFeatureTaskPlanningRun).toHaveBeenCalledWith(
+      userId,
+      projectId,
+      featureId,
+      expect.any(String),
+      "job-task-planning",
+    );
+    expect(executeRun).toHaveBeenCalledWith("job-task-planning", "task-planning-run-1");
+    expect(markSucceeded).toHaveBeenCalledWith("job-task-planning", {
+      featureId,
+      sessionId: expect.any(String),
+      sandboxRunId: "task-planning-run-1",
+    });
   });
 
   it("fills only blank questionnaire answers during auto-answer", async () => {

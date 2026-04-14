@@ -5238,6 +5238,7 @@ export const createJobRunnerService = (input: {
           taskSandboxSession.id,
           rawJob.id,
         );
+        await input.sandboxService.executeRun(rawJob.id, sandboxRun.id);
 
         return input.jobService.markSucceeded(rawJob.id, {
           featureId: taskSandboxFeatureId,
