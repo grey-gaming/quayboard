@@ -248,13 +248,14 @@ export const createDockerService = (dockerHost: string | null) => {
         args.push("--env", `${key}=${value}`);
       }
 
-      args.push("--env", "QB_ARTIFACT_DIR=/run/artifacts");
+      args.push("--env", "QB_ARTIFACT_DIR=/workspace/.quayboard-artifacts");
       args.push("--env", "HOME=/run/artifacts/home");
       args.push("--env", "XDG_CONFIG_HOME=/run/artifacts/home/.config");
       args.push("--env", "XDG_CACHE_HOME=/run/artifacts/home/.cache");
       args.push("--env", "XDG_DATA_HOME=/run/artifacts/home/.local/share");
       args.push("--mount", `type=bind,src=${input.workspaceDir},dst=/workspace`);
       args.push("--mount", `type=bind,src=${input.artifactDir},dst=/run/artifacts`);
+      args.push("--mount", `type=bind,src=${input.artifactDir},dst=/workspace/.quayboard-artifacts`);
 
       if (input.networkMode !== "host") {
         args.push("--add-host", "host.docker.internal:host-gateway");
