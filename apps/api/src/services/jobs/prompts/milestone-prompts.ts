@@ -206,6 +206,50 @@ export const buildMilestoneDesignRepairPrompt = (input: {
     input.draftJson,
   ].join("\n");
 
+export const buildMilestoneDesignSemanticReviewPrompt = (input: {
+  projectName: string;
+  milestoneTitle: string;
+  milestoneSummary: string;
+  linkedUserFlows: Array<{
+    title: string;
+    userStory: string;
+    entryPoint: string;
+    endState: string;
+  }>;
+  uxSpec: string;
+  technicalSpec: string;
+  draftJson: string;
+}) =>
+  [
+    qualityCharter,
+    "",
+    "Task:",
+    `Review the structured milestone design draft for "${input.milestoneTitle}" in "${input.projectName}" before it is persisted.`,
+    'Return valid JSON with exactly three top-level keys: "ok" (boolean), "issues" (array of strings), and "repairHint" (string or null).',
+    "Look for material semantic contradictions that would make downstream feature planning, task planning, or implementation choose incompatible interpretations.",
+    "Hard blockers include shared resources with conflicting controllers, incompatible sequencing or ownership rules, impossible platform/API assumptions, exit criteria that contradict delivery responsibilities, and required behaviours that conflict with out-of-scope boundaries.",
+    "Examples of hard blockers: one Web Audio GainNode is required to own both a scheduled dampening automation ramp and immediate user volume changes; one section says voice stealing prioritizes most recent and loudest frequencies while another requires stealing the oldest voice.",
+    "Do not report minor wording differences, absent implementation details that can reasonably be chosen later, or choices already resolved consistently in the draft.",
+    "If a conservative default can make the draft internally consistent, set ok=false and put the exact default to apply in repairHint.",
+    "If the draft is coherent enough for feature planning, set ok=true, issues=[], and repairHint=null.",
+    "Do not wrap the JSON in code fences.",
+    "",
+    "Milestone summary:",
+    input.milestoneSummary,
+    "",
+    "Linked user flows:",
+    JSON.stringify(input.linkedUserFlows, null, 2),
+    "",
+    "Approved UX Spec:",
+    input.uxSpec,
+    "",
+    "Approved Technical Spec:",
+    input.technicalSpec,
+    "",
+    "Structured milestone design draft:",
+    input.draftJson,
+  ].join("\n");
+
 const buildMilestoneDesignContractInstructions = (input: { hasLinkedUserFlows: boolean }) => [
   input.hasLinkedUserFlows
     ? "includedUserFlows must be a non-empty array. Each item must contain: title, summary, steps, deliveryGroupKeys, and screens."
@@ -228,6 +272,7 @@ const buildMilestoneDesignContractInstructions = (input: { hasLinkedUserFlows: b
   "exitCriteria must be a non-empty array. Each item must contain: criterion, deliveryGroupKey, and screens.",
   "Each exitCriteria criterion must describe a verifiable working behaviour a reviewer can check against the running application — not a completion statement. Bad: 'Authentication feature is complete.' Good: 'A new user can register with email and password, receive a session token, and access a protected route.'",
   "The structure must describe one internally consistent milestone. Do not let flow steps, screen ownership, sequencing, or required-vs-optional rules contradict each other.",
+  "Choose one conservative interpretation for shared resource ownership, ordering heuristics, and platform/API constraints. Do not leave one section saying a shared resource is controlled by two incompatible mechanisms.",
   "Do not wrap the JSON in code fences.",
   "Use this shape for tricky fields: steps must be an array of strings, outOfScope must be an array of strings, ownedScreens may be [], mustStayTogether and mustNotSplit must be booleans (true/false), and backend-only exit criteria may use screens: [].",
   "",

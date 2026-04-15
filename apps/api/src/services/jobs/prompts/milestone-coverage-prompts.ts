@@ -16,6 +16,13 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
       userDocs: "approved" | "missing" | "draft";
       archDocs: "approved" | "missing" | "draft";
     };
+    workstreamDocs?: {
+      product: string | null;
+      ux: string | null;
+      tech: string | null;
+      userDocs: string | null;
+      archDocs: string | null;
+    };
     title: string;
     summary: string;
     taskCount: number;
@@ -45,7 +52,7 @@ export const buildMilestoneCoverageReviewPrompt = (input: {
     "Canonical milestone design document:",
     input.milestoneDesignDoc,
     "",
-    "Current milestone features, workstream status, and task titles:",
+    "Current milestone features, approved workstream document text, and task titles:",
     JSON.stringify(input.features, null, 2),
   ].join("\n");
 
@@ -95,6 +102,7 @@ export const buildRewriteMilestoneFeatureSetPrompt = (input: {
     "Rewrite sibling boundaries as needed so cross-feature interaction issues are handled inside the feature set itself.",
     "Prefer fewer, coherent feature-sized items over task-sized fragments.",
     "Resolve the named issues into one consistent ownership model across all features; do not restate the ambiguity in the rewritten set.",
+    "Choose one conservative default for shared resource control, ordering heuristics, and platform/API constraints when that default can satisfy the milestone design document.",
     "Treat the milestone design document's Included User Flows and Delivery Shape groupings as hard constraints while rewriting.",
     "Each named flow step, screen, and responsibility in the milestone design document must belong to exactly one rewritten feature.",
     "Cover every delivery group named in the milestone design document, including state-management or service groups that do not own screens.",
@@ -182,6 +190,7 @@ export const buildRewriteMilestoneFeatureSetReviewPrompt = (input: {
     "priority must be one of: must_have, should_have, could_have, wont_have.",
     "Preserve the intended full-set rewrite, close the named gap cleanly, and keep sibling feature ownership clear.",
     "Ensure the final rewrite uses one consistent interpretation of the milestone design document's flow order, screen ownership, and Delivery Shape boundaries.",
+    "Ensure shared resources, automation ownership, and ordering heuristics use one conservative default instead of preserving conflicting interpretations.",
     "Ensure the final rewrite covers every delivery group named in the milestone design document, including non-visual groups with no screens.",
     "Ensure the final rewrite collectively satisfies every milestone exit criterion from the milestone design document.",
     "Treat partial coverage as incomplete. If a rendering group owns grid, snake, and food rendering, do not approve a rewrite that covers only food rendering.",
@@ -242,6 +251,8 @@ export const buildMilestoneCoverageRepairPrompt = (input: {
     'refresh must be an object with exactly these boolean keys: "product", "ux", "tech", "userDocs", "archDocs", "tasks".',
     "Use only existing features from the selected milestone. Do not add, remove, move, or merge features.",
     "Choose conservative defaults that satisfy the milestone design document and keep work inside the active milestone.",
+    "Prefer resolving ambiguous shared-resource ownership, ordering heuristics, and platform/API constraints through concrete feature/workstream updates over returning unresolved.",
+    "Examples: split user-controlled volume from automated dampening into separate GainNodes; pick one voice-stealing heuristic and refresh the affected feature acceptance criteria.",
     "If the gaps cannot be resolved with updates to existing feature definitions, workstreams, and tasks, return resolved=false and explain why in unresolvedReasons.",
     "Do not wrap the JSON in code fences.",
     "",
@@ -319,6 +330,7 @@ export const buildMilestoneCoverageRepairReviewPrompt = (input: {
     `This is milestone coverage auto-repair attempt ${input.attemptNumber}.`,
     'Return valid JSON with exactly four top-level keys: "resolved", "defaultsChosen", "operations", and "unresolvedReasons".',
     "Keep the plan conservative, executable, and limited to existing active-milestone features.",
+    "If the draft chooses a reasonable conservative default for a shared-resource or ordering conflict, preserve that choice and make sure the refresh plan updates every affected workstream/task.",
     "Do not invent milestone-document changes or cross-milestone work.",
     "If the draft plan is overreaching, reduce it or set resolved=false.",
     "Do not wrap the JSON in code fences.",

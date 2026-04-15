@@ -6,6 +6,12 @@ const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
 const userId = "d3057770-eca1-417a-a1c6-c00bb83a47d0";
 const featureId = "7c2257cd-72be-4d26-b071-522f19916ff1";
 
+const semanticReviewOk = {
+  content: JSON.stringify({ ok: true, issues: [], repairHint: null }),
+  promptTokens: 2,
+  completionTokens: 2,
+};
+
 const createDbStub = () => {
   const values = vi.fn(async () => undefined);
   const selectLimit = vi.fn(async () => [
@@ -2521,7 +2527,8 @@ describe("job runner service", () => {
         }),
         promptTokens: 11,
         completionTokens: 13,
-      });
+      })
+      .mockResolvedValueOnce(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -2608,7 +2615,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         milestoneId: "milestone-id",
@@ -2727,21 +2734,7 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            {
-              type: "risk",
-              description: "First-session completion may drop if redirect timing feels abrupt.",
-              mitigation: "Show confirmation before returning to the dashboard.",
-            },
-            {
-              type: "open_question",
-              description: "Should password rules be visible before submission?",
-            },
-          ],
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
+        ...semanticReviewOk,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -2829,7 +2822,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.stringContaining("- Open landing page Outcome: Landing page renders."),
@@ -2888,8 +2881,10 @@ describe("job runner service", () => {
       id: "design-doc-id",
     }));
     const markSucceeded = vi.fn(async () => undefined);
-    const generate = vi.fn().mockResolvedValue({
-      content: JSON.stringify({
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
         title: "Milestone Design",
         objective: "Stand up the repository, tooling, and smoke path.",
         includedUserFlows: [],
@@ -2923,10 +2918,11 @@ describe("job runner service", () => {
             screens: [],
           },
         ],
-      }),
-      promptTokens: 10,
-      completionTokens: 12,
-    });
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValue(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -3201,13 +3197,7 @@ describe("job runner service", () => {
         completionTokens: 14,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            "Risk: The onboarding copy may need localization review.",
-          ],
-        }),
-        promptTokens: 13,
-        completionTokens: 15,
+        ...semanticReviewOk,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -3295,7 +3285,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(4);
     expect(createDesignDocVersion).toHaveBeenCalled();
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-generate-design",
@@ -3826,13 +3816,7 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: {
-            risk: "wrong-shape",
-          },
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
+        ...semanticReviewOk,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -3932,7 +3916,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.not.stringContaining("## Risks and Open Questions"),
@@ -4019,7 +4003,8 @@ describe("job runner service", () => {
         }),
         promptTokens: 10,
         completionTokens: 12,
-      });
+      })
+      .mockResolvedValueOnce(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -4106,7 +4091,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.not.stringContaining("## Risks and Open Questions"),
@@ -4952,7 +4937,7 @@ describe("job runner service", () => {
     });
   });
 
-  it("builds milestone coverage review prompts without embedding full workstream markdown", async () => {
+  it("builds milestone coverage review prompts with approved workstream markdown", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
@@ -5078,10 +5063,10 @@ describe("job runner service", () => {
     const prompt = firstGenerateCall?.[1] ?? "";
     expect(prompt).toContain('"featureKey": "F-001"');
     expect(prompt).toContain('"product": "approved"');
-    expect(prompt).not.toContain("Long product markdown");
-    expect(prompt).not.toContain("Long ux markdown");
-    expect(prompt).not.toContain("Long tech markdown");
-    expect(prompt).not.toContain("Long arch markdown");
+    expect(prompt).toContain("Long product markdown");
+    expect(prompt).toContain("Long ux markdown");
+    expect(prompt).toContain("Long tech markdown");
+    expect(prompt).toContain("Long arch markdown");
     expect(prompt).toContain('If the milestone design doc itself is coherent and the gap can be fixed by rewriting or expanding features, prefer "rewrite_feature_set".');
     expect(prompt).toContain('Use "needs_human_review" only when the milestone design doc still contains an unresolved contradiction or missing decision');
   });

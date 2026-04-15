@@ -19,6 +19,7 @@ export {
   buildAppendMilestonePlanPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
+  buildMilestoneDesignSemanticReviewPrompt,
   buildMilestoneFeatureSetPrompt,
   buildMilestoneFeatureSetReviewPrompt,
   buildMilestonePlanPrompt,

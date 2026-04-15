@@ -61,6 +61,7 @@ import {
   buildFeatureUxSpecPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
+  buildMilestoneDesignSemanticReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
   buildMilestoneCoverageRepairPrompt,
   buildMilestoneCoverageRepairReviewPrompt,
@@ -1587,6 +1588,35 @@ const parseMilestoneCoverageReviewResult = (value: string) => {
   };
 };
 
+const parseMilestoneDesignSemanticReviewResult = (value: string, templateId: string) => {
+  const parsed = parseJson<{
+    ok?: boolean;
+    issues?: unknown[];
+    repairHint?: unknown;
+  }>(value);
+
+  if (!parsed || typeof parsed.ok !== "boolean" || !Array.isArray(parsed.issues)) {
+    throw new Error(
+      `${templateId} returned invalid content. Expected JSON with "ok" and "issues".`,
+    );
+  }
+
+  const issues = parsed.issues
+    .filter((issue): issue is string => typeof issue === "string")
+    .map((issue) => issue.trim())
+    .filter(Boolean);
+  const repairHint =
+    typeof parsed.repairHint === "string" && parsed.repairHint.trim().length > 0
+      ? parsed.repairHint.trim()
+      : null;
+
+  return {
+    ok: parsed.ok,
+    issues,
+    repairHint,
+  };
+};
+
 const parseMilestoneMapReviewResult = (value: string) => {
   const parsed = parseJson<{
     complete?: boolean;
@@ -1701,6 +1731,10 @@ const parseMilestoneCoverageIssuesInput = (
         issue.action === "create_catch_up_feature" ? "rewrite_feature_set" : issue.action,
       hint: issue.hint.trim(),
     }));
+
+const workstreamMarkdownOrNull = (
+  track: { status: string; headRevision?: { markdown?: string | null } | null },
+) => track.status === "approved" ? track.headRevision?.markdown ?? null : null;
 
 type MilestoneCoverageRepairPlan = {
   resolved: boolean;
@@ -4082,6 +4116,25 @@ export const createJobRunnerService = (input: {
           });
         };
 
+        const reviewMilestoneDesignSemantics = async (inputArgs: {
+          draft: ParsedMilestoneDesignDraft;
+          templateId: string;
+        }) =>
+          runStructuredJsonGeneration({
+            templateId: inputArgs.templateId,
+            parameters: { milestoneId },
+            prompt: buildMilestoneDesignSemanticReviewPrompt({
+              projectName: project.name,
+              milestoneTitle: milestoneRecord.title,
+              milestoneSummary: milestoneRecord.summary,
+              linkedUserFlows: linkedFlows,
+              uxSpec: uxBlueprint.markdown,
+              technicalSpec: techBlueprint.markdown,
+              draftJson: JSON.stringify(inputArgs.draft, null, 2),
+            }),
+            parse: parseMilestoneDesignSemanticReviewResult,
+          });
+
         let designDraft = await generateMilestoneDesignCoreDraft({
           hint: jobInput?.hint,
           templateId: rawJob.type,
@@ -4106,6 +4159,53 @@ export const createJobRunnerService = (input: {
               `Milestone design validation found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
             code: "milestone_design_conflict_unresolved",
             hint: designValidation.hint.length > 0 ? designValidation.hint : designValidation.issues[0],
+            retryable: true,
+          });
+        }
+
+        let semanticReview = await reviewMilestoneDesignSemantics({
+          draft: designDraft,
+          templateId: `${rawJob.type}SemanticReview`,
+        });
+
+        if (!semanticReview.ok) {
+          const semanticIssues =
+            semanticReview.issues.length > 0
+              ? semanticReview.issues
+              : ["Milestone design semantic review found an unresolved contradiction."];
+          designDraft = await repairMilestoneDesignCoreDraft({
+            draft: designDraft,
+            issues: semanticIssues,
+            hint: semanticReview.repairHint ?? semanticIssues.join(" "),
+            templateId: `${rawJob.type}SemanticRetry`,
+          });
+          designValidation = validateMilestoneDesignDraft(designDraft, linkedFlows);
+          if (!designValidation.ok) {
+            throw createJobFailure({
+              message:
+                `Milestone design validation found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
+              code: "milestone_design_conflict_unresolved",
+              hint: designValidation.hint.length > 0 ? designValidation.hint : designValidation.issues[0],
+              retryable: true,
+            });
+          }
+
+          semanticReview = await reviewMilestoneDesignSemantics({
+            draft: designDraft,
+            templateId: `${rawJob.type}SemanticReviewRetry`,
+          });
+        }
+
+        if (!semanticReview.ok) {
+          const semanticIssues =
+            semanticReview.issues.length > 0
+              ? semanticReview.issues
+              : ["Milestone design semantic review found an unresolved contradiction."];
+          throw createJobFailure({
+            message:
+              `Milestone design semantic review found unresolved conflicts: ${semanticIssues.join("; ")}`,
+            code: "milestone_design_conflict_unresolved",
+            hint: semanticReview.repairHint ?? semanticIssues[0],
             retryable: true,
           });
         }
@@ -4173,6 +4273,13 @@ export const createJobRunnerService = (input: {
                 tech: tracks.tracks.tech.status,
                 userDocs: tracks.tracks.userDocs.status,
                 archDocs: tracks.tracks.archDocs.status,
+              },
+              workstreamDocs: {
+                product: workstreamMarkdownOrNull(tracks.tracks.product),
+                ux: workstreamMarkdownOrNull(tracks.tracks.ux),
+                tech: workstreamMarkdownOrNull(tracks.tracks.tech),
+                userDocs: workstreamMarkdownOrNull(tracks.tracks.userDocs),
+                archDocs: workstreamMarkdownOrNull(tracks.tracks.archDocs),
               },
               taskCount: tasks.length,
               taskTitles: tasks.map(
@@ -4543,6 +4650,13 @@ export const createJobRunnerService = (input: {
                 tech: tracks.tracks.tech.status,
                 userDocs: tracks.tracks.userDocs.status,
                 archDocs: tracks.tracks.archDocs.status,
+              },
+              workstreamDocs: {
+                product: workstreamMarkdownOrNull(tracks.tracks.product),
+                ux: workstreamMarkdownOrNull(tracks.tracks.ux),
+                tech: workstreamMarkdownOrNull(tracks.tracks.tech),
+                userDocs: workstreamMarkdownOrNull(tracks.tracks.userDocs),
+                archDocs: workstreamMarkdownOrNull(tracks.tracks.archDocs),
               },
               taskCount: tasks.length,
               taskTitles: tasks.map((task) => task.title),

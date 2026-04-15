@@ -17,6 +17,7 @@ import {
   buildMilestonePlanPrompt,
   buildMilestoneDesignPrompt,
   buildMilestoneDesignRepairPrompt,
+  buildMilestoneDesignSemanticReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
@@ -230,6 +231,24 @@ describe("job prompts", () => {
     expect(prompt).toContain("Do not leave an exit criterion, transition, ordering rule, or acceptance expectation");
     expect(prompt).toContain("If GAME_OVER or another terminal state is mentioned, include only the in-scope trigger");
     expect(prompt).toContain("Repair guidance:");
+  });
+
+  it("asks semantic milestone design review to catch shared-resource contradictions", () => {
+    const prompt = buildMilestoneDesignSemanticReviewPrompt({
+      projectName: "Audio Board",
+      milestoneTitle: "Procedural Audio",
+      milestoneSummary: "Add audio transitions and dampening.",
+      linkedUserFlows: [],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      draftJson: '{"deliveryGroups":[]}',
+    });
+
+    expect(prompt).toContain('"ok"');
+    expect(prompt).toContain("shared resources with conflicting controllers");
+    expect(prompt).toContain("Web Audio GainNode");
+    expect(prompt).toContain("voice stealing prioritizes most recent and loudest frequencies");
+    expect(prompt).toContain("repairHint");
   });
 
   it("tells foundation milestone design generation not to invent user flows", () => {
