@@ -4,6 +4,13 @@ import { createJobRunnerService } from "../../src/services/jobs/job-runner-servi
 
 const projectId = "c6cca021-c7f3-4e9b-8cbe-599fe43fafc9";
 const userId = "d3057770-eca1-417a-a1c6-c00bb83a47d0";
+const featureId = "7c2257cd-72be-4d26-b071-522f19916ff1";
+
+const semanticReviewOk = {
+  content: JSON.stringify({ ok: true, issues: [], repairHint: null }),
+  promptTokens: 2,
+  completionTokens: 2,
+};
 
 const createDbStub = () => {
   const values = vi.fn(async () => undefined);
@@ -140,6 +147,102 @@ describe("job runner service", () => {
       "implement run exited with code 1.",
     );
     expect(markSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("executes task planning sandbox runs before marking the job succeeded", async () => {
+    const db = createDbStub();
+    const markSucceeded = vi.fn(async () => undefined);
+    const createFeatureTaskPlanningRun = vi.fn(async () => ({ id: "task-planning-run-1" }));
+    const executeRun = vi.fn(async () => undefined);
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: db as never,
+      featureService: {} as never,
+      featureWorkstreamService: {
+        getTracks: vi.fn(async () => ({
+          tracks: {
+            product: {
+              status: "approved",
+              headRevision: { id: "p1", markdown: "# Product" },
+              required: true,
+            },
+            ux: {
+              status: "approved",
+              headRevision: { id: "u1", markdown: "# UX" },
+              required: true,
+            },
+            tech: {
+              status: "approved",
+              headRevision: { id: "t1", markdown: "# Tech" },
+              required: true,
+            },
+            userDocs: { status: "missing", headRevision: null, required: false },
+            archDocs: {
+              status: "approved",
+              headRevision: { id: "a1", markdown: "# Arch" },
+              required: true,
+            },
+          },
+        })),
+      } as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-task-planning",
+          projectId,
+          createdByUserId: userId,
+          type: "PlanFeatureTasksSandbox",
+          inputs: { featureId },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {} as never,
+      milestoneService: {} as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Governed planning workspace.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "ollama",
+          model: "glm-5:cloud",
+        })),
+      } as never,
+      questionnaireService: {
+        getAnswers: async () => ({
+          answers: {},
+          completedAt: null,
+          projectId,
+          updatedAt: new Date().toISOString(),
+        }),
+      } as never,
+      sandboxService: {
+        createFeatureTaskPlanningRun,
+        executeRun,
+      } as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-task-planning");
+
+    expect(createFeatureTaskPlanningRun).toHaveBeenCalledWith(
+      userId,
+      projectId,
+      featureId,
+      expect.any(String),
+      "job-task-planning",
+    );
+    expect(executeRun).toHaveBeenCalledWith("job-task-planning", "task-planning-run-1");
+    expect(markSucceeded).toHaveBeenCalledWith("job-task-planning", {
+      featureId,
+      sessionId: expect.any(String),
+      sandboxRunId: "task-planning-run-1",
+    });
   });
 
   it("fills only blank questionnaire answers during auto-answer", async () => {
@@ -2424,7 +2527,8 @@ describe("job runner service", () => {
         }),
         promptTokens: 11,
         completionTokens: 13,
-      });
+      })
+      .mockResolvedValueOnce(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -2511,7 +2615,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate).toHaveBeenCalledTimes(3);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         milestoneId: "milestone-id",
@@ -2630,21 +2734,7 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            {
-              type: "risk",
-              description: "First-session completion may drop if redirect timing feels abrupt.",
-              mitigation: "Show confirmation before returning to the dashboard.",
-            },
-            {
-              type: "open_question",
-              description: "Should password rules be visible before submission?",
-            },
-          ],
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
+        ...semanticReviewOk,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -2732,7 +2822,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.stringContaining("- Open landing page Outcome: Landing page renders."),
@@ -2791,8 +2881,10 @@ describe("job runner service", () => {
       id: "design-doc-id",
     }));
     const markSucceeded = vi.fn(async () => undefined);
-    const generate = vi.fn().mockResolvedValue({
-      content: JSON.stringify({
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
         title: "Milestone Design",
         objective: "Stand up the repository, tooling, and smoke path.",
         includedUserFlows: [],
@@ -2826,10 +2918,11 @@ describe("job runner service", () => {
             screens: [],
           },
         ],
-      }),
-      promptTokens: 10,
-      completionTokens: 12,
-    });
+        }),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValue(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -3104,13 +3197,7 @@ describe("job runner service", () => {
         completionTokens: 14,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: [
-            "Risk: The onboarding copy may need localization review.",
-          ],
-        }),
-        promptTokens: 13,
-        completionTokens: 15,
+        ...semanticReviewOk,
       });
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
@@ -3198,7 +3285,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(3);
+    expect(generate).toHaveBeenCalledTimes(4);
     expect(createDesignDocVersion).toHaveBeenCalled();
     expect(markSucceeded).toHaveBeenCalledWith(
       "job-generate-design",
@@ -3729,13 +3816,7 @@ describe("job runner service", () => {
         completionTokens: 12,
       })
       .mockResolvedValueOnce({
-        content: JSON.stringify({
-          risksAndOpenQuestions: {
-            risk: "wrong-shape",
-          },
-        }),
-        promptTokens: 11,
-        completionTokens: 13,
+        ...semanticReviewOk,
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
@@ -3835,7 +3916,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.not.stringContaining("## Risks and Open Questions"),
@@ -3922,7 +4003,8 @@ describe("job runner service", () => {
         }),
         promptTokens: 10,
         completionTokens: 12,
-      });
+      })
+      .mockResolvedValueOnce(semanticReviewOk);
     const service = createJobRunnerService({
       artifactApprovalService: createArtifactApprovalServiceStub() as never,
       blueprintService: {
@@ -4009,7 +4091,7 @@ describe("job runner service", () => {
 
     await service.run("job-generate-design");
 
-    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledTimes(2);
     expect(createDesignDocVersion).toHaveBeenCalledWith(
       expect.objectContaining({
         markdown: expect.not.stringContaining("## Risks and Open Questions"),
@@ -4855,7 +4937,7 @@ describe("job runner service", () => {
     });
   });
 
-  it("builds milestone coverage review prompts without embedding full workstream markdown", async () => {
+  it("builds milestone coverage review prompts with approved workstream markdown", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "milestone-id",
@@ -4981,10 +5063,10 @@ describe("job runner service", () => {
     const prompt = firstGenerateCall?.[1] ?? "";
     expect(prompt).toContain('"featureKey": "F-001"');
     expect(prompt).toContain('"product": "approved"');
-    expect(prompt).not.toContain("Long product markdown");
-    expect(prompt).not.toContain("Long ux markdown");
-    expect(prompt).not.toContain("Long tech markdown");
-    expect(prompt).not.toContain("Long arch markdown");
+    expect(prompt).toContain("Long product markdown");
+    expect(prompt).toContain("Long ux markdown");
+    expect(prompt).toContain("Long tech markdown");
+    expect(prompt).toContain("Long arch markdown");
     expect(prompt).toContain('If the milestone design doc itself is coherent and the gap can be fixed by rewriting or expanding features, prefer "rewrite_feature_set".');
     expect(prompt).toContain('Use "needs_human_review" only when the milestone design doc still contains an unresolved contradiction or missing decision');
   });
@@ -5523,5 +5605,133 @@ describe("job runner service", () => {
       }),
     );
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("passes project size guidance into milestone-map review prompts", async () => {
+    const markSucceeded = vi.fn(async () => undefined);
+    const generate = vi.fn(async () => ({
+      content: JSON.stringify({ complete: true, issues: [] }),
+      promptTokens: 10,
+      completionTokens: 10,
+    }));
+    const service = createJobRunnerService({
+      artifactApprovalService: {} as never,
+      blueprintService: {} as never,
+      db: createDbStub() as never,
+      featureService: {} as never,
+      featureWorkstreamService: {} as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-review-map",
+          projectId,
+          createdByUserId: userId,
+          type: "ReviewMilestoneMap",
+          inputs: {},
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        list: vi.fn(async () => ({
+          milestones: [
+            {
+              title: "Foundations",
+              summary: "Bootstrap the repository.",
+              featureCount: 0,
+            },
+          ],
+          coverage: {
+            approvedUserFlowCount: 1,
+            coveredUserFlowCount: 1,
+            uncoveredUserFlowIds: [],
+          },
+          mapReview: {
+            generatedAt: "2026-03-18T00:00:00.000Z",
+            reviewStatus: "not_started",
+            reviewIssues: [],
+            reviewedAt: null,
+          },
+        })),
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {
+        getCanonical: vi.fn(async () => ({
+          id: "product-spec-id",
+          projectId,
+          version: 1,
+          title: "Product Spec",
+          markdown: "# Product Spec",
+          source: "ManualSave",
+          isCanonical: true,
+          approvedAt: "2026-03-18T00:00:00.000Z",
+          createdAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {
+        getAnswers: async () => ({
+          answers: {
+            q1_name_and_description: "A small utility for a solo user.",
+            q6_main_capabilities: "Simple lightweight display tool.",
+            q11_constraints_and_requirements: "Minimal side project scope.",
+          },
+          completedAt: "2026-03-18T00:00:00.000Z",
+          projectId,
+          updatedAt: new Date().toISOString(),
+        }),
+      } as never,
+      sandboxService: {} as never,
+      userFlowService: {
+        list: vi.fn(async () => ({
+          userFlows: [
+            {
+              id: "flow-1",
+              projectId,
+              title: "View display",
+              userStory: "As a user I want to view the display.",
+              entryPoint: "Home",
+              endState: "Display visible",
+              flowSteps: [],
+              coverageTags: [],
+              acceptanceCriteria: [],
+              doneCriteriaRefs: [],
+              source: "GenerateUseCases",
+              archivedAt: null,
+              createdAt: "2026-03-18T00:00:00.000Z",
+              updatedAt: "2026-03-18T00:00:00.000Z",
+            },
+          ],
+          coverage: {
+            warnings: [],
+            acceptedWarnings: [],
+          },
+          approvedAt: "2026-03-18T00:00:00.000Z",
+        })),
+      } as never,
+    });
+
+    await service.run("job-review-map");
+
+    const prompt = (generate.mock.calls[0] as unknown[] | undefined)?.[1] as string | undefined;
+    expect(prompt).toContain("AGENTS.md");
+    expect(prompt).toContain("lightweight for a small utility");
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-review-map",
+      expect.objectContaining({ complete: true }),
+    );
   });
 });

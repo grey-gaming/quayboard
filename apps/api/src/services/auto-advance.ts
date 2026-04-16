@@ -542,10 +542,9 @@ export const createAutoAdvanceService = (
       sessionId,
       repairCount: nextRepairCount,
       currentStep,
-      jobType:
-        currentStep === "milestone_reconciliation_resolve" && !hasStructuralIssues
-          ? "ResolveMilestoneCoverageIssues"
-          : "RewriteMilestoneFeatureSet",
+      jobType: !hasStructuralIssues
+        ? "ResolveMilestoneCoverageIssues"
+        : "RewriteMilestoneFeatureSet",
       jobInputs: {
         milestoneId: activeMilestone.id,
         issues: storedIssues,
@@ -2259,7 +2258,7 @@ export const createAutoAdvanceService = (
 
         if (
           session.autoRepairMilestoneCoverage &&
-          job.type === "ReviewMilestoneCoverage" &&
+          !hasStructuralIssues &&
           nextRepairCount <= MAX_MILESTONE_REPAIR_ATTEMPTS
         ) {
           await recordScopeReviewResult({

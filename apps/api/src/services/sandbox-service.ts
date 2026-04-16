@@ -92,11 +92,14 @@ const gitUserEnv = {
 };
 
 const sandboxWorkspacePrefix = "quayboard-run-";
+const containerArtifactDir = "/workspace/.quayboard-artifacts";
 const managedGitignoreStart = "# --- Quayboard managed ignore entries ---";
 const managedGitignoreEnd = "# --- End Quayboard managed ignore entries ---";
 const managedGitignoreEntries = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
+  ".quayboard-task-planning-context.md",
+  ".quayboard-artifacts/",
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
@@ -120,6 +123,8 @@ const protectedPublishPaths = [
 const excludedPublishPaths = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
+  ".quayboard-task-planning-context.md",
+  ".quayboard-artifacts/",
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
@@ -2107,6 +2112,7 @@ export const createSandboxService = (input: {
         deliveryBranchPlan?.cloneBranchName ||
         defaultBranchName;
       await this.ensureManagedGitignore(workspaceDir);
+      await mkdir(path.join(workspaceDir, ".quayboard-artifacts"), { recursive: true });
       await this.writeQuayboardDocs(run.projectId, workspaceDir);
       const baseCommitSha = await this.git(["rev-parse", "HEAD"], workspaceDir).catch(() => null);
       await this.updateRunState(sandboxRunId, { baseCommitSha });
@@ -2150,8 +2156,8 @@ export const createSandboxService = (input: {
           ? [
               "Produce a project-wide engineering due diligence review for this repository.",
               "Inspect the actual repository contents before making claims.",
-              "Write the human-readable report to /run/artifacts/project-review.md.",
-              "Write the structured output to /run/artifacts/project-review.json.",
+              `Write the human-readable report to ${containerArtifactDir}/project-review.md.`,
+              `Write the structured output to ${containerArtifactDir}/project-review.json.`,
               "The JSON must satisfy Quayboard's exact schema: maturityLevel must be a non-empty string, not a number.",
               "Only include real issues in findings. Do not list strengths, praise, or already-good behavior as findings.",
               "Do not make repository changes during the review run.",
@@ -2162,14 +2168,14 @@ export const createSandboxService = (input: {
                 "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
                 "Address only the cited findings in one batched remediation pass.",
                 "Re-run relevant checks before exiting.",
-                "Write a remediation summary to /run/artifacts/project-fix-summary.md.",
+                `Write a remediation summary to ${containerArtifactDir}/project-fix-summary.md.`,
               ].join("\n")
             : run.kind === "bug_fix"
               ? [
                   "Read /workspace/.quayboard-bug-report.md for the reported defect and relevant metadata.",
                   "Fix only the reported bug without broad unrelated refactors.",
                   "Re-run the closest relevant verification before exiting.",
-                  "Write a remediation summary to /run/artifacts/bug-fix-summary.md.",
+                  `Write a remediation summary to ${containerArtifactDir}/bug-fix-summary.md.`,
                 ].join("\n")
               : run.kind === "task_planning"
                 ? "Task planning run — see /workspace/.quayboard-task-planning-context.md for the work context."

@@ -260,7 +260,7 @@ describe("docker service", () => {
     expect(execFileMock.mock.calls[0]?.[1]).toEqual(
       expect.arrayContaining([
         "--env",
-        "QB_ARTIFACT_DIR=/run/artifacts",
+        "QB_ARTIFACT_DIR=/workspace/.quayboard-artifacts",
         "--env",
         "HOME=/run/artifacts/home",
         "--env",
@@ -271,6 +271,8 @@ describe("docker service", () => {
         "XDG_DATA_HOME=/run/artifacts/home/.local/share",
         "--mount",
         "type=bind,src=/tmp/artifacts,dst=/run/artifacts",
+        "--mount",
+        "type=bind,src=/tmp/artifacts,dst=/workspace/.quayboard-artifacts",
       ]),
     );
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain(

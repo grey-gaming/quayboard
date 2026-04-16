@@ -54,23 +54,25 @@ export const renderProjectScaleGuidance = (profile: ProjectSizeProfile): string 
 };
 
 export const renderMilestoneScaffoldingGuidance = (profile: ProjectSizeProfile): string => {
+  const namedMinimum =
+    "AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, CI/test harness, and a minimal smoke-path or hello-world slice";
+
   if (profile.tier === "small") {
     return (
-      "The first milestone should bootstrap only what is needed to start delivering: " +
-      "repo setup, minimal CI, and a first working capability. " +
-      "Do not require full ADR scaffolding, documentation structure, or a comprehensive test harness for a small utility."
+      "The first milestone should bootstrap only what is needed to start delivering, but it must explicitly cover the named foundation minimums: " +
+      `${namedMinimum}. ` +
+      "Keep AGENTS.md, ADR scaffolding, environment/bootstrap, and the test harness lightweight for a small utility."
     );
   }
   if (profile.tier === "medium") {
     return (
-      "The first milestone should include essential delivery scaffolding " +
-      "(CI, folder structure, baseline docs) plus a meaningful first delivery slice."
+      "The first milestone should include essential delivery scaffolding plus a meaningful first delivery slice. " +
+      `It must explicitly cover the named foundation minimums: ${namedMinimum}.`
     );
   }
   return (
     "The first milestone must be a foundations/setup milestone covering repository and delivery scaffolding " +
-    "such as AGENTS.md, initial folder structure, baseline docs/ADR scaffolding, environment/bootstrap setup, " +
-    "CI/test harness, and a minimal smoke-path or hello-world slice."
+    `with these named foundation minimums: ${namedMinimum}.`
   );
 };
 

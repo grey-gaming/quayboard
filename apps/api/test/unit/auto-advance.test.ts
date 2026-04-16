@@ -2018,7 +2018,7 @@ describe("auto-advance service", () => {
       expect(updates.some((update) => update.status === "paused")).toBe(false);
     });
 
-    it("pauses immediately when scope review returns only needs_human_review issues", async () => {
+    it("queues LLM repair when scope review returns only needs_human_review issues", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 1,
@@ -2048,18 +2048,19 @@ describe("auto-advance service", () => {
         }),
       } as never;
       const updates: Array<Record<string, unknown>> = [];
+      let updateCall = 0;
       db.update = vi.fn().mockReturnValue({
         set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
           updates.push(data);
+          updateCall += 1;
           return {
             where: vi.fn().mockReturnValue({
               returning: vi.fn().mockResolvedValue([
                 makeSessionRow({
-                  status: "paused" as const,
-                  pausedReason: "needs_human",
-                  pendingJobCount: 0,
-                  activeBatchToken: null,
-                  milestoneRepairCount: 0,
+                  status: "running" as const,
+                  pendingJobCount: updateCall === 1 ? 0 : 1,
+                  activeBatchToken: updateCall === 1 ? "batch-1" : "batch-2",
+                  milestoneRepairCount: updateCall === 1 ? 0 : 1,
                 }),
               ]),
             }),
@@ -2076,23 +2077,31 @@ describe("auto-advance service", () => {
           status: "failed_needs_human",
         }),
       );
-      expect(jobService.createJob).not.toHaveBeenCalled();
-      expect(
-        updates.some(
-          (update) => update.status === "paused" && update.pausedReason === "needs_human",
-        ),
-      ).toBe(true);
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "ResolveMilestoneCoverageIssues",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-1",
+            attemptNumber: 1,
+            issues: [
+              { action: "needs_human_review", hint: "Clarify source-of-truth ownership." },
+            ],
+          }),
+        }),
+      );
+      expect(updates.some((update) => update.status === "paused")).toBe(false);
       expect(
         updates.some((update) => typeof update.milestoneRepairCount === "number"),
-      ).toBe(false);
+      ).toBe(true);
     });
 
-    it("skips scope-review human gates when skipHumanReview is enabled", async () => {
+    it("repairs scope-review human gates before skipHumanReview can bypass them", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
         pendingJobCount: 1,
         activeBatchToken: "batch-1",
         skipHumanReview: true,
+        autoRepairMilestoneCoverage: true,
       });
       const reviewJob = {
         ...makeJob(),
@@ -2109,15 +2118,6 @@ describe("auto-advance service", () => {
           issues: [{ action: "needs_human_review", hint: "Clarify source-of-truth ownership." }],
         } as never,
       };
-      nextActionsService.build.mockResolvedValue({
-        actions: [
-          {
-            key: "feature_product_create",
-            label: "Author the first feature Product Spec",
-            href: `/projects/${PROJECT_ID}/features/feature-123`,
-          },
-        ],
-      });
       const db = makeDb({ session: runningSession, job: reviewJob });
       db.query.milestonesTable = {
         findFirst: vi.fn().mockResolvedValue({
@@ -2143,20 +2143,20 @@ describe("auto-advance service", () => {
           };
         }),
       });
-      milestoneService.getActiveMilestone.mockResolvedValue({
-        id: "milestone-1",
-        status: "approved",
-      });
       const service = makeService(db);
 
       await service.onJobComplete(JOB_ID, "success");
 
-      expect(milestoneService.invalidateScopeReview).toHaveBeenCalledWith("milestone-1");
+      expect(milestoneService.invalidateScopeReview).not.toHaveBeenCalled();
       expect(jobService.createJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "GenerateFeatureProductSpec",
+          type: "ResolveMilestoneCoverageIssues",
           inputs: expect.objectContaining({
-            featureId: "feature-123",
+            milestoneId: "milestone-1",
+            attemptNumber: 1,
+            issues: [
+              { action: "needs_human_review", hint: "Clarify source-of-truth ownership." },
+            ],
           }),
         }),
       );
