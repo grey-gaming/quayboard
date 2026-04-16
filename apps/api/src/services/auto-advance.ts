@@ -44,7 +44,13 @@ type JobFailurePayload = {
   message?: string;
   code?: string;
   hint?: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
   retryable?: boolean;
+};
+
+type MilestoneDesignSemanticFeedback = {
+  issues: string[];
+  repairHint: string;
 };
 
 type ReconciliationIssue = {
@@ -65,6 +71,46 @@ type MilestoneDeliveryIssue = {
 const MAX_MILESTONE_REPAIR_ATTEMPTS = 3;
 const AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT = 5;
 const STALE_SESSION_RECONCILE_GRACE_MS = 5_000;
+
+const normalizeMilestoneDesignSemanticFeedback = (
+  feedback: MilestoneDesignSemanticFeedback[],
+) => {
+  const normalized: MilestoneDesignSemanticFeedback[] = [];
+  const seen = new Set<string>();
+
+  for (const item of feedback) {
+    const issues = item.issues.map((issue) => issue.trim()).filter(Boolean);
+    const repairHint = item.repairHint.trim();
+
+    if (issues.length === 0 && repairHint.length === 0) {
+      continue;
+    }
+
+    if (
+      issues.length === 0 &&
+      normalized.some((existing) => existing.repairHint === repairHint)
+    ) {
+      continue;
+    }
+
+    const key = JSON.stringify({ issues, repairHint });
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push({ issues, repairHint });
+  }
+
+  return normalized.slice(-5);
+};
+
+const semanticFeedbackFromHint = (hint: string | null | undefined) => {
+  const normalized = hint?.trim();
+  return normalized
+    ? [{ issues: [], repairHint: normalized }]
+    : [];
+};
 
 const toSession = (row: AutoAdvanceSessionRow): AutoAdvanceSession => ({
   id: row.id,
@@ -1872,6 +1918,24 @@ export const createAutoAdvanceService = (
           // Retry the same failed job instead of inferring the next step from current state.
           // Some jobs can create draft artifacts before failing, which would otherwise
           // make advanceStep() land on a manual approval step and stall the session.
+          const retryInputs = stripAutoAdvanceInputs(
+            job.inputs as Record<string, unknown> | null | undefined,
+          );
+          const retrySemanticFeedback =
+            job.type === "GenerateMilestoneDesign"
+              ? normalizeMilestoneDesignSemanticFeedback([
+                  ...(Array.isArray(
+                    (retryInputs as { semanticFeedback?: unknown }).semanticFeedback,
+                  )
+                    ? ((retryInputs as { semanticFeedback: MilestoneDesignSemanticFeedback[] })
+                        .semanticFeedback)
+                    : []),
+                  ...(Array.isArray((job.error as JobFailurePayload | null | undefined)?.semanticFeedback)
+                    ? ((job.error as JobFailurePayload).semanticFeedback ?? [])
+                    : []),
+                  ...semanticFeedbackFromHint(retryHint),
+                ])
+              : [];
           await db
             .update(autoAdvanceSessionsTable)
             .set({
@@ -1888,8 +1952,11 @@ export const createAutoAdvanceService = (
             type: job.type,
             inputs: buildAutoAdvanceInputs(
               {
-                ...stripAutoAdvanceInputs(job.inputs as Record<string, unknown> | null | undefined),
+                ...retryInputs,
                 ...(retryHint.length > 0 ? { hint: retryHint } : {}),
+                ...(retrySemanticFeedback.length > 0
+                  ? { semanticFeedback: retrySemanticFeedback }
+                  : {}),
               },
               session.id,
               autoAdvanceMeta.batchToken,

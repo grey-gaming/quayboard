@@ -202,6 +202,36 @@ describe("job prompts", () => {
     expect(prompt).toContain("Repair guidance:");
   });
 
+  it("passes prior semantic failures into milestone design generation as blockers", () => {
+    const prompt = buildMilestoneDesignPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Session Persistence",
+      milestoneSummary: "Restore saved preferences.",
+      linkedUserFlows: [
+        {
+          title: "Return user",
+          userStory: "As a returning user, I want my session restored.",
+          entryPoint: "App URL",
+          endState: "Saved preferences are active.",
+        },
+      ],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      semanticFeedback: [
+        {
+          issues: ["Fullscreen cannot be requested on page load."],
+          repairHint: "Use a Resume Experience prompt as the required user gesture.",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Blocking semantic repair checklist:");
+    expect(prompt).toContain("hard non-regression criteria");
+    expect(prompt).toContain("this checklist wins for this draft");
+    expect(prompt).toContain("Fullscreen cannot be requested on page load.");
+    expect(prompt).toContain("Use a Resume Experience prompt");
+  });
+
   it("uses repair guidance to reconcile structured milestone design contradictions", () => {
     const prompt = buildMilestoneDesignRepairPrompt({
       projectName: "Quayboard",
@@ -233,6 +263,29 @@ describe("job prompts", () => {
     expect(prompt).toContain("Repair guidance:");
   });
 
+  it("passes prior semantic failures into milestone design repair as blockers", () => {
+    const prompt = buildMilestoneDesignRepairPrompt({
+      projectName: "Quayboard",
+      milestoneTitle: "Session Persistence",
+      milestoneSummary: "Restore saved preferences.",
+      linkedUserFlows: [],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      issues: ["Flow ownership and screen inventory disagree."],
+      draftJson: '{"title":"Milestone Design"}',
+      semanticFeedback: [
+        {
+          issues: ["AudioContext resumption needs a user gesture."],
+          repairHint: "Keep session storage read-only until the resume click.",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Blocking semantic repair checklist:");
+    expect(prompt).toContain("AudioContext resumption needs a user gesture.");
+    expect(prompt).toContain("Keep session storage read-only until the resume click.");
+  });
+
   it("asks semantic milestone design review to catch shared-resource contradictions", () => {
     const prompt = buildMilestoneDesignSemanticReviewPrompt({
       projectName: "Audio Board",
@@ -249,6 +302,29 @@ describe("job prompts", () => {
     expect(prompt).toContain("Web Audio GainNode");
     expect(prompt).toContain("voice stealing prioritizes most recent and loudest frequencies");
     expect(prompt).toContain("repairHint");
+  });
+
+  it("asks semantic review to enforce prior semantic repair decisions", () => {
+    const prompt = buildMilestoneDesignSemanticReviewPrompt({
+      projectName: "Audio Board",
+      milestoneTitle: "Session Persistence",
+      milestoneSummary: "Restore saved preferences.",
+      linkedUserFlows: [],
+      uxSpec: "# UX Spec",
+      technicalSpec: "# Technical Spec",
+      draftJson: '{"deliveryGroups":[]}',
+      semanticFeedback: [
+        {
+          issues: ["The return-user flow cannot silently enter fullscreen."],
+          repairHint: "Require a visible resume prompt before fullscreen restoration.",
+        },
+      ],
+    });
+
+    expect(prompt).toContain("blocking semantic repair checklist");
+    expect(prompt).toContain("instead of re-litigating the superseded contradiction");
+    expect(prompt).toContain("The return-user flow cannot silently enter fullscreen.");
+    expect(prompt).toContain("Require a visible resume prompt");
   });
 
   it("tells foundation milestone design generation not to invent user flows", () => {

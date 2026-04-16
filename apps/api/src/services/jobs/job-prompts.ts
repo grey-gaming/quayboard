@@ -24,6 +24,7 @@ export {
   buildMilestoneFeatureSetReviewPrompt,
   buildMilestonePlanPrompt,
 } from "./prompts/milestone-prompts.js";
+export type { MilestoneDesignSemanticFeedback } from "./prompts/milestone-prompts.js";
 export {
   buildFeatureArchDocsPrompt,
   buildFeatureProductSpecPrompt,

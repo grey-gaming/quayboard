@@ -982,6 +982,73 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("preserves cumulative milestone design semantic feedback on retry", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 0,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateMilestoneDesign",
+        error: {
+          message: "Milestone design semantic review found unresolved conflicts: Audio cannot resume silently.",
+          hint: "Resume audio in the prompt click.",
+          retryable: true,
+          semanticFeedback: [
+            {
+              issues: ["Audio cannot resume silently."],
+              repairHint: "Resume audio in the prompt click.",
+            },
+          ],
+        },
+        inputs: {
+          milestoneId: "milestone-123",
+          semanticFeedback: [
+            {
+              issues: ["Fullscreen cannot be requested on page load."],
+              repairHint: "Use a Resume Experience prompt.",
+            },
+          ],
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]),
+          }),
+        })),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateMilestoneDesign",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-123",
+            semanticFeedback: [
+              {
+                issues: ["Fullscreen cannot be requested on page load."],
+                repairHint: "Use a Resume Experience prompt.",
+              },
+              {
+                issues: ["Audio cannot resume silently."],
+                repairHint: "Resume audio in the prompt click.",
+              },
+            ],
+            hint: "Resume audio in the prompt click.",
+          }),
+        }),
+      );
+    });
+
     it("retries ImplementChange with a fresh sandbox run even when the failure is not marked retryable", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,

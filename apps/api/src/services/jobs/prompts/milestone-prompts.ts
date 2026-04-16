@@ -2,6 +2,35 @@ import type { ProjectSizeProfile } from "../../project-sizer.js";
 
 import { qualityCharter, renderFeatureBudgetGuidance, renderMilestoneScaffoldingGuidance } from "./shared.js";
 
+export type MilestoneDesignSemanticFeedback = {
+  issues: string[];
+  repairHint: string;
+};
+
+const renderMilestoneDesignSemanticFeedback = (
+  feedback: MilestoneDesignSemanticFeedback[] | undefined,
+) => {
+  const normalized = (feedback ?? [])
+    .map((item) => ({
+      issues: item.issues.map((issue) => issue.trim()).filter(Boolean),
+      repairHint: item.repairHint.trim(),
+    }))
+    .filter((item) => item.issues.length > 0 || item.repairHint.length > 0);
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  return [
+    "",
+    "Blocking semantic repair checklist:",
+    "Treat every issue and repair hint below as hard non-regression criteria for this milestone design.",
+    "If this checklist conflicts with older source text because a reviewer chose a conservative or platform-safe default, this checklist wins for this draft.",
+    "Apply the same resolved interpretation consistently across objective, included user flows, scope boundaries, delivery groups, sequencing, and exit criteria.",
+    JSON.stringify(normalized, null, 2),
+  ];
+};
+
 export const buildMilestonePlanPrompt = (input: {
   projectName: string;
   uxSpec: string;
@@ -121,6 +150,7 @@ export const buildMilestoneDesignPrompt = (input: {
   uxSpec: string;
   technicalSpec: string;
   hint?: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
 }) =>
   [
     qualityCharter,
@@ -137,6 +167,7 @@ export const buildMilestoneDesignPrompt = (input: {
           input.hint.trim(),
         ]
       : []),
+    ...renderMilestoneDesignSemanticFeedback(input.semanticFeedback),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -166,6 +197,7 @@ export const buildMilestoneDesignRepairPrompt = (input: {
   issues: string[];
   draftJson: string;
   hint?: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
 }) =>
   [
     qualityCharter,
@@ -186,6 +218,7 @@ export const buildMilestoneDesignRepairPrompt = (input: {
           input.hint.trim(),
         ]
       : []),
+    ...renderMilestoneDesignSemanticFeedback(input.semanticFeedback),
     "",
     "Milestone summary:",
     input.milestoneSummary,
@@ -219,6 +252,7 @@ export const buildMilestoneDesignSemanticReviewPrompt = (input: {
   uxSpec: string;
   technicalSpec: string;
   draftJson: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
 }) =>
   [
     qualityCharter,
@@ -230,9 +264,11 @@ export const buildMilestoneDesignSemanticReviewPrompt = (input: {
     "Hard blockers include shared resources with conflicting controllers, incompatible sequencing or ownership rules, impossible platform/API assumptions, exit criteria that contradict delivery responsibilities, and required behaviours that conflict with out-of-scope boundaries.",
     "Examples of hard blockers: one Web Audio GainNode is required to own both a scheduled dampening automation ramp and immediate user volume changes; one section says voice stealing prioritizes most recent and loudest frequencies while another requires stealing the oldest voice.",
     "Do not report minor wording differences, absent implementation details that can reasonably be chosen later, or choices already resolved consistently in the draft.",
+    "When a blocking semantic repair checklist is provided, verify that the draft applies every checklist item consistently instead of re-litigating the superseded contradiction.",
     "If a conservative default can make the draft internally consistent, set ok=false and put the exact default to apply in repairHint.",
     "If the draft is coherent enough for feature planning, set ok=true, issues=[], and repairHint=null.",
     "Do not wrap the JSON in code fences.",
+    ...renderMilestoneDesignSemanticFeedback(input.semanticFeedback),
     "",
     "Milestone summary:",
     input.milestoneSummary,
