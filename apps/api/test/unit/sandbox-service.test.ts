@@ -270,7 +270,7 @@ describe("sandbox service", () => {
     }
   });
 
-  it("serializes only still-open findings for project fix runs", () => {
+  it("serializes only still-open blocking findings for project fix runs", () => {
     expect(
       JSON.parse(
         serializeProjectReviewFixFindings([
@@ -282,6 +282,16 @@ describe("sandbox service", () => {
             evidence: [{ path: "src/open.ts" }],
             whyItMatters: "Still failing.",
             recommendedImprovement: "Fix it.",
+            status: "open",
+          },
+          {
+            id: "finding-medium",
+            category: "code_quality",
+            severity: "medium",
+            finding: "Advisory issue",
+            evidence: [{ path: "src/advisory.ts" }],
+            whyItMatters: "Nice to improve.",
+            recommendedImprovement: "Consider cleanup.",
             status: "open",
           },
           {
@@ -308,6 +318,25 @@ describe("sandbox service", () => {
         status: "open",
       },
     ]);
+  });
+
+  it("excludes project review context files from published commits", async () => {
+    const service = makeService();
+    const git = vi.fn().mockResolvedValue("");
+    service.git = git;
+
+    await service.removeExcludedPublishPaths("/tmp/workspace", "base-sha");
+
+    expect(git).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        "reset",
+        "HEAD",
+        "--",
+        ".quayboard-project-review.md",
+        ".quayboard-project-review-findings.json",
+      ]),
+      "/tmp/workspace",
+    );
   });
 
   it("falls back to a branchless clone when the configured default branch does not exist yet", async () => {

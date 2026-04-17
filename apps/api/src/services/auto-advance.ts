@@ -69,7 +69,6 @@ type MilestoneDeliveryIssue = {
 };
 
 const MAX_MILESTONE_REPAIR_ATTEMPTS = 3;
-const AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT = 5;
 const STALE_SESSION_RECONCILE_GRACE_MS = 5_000;
 
 const normalizeMilestoneDesignSemanticFeedback = (
@@ -500,6 +499,29 @@ export const createAutoAdvanceService = (
         status: "paused",
         currentStep: projectReviewStepForStatus(reviewStatus),
         pausedReason: "project_review_incomplete",
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        pausedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, sessionId))
+      .returning();
+
+    await publishSessionUpdate(ownerUserId, projectId);
+    return updated ?? null;
+  };
+
+  const pauseForProjectReviewLimit = async (
+    ownerUserId: string,
+    projectId: string,
+    sessionId: string,
+  ) => {
+    const [updated] = await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        status: "paused",
+        currentStep: "project_review_retry",
+        pausedReason: "project_review_limit_reached",
         pendingJobCount: 0,
         activeBatchToken: null,
         pausedAt: new Date(),
@@ -1468,11 +1490,11 @@ export const createAutoAdvanceService = (
           if (!latestReview.session) {
             throw new Error("Auto-advance expected a latest project review session for retry.");
           }
+          if (latestReview.session.loopCount >= latestReview.session.maxLoops) {
+            await pauseForProjectReviewLimit(ownerUserId, projectId, sessionId);
+            return;
+          }
           const batchToken = generateId();
-          const maxLoops =
-            latestReview.session.maxLoops <= latestReview.session.loopCount
-              ? latestReview.session.loopCount + AUTO_ADVANCE_PROJECT_REVIEW_RETRY_INCREMENT
-              : undefined;
           await db
             .update(autoAdvanceSessionsTable)
             .set({
@@ -1486,7 +1508,7 @@ export const createAutoAdvanceService = (
           await projectReviewService.retryFixes(
             ownerUserId,
             latestReview.session.id,
-            maxLoops,
+            undefined,
             {
               sessionId,
               batchToken,

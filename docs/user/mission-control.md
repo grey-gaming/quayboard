@@ -112,7 +112,7 @@ Generates user flows (use cases and journeys), an overall milestone plan, and a 
 Creates individual feature records from the milestone plan, then generates five documents per feature. Features can be processed in parallel (controlled by *Max concurrent jobs*), so this phase scales with the size of your project.
 
 **Phase 7 — Delivery Review**
-Runs a final project-wide review loop over the delivered work. It checks documentation, code quality, and missing or incomplete user flows, fixes the findings, and reviews again. In Auto-Advance this loop repeats up to three times before pausing for manual intervention. Once clean, the session completes.
+Runs a final project-wide release-gate review over the delivered work. Auto-Advance fixes critical and high-severity blockers, treats medium and low-severity findings as advisory, and reviews again within the configured loop limit. If blockers remain or repeat after the loop budget is exhausted, the session pauses for manual intervention.
 
 ---
 

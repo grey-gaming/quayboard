@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   projectReviewAttemptSchema,
@@ -40,9 +40,7 @@ const ACTIVE_SESSION_STATUSES = [
 
 const PROJECT_REVIEW_FIX_BRANCH = "quayboard/project-review-fixes";
 const DEFAULT_PROJECT_REVIEW_MAX_LOOPS = 5;
-const HIGH_ONLY_REMAINING_FIX_PASSES = 2;
 const blockingSeverities = new Set<ProjectReviewFinding["severity"]>(["critical", "high"]);
-const PROJECT_REVIEW_RETRY_LOOP_INCREMENT = 5;
 
 type AutoAdvanceMeta = {
   batchToken: string;
@@ -199,21 +197,44 @@ const toFinding = (record: typeof projectReviewFindingsTable.$inferSelect) =>
   });
 
 export const isProjectReviewHighOnlyPhase = (loopCount: number, maxLoops: number) =>
-  maxLoops - loopCount <= HIGH_ONLY_REMAINING_FIX_PASSES;
+  maxLoops - loopCount <= 0;
+
+const normalizeFindingFingerprint = (
+  finding: Pick<ProjectReviewFinding, "category" | "evidence" | "finding" | "recommendedImprovement" | "severity">,
+) =>
+  JSON.stringify({
+    category: finding.category,
+    evidence: [...finding.evidence.map((entry) => entry.path)].sort(),
+    finding: finding.finding.trim().toLowerCase().replace(/\s+/g, " "),
+    recommendedImprovement: finding.recommendedImprovement.trim().toLowerCase().replace(/\s+/g, " "),
+    severity: finding.severity,
+  });
+
+const haveSameBlockingFindingFingerprints = <
+  Finding extends Pick<
+    ProjectReviewFinding,
+    "category" | "evidence" | "finding" | "recommendedImprovement" | "severity"
+  >,
+>(
+  previous: Finding[],
+  next: Finding[],
+) => {
+  if (previous.length === 0 || previous.length !== next.length) {
+    return false;
+  }
+
+  const previousFingerprints = previous.map(normalizeFindingFingerprint).sort();
+  const nextFingerprints = next.map(normalizeFindingFingerprint).sort();
+
+  return previousFingerprints.every((fingerprint, index) => fingerprint === nextFingerprints[index]);
+};
 
 export const partitionProjectReviewFindings = <
   Finding extends Pick<ProjectReviewFinding, "severity">,
 >(
   findings: Finding[],
-  highOnlyPhase: boolean,
+  _highOnlyPhase: boolean,
 ) => {
-  if (!highOnlyPhase) {
-    return {
-      blocking: findings,
-      ignored: [] as Finding[],
-    };
-  }
-
   const blocking: Finding[] = [];
   const ignored: Finding[] = [];
 
@@ -638,9 +659,7 @@ export const createProjectReviewService = (
       throw new HttpError(404, "project_review_not_found", "Project review session not found.");
     }
 
-    return session.maxLoops <= session.loopCount
-      ? session.loopCount + PROJECT_REVIEW_RETRY_LOOP_INCREMENT
-      : undefined;
+    return undefined;
   },
 
   async markAttemptRunning(attemptId: string, sandboxRunId: string) {
@@ -768,11 +787,48 @@ export const createProjectReviewService = (
       return { clear: true, findingCount: 0, sessionId: session.id };
     }
 
+    const previousReviewAttempt = await db.query.projectReviewAttemptsTable.findFirst({
+      where: and(
+        eq(projectReviewAttemptsTable.projectReviewSessionId, session.id),
+        eq(projectReviewAttemptsTable.kind, "review"),
+        eq(projectReviewAttemptsTable.status, "succeeded"),
+        sql`${projectReviewAttemptsTable.sequence} < ${attempt.sequence}`,
+      ),
+      orderBy: [desc(projectReviewAttemptsTable.sequence)],
+    });
+    const previousBlockingFindings = previousReviewAttempt
+      ? await db.query.projectReviewFindingsTable.findMany({
+          where: and(
+            eq(projectReviewFindingsTable.projectReviewAttemptId, previousReviewAttempt.id),
+            inArray(projectReviewFindingsTable.severity, [...blockingSeverities]),
+          ),
+          orderBy: [asc(projectReviewFindingsTable.createdAt)],
+        })
+      : [];
+    const repeatedBlockingFindings = haveSameBlockingFindingFingerprints(
+      previousBlockingFindings.map(toFinding),
+      blocking,
+    );
+
     if (session.loopCount >= session.maxLoops) {
       await db
         .update(projectReviewSessionsTable)
         .set({
           status: "needs_fixes",
+          branchName: session.branchName ?? PROJECT_REVIEW_FIX_BRANCH,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectReviewSessionsTable.id, session.id));
+      return { clear: false, findingCount: blocking.length, sessionId: session.id };
+    }
+
+    if (repeatedBlockingFindings) {
+      await db
+        .update(projectReviewSessionsTable)
+        .set({
+          status: "needs_fixes",
+          loopCount: session.loopCount,
+          maxLoops: session.loopCount,
           branchName: session.branchName ?? PROJECT_REVIEW_FIX_BRANCH,
           updatedAt: new Date(),
         })

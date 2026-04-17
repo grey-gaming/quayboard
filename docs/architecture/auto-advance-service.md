@@ -155,7 +155,7 @@ Any key not in this map causes the session to pause with `needs_human`, promptin
 
 Feature implementation runs share one temporary delivery branch and one open PR per active milestone. Auto-advance keeps pushing later milestone features onto that branch until the milestone is completed. Completing the milestone merges the PR, deletes the remote milestone branch, and only then marks the milestone complete. Any later stale-implementation or follow-up fix run starts again from the latest remote default branch on a fresh fix branch and PR.
 
-Project review remediation uses one `quayboard/project-review-fixes` PR across the review/fix loop. Auto-advance merges that PR only after the latest project review session is clear. Final delivery completion is blocked while the project review session is still active, failed, needs fixes, or has a clear review with an unmerged fixes PR.
+Project review remediation uses one `quayboard/project-review-fixes` PR across a bounded release-gate review/fix loop. Only critical and high-severity findings are auto-remediated; medium and low-severity findings remain advisory. Auto-advance merges that PR only after the latest project review session is clear, and it pauses instead of silently extending the loop when the configured project-review loop budget is exhausted. Final delivery completion is blocked while the project review session is still active, failed, needs fixes, or has a clear review with an unmerged fixes PR.
 
 ## Milestone Reconciliation
 
