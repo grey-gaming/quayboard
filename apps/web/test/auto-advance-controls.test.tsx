@@ -181,6 +181,42 @@ describe("auto-advance controls", () => {
     ).toBeTruthy();
   });
 
+  it("shows project-review retry exhaustion guidance", async () => {
+    render(
+      <AutoAdvanceBanner
+        nextStep="project_review_retry"
+        session={buildSession({
+          currentStep: "project_review_retry",
+          pausedReason: "project_review_retry_limit_reached",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Auto-advance retried the project review or fix run three times and paused. Open Project Review to inspect the latest failure before retrying.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("shows project-review incomplete guidance", async () => {
+    render(
+      <AutoAdvanceBanner
+        nextStep="project_review_retry"
+        session={buildSession({
+          currentStep: "project_review_retry",
+          pausedReason: "project_review_incomplete",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Auto-advance cannot finish while project review remediation is still running, failed, needs fixes, or has an unmerged fixes branch. Open Project Review to continue.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("renders the backend error message when start fails", async () => {
     vi.stubGlobal("EventSource", MockEventSource);
 

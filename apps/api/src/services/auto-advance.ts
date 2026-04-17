@@ -194,6 +194,22 @@ const shouldRetryAutoAdvanceFailure = (
   return job.type === "RunProjectReview" || job.type === "RunProjectFix";
 };
 
+const projectReviewStepForStatus = (status: string | null | undefined) =>
+  status === "needs_fixes" ||
+  status === "failed" ||
+  status === "queued_fix" ||
+  status === "running_fix"
+    ? "project_review_retry"
+    : "project_review_run";
+
+const isIncompleteProjectReviewStatus = (status: string | null | undefined) =>
+  status === "queued_review" ||
+  status === "running_review" ||
+  status === "queued_fix" ||
+  status === "running_fix" ||
+  status === "needs_fixes" ||
+  status === "failed";
+
 const parseStoredReconciliationIssues = (value: unknown): ReconciliationIssue[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -470,6 +486,116 @@ export const createAutoAdvanceService = (
 
   const publishSessionUpdate = async (ownerUserId: string, projectId: string) => {
     sseHub.publish(ownerUserId, "auto-advance:updated", { projectId });
+  };
+
+  const pauseForIncompleteProjectReview = async (
+    ownerUserId: string,
+    projectId: string,
+    sessionId: string,
+    reviewStatus: string | null | undefined,
+  ) => {
+    const [updated] = await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        status: "paused",
+        currentStep: projectReviewStepForStatus(reviewStatus),
+        pausedReason: "project_review_incomplete",
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        pausedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, sessionId))
+      .returning();
+
+    await publishSessionUpdate(ownerUserId, projectId);
+    return updated ?? null;
+  };
+
+  const completeAfterClearProjectReview = async (
+    ownerUserId: string,
+    projectId: string,
+    sessionId: string,
+  ) => {
+    await projectReviewService.reconcileStaleActiveSession(ownerUserId, projectId);
+    const latestReview = await projectReviewService.getLatestSessionDetail(ownerUserId, projectId);
+    const reviewSession = latestReview.session;
+
+    if (!reviewSession) {
+      return false;
+    }
+
+    if (isIncompleteProjectReviewStatus(reviewSession.status)) {
+      await pauseForIncompleteProjectReview(
+        ownerUserId,
+        projectId,
+        sessionId,
+        reviewSession.status,
+      );
+      return true;
+    }
+
+    if (reviewSession.status !== "clear") {
+      return false;
+    }
+
+    if (reviewSession.branchName) {
+      const mergeResult = await projectReviewService
+        .mergeFixPullRequest(ownerUserId, reviewSession.id)
+        .catch(() => ({ merged: false }));
+
+      if (!mergeResult.merged) {
+        await pauseForIncompleteProjectReview(
+          ownerUserId,
+          projectId,
+          sessionId,
+          reviewSession.status,
+        );
+        return true;
+      }
+    }
+
+    await projectReviewService.markProjectCompleted(ownerUserId, projectId);
+    await db
+      .update(autoAdvanceSessionsTable)
+      .set({
+        status: "completed",
+        currentStep: null,
+        pendingJobCount: 0,
+        activeBatchToken: null,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(autoAdvanceSessionsTable.id, sessionId));
+    await publishSessionUpdate(ownerUserId, projectId);
+    return true;
+  };
+
+  const reconcileCompletedProjectReviewBlocker = async (
+    ownerUserId: string,
+    projectId: string,
+    session: AutoAdvanceSessionRow | null,
+  ) => {
+    if (!session || session.status !== "completed") {
+      return session;
+    }
+
+    await projectReviewService.reconcileStaleActiveSession(ownerUserId, projectId);
+    const latestReview = await projectReviewService.getLatestSessionDetail(ownerUserId, projectId);
+    const reviewStatus = latestReview.session?.status ?? null;
+
+    if (!isIncompleteProjectReviewStatus(reviewStatus)) {
+      return session;
+    }
+
+    return (
+      (await pauseForIncompleteProjectReview(
+        ownerUserId,
+        projectId,
+        session.id,
+        reviewStatus,
+      )) ?? session
+    );
   };
 
   const buildAutoAdvanceInputs = (
@@ -1251,6 +1377,10 @@ export const createAutoAdvanceService = (
       const nextAction = actions[0] ?? null;
 
       if (!nextAction) {
+        if (await completeAfterClearProjectReview(ownerUserId, projectId, sessionId)) {
+          return;
+        }
+
         const MAX_REVIEWS = 3;
         const currentReviewCount = session?.reviewCount ?? 0;
 
@@ -1539,10 +1669,14 @@ export const createAutoAdvanceService = (
     async getStatus(ownerUserId: string, projectId: string): Promise<AutoAdvanceStatusResponse> {
       await requireProject(ownerUserId, projectId);
 
-      const session = await reconcileStaleRunningSession(
+      const session = await reconcileCompletedProjectReviewBlocker(
         ownerUserId,
         projectId,
-        await getSession(projectId),
+        await reconcileStaleRunningSession(
+          ownerUserId,
+          projectId,
+          await getSession(projectId),
+        ),
       );
       const { actions } = await nextActionsService.build(ownerUserId, projectId);
       const nextStep = actions[0]?.key ?? null;
@@ -1560,10 +1694,14 @@ export const createAutoAdvanceService = (
     ): Promise<AutoAdvanceSession> {
       await requireProject(ownerUserId, projectId);
 
-      const existing = await reconcileStaleRunningSession(
+      const existing = await reconcileCompletedProjectReviewBlocker(
         ownerUserId,
         projectId,
-        await getSession(projectId),
+        await reconcileStaleRunningSession(
+          ownerUserId,
+          projectId,
+          await getSession(projectId),
+        ),
       );
 
       if (existing && existing.status === "running") {
@@ -1971,13 +2109,24 @@ export const createAutoAdvanceService = (
             shouldRetry &&
             errorCode.startsWith("llm_output_")
               ? "needs_human"
+              : (job.type === "RunProjectReview" || job.type === "RunProjectFix") &&
+                shouldRetry
+              ? "project_review_retry_limit_reached"
               : "job_failed";
+          const projectReviewStep =
+            job.type === "RunProjectFix" ? "running_fix" : "running_review";
           await db
             .update(autoAdvanceSessionsTable)
             .set({
               status: "paused",
+              currentStep:
+                job.type === "RunProjectReview" || job.type === "RunProjectFix"
+                  ? projectReviewStepForStatus(projectReviewStep)
+                  : session.currentStep,
               pausedReason,
               retryCount: 0,
+              pendingJobCount: 0,
+              activeBatchToken: null,
               pausedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -2621,12 +2770,17 @@ export const createAutoAdvanceService = (
         } | null;
 
         if (!output || output.complete || !output.issues?.length) {
+          if (await completeAfterClearProjectReview(project.ownerUserId, job.projectId, session.id)) {
+            return;
+          }
+
           // Review passed — mark session completed.
           await db
             .update(autoAdvanceSessionsTable)
             .set({
               status: "completed",
               currentStep: null,
+              pendingJobCount: 0,
               activeBatchToken: null,
               completedAt: new Date(),
               updatedAt: new Date(),

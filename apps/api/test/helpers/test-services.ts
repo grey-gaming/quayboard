@@ -695,6 +695,7 @@ export const createStubServices = (): AppServices => ({
     }),
     getRetryMaxLoopsForAutoAdvance: async () => undefined,
     mergeFixPullRequest: async () => ({ merged: false }),
+    reconcileStaleActiveSession: async () => false,
     markProjectCompleted: async () => ({
       id: "00000000-0000-4000-8000-000000000000",
       name: "Stub Project",

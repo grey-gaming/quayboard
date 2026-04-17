@@ -191,6 +191,24 @@ const reconcileInterruptedBugFixes = async (
   await bugService.reopenInterruptedFixes(interruptedBugFixJobIds, message);
 };
 
+const reconcileInterruptedProjectReviews = async (
+  projectReviewService: ProjectReviewService,
+  autoAdvanceService: AutoAdvanceService,
+  cancelledJobs: Awaited<ReturnType<JobService["cancelRunningJobs"]>>,
+  message: string,
+) => {
+  const interruptedProjectReviewJobs = cancelledJobs.filter(
+    (job) => job.type === "RunProjectReview" || job.type === "RunProjectFix",
+  );
+
+  for (const job of interruptedProjectReviewJobs) {
+    await projectReviewService.failAttemptByJobId(job.id, message);
+    await autoAdvanceService.onJobComplete(job.id, "failure").catch((err) => {
+      console.error("auto-advance project review recovery failed:", err);
+    });
+  }
+};
+
 export const createAppServices = async (
   databaseUrl: string,
   secretsEncryptionKey: string | null,
@@ -464,6 +482,12 @@ export const createAppServices = async (
     startupCancelledJobs,
     staleJobCancellation.message,
   );
+  await reconcileInterruptedProjectReviews(
+    projectReviewService,
+    autoAdvanceService,
+    startupCancelledJobs,
+    staleJobCancellation.message,
+  );
   await bugService.reconcileStaleInProgressFixes();
   await sandboxService.reconcileRuntimeState().catch((error) => {
     console.error("sandbox runtime reconciliation on startup failed:", error);
@@ -519,6 +543,12 @@ export const createAppServices = async (
       const shutdownCancelledJobs = await jobService.cancelRunningJobs(shutdownJobCancellation);
       await reconcileInterruptedBugFixes(
         bugService,
+        shutdownCancelledJobs,
+        shutdownJobCancellation.message,
+      );
+      await reconcileInterruptedProjectReviews(
+        projectReviewService,
+        autoAdvanceService,
         shutdownCancelledJobs,
         shutdownJobCancellation.message,
       );

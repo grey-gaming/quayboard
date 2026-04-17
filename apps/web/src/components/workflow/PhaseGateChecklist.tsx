@@ -36,6 +36,13 @@ const KEY_TO_PATH: Record<string, string> = {
   feature_product_approved: "/features",
   feature_count: "/features",
   feature_task_count: "/features",
+  milestone_plan_finalized: "/develop/review",
+  project_review_clear: "/develop/review",
+  project_review_open_findings: "/develop/review",
+};
+
+const PHASE_TO_PATH: Record<string, string> = {
+  "Project Review": "/develop/review",
 };
 
 export const PhaseGateChecklist = ({
@@ -49,7 +56,16 @@ export const PhaseGateChecklist = ({
     {phases.map((phase) => (
       <div key={phase.phase} className="border border-border/80 bg-panel-inset p-4">
         <div className="flex items-center justify-between gap-3">
-          <p className="font-medium tracking-[-0.02em]">{phase.phase}</p>
+          {PHASE_TO_PATH[phase.phase] ? (
+            <Link
+              to={`/projects/${projectId}${PHASE_TO_PATH[phase.phase]}`}
+              className="font-medium tracking-[-0.02em] hover:text-accent hover:underline transition-colors"
+            >
+              {phase.phase}
+            </Link>
+          ) : (
+            <p className="font-medium tracking-[-0.02em]">{phase.phase}</p>
+          )}
           <Badge tone={phase.items.every((item) => item.passed) ? "success" : "warning"}>
             {phase.items.filter((item) => item.passed).length}/{phase.items.length}
           </Badge>
