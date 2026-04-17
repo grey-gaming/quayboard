@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import {
   createFeatureRevisionRequestSchema,
@@ -14,6 +14,7 @@ import type { FeatureKind, Priority } from "@quayboard/shared";
 import type { AppDatabase } from "../../db/client.js";
 import {
   autoAdvanceSessionsTable,
+  jobsTable,
   llmRunsTable,
   milestoneUseCasesTable,
   milestonesTable,
@@ -82,6 +83,7 @@ import {
   buildAppendMilestonePlanPrompt,
   buildFeatureTaskListPrompt,
 } from "./job-prompts.js";
+import type { MilestoneDesignSemanticFeedback } from "./job-prompts.js";
 import type { JobService } from "./job-service.js";
 
 const unwrapJsonFence = (value: string) => {
@@ -176,7 +178,14 @@ type JobFailurePayload = {
   templateId?: string;
   doneReason?: string | null;
   hint?: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
   retryable?: boolean;
+};
+
+type GenerateMilestoneDesignInputs = {
+  hint?: string;
+  milestoneId?: string;
+  semanticFeedback?: MilestoneDesignSemanticFeedback[];
 };
 
 type DecisionSelectionRepairPlan = {
@@ -370,6 +379,96 @@ const createJobFailure = (input: JobFailurePayload) =>
   Object.assign(new Error(input.message), {
     jobError: input,
   });
+
+const normalizeMilestoneDesignSemanticFeedback = (
+  feedback: MilestoneDesignSemanticFeedback[],
+) => {
+  const normalized: MilestoneDesignSemanticFeedback[] = [];
+  const seen = new Set<string>();
+
+  for (const item of feedback) {
+    const issues = item.issues.map((issue) => issue.trim()).filter(Boolean);
+    const repairHint = item.repairHint.trim();
+
+    if (issues.length === 0 && repairHint.length === 0) {
+      continue;
+    }
+
+    if (
+      issues.length === 0 &&
+      normalized.some((existing) => existing.repairHint === repairHint)
+    ) {
+      continue;
+    }
+
+    const key = JSON.stringify({ issues, repairHint });
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    normalized.push({ issues, repairHint });
+  }
+
+  return normalized.slice(-5);
+};
+
+const semanticFeedbackFromHint = (hint: string | null | undefined) => {
+  const normalized = hint?.trim();
+  return normalized
+    ? [{ issues: [], repairHint: normalized }]
+    : [];
+};
+
+const semanticFeedbackFromJobError = (error: unknown) => {
+  if (!error || typeof error !== "object") {
+    return [];
+  }
+
+  const payload = error as JobFailurePayload;
+  const feedback = Array.isArray(payload.semanticFeedback)
+    ? payload.semanticFeedback
+    : [];
+  const issues =
+    typeof payload.message === "string" &&
+    payload.message.includes("Milestone design semantic review found unresolved conflicts:")
+      ? payload.message
+          .split("Milestone design semantic review found unresolved conflicts:")[1]
+          ?.split(";")
+          .map((issue) => issue.trim())
+          .filter(Boolean) ?? []
+      : [];
+
+  return normalizeMilestoneDesignSemanticFeedback([
+    ...feedback,
+    ...(issues.length > 0 || payload.hint?.trim()
+      ? [
+          {
+            issues,
+            repairHint: payload.hint?.trim() ?? "",
+          },
+        ]
+      : []),
+  ]);
+};
+
+const formatMilestoneDesignSemanticFeedbackHint = (
+  feedback: MilestoneDesignSemanticFeedback[],
+) => {
+  const latest = feedback.at(-1);
+
+  if (!latest) {
+    return "";
+  }
+
+  return [
+    latest.repairHint,
+    ...latest.issues,
+  ]
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .join(" ");
+};
 
 const isStructuredOutputFailure = (error: unknown): error is Error & { jobError: JobFailurePayload } =>
   Boolean(
@@ -3893,7 +3992,7 @@ export const createJobRunnerService = (input: {
           throw new Error("GenerateMilestoneDesign requires milestone service support.");
         }
 
-        const jobInput = parseJobInputs<{ hint?: string; milestoneId?: string }>(rawJob.inputs);
+        const jobInput = parseJobInputs<GenerateMilestoneDesignInputs>(rawJob.inputs);
         const milestoneId = jobInput?.milestoneId;
 
         if (!milestoneId) {
@@ -3934,6 +4033,39 @@ export const createJobRunnerService = (input: {
         }
         const uxBlueprint = blueprints.uxBlueprint;
         const techBlueprint = blueprints.techBlueprint;
+        let priorFailedDesignJobs: Array<{ error: unknown; inputs: unknown }> = [];
+        try {
+          priorFailedDesignJobs = await input.db
+            .select({
+              error: jobsTable.error,
+              inputs: jobsTable.inputs,
+            })
+            .from(jobsTable)
+            .where(
+              and(
+                eq(jobsTable.projectId, rawJob.projectId),
+                eq(jobsTable.type, "GenerateMilestoneDesign"),
+                eq(jobsTable.status, "failed"),
+                sql`${jobsTable.inputs} ->> 'milestoneId' = ${milestoneId}`,
+              ),
+            )
+            .orderBy(desc(jobsTable.queuedAt))
+            .limit(8);
+        } catch {
+          priorFailedDesignJobs = [];
+        }
+        let semanticFeedback = normalizeMilestoneDesignSemanticFeedback([
+          ...priorFailedDesignJobs
+            .reverse()
+            .flatMap((job) => [
+              ...semanticFeedbackFromJobError(job.error),
+              ...semanticFeedbackFromHint(
+                parseJobInputs<GenerateMilestoneDesignInputs>(job.inputs)?.hint,
+              ),
+            ]),
+          ...(Array.isArray(jobInput?.semanticFeedback) ? jobInput.semanticFeedback : []),
+          ...semanticFeedbackFromHint(jobInput?.hint),
+        ]);
 
         const parseMilestoneDesignCoreWithShapeRepair = async (inputArgs: {
           contractGuidance?: string[];
@@ -3999,6 +4131,7 @@ export const createJobRunnerService = (input: {
                 issues: [shapeRepairMessage],
                 draftJson: jsonRepaired.content,
                 hint: inputArgs.hint?.trim() || shapeRepairMessage,
+                semanticFeedback,
               });
               const shapeRepaired = await generateWithJobFailure(shapeRepairPrompt, {
                 responseFormat: "json",
@@ -4049,6 +4182,7 @@ export const createJobRunnerService = (input: {
             uxSpec: uxBlueprint.markdown,
             technicalSpec: techBlueprint.markdown,
             hint: inputArgs.hint,
+            semanticFeedback,
           });
 
           const generated = await generateWithJobFailure(prompt, {
@@ -4091,6 +4225,7 @@ export const createJobRunnerService = (input: {
             issues: inputArgs.issues,
             draftJson: JSON.stringify(inputArgs.draft, null, 2),
             hint: inputArgs.hint,
+            semanticFeedback,
           });
           const generated = await generateWithJobFailure(prompt, {
             responseFormat: "json",
@@ -4131,6 +4266,7 @@ export const createJobRunnerService = (input: {
               uxSpec: uxBlueprint.markdown,
               technicalSpec: techBlueprint.markdown,
               draftJson: JSON.stringify(inputArgs.draft, null, 2),
+              semanticFeedback,
             }),
             parse: parseMilestoneDesignSemanticReviewResult,
           });
@@ -4168,31 +4304,56 @@ export const createJobRunnerService = (input: {
           templateId: `${rawJob.type}SemanticReview`,
         });
 
-        if (!semanticReview.ok) {
+        for (let semanticAttempt = 1; !semanticReview.ok && semanticAttempt <= 2; semanticAttempt += 1) {
           const semanticIssues =
             semanticReview.issues.length > 0
               ? semanticReview.issues
               : ["Milestone design semantic review found an unresolved contradiction."];
+          semanticFeedback = normalizeMilestoneDesignSemanticFeedback([
+            ...semanticFeedback,
+            {
+              issues: semanticIssues,
+              repairHint: semanticReview.repairHint ?? semanticIssues.join(" "),
+            },
+          ]);
           designDraft = await repairMilestoneDesignCoreDraft({
             draft: designDraft,
             issues: semanticIssues,
-            hint: semanticReview.repairHint ?? semanticIssues.join(" "),
-            templateId: `${rawJob.type}SemanticRetry`,
+            hint: formatMilestoneDesignSemanticFeedbackHint(semanticFeedback),
+            templateId:
+              semanticAttempt === 1
+                ? `${rawJob.type}SemanticRetry`
+                : `${rawJob.type}SemanticRetry${semanticAttempt}`,
           });
           designValidation = validateMilestoneDesignDraft(designDraft, linkedFlows);
           if (!designValidation.ok) {
+            const validationFeedback = normalizeMilestoneDesignSemanticFeedback([
+              ...semanticFeedback,
+              {
+                issues: designValidation.issues,
+                repairHint:
+                  designValidation.hint.length > 0 ? designValidation.hint : designValidation.issues[0] ?? "",
+              },
+            ]);
             throw createJobFailure({
               message:
                 `Milestone design validation found unresolved conflicts: ${designValidation.issues.join("; ") || "unknown issue"}`,
               code: "milestone_design_conflict_unresolved",
-              hint: designValidation.hint.length > 0 ? designValidation.hint : designValidation.issues[0],
+              hint:
+                formatMilestoneDesignSemanticFeedbackHint(validationFeedback) ||
+                designValidation.hint ||
+                designValidation.issues[0],
+              semanticFeedback: validationFeedback,
               retryable: true,
             });
           }
 
           semanticReview = await reviewMilestoneDesignSemantics({
             draft: designDraft,
-            templateId: `${rawJob.type}SemanticReviewRetry`,
+            templateId:
+              semanticAttempt === 1
+                ? `${rawJob.type}SemanticReviewRetry`
+                : `${rawJob.type}SemanticReviewRetry${semanticAttempt}`,
           });
         }
 
@@ -4201,11 +4362,22 @@ export const createJobRunnerService = (input: {
             semanticReview.issues.length > 0
               ? semanticReview.issues
               : ["Milestone design semantic review found an unresolved contradiction."];
+          semanticFeedback = normalizeMilestoneDesignSemanticFeedback([
+            ...semanticFeedback,
+            {
+              issues: semanticIssues,
+              repairHint: semanticReview.repairHint ?? semanticIssues[0] ?? "",
+            },
+          ]);
           throw createJobFailure({
             message:
               `Milestone design semantic review found unresolved conflicts: ${semanticIssues.join("; ")}`,
             code: "milestone_design_conflict_unresolved",
-            hint: semanticReview.repairHint ?? semanticIssues[0],
+            hint:
+              formatMilestoneDesignSemanticFeedbackHint(semanticFeedback) ||
+              semanticReview.repairHint ||
+              semanticIssues[0],
+            semanticFeedback,
             retryable: true,
           });
         }

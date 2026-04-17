@@ -347,6 +347,58 @@ export const createProjectReviewService = (
     });
   },
 
+  async reconcileStaleActiveSession(
+    ownerUserId: string,
+    projectId: string,
+    message = "Project review stopped before the active job finished.",
+  ) {
+    await this.assertOwnedProject(ownerUserId, projectId);
+    const session = await this.getActiveSession(projectId);
+    if (!session) {
+      return false;
+    }
+
+    const [latestAttempt] = await db.query.projectReviewAttemptsTable.findMany({
+      where: eq(projectReviewAttemptsTable.projectReviewSessionId, session.id),
+      orderBy: [desc(projectReviewAttemptsTable.sequence)],
+      limit: 1,
+    });
+    if (
+      !latestAttempt ||
+      (latestAttempt.status !== "queued" && latestAttempt.status !== "running")
+    ) {
+      return false;
+    }
+
+    const job = latestAttempt.jobId
+      ? await db.query.jobsTable.findFirst({
+          where: eq(jobsTable.id, latestAttempt.jobId),
+        })
+      : null;
+
+    if (job?.status === "queued" || job?.status === "running") {
+      return false;
+    }
+
+    await db
+      .update(projectReviewAttemptsTable)
+      .set({
+        status: "failed",
+        errorMessage: message,
+        completedAt: new Date(),
+      })
+      .where(eq(projectReviewAttemptsTable.id, latestAttempt.id));
+    await db
+      .update(projectReviewSessionsTable)
+      .set({
+        status: "failed",
+        updatedAt: new Date(),
+      })
+      .where(eq(projectReviewSessionsTable.id, session.id));
+
+    return true;
+  },
+
   async listSessions(ownerUserId: string, projectId: string): Promise<ProjectReviewSession[]> {
     await this.assertOwnedProject(ownerUserId, projectId);
     const sessions = await db.query.projectReviewSessionsTable.findMany({

@@ -269,6 +269,60 @@ describe("workflow pages", () => {
     ]);
   });
 
+  it("links mission control project review phase items to the project review page", async () => {
+    const reviewProjectId = "91919191-9191-4191-8191-919191919191";
+
+    vi.stubGlobal("EventSource", MockEventSource);
+    installFetchStub({
+      "/auth/me": { user },
+      [`/api/projects/${reviewProjectId}`]: {
+        id: reviewProjectId,
+        name: "Quayboard",
+        description: "Governed software delivery workspace.",
+        state: "READY",
+        ownerUserId: reviewProjectId,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-16T10:00:00.000Z",
+      },
+      [`/api/projects/${reviewProjectId}/phase-gates`]: {
+        phases: [
+          {
+            phase: "Project Review",
+            passed: false,
+            items: [
+              { key: "milestone_plan_finalized", label: "Milestone planning finalized", passed: true },
+              { key: "project_review_clear", label: "Latest review status: running fix", passed: false },
+              { key: "project_review_open_findings", label: "2 open findings", passed: false },
+            ],
+          },
+        ],
+      },
+      [`/api/projects/${reviewProjectId}/next-actions`]: {
+        actions: [],
+      },
+      [`/api/projects/${reviewProjectId}/jobs`]: {
+        jobs: [],
+      },
+      [`/api/projects/${reviewProjectId}/auto-advance/status`]: {
+        session: null,
+        nextStep: null,
+      },
+    });
+
+    renderRoute("/projects/:id", <MissionControlPage />, reviewProjectId);
+
+    const expectedHref = `/projects/${reviewProjectId}/develop/review`;
+    expect(
+      (await screen.findByRole("link", { name: "Project Review" })).getAttribute("href"),
+    ).toBe(expectedHref);
+    expect(
+      screen.getByRole("link", { name: "Latest review status: running fix" }).getAttribute("href"),
+    ).toBe(expectedHref);
+    expect(screen.getByRole("link", { name: "2 open findings" }).getAttribute("href")).toBe(
+      expectedHref,
+    );
+  });
+
   it("shows a milestone-gap CTA instead of resume controls for a human-blocked reconciliation pause", async () => {
     const blockedProjectId = "70707070-7070-4070-8070-707070707070";
 

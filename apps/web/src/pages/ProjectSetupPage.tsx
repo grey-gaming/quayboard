@@ -52,7 +52,7 @@ const defaultFormValues: FormValues = {
   githubRepo: "",
   llmModel: "",
   llmProvider: "",
-  memoryMb: "2048",
+  memoryMb: "4096",
   requireArchitectureDocs: "false",
   requireUserDocs: "false",
   sandboxAllowlist: "",
@@ -183,7 +183,7 @@ export const ProjectSetupPage = () => {
       githubRepo: setupQuery.data.repo.selectedRepo?.fullName ?? "",
       llmModel: setupQuery.data.llm.model ?? "",
       llmProvider: setupQuery.data.llm.provider ?? "",
-      memoryMb: String(setupQuery.data.sandboxConfig?.memoryMb ?? 2048),
+      memoryMb: String(setupQuery.data.sandboxConfig?.memoryMb ?? 4096),
       requireArchitectureDocs: String(
         setupQuery.data.evidencePolicy?.requireArchitectureDocs ?? false,
       ),

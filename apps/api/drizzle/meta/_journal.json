@@ -232,6 +232,13 @@
       "when": 1760000032000,
       "tag": "0032_m11_task_planning_sandbox_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1760000033000,
+      "tag": "0033_m11_project_review_auto_advance_pauses",
+      "breakpoints": true
     }
   ]
 }

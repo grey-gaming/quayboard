@@ -121,6 +121,80 @@ describe("project review service", () => {
     ).toBe(2);
   });
 
+  it("marks stale active project review attempts failed when their job is terminal", async () => {
+    const attemptUpdateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    const sessionUpdateSet = vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue(undefined),
+    });
+    let updateCount = 0;
+    const service = createProjectReviewService(
+      {
+        query: {
+          projectsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: PROJECT_ID,
+              ownerUserId: USER_ID,
+            }),
+          },
+          projectReviewSessionsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: SESSION_ID,
+              projectId: PROJECT_ID,
+              status: "running_fix",
+              createdAt: new Date(),
+            }),
+          },
+          projectReviewAttemptsTable: {
+            findMany: vi.fn().mockResolvedValue([
+              {
+                id: FIX_ATTEMPT_ID,
+                projectReviewSessionId: SESSION_ID,
+                projectId: PROJECT_ID,
+                status: "running",
+                sequence: 2,
+                jobId: "job-fix-1",
+              },
+            ]),
+          },
+          jobsTable: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: "job-fix-1",
+              status: "cancelled",
+            }),
+          },
+        },
+        update: vi.fn().mockImplementation(() => {
+          updateCount += 1;
+          return {
+            set: updateCount === 1 ? attemptUpdateSet : sessionUpdateSet,
+          };
+        }),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.reconcileStaleActiveSession(USER_ID, PROJECT_ID, "cancelled by restart"),
+    ).resolves.toBe(true);
+
+    expect(attemptUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+        errorMessage: "cancelled by restart",
+      }),
+    );
+    expect(sessionUpdateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed",
+      }),
+    );
+  });
+
   it("requeues a review instead of fixes when a failed session never produced review output", async () => {
     const updateSet = vi.fn().mockReturnValue({
       where: vi.fn().mockResolvedValue(undefined),

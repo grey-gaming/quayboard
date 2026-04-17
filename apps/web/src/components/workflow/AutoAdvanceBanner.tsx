@@ -15,6 +15,9 @@ const pausedReasonLabel: Record<string, string> = {
   review_limit_reached: "delivery review limit reached",
   ci_fix_budget_exceeded: "CI repair budget exceeded",
   ci_wait_limit_reached: "CI wait limit reached",
+  project_review_limit_reached: "project review limit reached",
+  project_review_retry_limit_reached: "project review retry limit reached",
+  project_review_incomplete: "project review incomplete",
 };
 
 const statusTone = (
@@ -130,6 +133,21 @@ export const AutoAdvanceBanner = ({
           {session?.pausedReason === "ci_wait_limit_reached" ? (
             <p className="text-xs text-warning">
               Auto-advance waited for milestone CI repeatedly and paused because the checks did not settle.
+            </p>
+          ) : null}
+          {session?.pausedReason === "project_review_limit_reached" ? (
+            <p className="text-xs text-warning">
+              Auto-advance reached the project review fix-loop limit. Open Project Review to inspect the remaining findings and retry fixes when ready.
+            </p>
+          ) : null}
+          {session?.pausedReason === "project_review_retry_limit_reached" ? (
+            <p className="text-xs text-warning">
+              Auto-advance retried the project review or fix run three times and paused. Open Project Review to inspect the latest failure before retrying.
+            </p>
+          ) : null}
+          {session?.pausedReason === "project_review_incomplete" ? (
+            <p className="text-xs text-warning">
+              Auto-advance cannot finish while project review remediation is still running, failed, needs fixes, or has an unmerged fixes branch. Open Project Review to continue.
             </p>
           ) : null}
         </div>

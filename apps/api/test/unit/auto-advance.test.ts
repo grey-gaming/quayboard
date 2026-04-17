@@ -174,9 +174,11 @@ describe("auto-advance service", () => {
   let onePagerService: { approveCanonical: ReturnType<typeof vi.fn> };
   let projectReviewService: {
     finalizeMilestonePlan: ReturnType<typeof vi.fn>;
+    getLatestSessionDetail: ReturnType<typeof vi.fn>;
     getSessionById: ReturnType<typeof vi.fn>;
     markProjectCompleted: ReturnType<typeof vi.fn>;
     mergeFixPullRequest: ReturnType<typeof vi.fn>;
+    reconcileStaleActiveSession: ReturnType<typeof vi.fn>;
     startReview: ReturnType<typeof vi.fn>;
   };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
@@ -253,9 +255,11 @@ describe("auto-advance service", () => {
     onePagerService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
     projectReviewService = {
       finalizeMilestonePlan: vi.fn().mockResolvedValue({}),
+      getLatestSessionDetail: vi.fn().mockResolvedValue({ session: null }),
       getSessionById: vi.fn().mockResolvedValue({ session: null }),
       markProjectCompleted: vi.fn().mockResolvedValue(undefined),
       mergeFixPullRequest: vi.fn().mockResolvedValue({ merged: true }),
+      reconcileStaleActiveSession: vi.fn().mockResolvedValue(false),
       startReview: vi.fn().mockResolvedValue({ session: null }),
     };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
@@ -803,6 +807,60 @@ describe("auto-advance service", () => {
       );
     });
 
+    it("pauses instead of running final delivery review while project review is active", async () => {
+      nextActionsService.build.mockResolvedValue({ actions: [] });
+      projectReviewService.getLatestSessionDetail.mockResolvedValue({
+        session: {
+          id: "review-session-123",
+          status: "running_fix",
+          branchName: "quayboard/project-review-fixes",
+        },
+      });
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: data.status === "paused" ? ("paused" as const) : ("running" as const),
+                  pausedReason:
+                    data.status === "paused"
+                      ? ("project_review_incomplete" as const)
+                      : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(jobService.createJob).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "ReviewDelivery" }),
+      );
+      expect(
+        updates.some(
+          (update) =>
+            update.status === "paused" &&
+            update.pausedReason === "project_review_incomplete" &&
+            update.currentStep === "project_review_retry",
+        ),
+      ).toBe(true);
+    });
+
     it("marks completed (not another review) when no actions remain and reviewCount >= 3", async () => {
       nextActionsService.build.mockResolvedValue({ actions: [] });
       const sessionWithMaxReviews = makeSessionRow({ status: "paused" as const, pausedReason: "manual_pause", reviewCount: 3 });
@@ -982,6 +1040,73 @@ describe("auto-advance service", () => {
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
+    it("preserves cumulative milestone design semantic feedback on retry", async () => {
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        retryCount: 0,
+        activeBatchToken: "batch-1",
+      });
+      const failedJob = {
+        ...makeJob(),
+        type: "GenerateMilestoneDesign",
+        error: {
+          message: "Milestone design semantic review found unresolved conflicts: Audio cannot resume silently.",
+          hint: "Resume audio in the prompt click.",
+          retryable: true,
+          semanticFeedback: [
+            {
+              issues: ["Audio cannot resume silently."],
+              repairHint: "Resume audio in the prompt click.",
+            },
+          ],
+        },
+        inputs: {
+          milestoneId: "milestone-123",
+          semanticFeedback: [
+            {
+              issues: ["Fullscreen cannot be requested on page load."],
+              repairHint: "Use a Resume Experience prompt.",
+            },
+          ],
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+          },
+        },
+      };
+      const db = makeDb({ session: runningSession, job: failedJob });
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation(() => ({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "running" as const })]),
+          }),
+        })),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      expect(jobService.createJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "GenerateMilestoneDesign",
+          inputs: expect.objectContaining({
+            milestoneId: "milestone-123",
+            semanticFeedback: [
+              {
+                issues: ["Fullscreen cannot be requested on page load."],
+                repairHint: "Use a Resume Experience prompt.",
+              },
+              {
+                issues: ["Audio cannot resume silently."],
+                repairHint: "Resume audio in the prompt click.",
+              },
+            ],
+            hint: "Resume audio in the prompt click.",
+          }),
+        }),
+      );
+    });
+
     it("retries ImplementChange with a fresh sandbox run even when the failure is not marked retryable", async () => {
       const runningSession = makeSessionRow({
         status: "running" as const,
@@ -1133,6 +1258,55 @@ describe("auto-advance service", () => {
 
       const pauseUpdate = failureUpdates.find((u) => u.status === "paused");
       expect(pauseUpdate?.pausedReason).toBe("job_failed");
+      expect(sseHub.publish).toHaveBeenCalled();
+    });
+
+    it("pauses project review runs with a specific notice after the retry budget is exhausted", async () => {
+      const failedJob = {
+        ...makeJob(),
+        type: "RunProjectFix",
+        error: {
+          message: "project_fix run exited with code 1.",
+        },
+        inputs: {
+          attemptId: "attempt-123",
+          sessionId: "review-session-123",
+          _autoAdvance: {
+            sessionId: SESSION_ID,
+            batchToken: "batch-1",
+            retryAttempt: 2,
+          },
+        },
+      };
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        activeBatchToken: "batch-1",
+      });
+      const db = makeDb({ session: runningSession, job: failedJob });
+      const failureUpdates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          failureUpdates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([makeSessionRow()]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "failure");
+
+      const pauseUpdate = failureUpdates.find((u) => u.status === "paused");
+      expect(pauseUpdate).toEqual(
+        expect.objectContaining({
+          currentStep: "project_review_retry",
+          pausedReason: "project_review_retry_limit_reached",
+          pendingJobCount: 0,
+          activeBatchToken: null,
+        }),
+      );
       expect(sseHub.publish).toHaveBeenCalled();
     });
 
@@ -1665,6 +1839,55 @@ describe("auto-advance service", () => {
       const completedUpdate = updates.find((u) => u.status === "completed");
       expect(completedUpdate).toBeDefined();
       expect(jobService.createJob).not.toHaveBeenCalled();
+    });
+
+    it("does not complete ReviewDelivery while a project review fixes branch is still active", async () => {
+      projectReviewService.getLatestSessionDetail.mockResolvedValue({
+        session: {
+          id: "review-session-123",
+          status: "running_fix",
+          branchName: "quayboard/project-review-fixes",
+        },
+      });
+      const runningSession = makeSessionRow({
+        status: "running" as const,
+        reviewCount: 1,
+        activeBatchToken: "batch-1",
+      });
+      const reviewJob = { ...makeJob(), type: "ReviewDelivery", outputs: { complete: true, issues: [] } as never };
+      const db = makeDb({ session: runningSession, job: reviewJob });
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                makeSessionRow({
+                  status: data.status === "paused" ? ("paused" as const) : ("running" as const),
+                  pausedReason:
+                    data.status === "paused"
+                      ? ("project_review_incomplete" as const)
+                      : null,
+                }),
+              ]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.onJobComplete(JOB_ID, "success");
+
+      expect(projectReviewService.markProjectCompleted).not.toHaveBeenCalled();
+      expect(updates.some((update) => update.status === "completed")).toBe(false);
+      expect(
+        updates.some(
+          (update) =>
+            update.status === "paused" &&
+            update.pausedReason === "project_review_incomplete",
+        ),
+      ).toBe(true);
     });
 
     it("enqueues fix job when ReviewDelivery reports issues and reviewCount < 3", async () => {

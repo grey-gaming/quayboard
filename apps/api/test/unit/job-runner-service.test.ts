@@ -2641,6 +2641,208 @@ describe("job runner service", () => {
     );
   });
 
+  it("keeps cumulative semantic feedback across multiple milestone design repair passes", async () => {
+    const db = createDbStub();
+    (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "milestone-id",
+      title: "Session Persistence",
+      summary: "Restore saved preferences without violating browser gesture rules.",
+    });
+    db.select = vi.fn(() => ({
+      from: vi.fn(() => ({
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(async () => [
+            {
+              title: "Return user",
+              userStory: "As a returning user, I want saved preferences restored.",
+              entryPoint: "App URL",
+              endState: "Saved preferences are active.",
+            },
+          ]),
+        })),
+      })),
+    })) as never;
+    const createDesignDocVersion = vi.fn(async () => ({
+      id: "design-doc-id",
+    }));
+    const markSucceeded = vi.fn(async () => undefined);
+    const validDraft = {
+      title: "Session Persistence",
+      objective: "Restore saved preferences through a resume prompt.",
+      includedUserFlows: [
+        {
+          title: "Return user",
+          summary: "Saved preferences are restored after a user gesture.",
+          steps: ["Open app", "Click Resume Experience", "Preferences are restored"],
+          deliveryGroupKeys: ["session-runtime"],
+          screens: ["Main Display"],
+        },
+      ],
+      scopeBoundaries: {
+        inScope: [{ item: "Resume prompt", deliveryGroupKey: "session-runtime" }],
+        outOfScope: [],
+      },
+      deliveryGroups: [
+        {
+          key: "session-runtime",
+          title: "Session Runtime",
+          summary: "Owns saved preference restoration.",
+          ownedScreens: ["Main Display"],
+          ownedResponsibilities: ["Restore saved preferences after resume click"],
+          dependsOn: [],
+          mustStayTogether: true,
+          mustNotSplit: false,
+        },
+      ],
+      dependenciesAndSequencing: [
+        {
+          phase: "Phase 1",
+          deliveryGroupKeys: ["session-runtime"],
+          notes: "Prompt before invoking browser-gated APIs.",
+        },
+      ],
+      exitCriteria: [
+        {
+          criterion: "A returning user can click Resume Experience and restore saved preferences.",
+          deliveryGroupKey: "session-runtime",
+          screens: ["Main Display"],
+        },
+      ],
+    };
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: JSON.stringify(validDraft),
+        promptTokens: 10,
+        completionTokens: 12,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: false,
+          issues: ["Fullscreen cannot be requested on page load."],
+          repairHint: "Use a Resume Experience prompt as the browser gesture.",
+        }),
+        promptTokens: 11,
+        completionTokens: 13,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify(validDraft),
+        promptTokens: 12,
+        completionTokens: 14,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          ok: false,
+          issues: ["AudioContext cannot resume silently."],
+          repairHint: "Resume audio in the same prompt click.",
+        }),
+        promptTokens: 13,
+        completionTokens: 15,
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify(validDraft),
+        promptTokens: 14,
+        completionTokens: 16,
+      })
+      .mockResolvedValueOnce(semanticReviewOk);
+    const service = createJobRunnerService({
+      artifactApprovalService: createArtifactApprovalServiceStub() as never,
+      blueprintService: {
+        getCanonical: vi.fn(async () => ({
+          uxBlueprint: {
+            id: "ux-spec-id",
+            projectId,
+            kind: "ux",
+            version: 1,
+            title: "UX Spec",
+            markdown: "# UX Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+          techBlueprint: {
+            id: "tech-spec-id",
+            projectId,
+            kind: "tech",
+            version: 1,
+            title: "Technical Spec",
+            markdown: "# Technical Spec",
+            source: "ManualSave",
+            isCanonical: true,
+            createdAt: "2026-03-18T00:00:00.000Z",
+          },
+        })),
+      } as never,
+      db: db as never,
+      jobService: {
+        getRawJob: vi.fn(async () => ({
+          id: "job-generate-design",
+          projectId,
+          createdByUserId: userId,
+          type: "GenerateMilestoneDesign",
+          inputs: { milestoneId: "milestone-id" },
+        })),
+        markSucceeded,
+      } as never,
+      llmProviderService: {
+        generate,
+      } as never,
+      milestoneService: {
+        assertActiveMilestone: vi.fn(async () => undefined),
+        getContext: vi.fn(async () => ({
+          id: "milestone-id",
+          projectId,
+          position: 1,
+          title: "Session Persistence",
+          summary: "Restore saved preferences without violating browser gesture rules.",
+          status: "draft",
+          linkedUserFlows: [],
+          featureCount: 0,
+          approvedAt: null,
+          completedAt: null,
+          reconciliationStatus: "not_started",
+          reconciliationIssues: [],
+          reconciliationReviewedAt: null,
+          createdAt: "2026-03-18T00:00:00.000Z",
+          updatedAt: "2026-03-18T00:00:00.000Z",
+        })),
+        createDesignDocVersion,
+      } as never,
+      onePagerService: {} as never,
+      productSpecService: {} as never,
+      projectService: {
+        getOwnedProject: vi.fn(async () => ({
+          id: projectId,
+          name: "Quayboard",
+          description: "Existing description.",
+        })),
+      } as never,
+      projectSetupService: {
+        getLlmDefinition: vi.fn(async () => ({
+          provider: "openai",
+          model: "gpt-4.1",
+        })),
+      } as never,
+      questionnaireService: {
+        getAnswers: async () => ({ answers: {}, completedAt: null, projectId: "00000000-0000-0000-0000-000000000000", updatedAt: new Date().toISOString() }),
+      } as never,
+      userFlowService: {} as never,
+    });
+
+    await service.run("job-generate-design");
+
+    expect(generate).toHaveBeenCalledTimes(6);
+    expect(generate.mock.calls[4]?.[1]).toContain("Fullscreen cannot be requested on page load.");
+    expect(generate.mock.calls[4]?.[1]).toContain("AudioContext cannot resume silently.");
+    expect(createDesignDocVersion).toHaveBeenCalled();
+    expect(markSucceeded).toHaveBeenCalledWith(
+      "job-generate-design",
+      expect.objectContaining({
+        designDocId: "design-doc-id",
+      }),
+    );
+  });
+
   it("normalizes recoverable milestone design shapes before persisting the design doc", async () => {
     const db = createDbStub();
     (db.query.milestonesTable.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({

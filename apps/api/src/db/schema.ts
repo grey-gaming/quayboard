@@ -121,6 +121,8 @@ const autoAdvancePausedReasonValues = [
   "ci_fix_budget_exceeded",
   "ci_wait_limit_reached",
   "project_review_limit_reached",
+  "project_review_retry_limit_reached",
+  "project_review_incomplete",
 ] as const;
 
 const milestonePlanStatusValues = ["open", "finalized"] as const;
