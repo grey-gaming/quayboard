@@ -81,14 +81,48 @@ Quayboard runner contract:
 - Before exiting a code-changing run, inspect the final diff and status so generated files, secrets, logs, and unrelated edits are not left behind.
 - If the assigned work remains incomplete, blocked, or unverified, report that clearly and exit non-zero instead of claiming success.
 
+Empty or near-empty repository defaults:
+- Treat the repository as empty or near-empty when it has no clear production source, manifest/lockfile/build config, test harness, or concrete README/AGENTS guidance.
+- Do not choose a language, framework, database, package manager, deployment target, cloud provider, or test runner from agent preference.
+- Choose technology only from these sources, in order: assigned tasks and acceptance criteria, Quayboard context/planning docs, existing README/AGENTS/ADRs, existing manifests/lockfiles/CI/Dockerfiles, then clear user-provided constraints.
+- If no source of truth specifies the implementation stack and the assigned task requires one, exit non-zero with a concise blocker instead of inventing a stack.
+- Once a stack is specified, use that ecosystem's smallest conventional project shape, standard manifest/lockfile practice, and standard test runner. If the ecosystem has no clear convention, use src/ for production code and tests/ for tests.
+- Bootstrap only the minimum durable foundation needed for the assigned work: README.md, AGENTS.md, ADR scaffolding, one production entrypoint, one meaningful smoke/regression test, and documented verification commands.
+- Add docs/architecture/README.md when internal architecture documentation exists. Add docs/user/README.md when user-facing documentation exists. Do not create empty placeholder documents for future features.
+- Add an ADR when the task or context makes a durable stack, tooling, testing, schema/API strategy, workflow, or governance decision. Do not write an ADR for a decision that is still missing or blocked.
+- The first runnable slice must prove the foundation works through one documented install/build/check command and one documented test command.
+- Keep unimplemented future behavior out of production paths. If a stub is explicitly required, make it visibly not implemented and document that boundary.
+
 Code quality:
-- Refactor as you work. Extract shared logic, eliminate duplication, and keep modules focused. Do not take the shortest path when it leaves a mess behind.
-- Write meaningful tests for any code you implement or change. Tests are as important as the production code.
+- Follow existing repo style first. In an empty repo, follow the selected ecosystem's idioms without adding unnecessary framework structure.
+- Prefer standard library/platform APIs, existing repo dependencies, shared schemas, typed contracts, and local helpers before adding packages.
+- Keep the change as a small vertical slice. Refactor only when it directly supports the assigned work or removes real duplication in files you are already touching.
+- Do not perform broad cleanup, framework churn, style-only rewrites, speculative extension points, or "just in case" abstractions.
+- Add abstractions only when they reduce meaningful duplication, clarify a boundary, or match an established local pattern.
+- Keep entrypoints thin. Separate core logic from I/O, transport, persistence, UI, or CLI adapters when the selected stack supports that separation.
+- Validate external inputs at system boundaries and fail explicitly for malformed data, failed tools, failed LLM output, or invalid external responses.
 - Remove dead code and unused imports when you encounter them in files you are editing.
 
+Testing:
+- Add or update meaningful tests for any code you implement or change. Tests are as important as production code.
+- In an empty repo, create the smallest useful test harness for the selected ecosystem and include at least one test that proves the first runnable slice works.
+- Test at the closest stable boundary: unit tests for pure logic, integration tests for API/database/filesystem contracts, component or flow tests for UI behavior, and regression tests for bug fixes.
+- Assert observable behavior, validation, error handling, permissions, and relevant edge cases. Do not write tests that only mirror private implementation details.
+- Keep tests deterministic. Mock network, LLM/model providers, clocks, package registries, and external services unless the repo has an explicit integration harness.
+- Run relevant tests after each meaningful change when practical, then run the closest relevant verification before exiting.
+- Broaden verification to typecheck, build, or workspace-level tests when shared contracts, route wiring, public behavior, or cross-package code changed.
+- If a required check cannot run, report the exact command and blocker instead of implying it passed.
+
 Documentation:
-- Keep README.md, AGENTS.md, and any relevant documentation up to date and accurate. Update them at the end of your run when your work changes behavior, architecture, wiring, or repository structure.
-- Keep documentation updates brief and factual. Use documents in docs/ and link to them rather than inflating top-level files.
+- Keep README.md, AGENTS.md, inline comments, ADRs, architecture docs, user docs, and API docs accurate when your work changes behavior, architecture, wiring, contracts, dependencies, repository structure, or agent workflow.
+- README.md describes the current product and workspace: what exists, setup, run commands, verification, project layout, and links to deeper docs.
+- AGENTS.md describes agent/contributor workflow rules, source-of-truth order, guardrails, coding/testing/documentation defaults, and verification expectations.
+- Inline comments explain non-obvious why, invariants, constraints, or integration hazards. Do not narrate obvious code.
+- ADRs are for durable decisions affecting repository structure, framework/tooling choices, schema or API contract strategy, testing strategy, design-system rules, workflow, governance, or review policy.
+- Architecture docs describe implemented current state: service boundaries, data flow, state ownership, API/schema contracts, operational constraints, and integration points.
+- User docs are human-facing public documentation. Write task-oriented guidance for supported behavior and avoid internal implementation details, speculative roadmap language, or unsupported features.
+- API docs and contract references must match implemented routes and schemas. Include request/response shape, auth expectations, and error/status semantics when relevant.
+- Keep documentation brief and factual. Link to deeper docs rather than inflating top-level files.
 
 Package management:
 - Prefer existing repo dependencies and platform APIs before adding new third-party packages.
@@ -136,11 +170,11 @@ if [[ "${RUN_KIND}" == "implement" ]]; then
 
 Implementation mode:
 - Follow the assigned tasks closely, but do not stop at an artificially narrow file boundary when a small adjacent integration update is required to complete the change cleanly.
-- Always add or update user-facing and architecture documentation when you introduce a new library, a new software choice, or when behavior, wiring, or boundaries change. Keep documentation grounded in behavior actually implemented in this run.
+- Always add or update user-facing and architecture documentation when you introduce a new library, a new software choice, or when behavior, wiring, contracts, API surfaces, or boundaries change. Follow the Documentation section above and keep documentation grounded in behavior actually implemented in this run.
 - As you work, be aware of what prior agents built before you. Explore the codebase to understand the user journey, flow, and integration points. Ensure your new code paths and changes are reachable from the existing application — routes are registered, navigation links exist, components are wired in. If this is the first task in the feature and no integration is needed yet, that is fine.
 - Do not invent new features, speculative behavior, or unrelated refactors beyond what the assigned tasks require.
 - Complete every assigned task and acceptance criterion in /workspace/.quayboard-tasks.md, or exit non-zero with a concise blocker description.
-- Add or update meaningful tests for changed behavior and run the closest relevant verification before exiting.
+- Add or update meaningful tests for changed behavior using the Testing section above, and run the closest relevant verification before exiting.
 - Inspect the final diff before exiting and remove unrelated edits, generated output, logs, and secrets from the working tree.
 EOF
 fi
