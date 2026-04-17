@@ -279,6 +279,50 @@ describe("docker service", () => {
       "type=bind,src=/tmp/artifacts,dst=/root/.local/share/opencode/tool-output",
     );
     expect(execFileMock.mock.calls[0]?.[1]).not.toContain("host.docker.internal:host-gateway");
+    expect(execFileMock.mock.calls[0]?.[2]).toMatchObject({
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  });
+
+  it("falls back to tailed logs when full container logs exceed the output buffer", async () => {
+    execFileMock
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+        ) => {
+          callback(
+            Object.assign(new Error("stdout maxBuffer length exceeded"), {
+              code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+            }),
+          );
+        },
+      )
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: Record<string, unknown>,
+          callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void,
+        ) => {
+          callback(null, { stdout: "last log lines", stderr: "" });
+        },
+      );
+
+    const service = createDockerService(null);
+    const logs = await service.readLogs("container-123");
+
+    expect(execFileMock.mock.calls.map((call) => call[1])).toEqual([
+      ["logs", "container-123"],
+      ["logs", "--tail", "5000", "container-123"],
+    ]);
+    expect(execFileMock.mock.calls[0]?.[2]).toMatchObject({
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    expect(logs).toContain("Full docker logs exceeded");
+    expect(logs).toContain("last log lines");
   });
 
   it("raises a structured timeout error when waiting for a container exceeds the limit", async () => {

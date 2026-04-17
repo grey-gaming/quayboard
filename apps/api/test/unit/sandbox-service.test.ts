@@ -13,10 +13,12 @@ vi.mock("node:child_process", () => ({
 }));
 
 import {
+  buildSandboxRunExitFailureMessage,
   createRunStallState,
   createSandboxService,
   detectSandboxRunStall,
   determineNetworkModeForRun,
+  resolveSandboxRunMemoryMb,
   serializeProjectReviewFixFindings,
 } from "../../src/services/sandbox-service.js";
 
@@ -147,6 +149,26 @@ describe("sandbox service", () => {
         runKind: "project_review",
       }),
     ).toBe("none");
+  });
+
+  it("raises low project memory for delivery runs only", () => {
+    expect(resolveSandboxRunMemoryMb("implement", 2048)).toBe(4096);
+    expect(resolveSandboxRunMemoryMb("verify", 2048)).toBe(4096);
+    expect(resolveSandboxRunMemoryMb("bug_fix", 2048)).toBe(4096);
+    expect(resolveSandboxRunMemoryMb("project_fix", 2048)).toBe(4096);
+    expect(resolveSandboxRunMemoryMb("ci_repair", 2048)).toBe(4096);
+    expect(resolveSandboxRunMemoryMb("project_review", 2048)).toBe(2048);
+    expect(resolveSandboxRunMemoryMb("task_planning", 2048)).toBe(2048);
+    expect(resolveSandboxRunMemoryMb("verify", 8192)).toBe(8192);
+  });
+
+  it("explains exit code 137 as a likely memory kill", () => {
+    expect(buildSandboxRunExitFailureMessage("verify", 137, 4096)).toBe(
+      "verify run exited with code 137, which usually means the sandbox container was killed by the runtime memory limit (4096 MB). Increase the project sandbox memory limit and retry.",
+    );
+    expect(buildSandboxRunExitFailureMessage("verify", 1, 4096)).toBe(
+      "verify run exited with code 1.",
+    );
   });
 
   it("detects a stalled run when trace progress is idle while changed files keep mutating", () => {

@@ -10,7 +10,7 @@ Quayboard's current UI supports the current planning workflow:
    - select a GitHub repository from the accessible repo list
    - choose a project-scoped LLM provider and model
    - if using Ollama, load and select one of the available models; the selection is saved and verified immediately
-   - define sandbox defaults; current Develop implementation and verification runs use internet access for dependency lookup and installs even if the saved sandbox egress policy is locked
+   - define sandbox defaults; current Develop implementation and verification runs use internet access for dependency lookup and installs even if the saved sandbox egress policy is locked, and delivery runs use at least 4096 MB of memory for OpenCode stability
    - verify OpenAI-compatible LLM connectivity when that provider is selected
    - verify sandbox startup; the first verification can pull the sandbox base image if it is missing locally, but the check does not verify outbound dependency access
    - click **Complete Setup** after the repository, LLM, and sandbox checks are green to unlock Questions, Overview, Product Spec, User Flows, Milestones, Features, and Import

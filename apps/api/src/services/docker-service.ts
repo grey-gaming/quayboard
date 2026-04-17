@@ -9,6 +9,9 @@ const dockerCommandTimeoutMs = 5_000;
 const containerCommandTimeoutMs = 60_000;
 const containerWaitTimeoutMs = 15 * 60_000;
 const imageBuildTimeoutMs = 30 * 60_000;
+const dockerCommandMaxBufferBytes = 16 * 1024 * 1024;
+const dockerLogsMaxBufferBytes = 64 * 1024 * 1024;
+const dockerLogsTailLines = 5_000;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../");
 const localSandboxImage = {
   contextPath: path.join(repoRoot, "docker", "agent-sandbox"),
@@ -18,6 +21,7 @@ const localSandboxImage = {
 
 type DockerCommandOptions = {
   dockerHost?: string | null;
+  maxBuffer?: number;
   timeoutMs?: number;
 };
 
@@ -81,8 +85,14 @@ export const createDockerService = (dockerHost: string | null) => {
   ) =>
     execFileAsync("docker", args, {
       env: buildEnv(options.dockerHost),
+      maxBuffer: options.maxBuffer ?? dockerCommandMaxBufferBytes,
       timeout: options.timeoutMs ?? dockerCommandTimeoutMs,
     });
+  const isMaxBufferError = (error: unknown) =>
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
   const resolveLocalImageBuild = (image: string) =>
     image === localSandboxImage.image && existsSync(localSandboxImage.dockerfilePath)
       ? localSandboxImage
@@ -320,12 +330,40 @@ export const createDockerService = (dockerHost: string | null) => {
     },
 
     async readLogs(containerId: string, overrideDockerHost?: string | null) {
-      const result = await runDockerCommand(["logs", containerId], {
-        dockerHost: overrideDockerHost,
-        timeoutMs: containerCommandTimeoutMs,
-      });
+      let result;
+      let truncated = false;
+      try {
+        result = await runDockerCommand(["logs", containerId], {
+          dockerHost: overrideDockerHost,
+          maxBuffer: dockerLogsMaxBufferBytes,
+          timeoutMs: containerCommandTimeoutMs,
+        });
+      } catch (error) {
+        if (!isMaxBufferError(error)) {
+          throw error;
+        }
 
-      return [result.stdout, result.stderr].filter(Boolean).join("\n");
+        truncated = true;
+        result = await runDockerCommand(
+          ["logs", "--tail", String(dockerLogsTailLines), containerId],
+          {
+            dockerHost: overrideDockerHost,
+            maxBuffer: dockerLogsMaxBufferBytes,
+            timeoutMs: containerCommandTimeoutMs,
+          },
+        );
+      }
+
+      return [
+        truncated
+          ? [
+              `[quayboard] Full docker logs exceeded ${dockerLogsMaxBufferBytes} bytes;`,
+              `showing the last ${dockerLogsTailLines} lines.`,
+            ].join(" ")
+          : "",
+        result.stdout,
+        result.stderr,
+      ].filter(Boolean).join("\n");
     },
 
     async stopContainer(containerId: string, overrideDockerHost?: string | null) {

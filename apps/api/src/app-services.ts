@@ -212,7 +212,7 @@ export const createAppServices = async (
     maxConcurrentRuns: 2,
     defaultTimeoutSeconds: 1200,
     defaultCpuLimit: 1,
-    defaultMemoryMb: 2048,
+    defaultMemoryMb: 4096,
   });
   const jobService = createJobService(db);
   const llmProviderService = createLlmProviderService({

@@ -29,6 +29,7 @@ import {
   type ContextPack,
   type ManagedContainerSummary,
   type SandboxMilestoneSession,
+  type SandboxRunKind,
   type SandboxRun,
 } from "@quayboard/shared";
 
@@ -93,6 +94,14 @@ const gitUserEnv = {
 
 const sandboxWorkspacePrefix = "quayboard-run-";
 const containerArtifactDir = "/workspace/.quayboard-artifacts";
+const minimumDeliveryRunMemoryMb = 4096;
+const deliverySandboxRunKinds = new Set<SandboxRunKind>([
+  "implement",
+  "verify",
+  "ci_repair",
+  "project_fix",
+  "bug_fix",
+]);
 const managedGitignoreStart = "# --- Quayboard managed ignore entries ---";
 const managedGitignoreEnd = "# --- End Quayboard managed ignore entries ---";
 const managedGitignoreEntries = [
@@ -511,7 +520,7 @@ export const detectSandboxRunStall = (input: {
   changedFiles: LiveChangedFile[];
   hadMeaningfulTraceProgress: boolean;
   nowMs: number;
-  runKind: "implement" | "verify" | "ci_repair" | "project_review" | "project_fix" | "bug_fix" | "task_planning";
+  runKind: SandboxRunKind;
   state: RunStallState;
 }) => {
   if (input.hadMeaningfulTraceProgress) {
@@ -550,6 +559,30 @@ export const detectSandboxRunStall = (input: {
     `${input.runKind} run appears stalled: no meaningful trace progress for ${idleMinutes} ` +
     "minutes while changed files kept mutating. This usually means a long-lived dev/watch process was left running."
   );
+};
+
+export const resolveSandboxRunMemoryMb = (
+  runKind: SandboxRunKind,
+  configuredMemoryMb: number,
+) =>
+  deliverySandboxRunKinds.has(runKind)
+    ? Math.max(configuredMemoryMb, minimumDeliveryRunMemoryMb)
+    : configuredMemoryMb;
+
+export const buildSandboxRunExitFailureMessage = (
+  runKind: SandboxRunKind,
+  exitCode: number,
+  memoryMb: number,
+) => {
+  if (exitCode === 137) {
+    return [
+      `${runKind} run exited with code 137, which usually means the sandbox container`,
+      `was killed by the runtime memory limit (${memoryMb} MB).`,
+      "Increase the project sandbox memory limit and retry.",
+    ].join(" ");
+  }
+
+  return `${runKind} run exited with code ${exitCode}.`;
 };
 
 export const createSandboxService = (input: {
@@ -1959,6 +1992,7 @@ export const createSandboxService = (input: {
       await input.executionSettingsService.get(),
     );
     const sandboxConfig = await this.getEffectiveSandboxConfig(run.projectId);
+    const effectiveMemoryMb = resolveSandboxRunMemoryMb(run.kind, sandboxConfig.memoryMb);
     let secretEnv: Record<string, string> = {};
     let secretsToRedact: string[] = [];
 
@@ -2223,6 +2257,17 @@ export const createSandboxService = (input: {
         executionSettings.defaultImage,
         executionSettings.dockerHost,
       );
+      if (effectiveMemoryMb > sandboxConfig.memoryMb) {
+        await this.appendEvent(
+          sandboxRunId,
+          "info",
+          "memory_floor_applied",
+          [
+            `Raised sandbox memory from ${sandboxConfig.memoryMb} MB`,
+            `to ${effectiveMemoryMb} MB for ${run.kind} run stability.`,
+          ].join(" "),
+        );
+      }
 
       const containerId = await input.dockerService.createManagedContainer({
         artifactDir,
@@ -2245,7 +2290,7 @@ export const createSandboxService = (input: {
           "quayboard.project_id": run.projectId,
           "quayboard.sandbox_run_id": run.id,
         },
-        memoryMb: sandboxConfig.memoryMb,
+        memoryMb: effectiveMemoryMb,
         name: `qb-${run.id.slice(0, 8)}`,
         networkDisabled: networkMode === "none",
         networkMode,
@@ -2682,6 +2727,11 @@ export const createSandboxService = (input: {
         return;
       }
 
+      const failureMessage = buildSandboxRunExitFailureMessage(
+        run.kind,
+        exitCode,
+        effectiveMemoryMb,
+      );
       await this.updateRunState(sandboxRunId, {
         status: "failed",
         outcome: run.kind === "verify" ? "verification_failed" : "error",
@@ -2692,9 +2742,9 @@ export const createSandboxService = (input: {
         sandboxRunId,
         "error",
         "run_failed",
-        `${run.kind} run exited with code ${exitCode}.`,
+        failureMessage,
       );
-      throw createHandledRunFailure(`${run.kind} run exited with code ${exitCode}.`);
+      throw createHandledRunFailure(failureMessage);
     } catch (error) {
       if (isHandledRunFailure(error) || runFinalized) {
         throw error;
