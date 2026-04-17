@@ -9,14 +9,14 @@ import {
 } from "../../src/services/project-review-service.js";
 
 describe("project review service helpers", () => {
-  it("switches to high-only mode only when two or fewer fix passes remain", () => {
+  it("treats the review as high-only only after the loop budget is exhausted", () => {
     expect(isProjectReviewHighOnlyPhase(0, 5)).toBe(false);
     expect(isProjectReviewHighOnlyPhase(2, 5)).toBe(false);
-    expect(isProjectReviewHighOnlyPhase(3, 5)).toBe(true);
-    expect(isProjectReviewHighOnlyPhase(4, 5)).toBe(true);
+    expect(isProjectReviewHighOnlyPhase(4, 5)).toBe(false);
+    expect(isProjectReviewHighOnlyPhase(5, 5)).toBe(true);
   });
 
-  it("treats only critical and high findings as blocking in the final phase", () => {
+  it("treats only critical and high findings as blocking throughout the review", () => {
     const findings = [
       { severity: "critical" as const, finding: "critical issue" },
       { severity: "high" as const, finding: "high issue" },
@@ -25,8 +25,14 @@ describe("project review service helpers", () => {
     ];
 
     expect(partitionProjectReviewFindings(findings, false)).toEqual({
-      blocking: findings,
-      ignored: [],
+      blocking: [
+        { severity: "critical", finding: "critical issue" },
+        { severity: "high", finding: "high issue" },
+      ],
+      ignored: [
+        { severity: "medium", finding: "medium issue" },
+        { severity: "low", finding: "low issue" },
+      ],
     });
 
     expect(partitionProjectReviewFindings(findings, true)).toEqual({

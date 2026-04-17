@@ -108,6 +108,8 @@ const managedGitignoreEntries = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
   ".quayboard-task-planning-context.md",
+  ".quayboard-project-review.md",
+  ".quayboard-project-review-findings.json",
   ".quayboard-artifacts/",
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
@@ -133,6 +135,8 @@ const excludedPublishPaths = [
   ".quayboard-context.md",
   ".quayboard-tasks.md",
   ".quayboard-task-planning-context.md",
+  ".quayboard-project-review.md",
+  ".quayboard-project-review-findings.json",
   ".quayboard-artifacts/",
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
@@ -370,7 +374,11 @@ export const serializeProjectReviewFixFindings = (
 ) =>
   JSON.stringify(
     findings
-      .filter((finding) => finding.status === "open")
+      .filter(
+        (finding) =>
+          finding.status === "open" &&
+          (finding.severity === "critical" || finding.severity === "high"),
+      )
       .map((finding) => ({
         id: finding.id,
         category: finding.category,
@@ -2188,19 +2196,26 @@ export const createSandboxService = (input: {
       const taskFileContent =
         run.kind === "project_review"
           ? [
-              "Produce a project-wide engineering due diligence review for this repository.",
+              "Produce a bounded release-gate engineering review for this repository.",
               "Inspect the actual repository contents before making claims.",
               `Write the human-readable report to ${containerArtifactDir}/project-review.md.`,
               `Write the structured output to ${containerArtifactDir}/project-review.json.`,
               "The JSON must satisfy Quayboard's exact schema: maturityLevel must be a non-empty string, not a number.",
               "Only include real issues in findings. Do not list strengths, praise, or already-good behavior as findings.",
+              "Use critical/high severity only for concrete release blockers: correctness failures, security/data-loss risks, broken build or tests, resource leaks that affect real sessions, or unusable primary flows.",
+              "Use medium/low severity for advisory polish, broad refactors, coverage measurement, documentation expansion, or maintainability improvements that do not block release.",
+              "After the first remediation pass, verify previous blocking findings first. Introduce new critical/high findings only for clear regressions or missed release blockers.",
+              "Do not require broad test coverage thresholds, dependency changes, or documentation expansion unless they directly address a release blocker.",
               "Do not make repository changes during the review run.",
             ].join("\n")
           : run.kind === "project_fix"
             ? [
                 "Read /workspace/.quayboard-project-review.md for the latest project review.",
                 "Read /workspace/.quayboard-project-review-findings.json for the normalized findings to fix.",
-                "Address only the cited findings in one batched remediation pass.",
+                "Address only the cited critical/high blocking findings in one batched remediation pass.",
+                "Do not fix advisory medium/low findings, broad refactors, coverage configuration, dependency changes, or documentation expansion unless directly required by a cited blocker.",
+                "Do not edit .quayboard-project-review.md or .quayboard-project-review-findings.json.",
+                "Keep the patch narrowly scoped to the cited blockers and avoid reworking already-passing behavior.",
                 "Re-run relevant checks before exiting.",
                 `Write a remediation summary to ${containerArtifactDir}/project-fix-summary.md.`,
               ].join("\n")

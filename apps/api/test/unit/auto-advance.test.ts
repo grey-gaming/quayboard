@@ -179,6 +179,7 @@ describe("auto-advance service", () => {
     markProjectCompleted: ReturnType<typeof vi.fn>;
     mergeFixPullRequest: ReturnType<typeof vi.fn>;
     reconcileStaleActiveSession: ReturnType<typeof vi.fn>;
+    retryFixes: ReturnType<typeof vi.fn>;
     startReview: ReturnType<typeof vi.fn>;
   };
   let productSpecService: { approveCanonical: ReturnType<typeof vi.fn> };
@@ -260,6 +261,7 @@ describe("auto-advance service", () => {
       markProjectCompleted: vi.fn().mockResolvedValue(undefined),
       mergeFixPullRequest: vi.fn().mockResolvedValue({ merged: true }),
       reconcileStaleActiveSession: vi.fn().mockResolvedValue(false),
+      retryFixes: vi.fn().mockResolvedValue({ session: null }),
       startReview: vi.fn().mockResolvedValue({ session: null }),
     };
     productSpecService = { approveCanonical: vi.fn().mockResolvedValue(undefined) };
@@ -791,6 +793,60 @@ describe("auto-advance service", () => {
         undefined,
         expect.objectContaining({
           sessionId: session.id,
+        }),
+      );
+    });
+
+    it("pauses instead of extending an exhausted project review retry loop", async () => {
+      nextActionsService.buildBatch.mockResolvedValue({
+        actions: [
+          {
+            key: "project_review_retry",
+            label: "Retry project review fixes",
+            href: `/projects/${PROJECT_ID}/develop/review`,
+          },
+        ],
+      });
+      projectReviewService.getLatestSessionDetail.mockResolvedValue({
+        session: {
+          id: "review-session-123",
+          status: "needs_fixes",
+          loopCount: 5,
+          maxLoops: 5,
+        },
+      });
+      const session = makeSessionRow({
+        status: "paused" as const,
+        pausedReason: "manual_pause",
+      });
+      const db = makeDb({ session });
+      db.query.autoAdvanceSessionsTable.findFirst = vi
+        .fn()
+        .mockResolvedValue(makeSessionRow({ status: "running" as const }));
+      db.query.autoAdvanceSessionsTable.findFirst.mockResolvedValueOnce(session);
+      const updates: Array<Record<string, unknown>> = [];
+      db.update = vi.fn().mockReturnValue({
+        set: vi.fn().mockImplementation((data: Record<string, unknown>) => {
+          updates.push(data);
+          return {
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([makeSessionRow({ status: "paused" as const })]),
+            }),
+          };
+        }),
+      });
+      const service = makeService(db);
+
+      await service.resume(USER_ID, PROJECT_ID);
+
+      expect(projectReviewService.retryFixes).not.toHaveBeenCalled();
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          status: "paused",
+          currentStep: "project_review_retry",
+          pausedReason: "project_review_limit_reached",
+          pendingJobCount: 0,
+          activeBatchToken: null,
         }),
       );
     });
