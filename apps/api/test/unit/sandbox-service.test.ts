@@ -339,6 +339,19 @@ describe("sandbox service", () => {
     );
   });
 
+  it("excludes local pnpm stores from published commits", async () => {
+    const service = makeService();
+    const git = vi.fn().mockResolvedValue("");
+    service.git = git;
+
+    await service.removeExcludedPublishPaths("/tmp/workspace", "base-sha");
+
+    expect(git).toHaveBeenCalledWith(
+      expect.arrayContaining(["reset", "HEAD", "--", ".pnpm-store/"]),
+      "/tmp/workspace",
+    );
+  });
+
   it("falls back to a branchless clone when the configured default branch does not exist yet", async () => {
     const token = "github_pat_secret";
 

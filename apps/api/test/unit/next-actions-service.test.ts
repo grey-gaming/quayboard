@@ -422,6 +422,182 @@ describe("nextActionsService — milestone/feature routing", () => {
   });
 
   describe("implementation routing", () => {
+    it("implements a task-planned feature before planning tasks for the next feature", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "passed",
+        }),
+      ];
+      const features = [
+        makeFeature("f1", "m1", { featureKey: "F-001", title: "Setup feature" }),
+        makeFeature("f2", "m1", { featureKey: "F-002", title: "Detail feature" }),
+      ];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: { id: "product-1" }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: {
+            required: true,
+            headRevision: { id: "tech-1" },
+            status: "approved",
+            implementationStatus: "not_implemented",
+          },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      s.taskPlanningService.getSession = vi.fn().mockImplementation(async (_userId, featureId) =>
+        featureId === "f1"
+          ? { id: "task-session-1", status: "tasks_generated" }
+          : null,
+      );
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_implement");
+      expect(actions[0]?.href).toBe(`/projects/${PROJECT_ID}/develop?featureId=f1`);
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledTimes(1);
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f1");
+    });
+
+    it("plans tasks for the next feature after the previous feature is implemented", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "passed",
+        }),
+      ];
+      const features = [
+        makeFeature("f1", "m1", { featureKey: "F-001", title: "Setup feature" }),
+        makeFeature("f2", "m1", { featureKey: "F-002", title: "Detail feature" }),
+      ];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockImplementation(async (_userId, featureId) => ({
+        tracks: {
+          product: { required: true, headRevision: { id: `product-${featureId}` }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: {
+            required: true,
+            headRevision: { id: `tech-${featureId}` },
+            status: "approved",
+            implementationStatus: featureId === "f1" ? "implemented" : "not_implemented",
+          },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      }));
+      s.taskPlanningService.getSession = vi.fn().mockImplementation(async (_userId, featureId) =>
+        featureId === "f1"
+          ? { id: "task-session-1", status: "tasks_generated" }
+          : null,
+      );
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_task_clarifications_generate");
+      expect(actions[0]?.href).toContain("/features/f2?taskSession=missing");
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f1");
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledWith(USER_ID, "f2");
+    });
+
+    it("blocks later task planning while an earlier feature implementation is active", async () => {
+      const milestones = [
+        makeMilestone({
+          id: "m1",
+          status: "approved",
+          featureCount: 2,
+          isActive: true,
+          position: 1,
+          reconciliationStatus: "passed",
+        }),
+      ];
+      const features = [
+        makeFeature("f1", "m1", { featureKey: "F-001", title: "Setup feature" }),
+        makeFeature("f2", "m1", { featureKey: "F-002", title: "Detail feature" }),
+      ];
+      const s = makeServices({ milestones, features, designDoc: { id: "doc-1" } });
+
+      s.featureWorkstreamService.getTracks = vi.fn().mockResolvedValue({
+        tracks: {
+          product: { required: true, headRevision: { id: "product-1" }, status: "approved" },
+          ux: { required: false, headRevision: null, status: "missing" },
+          tech: {
+            required: true,
+            headRevision: { id: "tech-1" },
+            status: "approved",
+            implementationStatus: "running",
+          },
+          userDocs: { required: false, headRevision: null, status: "missing" },
+          archDocs: { required: false, headRevision: null, status: "missing" },
+        },
+      });
+      s.taskPlanningService.getSession = vi.fn().mockImplementation(async (_userId, featureId) =>
+        featureId === "f1"
+          ? { id: "task-session-1", status: "tasks_generated" }
+          : null,
+      );
+
+      const service = createNextActionsService(
+        s.artifactApprovalService as never,
+        s.blueprintService as never,
+        s.featureService as never,
+        s.featureWorkstreamService as never,
+        s.milestoneService as never,
+        s.projectSetupService as never,
+        s.questionnaireService as never,
+        s.onePagerService as never,
+        s.productSpecService as never,
+        s.userFlowService as never,
+        s.taskPlanningService as never,
+      );
+
+      const { actions } = await service.build(USER_ID, PROJECT_ID);
+
+      expect(actions[0]?.key).toBe("feature_implementation_running");
+      expect(actions[0]?.href).toBe(`/projects/${PROJECT_ID}/develop?featureId=f1`);
+      expect(s.taskPlanningService.getSession).toHaveBeenCalledTimes(1);
+    });
+
     it("includes the feature id in the develop href for implementation actions", async () => {
       const milestones = [
         makeMilestone({
