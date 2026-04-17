@@ -35,6 +35,7 @@ const STEP_KEY_LABELS: Record<string, string> = {
   feature_task_clarifications_generate: "Generate Task Clarifications",
   feature_task_clarifications_answer: "Answer Task Clarifications",
   feature_task_list_generate: "Generate Task List",
+  feature_implementation_running: "Wait For Feature Implementation",
   feature_stale_implementation: "Re-implement Feature",
 };
 

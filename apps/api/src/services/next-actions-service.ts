@@ -447,21 +447,20 @@ export const createNextActionsService = (
                       });
                       break;
                     }
-                  }
-                }
 
-                if (!actions.length && taskPlanningService) {
-                  for (let i = 0; i < milestoneFeatures.length; i++) {
-                    const feature = milestoneFeatures[i]!;
-                    const featureTracks = allTracks[i]!.tracks;
-                    const session = await taskPlanningService.getSession(ownerUserId, feature.id);
-
-                    if (!session || session.status !== "tasks_generated") {
+                    if (session.status !== "tasks_generated") {
                       continue;
                     }
 
                     if (featureTracks.tech.implementationStatus === "running") {
-                      continue;
+                      actions.push({
+                        key: "feature_implementation_running",
+                        label: `Wait for feature implementation: ${feature.headRevision.title}`,
+                        description:
+                          "This feature is already queued or running in the sandbox. Later feature task plans wait until it finishes so they see the updated milestone branch.",
+                        href: `/projects/${projectId}/develop?featureId=${feature.id}`,
+                      });
+                      break;
                     }
 
                     if (featureTracks.tech.implementationStatus === "not_implemented") {
@@ -472,15 +471,8 @@ export const createNextActionsService = (
                       });
                       break;
                     }
-                  }
-                }
 
-                if (!actions.length && taskPlanningService) {
-                  for (let i = 0; i < milestoneFeatures.length; i++) {
-                    const feature = milestoneFeatures[i]!;
-                    const techTrack = allTracks[i]!.tracks.tech;
-
-                    if (techTrack.implementationStatus === "out_of_date") {
+                    if (featureTracks.tech.implementationStatus === "out_of_date") {
                       actions.push({
                         key: "feature_stale_implementation",
                         label: `Re-implement stale feature: ${feature.headRevision.title}`,
