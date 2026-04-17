@@ -133,9 +133,9 @@ Package management:
 - If install output shows deprecation, vulnerability, or obvious safety warnings for the chosen package, prefer a safer current alternative when feasible.
 
 Repository hygiene:
-- Ensure .gitignore exists and preserves generated-output exclusions for node_modules/, dist/, build/, coverage/, .nyc_output/, and *.log.
+- Ensure .gitignore exists and preserves generated-output exclusions for node_modules/, .pnpm-store/, dist/, build/, coverage/, .nyc_output/, and *.log.
 - Add further .gitignore entries when your work creates generated output.
-- Do not commit installed dependencies, build output, coverage reports, or log files.
+- Do not commit installed dependencies, package-manager stores such as .pnpm-store/, build output, coverage reports, or log files.
 - Treat .quayboard-context.md, .quayboard-tasks.md, and any .quayboard-* files as Quayboard-managed inputs. Read them, but do not edit, delete, or commit them.
 
 Protection rules:

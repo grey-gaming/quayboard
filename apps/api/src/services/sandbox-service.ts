@@ -84,6 +84,7 @@ import {
 } from "./task-planning-support.js";
 
 const execFileAsync = promisify(execFile);
+const gitCommandMaxBufferBytes = 16 * 1024 * 1024;
 const gitUserEnv = {
   GIT_AUTHOR_EMAIL: "quayboard@local.invalid",
   GIT_AUTHOR_NAME: "Quayboard",
@@ -114,6 +115,7 @@ const managedGitignoreEntries = [
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
+  ".pnpm-store/",
   "dist/",
   "build/",
   "coverage/",
@@ -141,6 +143,7 @@ const excludedPublishPaths = [
   ".quayboard-bug-report.md",
   ".quayboard-ci-failure.md",
   "node_modules/",
+  ".pnpm-store/",
   "dist/",
   "build/",
   "coverage/",
@@ -2896,6 +2899,7 @@ export const createSandboxService = (input: {
           ...process.env,
           ...gitUserEnv,
         },
+        maxBuffer: gitCommandMaxBufferBytes,
       });
     } catch (error) {
       throw sanitizeGitError(error, secrets);

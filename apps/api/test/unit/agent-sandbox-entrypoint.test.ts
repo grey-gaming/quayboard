@@ -53,6 +53,13 @@ describe("agent sandbox entrypoint prompt", () => {
     expect(content).toContain("API docs and contract references must match implemented routes and schemas.");
   });
 
+  it("treats pnpm local stores as generated output", async () => {
+    const content = await readFile(entrypointPath, "utf8");
+
+    expect(content).toContain("node_modules/, .pnpm-store/, dist/");
+    expect(content).toContain("package-manager stores such as .pnpm-store/");
+  });
+
   it("keeps verify guidance compatible with narrow doc and boundary follow-through", async () => {
     const content = await readFile(entrypointPath, "utf8");
 
