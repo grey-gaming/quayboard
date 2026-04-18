@@ -10,6 +10,10 @@ export const qualityCharter = [
   "Avoid generic startup filler, vague claims, empty buzzwords, and repetitive phrasing.",
   "Do not hyper-focus on one answer or signal. Synthesize the full context into a broad, well-balanced output.",
   "Prefer concrete user value, realistic workflows, credible differentiation, and thoughtful scope boundaries.",
+  "Core capability integrity: preserve the product's central promises from the questionnaire, product spec, technical spec, and user flows unless they are explicitly out of scope.",
+  "Do not replace a core capability with static placeholder data, fake success, empty URLs, canned output, or a silent production stub.",
+  "A vertical slice may be small, but it must preserve the real end-to-end semantics of the capability it claims to deliver.",
+  "If a required dependency, provider, or source is unavailable, plan a real adapter boundary with deterministic test doubles or surface a blocker; do not claim production behavior exists.",
 ].join("\n");
 
 export const renderQuestionnaireContext = (answers: QuestionnaireAnswers["answers"]) =>
@@ -24,14 +28,14 @@ export const renderProjectScaleGuidance = (profile: ProjectSizeProfile): string 
       "- Aim for 5–12 core features total. Do not enumerate enterprise subsystems or platform infrastructure.",
       "- Skip sections that genuinely do not apply (progression curves, economy models, simulation rules, game loops, multi-tenant architecture).",
       "- The feature inventory must list real product capabilities, not implementation layers or scaffolding steps.",
-      "- If the feature set is thin after removing padding, that is correct — do not add placeholder or aspirational features to fill space.",
-      "- Prefer vertical slices that deliver user value over horizontal platform layers.",
+      "- Do not add placeholder or aspirational features to fill space, but ensure the product's defining capability is represented honestly.",
+      "- Prefer the smallest vertical slices that prove real product behavior, including any provider, data, artifact, or integration boundary required for that behavior.",
     );
   } else if (profile.tier === "medium") {
     lines.push(
       "This is a medium-scope project. Aim for 12–20 core features with full section coverage where applicable.",
       "- Include all sections relevant to the product type. Skip sections that genuinely do not apply.",
-      "- Prefer vertical slices over exhaustive system inventories.",
+      "- Prefer vertical slices that prove real product behavior over exhaustive system inventories.",
     );
   } else {
     lines.push(
@@ -80,8 +84,8 @@ export const renderFeatureBudgetGuidance = (profile: ProjectSizeProfile): string
   if (profile.tier === "large") return "";
   return (
     `Feature count guidance: For a project of this scope, aim for ${profile.featureBudgetPerMilestone} features per milestone. ` +
-    "Prefer complete vertical slices over granular system shards. " +
-    "If the milestone is thin after covering real user value, that is correct — do not add placeholder features."
+    "Prefer the smallest vertical slice that proves the real product behavior, including required provider, data, artifact, and integration boundaries. " +
+    "Do not add placeholder features to fill space, and do not remove defining capability work merely to keep the milestone thin."
   );
 };
 

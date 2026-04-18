@@ -92,6 +92,7 @@ Empty or near-empty repository defaults:
 - Add an ADR when the task or context makes a durable stack, tooling, testing, schema/API strategy, workflow, or governance decision. Do not write an ADR for a decision that is still missing or blocked.
 - The first runnable slice must prove the foundation works through one documented install/build/check command and one documented test command.
 - Keep unimplemented future behavior out of production paths. If a stub is explicitly required, make it visibly not implemented and document that boundary.
+- Do not use fake success, static placeholder data, empty artifact URLs, or silent production stubs to satisfy a core product capability. Mocks and test doubles belong at test or adapter boundaries, not as production behavior.
 
 Code quality:
 - Follow existing repo style first. In an empty repo, follow the selected ecosystem's idioms without adding unnecessary framework structure.
@@ -173,6 +174,8 @@ Implementation mode:
 - Always add or update user-facing and architecture documentation when you introduce a new library, a new software choice, or when behavior, wiring, contracts, API surfaces, or boundaries change. Follow the Documentation section above and keep documentation grounded in behavior actually implemented in this run.
 - As you work, be aware of what prior agents built before you. Explore the codebase to understand the user journey, flow, and integration points. Ensure your new code paths and changes are reachable from the existing application — routes are registered, navigation links exist, components are wired in. If this is the first task in the feature and no integration is needed yet, that is fine.
 - Do not invent new features, speculative behavior, or unrelated refactors beyond what the assigned tasks require.
+- If assigned tasks ask for a stub that contradicts the product's central promise in /workspace/.quayboard-context.md, implement it only as visibly not implemented or exit non-zero with a concise blocker. Do not ship fake production success.
+- When task instructions conflict with higher-level Quayboard context about the product's central promise, preserve the higher-level promise and report the conflict.
 - Complete every assigned task and acceptance criterion in /workspace/.quayboard-tasks.md, or exit non-zero with a concise blocker description.
 - Add or update meaningful tests for changed behavior using the Testing section above, and run the closest relevant verification before exiting.
 - Inspect the final diff before exiting and remove unrelated edits, generated output, logs, and secrets from the working tree.
@@ -261,13 +264,14 @@ Task planning mode:
 - Read /workspace/.quayboard-context.md for the project context and design decisions.
 - Read /workspace/.quayboard-task-planning-context.md for the feature details, planning documents, and acceptance criteria you must plan tasks for.
 - Inspect the actual repository code to understand what already exists, the tech stack in use, and what previous milestones have delivered. Base your tasks on what the repo actually contains — not on assumptions about what might be there.
-- Do not propose technology changes (language, framework, major library) unless the tech already present in the repo requires them for the feature to work.
+- Do not propose language, framework, or major architecture changes unless the tech already present in the repo requires them for the feature to work. Required provider clients, storage adapters, artifact renderers, or integration dependencies from the approved feature scope are allowed when they are needed for the product behavior to be real.
 
 Planning principles:
 - Each task must be independently implementable and verifiable by an agent that sees only the repo and the task description.
 - Tasks execute in order. Later tasks can depend on earlier ones. Write descriptions that reference concrete file paths, modules, or APIs that will exist after prior tasks complete.
 - Include integration work explicitly. If a feature adds a new page, a task must wire it into the router. If a feature adds an API endpoint, a task must connect it to the consuming UI component.
 - Include a verification and testing task as the final task unless verification is naturally embedded in every prior task.
+- Do not plan fake production success for core capabilities. If credentials, external APIs, source data, or providers are unavailable, plan a mockable adapter plus a visible production blocker/failure path.
 
 Output schema — write a valid JSON array to ${TASK_PLAN_OUTPUT_PATH}. Each element must conform exactly to:
 
@@ -287,7 +291,8 @@ Rules:
 - Order tasks: setup/dependencies first → core logic → integration → verification last.
 - Merge closely related work into one task. Do not create micro-tasks.
 - Do not include tasks for work that is clearly already present in the repository.
-- Do not add tasks to set up or migrate the tech stack unless explicitly called for.
+- Do not add broad tasks to set up or migrate the tech stack unless explicitly called for.
+- Do add tasks for provider clients, artifact storage, source retrieval, generated outputs, or adapter boundaries when the approved feature requires them.
 - Write the final array to ${TASK_PLAN_OUTPUT_PATH} and nowhere else.
 TPEOF
 fi
