@@ -21,6 +21,9 @@ describe("agent sandbox entrypoint prompt", () => {
     expect(content).toContain(
       "Do not invent new features, speculative behavior, or unrelated refactors beyond what the assigned tasks require.",
     );
+    expect(content).toContain("Do not ship fake production success.");
+    expect(content).toContain("product's central promise");
+    expect(content).toContain("preserve the higher-level promise and report the conflict");
     expect(content).toContain("Do not commit, push, create pull requests, merge pull requests, or mutate remote branches.");
     expect(content).toContain("Complete every assigned task and acceptance criterion");
     expect(content).toContain("Inspect the final diff before exiting");
@@ -35,6 +38,7 @@ describe("agent sandbox entrypoint prompt", () => {
     expect(content).toContain("Bootstrap only the minimum durable foundation needed for the assigned work");
     expect(content).toContain("one meaningful smoke/regression test");
     expect(content).toContain("The first runnable slice must prove the foundation works");
+    expect(content).toContain("Do not use fake success, static placeholder data, empty artifact URLs");
   });
 
   it("makes coding, testing, and documentation style explicit", async () => {
@@ -51,6 +55,15 @@ describe("agent sandbox entrypoint prompt", () => {
     expect(content).toContain("ADRs are for durable decisions");
     expect(content).toContain("User docs are human-facing public documentation.");
     expect(content).toContain("API docs and contract references must match implemented routes and schemas.");
+  });
+
+  it("keeps task planning from turning required integrations into fake production stubs", async () => {
+    const content = await readFile(entrypointPath, "utf8");
+
+    expect(content).toContain("Required provider clients, storage adapters, artifact renderers, or integration dependencies");
+    expect(content).toContain("Do not plan fake production success for core capabilities.");
+    expect(content).toContain("plan a mockable adapter plus a visible production blocker/failure path");
+    expect(content).toContain("Do add tasks for provider clients, artifact storage, source retrieval");
   });
 
   it("treats pnpm local stores as generated output", async () => {

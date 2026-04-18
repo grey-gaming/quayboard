@@ -19,6 +19,8 @@ import {
   buildMilestoneDesignRepairPrompt,
   buildMilestoneDesignSemanticReviewPrompt,
   buildMilestoneCoverageReviewPrompt,
+  buildFeatureProductSpecPrompt,
+  buildFeatureTechSpecPrompt,
 } from "../../src/services/jobs/job-prompts.js";
 
 const sampleAnswers = {
@@ -378,7 +380,10 @@ describe("job prompts", () => {
     expect(prompt).toContain("Cover every delivery group named in the milestone design document");
     expect(prompt).toContain("Every exit criterion in the milestone design document must map to at least one feature acceptance criterion.");
     expect(prompt).toContain("Rendering groups must cover the full named rendering scope");
-    expect(prompt).toContain("Do not include acceptance criteria that depend on mechanics, collision checks, ordering rules, or behaviors");
+    expect(prompt).toContain("Do not include acceptance criteria that depend on behavior the milestone design document marks out of scope");
+    expect(prompt).toContain("Do include the minimum technical mechanics, provider boundaries, data sources, artifacts, or integrations");
+    expect(prompt).toContain("Do not satisfy exit criteria with placeholder mechanics");
+    expect(prompt).toContain("Reject feature boundaries that claim a user-facing capability");
   });
 
   it("asks the feature-set review pass to merge task-sized fragmentation", () => {
@@ -409,7 +414,9 @@ describe("job prompts", () => {
     expect(prompt).toContain("Ensure every delivery group named in the milestone design document is covered");
     expect(prompt).toContain("Ensure the reviewed set collectively satisfies every exit criterion");
     expect(prompt).toContain("Treat partial coverage as incomplete.");
-    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope mechanics");
+    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope behavior");
+    expect(prompt).toContain("Restore missing mechanics, provider boundaries, data sources, artifacts, or integrations");
+    expect(prompt).toContain("Reject placeholder mechanics, fake generated content");
     expect(prompt).toContain(
       "kind must be one of: screen, menu, dialog, system, service, library, pipeline, placeholder_visual, placeholder_non_visual.",
     );
@@ -457,7 +464,8 @@ describe("job prompts", () => {
     expect(prompt).toContain("Cover every delivery group named in the milestone design document");
     expect(prompt).toContain("Every exit criterion in the milestone design document must map to at least one rewritten feature acceptance criterion.");
     expect(prompt).toContain("Treat partial coverage as incomplete.");
-    expect(prompt).toContain("Do not include rewritten acceptance criteria that depend on mechanics, collision checks, ordering rules");
+    expect(prompt).toContain("Do not include rewritten acceptance criteria that depend on behavior listed as out of scope");
+    expect(prompt).toContain("Do not resolve a coverage gap by replacing a core capability");
   });
 
   it("keeps rewrite feature review constrained to the shared feature enums", () => {
@@ -500,7 +508,8 @@ describe("job prompts", () => {
     expect(prompt).toContain("Ensure the final rewrite covers every delivery group named in the milestone design document");
     expect(prompt).toContain("Ensure the final rewrite collectively satisfies every milestone exit criterion");
     expect(prompt).toContain("Treat partial coverage as incomplete.");
-    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope mechanics");
+    expect(prompt).toContain("Remove or rewrite any acceptance criterion that depends on out-of-scope behavior");
+    expect(prompt).toContain("Reject placeholder mechanics, fake generated content");
   });
 
   it("keeps milestone coverage review focused on rewriteable gaps before escalating to human review", () => {
@@ -552,6 +561,9 @@ describe("job prompts", () => {
     expect(prompt).toContain("Approved feature planning documents:");
     expect(prompt).toContain("Milestone design document:");
     expect(prompt).toContain("full task list covers the feature acceptance criteria");
+    expect(prompt).toContain("must not remove core product requirements");
+    expect(prompt).toContain("provider adapter, generated artifact, source data");
+    expect(prompt).toContain("observable product truth, not just response shape");
   });
 
   it("asks the task-list review pass to review the whole list and merge micro-tasks", () => {
@@ -577,7 +589,45 @@ describe("job prompts", () => {
 
     expect(prompt).toContain("Review the full task list as a whole");
     expect(prompt).toContain("Merge micro-tasks");
+    expect(prompt).toContain("Restore missing provider adapters, generated artifacts, source data");
+    expect(prompt).toContain("Reject empty artifact references, canned generated output");
     expect(prompt).toContain("First-pass task list:");
+  });
+
+  it("keeps feature product specs from downgrading confirmed core behavior into stubs", () => {
+    const prompt = buildFeatureProductSpecPrompt({
+      feature: {
+        acceptanceCriteria: ["Generated artefacts are available to users."],
+        featureKey: "F-001",
+        milestoneTitle: "Core",
+        summary: "Generate customer-facing artefacts.",
+        title: "Core Generation Service",
+      },
+      milestoneDesignDoc: "# Milestone Design",
+      siblingFeatures: [],
+      productSpec: "# Product Spec",
+      technicalSpec: "# Technical Spec",
+      uxSpec: "# UX Spec",
+    });
+
+    expect(prompt).toContain("do not hide missing core behavior behind production-looking stubs");
+    expect(prompt).toContain("Confirmed project-level requirements must remain in the main spec body");
+    expect(prompt).toContain("Do not describe placeholder data, fake generated output");
+  });
+
+  it("requires feature technical specs to describe real execution and test-double boundaries", () => {
+    const prompt = buildFeatureTechSpecPrompt({
+      featureTitle: "Briefing Pipeline",
+      featureProductSpec: "# Product Spec",
+      milestoneDesignDoc: "# Milestone Design",
+      projectProductSpec: "# Project Product Spec",
+      projectTechnicalSpec: "# Project Technical Spec",
+      siblingFeatures: [],
+    });
+
+    expect(prompt).toContain("describe the real execution boundary, failure behavior, and test-double strategy");
+    expect(prompt).toContain("Do not describe static placeholder output as successful implementation");
+    expect(prompt).toContain("Confirmed project-level requirements stay in the main body");
   });
 
   it("keeps blueprint decision consistency validation focused on hard blockers only", () => {
